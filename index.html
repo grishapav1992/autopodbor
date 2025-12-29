@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Калькулятор</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="calculator" aria-label="Калькулятор">
+        <header class="calculator__header">
+          <h1>Калькулятор</h1>
+          <p>Простой и быстрый расчёт</p>
+        </header>
+        <div class="calculator__display" aria-live="polite">
+          <div class="calculator__expression" id="expression">0</div>
+          <div class="calculator__result" id="result">0</div>
+        </div>
+        <div class="calculator__keys" role="group" aria-label="Кнопки калькулятора">
+          <button class="key key--utility" data-action="clear">AC</button>
+          <button class="key key--utility" data-action="sign">±</button>
+          <button class="key key--utility" data-action="percent">%</button>
+          <button class="key key--operator" data-action="operator" data-value="/">÷</button>
+
+          <button class="key" data-action="number" data-value="7">7</button>
+          <button class="key" data-action="number" data-value="8">8</button>
+          <button class="key" data-action="number" data-value="9">9</button>
+          <button class="key key--operator" data-action="operator" data-value="*">×</button>
+
+          <button class="key" data-action="number" data-value="4">4</button>
+          <button class="key" data-action="number" data-value="5">5</button>
+          <button class="key" data-action="number" data-value="6">6</button>
+          <button class="key key--operator" data-action="operator" data-value="-">−</button>
+
+          <button class="key" data-action="number" data-value="1">1</button>
+          <button class="key" data-action="number" data-value="2">2</button>
+          <button class="key" data-action="number" data-value="3">3</button>
+          <button class="key key--operator" data-action="operator" data-value="+">+</button>
+
+          <button class="key key--wide" data-action="number" data-value="0">0</button>
+          <button class="key" data-action="decimal" data-value=",">,</button>
+          <button class="key key--equals" data-action="equals">=</button>
+        </div>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
