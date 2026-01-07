@@ -40,15 +40,20 @@ class RequestFormPage extends StatefulWidget {
 class _RequestFormPageState extends State<RequestFormPage> {
   RequestType _requestType = RequestType.specificCar;
   final TextEditingController _locationController = TextEditingController();
-  final TextEditingController _budgetController = TextEditingController();
+  final TextEditingController _budgetFromController = TextEditingController();
+  final TextEditingController _budgetToController = TextEditingController();
   final TextEditingController _commentController = TextEditingController();
+  final TextEditingController _listOfCarsController = TextEditingController();
+  String? _selectedCarCount;
   String _status = 'DRAFT';
 
   @override
   void dispose() {
     _locationController.dispose();
-    _budgetController.dispose();
+    _budgetFromController.dispose();
+    _budgetToController.dispose();
     _commentController.dispose();
+    _listOfCarsController.dispose();
     super.dispose();
   }
 
@@ -71,10 +76,18 @@ class _RequestFormPageState extends State<RequestFormPage> {
   }
 
   String get _previewBudget {
-    if (_budgetController.text.trim().isEmpty) {
+    final from = _budgetFromController.text.trim();
+    final to = _budgetToController.text.trim();
+    if (from.isEmpty && to.isEmpty) {
       return 'Бюджет не указан';
     }
-    return 'Бюджет: ${_budgetController.text.trim()} ₽';
+    if (from.isNotEmpty && to.isNotEmpty) {
+      return 'Бюджет: $from–$to ₽';
+    }
+    if (from.isNotEmpty) {
+      return 'Бюджет: от $from ₽';
+    }
+    return 'Бюджет: до $to ₽';
   }
 
   @override
@@ -150,13 +163,24 @@ class _RequestFormPageState extends State<RequestFormPage> {
                               ),
                             ),
                             _LabeledField(
-                              label: 'Бюджет (₽)',
+                              label: 'Бюджет от (₽)',
                               child: TextField(
-                                controller: _budgetController,
+                                controller: _budgetFromController,
                                 keyboardType: TextInputType.number,
                                 onChanged: (_) => setState(() {}),
                                 decoration: const InputDecoration(
                                   hintText: 'от 1 000 000',
+                                ),
+                              ),
+                            ),
+                            _LabeledField(
+                              label: 'Бюджет до (₽)',
+                              child: TextField(
+                                controller: _budgetToController,
+                                keyboardType: TextInputType.number,
+                                onChanged: (_) => setState(() {}),
+                                decoration: const InputDecoration(
+                                  hintText: 'до 2 000 000',
                                 ),
                               ),
                             ),
@@ -199,11 +223,15 @@ class _RequestFormPageState extends State<RequestFormPage> {
                   ),
                   const SizedBox(height: 24),
                   if (_requestType == RequestType.specificCar)
-                    _SpecificCarSection()
+                    const _SpecificCarSection()
                   else if (_requestType == RequestType.listOfCars)
-                    _ListOfCarsSection()
+                    _ListOfCarsSection(
+                      selectedCount: _selectedCarCount,
+                      controller: _listOfCarsController,
+                      onCountChanged: (value) => setState(() => _selectedCarCount = value),
+                    )
                   else
-                    _ClassSearchSection(),
+                    const _ClassSearchSection(),
                   const SizedBox(height: 24),
                   _SectionCard(
                     title: '4. Предпросмотр карточки в “Мои заявки”',
@@ -394,6 +422,8 @@ class _LabeledField extends StatelessWidget {
 }
 
 class _SpecificCarSection extends StatelessWidget {
+  const _SpecificCarSection();
+
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
@@ -401,18 +431,43 @@ class _SpecificCarSection extends StatelessWidget {
       child: _FieldGrid(
         children: const [
           _LabeledField(
-            label: 'VIN / ссылка / госномер *',
+            label: 'VIN номер *',
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'VIN, ссылка или госномер',
+                hintText: 'Например, XW8ZZZ...',
               ),
             ),
           ),
           _LabeledField(
-            label: 'Марка / модель / год',
+            label: 'Ссылка на объявление',
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Toyota Camry 2019',
+                hintText: 'https://auto.ru/...',
+              ),
+            ),
+          ),
+          _LabeledField(
+            label: 'Марка',
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Toyota',
+              ),
+            ),
+          ),
+          _LabeledField(
+            label: 'Модель',
+            child: TextField(
+              decoration: InputDecoration(
+                hintText: 'Camry',
+              ),
+            ),
+          ),
+          _LabeledField(
+            label: 'Год выпуска',
+            child: TextField(
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                hintText: '2019',
               ),
             ),
           ),
@@ -439,33 +494,51 @@ class _SpecificCarSection extends StatelessWidget {
 }
 
 class _ListOfCarsSection extends StatelessWidget {
+  const _ListOfCarsSection({
+    required this.selectedCount,
+    required this.controller,
+    required this.onCountChanged,
+  });
+
+  final String? selectedCount;
+  final TextEditingController controller;
+  final ValueChanged<String?> onCountChanged;
+
   @override
   Widget build(BuildContext context) {
     return _SectionCard(
       title: '3. Список машин',
       child: Column(
-        children: const [
+        children: [
           _LabeledField(
-            label: 'Ссылки / VIN / госномера *',
+            label: 'Сколько вариантов посмотреть? *',
+            child: DropdownButtonFormField<String>(
+              value: selectedCount,
+              items: const [
+                DropdownMenuItem(value: '1', child: Text('1 вариант')),
+                DropdownMenuItem(value: '2', child: Text('2 варианта')),
+                DropdownMenuItem(value: '3', child: Text('3 варианта')),
+                DropdownMenuItem(value: '5', child: Text('5 вариантов')),
+                DropdownMenuItem(value: '10', child: Text('10 вариантов')),
+              ],
+              onChanged: onCountChanged,
+              hint: const Text('Выберите количество'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _LabeledField(
+            label: 'Список автомобилей (необязательно)',
             child: TextField(
-              maxLines: 5,
-              decoration: InputDecoration(
-                hintText: 'Каждая строка — отдельная машина',
+              controller: controller,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                hintText: 'Если уже есть варианты, добавьте ссылки или VIN',
               ),
             ),
           ),
-          SizedBox(height: 16),
-          _FieldGrid(
+          const SizedBox(height: 16),
+          const _FieldGrid(
             children: [
-              _LabeledField(
-                label: 'Максимум вариантов',
-                child: TextField(
-                  keyboardType: TextInputType.number,
-                  decoration: InputDecoration(
-                    hintText: 'Например, 5',
-                  ),
-                ),
-              ),
               _LabeledField(
                 label: 'Приоритеты',
                 child: TextField(
