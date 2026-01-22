@@ -323,6 +323,7 @@ class LandingScreen extends StatelessWidget {
                                     onTap: () => Navigator.of(context)
                                         .pushNamed(RegisterScreen.routeName),
                                   ),
+                                  const SizedBox(height: 12),
                                 ],
                               )
                             else
@@ -340,6 +341,7 @@ class LandingScreen extends StatelessWidget {
                                     onTap: () => Navigator.of(context)
                                         .pushNamed(RegisterScreen.routeName),
                                   ),
+                                  const SizedBox(width: 12),
                                 ],
                               ),
                           ],
