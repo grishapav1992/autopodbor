@@ -35,6 +35,22 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   http: ^1.2.2
+  cached_network_image: ^3.4.1
+  country_picker: ^2.0.26
+  dotted_border: ^2.1.0
+  dropdown_button2: ^2.3.9
+  expandable: ^5.0.1
+  flutter_svg: ^2.0.10+1
+  flutter_xlider: ^3.5.0
+  get: ^4.6.6
+  google_fonts: ^6.2.1
+  image_picker: ^1.1.2
+  pinput: ^5.0.0
+  primer_progress_bar: ^0.5.0
+  shared_preferences: ^2.3.2
+  smooth_page_indicator: ^1.2.0+3
+  step_progress_indicator: ^1.0.2
+  syncfusion_flutter_charts: ^27.1.48
 
 dev_dependencies:
   flutter_test:
@@ -59,6 +75,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/car_hub/images/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
