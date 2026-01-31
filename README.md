@@ -1,16 +1,54 @@
-# flutter_application_1
+﻿# АВТОХАБ — MVP мобильного приложения
 
-A new Flutter project.
+Мобильное приложение для автоподбора и взаимодействия с дилерами. Проект включает пользовательский и дилерский сценарии, экраны заявок, подборов и отчётов, а также базовую инфраструктуру для локализации и хранения пользовательских настроек.
 
-## Getting Started
+## Возможности (экраны и разделы)
+- Онбординг, выбор типа пользователя, авторизация и верификация телефона.
+- Пользовательский и дилерский кабинеты с отдельной навигацией.
+- Заявки на автоподбор, карточка заявки, профиль инспектора.
+- Разделы: отчёты, уведомления, профиль, избранное, фильтры.
+- Геолокация и выбор языка.
 
-This project is a starting point for a Flutter application.
+## Стек
+- Flutter (Dart SDK 3.10.4+)
+- State management: GetX
+- HTTP и хранение настроек: `http`, `shared_preferences`
+- UI/UX: `cached_network_image`, `flutter_svg`, `syncfusion_flutter_charts`, `pinput` и др.
 
-A few resources to get you started if this is your first Flutter project:
+## Быстрый старт
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+```bash
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Сборка
+
+```bash
+flutter build apk --release
+flutter build ios --release
+```
+
+## Конфигурация и API
+- Endpoint хранилища брендов/моделей находится в `lib/data/api/storage_api.dart` (константа `_endpoint`).
+- Заглушка для заявок — `lib/data/api/auto_request_api.dart` (подключить серверные методы).
+- Коллекция запросов Postman: `docs/autopodbor.postman_collection.json`.
+
+## Структура проекта
+- `lib/app` — точка входа и настройка приложения
+- `lib/core` — маршрутизация, темы, локализация, константы
+- `lib/data` — API и слой хранения
+- `lib/state` — контроллеры состояния
+- `lib/ui` — экраны и общие UI-компоненты
+- `assets/` — статические ресурсы
+
+## Качество кода и тесты
+
+```bash
+flutter analyze
+flutter test
+flutter format .
+```
+
+## Лицензирование
+В проекте есть файлы с заголовками лицензии K‑Tonix Flutter UI Kit. Проверьте условия лицензии в соответствующих исходниках перед распространением.
