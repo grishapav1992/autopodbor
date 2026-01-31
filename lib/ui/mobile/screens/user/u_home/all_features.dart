@@ -40,7 +40,7 @@ class AllFeatures extends StatelessWidget {
       appBar: simpleAppBar(title: "features".tr),
       body: ListView(
         shrinkWrap: true,
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         children: [
           Wrap(

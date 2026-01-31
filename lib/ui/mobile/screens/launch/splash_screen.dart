@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_fonts.dart';
@@ -40,9 +40,9 @@ class _SplashScreenState extends State<SplashScreen> {
   _splashHandler() {
     Timer(Duration(seconds: 4), () {
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => Login()),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => Login()));
     });
   }
 
@@ -64,9 +64,8 @@ class _SplashScreenState extends State<SplashScreen> {
             textAlign: TextAlign.center,
           ),
           MyText(
-            text:
-                'Единый сервис для подбора,\nпокупки и продажи авто'
-                    .toUpperCase(),
+            text: 'Единый сервис для подбора,\nпокупки и продажи авто'
+                .toUpperCase(),
             size: 16,
             color: kPrimaryColor,
             fontFamily: AppFonts.GLACIAL_INDIFFERENCE,
@@ -74,14 +73,13 @@ class _SplashScreenState extends State<SplashScreen> {
             weight: FontWeight.w500,
           ),
           Spacer(),
-            MyText(
-              textAlign: TextAlign.center,
-              paddingBottom: 25,
-              text:
-                'Автохаб © ${DateTime.now().year}. Все права защищены'
-                    .toUpperCase(),
-              size: 10,
-              weight: FontWeight.w600,
+          MyText(
+            textAlign: TextAlign.center,
+            paddingBottom: 25,
+            text: 'Автохаб © ${DateTime.now().year}. Все права защищены'
+                .toUpperCase(),
+            size: 10,
+            weight: FontWeight.w600,
             color: kPrimaryColor,
             fontFamily: AppFonts.GLACIAL_INDIFFERENCE,
           ),
@@ -90,4 +88,3 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
-

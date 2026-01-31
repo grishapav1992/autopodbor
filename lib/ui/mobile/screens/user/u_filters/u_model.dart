@@ -1,6 +1,7 @@
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/core/constants/popular_cars_ru.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/u_filters/u_filter.dart';
 import 'package:flutter_application_1/ui/common/widgets/bottom_sheets/custom_bottom_sheet_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_check_box_widget.dart';
@@ -14,26 +15,32 @@ class UModel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> items = [
-      "595".tr,
-      "124Spider".tr,
-      "giulia".tr,
-      "stelvio".tr,
-      "db11".tr,
-      "vantage".tr,
-      "595".tr,
-      "124Spider".tr,
-      "giulia".tr,
-      "stelvio".tr,
-      "db11".tr,
-      "vantage".tr,
-      "595".tr,
-      "124Spider".tr,
-      "giulia".tr,
-      "stelvio".tr,
-      "db11".tr,
-      "vantage".tr,
+    const extraModels = [
+      'Camry',
+      'Corolla',
+      'RAV4',
+      'Granta',
+      'Vesta',
+      'Niva',
+      'Rio',
+      'Solaris',
+      'Polo',
+      'Duster',
+      'Octavia',
+      'Kodiaq',
+      'Qashqai',
+      'X-Trail',
+      'Sportage',
+      'Tiguan',
+      'Passat',
+      'CX-5',
+      'Outlander',
+      'Forester',
     ];
+    final items = sortModelsByPopularity(
+      '',
+      {...kPopularModelsGlobalRu, ...extraModels}.toList(),
+    );
     return CustomBottomSheet(
       height: Get.height * 0.9,
       buttonText: "done".tr,
@@ -53,7 +60,7 @@ class UModel extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.listPaddingWithBottomBar(),
               physics: BouncingScrollPhysics(),
               shrinkWrap: true,
               children: [

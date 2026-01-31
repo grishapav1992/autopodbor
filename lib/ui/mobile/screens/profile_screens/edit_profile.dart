@@ -23,7 +23,7 @@ class EditProfile extends StatelessWidget {
           Expanded(
             child: ListView(
               shrinkWrap: true,
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.listPaddingWithBottomBar(),
               physics: BouncingScrollPhysics(),
               children: [
                 _Heading(title: "avatar".tr),

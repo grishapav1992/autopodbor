@@ -14,7 +14,7 @@ class Terms extends StatelessWidget {
       appBar: simpleAppBar(title: "termsAndConditions".tr),
       body: ListView(
         shrinkWrap: true,
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         children: [
           MyText(

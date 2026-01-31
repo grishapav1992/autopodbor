@@ -33,7 +33,7 @@ class DHome extends StatelessWidget {
       ),
       body: ListView(
         shrinkWrap: true,
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         children: [
           _PerformanceRating(),

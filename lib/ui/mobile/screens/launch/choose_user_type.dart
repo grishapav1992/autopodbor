@@ -3,7 +3,6 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
-import 'package:flutter_application_1/ui/mobile/screens/auth/sign_up/sign_up.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
@@ -24,8 +23,7 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
     setState(() {
       currentIndex = index;
     });
-    _userController
-        .chooseRole(index == 0 ? UserRole.user : UserRole.dealer);
+    _userController.chooseRole(index == 0 ? UserRole.user : UserRole.dealer);
   }
 
   @override
@@ -36,9 +34,9 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            SizedBox(height: 50),
+            const SizedBox(height: 50),
             Column(children: [Image.asset(Assets.imagesLogo, height: 60)]),
-            Spacer(flex: 5),
+            const Spacer(flex: 5),
             Column(
               children: [
                 MyText(
@@ -56,7 +54,7 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
                       title: "user".tr,
                       index: 0,
                     ),
-                    SizedBox(width: 16),
+                    const SizedBox(width: 16),
                     userTypeButton(
                       onTap: () => getCurrentIndex(1),
                       icon: Assets.imagesCarDealer,
@@ -65,37 +63,22 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
                     ),
                   ],
                 ),
-                SizedBox(height: 60),
-                SizedBox(height: 60),
+                const SizedBox(height: 60),
+                const SizedBox(height: 60),
               ],
             ),
-            Spacer(flex: 4),
+            const Spacer(flex: 4),
             MyButton(
               buttonText: "continue".tr,
               onTap: () {
-                final role =
-                    currentIndex == 0 ? UserRole.user : UserRole.dealer;
+                final role = currentIndex == 0
+                    ? UserRole.user
+                    : UserRole.dealer;
                 _userController.chooseRole(role);
                 Get.offAllNamed(AppLinks.login);
               },
             ),
-            SizedBox(height: 16),
-            Wrap(
-              alignment: WrapAlignment.center,
-              children: [
-                MyText(text: "don’tHaveAnAccount".tr, size: 14),
-                MyText(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => SignUp()),
-                  ),
-                  text: "signUp".tr,
-                  size: 14,
-                  weight: FontWeight.w600,
-                  color: kSecondaryColor,
-                  decoration: TextDecoration.underline,
-                ),
-              ],
-            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -112,14 +95,14 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
       child: GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 180),
           curve: Curves.easeIn,
           height: 161,
           decoration: BoxDecoration(
             boxShadow: currentIndex == index
                 ? [
                     BoxShadow(
-                      offset: Offset(0, 4),
+                      offset: const Offset(0, 4),
                       blurRadius: 10,
                       color: kTertiaryColor.withValues(alpha: 0.1),
                     ),
@@ -158,4 +141,3 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
     );
   }
 }
-

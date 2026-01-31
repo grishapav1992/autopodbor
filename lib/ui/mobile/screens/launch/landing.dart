@@ -67,9 +67,7 @@ class _LandingScreenState extends State<LandingScreen> {
             children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Image.asset(Assets.imagesLogo, height: 48),
-                ],
+                children: [Image.asset(Assets.imagesLogo, height: 48)],
               ),
               const SizedBox(height: 24),
               Expanded(
@@ -89,10 +87,7 @@ class _LandingScreenState extends State<LandingScreen> {
                           decoration: BoxDecoration(
                             color: kWhiteColor,
                             borderRadius: BorderRadius.circular(28),
-                            border: Border.all(
-                              color: kBorderColor,
-                              width: 1,
-                            ),
+                            border: Border.all(color: kBorderColor, width: 1),
                             boxShadow: [
                               BoxShadow(
                                 color: kGreyColor.withValues(alpha: 0.12),

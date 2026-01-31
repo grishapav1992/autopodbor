@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'dart:ui';
 
-class ReportDetailScreen extends StatelessWidget {
+class ReportDetailScreen extends StatefulWidget {
   const ReportDetailScreen({super.key, required this.report});
 
   final Map<String, dynamic> report;
+
+  @override
+  State<ReportDetailScreen> createState() => _ReportDetailScreenState();
+}
+
+class _ReportDetailScreenState extends State<ReportDetailScreen> {
+  bool _purchased = false;
 
   Color _verdictColor(String verdict) {
     if (verdict == 'Можно покупать') {
@@ -20,19 +28,21 @@ class ReportDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final report = widget.report;
     final verdict = report['verdict'] ?? '';
     final images = (report['images'] as List<dynamic>?)?.cast<String>() ?? [];
+    final premium = (report['premium'] as Map<String, dynamic>?) ?? {};
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Отчет'),
+        title: const Text('Отчёт'),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back),
         ),
       ),
       body: ListView(
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         children: [
           if (images.isNotEmpty)
             ClipRRect(
@@ -77,7 +87,7 @@ class ReportDetailScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           MyText(
-            text: 'Дата отчета: ${report['date'] ?? '-'}',
+            text: 'Дата отчёта: ${report['date'] ?? '-'}',
             size: 12,
             color: kGreyColor,
           ),
@@ -102,24 +112,161 @@ class ReportDetailScreen extends StatelessWidget {
           _InfoRow(title: 'Оценка', value: report['score'] ?? '-'),
           _InfoRow(title: 'Рыночная цена', value: report['price'] ?? '-'),
           _InfoRow(
-            title: 'Отчетов по авто',
+            title: 'Отчётов по авто',
             value: '${report['reportsCount'] ?? 1}',
           ),
+          const SizedBox(height: 12),
+          const _SectionTitle(text: 'Общие данные'),
+          _InfoRow(title: 'VIN', value: report['vin'] ?? '-'),
+          _InfoRow(title: 'Пробег', value: report['mileage'] ?? '-'),
+          _InfoRow(title: 'Владельцы', value: report['owners'] ?? '-'),
+          _InfoRow(title: 'Двигатель', value: report['engine'] ?? '-'),
+          _InfoRow(title: 'КПП', value: report['transmission'] ?? '-'),
+          _InfoRow(title: 'Привод', value: report['drive'] ?? '-'),
           const SizedBox(height: 10),
+          const _SectionTitle(text: 'Краткое резюме'),
           MyText(
-            text: 'Замечания',
-            size: 14,
-            weight: FontWeight.w700,
+            text: report['summary'] ?? '-',
+            size: 12,
+            color: kGreyColor,
+            lineHeight: 1.4,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 12),
+          const _SectionTitle(text: 'Замечания'),
           MyText(
             text: report['issues'] ?? '-',
             size: 12,
             color: kGreyColor,
             lineHeight: 1.4,
           ),
+          const SizedBox(height: 16),
+          const _SectionTitle(text: 'Платная часть отчёта'),
+          const SizedBox(height: 6),
+          _LockedInfoCard(
+            title: 'Толщина ЛКП и окрасы',
+            content: premium['paintThickness'] ?? 'Нет данных',
+            locked: !_purchased,
+          ),
+          const SizedBox(height: 10),
+          _LockedInfoCard(
+            title: 'Фото по элементам',
+            content: premium['panelPhotos'] ?? 'Нет данных',
+            locked: !_purchased,
+          ),
+          const SizedBox(height: 10),
+          _LockedInfoCard(
+            title: 'Видео осмотра',
+            content: premium['video'] ?? 'Нет данных',
+            locked: !_purchased,
+          ),
+          const SizedBox(height: 10),
+          _LockedInfoCard(
+            title: 'Юридическая проверка',
+            content: premium['legal'] ?? 'Нет данных',
+            locked: !_purchased,
+          ),
+          const SizedBox(height: 16),
+          if (!_purchased)
+            ElevatedButton(
+              onPressed: () {
+                setState(() => _purchased = true);
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Отчёт куплен')));
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kSecondaryColor,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: const Text(
+                'Купить отчёт',
+                style: TextStyle(color: kWhiteColor, fontSize: 12),
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.text});
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return MyText(
+      text: text,
+      size: 14,
+      weight: FontWeight.w700,
+      paddingBottom: 6,
+    );
+  }
+}
+
+class _LockedInfoCard extends StatelessWidget {
+  const _LockedInfoCard({
+    required this.title,
+    required this.content,
+    required this.locked,
+  });
+
+  final String title;
+  final String content;
+  final bool locked;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: kWhiteColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              MyText(text: title, size: 12, weight: FontWeight.w700),
+              const SizedBox(height: 6),
+              Text(
+                content,
+                style: const TextStyle(fontSize: 12, color: kGreyColor),
+              ),
+            ],
+          ),
+        ),
+        if (locked)
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                child: Container(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.lock, size: 16, color: kGreyColor),
+                      SizedBox(width: 6),
+                      Text(
+                        'Доступно после покупки',
+                        style: TextStyle(fontSize: 12, color: kGreyColor),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -137,17 +284,9 @@ class _InfoRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: MyText(
-              text: title,
-              size: 12,
-              color: kGreyColor,
-            ),
+            child: MyText(text: title, size: 12, color: kGreyColor),
           ),
-          MyText(
-            text: value,
-            size: 12,
-            weight: FontWeight.w600,
-          ),
+          MyText(text: value, size: 12, weight: FontWeight.w600),
         ],
       ),
     );

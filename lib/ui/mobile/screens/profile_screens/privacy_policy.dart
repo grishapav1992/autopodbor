@@ -14,7 +14,7 @@ class PrivacyPolicy extends StatelessWidget {
       appBar: simpleAppBar(title: "privacyPolicy".tr),
       body: ListView(
         shrinkWrap: true,
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         children: [
           MyText(

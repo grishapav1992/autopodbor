@@ -1,0 +1,1004 @@
+{
+  "info": {
+    "_postman_id": "8ddecaed-7f88-43a7-af95-25a00c7d25d5",
+    "name": "autopodbor",
+    "description": "# 🚀 Get started here\n\nThis template guides you through CRUD operations (GET, POST, PUT, DELETE), variables, and tests.\n\n## 🔖 **How to use this template**\n\n#### **Step 1: Send requests**\n\nRESTful APIs allow you to perform CRUD operations using the POST, GET, PUT, and DELETE HTTP methods.\n\nThis collection contains each of these [request](https://learning.postman.com/docs/sending-requests/requests/) types. Open each request and click \"Send\" to see what happens.\n\n#### **Step 2: View responses**\n\nObserve the response tab for status code (200 OK), response time, and size.\n\n#### **Step 3: Send new Body data**\n\nUpdate or add new data in \"Body\" in the POST request. Typically, Body data is also used in PUT request.\n\n```\n{\n    \"name\": \"Add your name in the body\"\n}\n\n ```\n\n#### **Step 4: Update the variable**\n\nVariables enable you to store and reuse values in Postman. We have created a [variable](https://learning.postman.com/docs/sending-requests/variables/) called `base_url` with the sample request [https://postman-api-learner.glitch.me](https://postman-api-learner.glitch.me). Replace it with your API endpoint to customize this collection.\n\n#### **Step 5: Add tests in the \"Scripts\" tab**\n\nAdding tests to your requests can help you confirm that your API is working as expected. You can write test scripts in JavaScript and view the output in the \"Test Results\" tab.\n\n<img src=\"https://content.pstmn.io/fa30ea0a-373d-4545-a668-e7b283cca343/aW1hZ2UucG5n\" alt=\"\" height=\"1530\" width=\"2162\">\n\n## 💪 Pro tips\n\n- Use folders to group related requests and organize the collection.\n    \n- Add more [scripts](https://learning.postman.com/docs/writing-scripts/intro-to-scripts/) to verify if the API works as expected and execute workflows.\n    \n\n## 💡Related templates\n\n[API testing basics](https://go.postman.co/redirect/workspace?type=personal&collectionTemplateId=e9a37a28-055b-49cd-8c7e-97494a21eb54&sourceTemplateId=ddb19591-3097-41cf-82af-c84273e56719)  \n[API documentation](https://go.postman.co/redirect/workspace?type=personal&collectionTemplateId=e9c28f47-1253-44af-a2f3-20dce4da1f18&sourceTemplateId=ddb19591-3097-41cf-82af-c84273e56719)  \n[Authorization methods](https://go.postman.co/redirect/workspace?type=personal&collectionTemplateId=31a9a6ed-4cdf-4ced-984c-d12c9aec1c27&sourceTemplateId=ddb19591-3097-41cf-82af-c84273e56719)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "21208470"
+  },
+  "item": [
+    {
+      "name": "для парсинга",
+      "item": [
+        {
+          "name": "(не трогать) UpdateModelCars",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const sources = {",
+                  "    // toyota: 'http://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=9',",
+                  "    // nissan: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=6',",
+                  "    // honda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=2',",
+                  "    // hyundai: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=56',",
+                  "    // lada: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=99',",
+                  "    // abarth: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=288',",
+                  "    // acura: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=21',",
+                  "    // aito: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=234',",
+                  "    // alfaRomeo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=27',",
+                  "    // audi: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=31',",
+                  "    // bmw: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=33',",
+                  "    // bentley: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=32',",
+                  "    // cadillac: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=37',",
+                  "    // changan: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=119',",
+                  "    // chery: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=38',",
+                  "    // chevrolet: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=39',",
+                  "    // chrysler: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=40',",
+                  "    // citroen: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=41',",
+                  "    // daewoo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=42',",
+                  "    // daihatsu: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=1',",
+                  "    // datsun: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=116',",
+                  "    // dodge: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=44',",
+                  "    // exeed: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=166',",
+                  "    // faw: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=46',",
+                  "    // ferrari: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=47',",
+                  "    // fiat: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=48',",
+                  "    // ford: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=49',",
+                  "    // gac: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=140',",
+                  "    // geely: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=52',",
+                  "    // genesis: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=135',",
+                  "    // gmc: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=53',",
+                  "    // greatWall: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=54',",
+                  "    // haval: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=126',",
+                  "    // hongqi: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=205',",
+                  "    // infiniti: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=20',",
+                  "    // isuzu: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=3',",
+                  "    // jac: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=121',",
+                  "    // jaecoo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=254',",
+                  "    // jaguar: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=57',",
+                  "    // jeep: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=58',",
+                  "    // jetour: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=225',",
+                  "    // jetta: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=230',",
+                  "    // kgMobility: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=249',",
+                  "    // kia: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=59',",
+                  "    // knewstar: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=287',",
+                  "    // lamborghini: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=60',",
+                  "    // lancia: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=61',",
+                  "    // landRover: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=62',",
+                  "    // lexus: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=23',",
+                  "    // lifan: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=96',",
+                  "    // maserati: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=65',",
+                  "    // maybach: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=66',",
+                  "    // mazda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=4',",
+                  "    // mercedesBenz: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=67',",
+                  "    // mini: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=69',",
+                  "    // mitsubishi: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=5',",
+                  "    // omoda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=221',",
+                  "    // opel: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=71',",
+                  "    // peugeot: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=72',",
+                  "    // porsche: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=75',",
+                  "    // ram: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=201',",
+                  "    // renault: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=77',",
+                  "    // renaultSamsung: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=92',",
+                  "    // rollsRoyce: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=78',",
+                  "    // saab: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=80',",
+                  "    // seat: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=83',",
+                  "    // seres: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=226',",
+                  "    // skoda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=84',",
+                  "    // solaris: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=271',",
+                  "    // ssangYong: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=86',",
+                  "    // subaru: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=7',",
+                  "    // suzuki: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=8',",
+                  "    // tank: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=223',",
+                  "    // tenet: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=309',",
+                  "    // tesla: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=115',",
+                  "    // volkswagen: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=89',",
+                  "    // volvo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=90',",
+                  "    vortex: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=107',",
+                  "    // voyah: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=210',",
+                  "    // zeekr: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=212',",
+                  "    // gaz: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=100',",
+                  "    // moskvich: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=102',",
+                  "    // uaz: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=101',",
+                  "    // dongfeng: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=3339293a72a1b9d56b04285d53ba7e54&dealerId=0&marketId=0&firmId=125',",
+                  "    // li: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=87c9b01a38303da77db16df88e2ab437&dealerId=0&marketId=0&firmId=189',",
+                  "    // linkAndCo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?getTop=5&cityId=0&regionId=0&distance=0&uhash=87c9b01a38303da77db16df88e2ab437&dealerId=0&marketId=0&firmId=228',",
+                  "",
+                  "};",
+                  "",
+                  "const DELAY_MS = 800;",
+                  "",
+                  "let result = {};",
+                  "let chain = Promise.resolve();",
+                  "",
+                  "Object.entries(sources).forEach(([brand, url]) => {",
+                  "",
+                  "    chain = chain.then(() => {",
+                  "        return new Promise((resolve) => {",
+                  "",
+                  "            console.log(`Requesting ${brand}`);",
+                  "",
+                  "            pm.sendRequest({",
+                  "                url: url,",
+                  "                method: 'GET',",
+                  "                header: { Accept: 'application/json' }",
+                  "            }, (err, res) => {",
+                  "",
+                  "                if (err || !res) {",
+                  "                    result[brand] = [];",
+                  "                } else {",
+                  "                    try {",
+                  "                        const data = res.json();",
+                  "                        result[brand] = data.models || data.data || [];",
+                  "                    } catch (e) {",
+                  "                        result[brand] = [];",
+                  "                    }",
+                  "                }",
+                  "",
+                  "                // ⏱ задержка перед следующим запросом",
+                  "                setTimeout(resolve, DELAY_MS);",
+                  "            });",
+                  "",
+                  "        });",
+                  "    });",
+                  "",
+                  "});",
+                  "",
+                  "chain.then(() => {",
+                  "    pm.environment.set('result', JSON.stringify(result, null, 2));",
+                  "    console.log('PRE-REQUEST RESULT:', result);",
+                  "});",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.UpdateModelCars\",\n    \"params\": {{result}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "(не трогать) UpdateModelGenerationCars Copy",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var SOURCES = {",
+                  "    //toyota: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=9',",
+                  "    // nissan: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=6',",
+                  "    // honda:  'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=2'",
+                  "    // hyundai: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=56',",
+                  "    // lada: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=99',",
+                  "    // abarth: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=288',",
+                  "    // acura: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=21',",
+                  "    // aito: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=234',",
+                  "    // alfaRomeo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=27',",
+                  "    // audi: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=31',",
+                  "    // bmw: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=33',",
+                  "    // bentley: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=32',",
+                  "    // cadillac: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=37',",
+                  "    // changan: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=119',",
+                  "    // chery: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=38',",
+                  "    // chevrolet: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=39',",
+                  "    // chrysler: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=40',",
+                  "    // citroen: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=41',",
+                  "    // daewoo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=42',",
+                  "    // daihatsu: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=1',",
+                  "    // datsun: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=116',",
+                  "    // dodge: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=44',",
+                  "    // exeed: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=166',",
+                  "    // faw: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=46',",
+                  "    // ferrari: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=47',",
+                  "    // fiat: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=48',",
+                  "    // ford: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=49',",
+                  "    // gac: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=140',",
+                  "    // geely: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=52',",
+                  "    // genesis: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=135',",
+                  "    // gmc: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=53',",
+                  "    // greatWall: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=54',",
+                  "    // haval: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=126',",
+                  "    // hongqi: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=205',",
+                  "    // infiniti: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=20',",
+                  "    // isuzu: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=3',",
+                  "    // jac: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=121',",
+                  "    // jaecoo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=254',",
+                  "    // jaguar: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=57',",
+                  "    // jeep: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=58',",
+                  "    // jetour: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=225',",
+                  "    // jetta: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=230',",
+                  "    // kgMobility: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=249',",
+                  "    // kia: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=59',",
+                  "    // knewstar: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=287',",
+                  "    // lamborghini: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=60',",
+                  "    // lancia: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=61',",
+                  "    // landRover: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=62',",
+                  "    // lexus: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=23',",
+                  "    // lifan: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=96',",
+                  "    // maserati: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=65',",
+                  "    // maybach: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=66',",
+                  "    // mazda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=4',",
+                  "    // mercedesBenz: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=67',",
+                  "    // mini: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=69',",
+                  "    // mitsubishi: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=5',",
+                  "    // omoda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=221',",
+                  "    // opel: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=71',",
+                  "    // peugeot: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=72',",
+                  "    // porsche: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=75',",
+                  "    // ram: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=201',",
+                  "    // renault: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=77',",
+                  "    // renaultSamsung: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=92',",
+                  "    // rollsRoyce: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=78',",
+                  "    // saab: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=80',",
+                  "    // seat: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=83',",
+                  "    // seres: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=226',",
+                  "    // skoda: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=84',",
+                  "    // solaris: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=271',",
+                  "    // ssangYong: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=86',",
+                  "    // subaru: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=7',",
+                  "    // suzuki: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=8',",
+                  "    // tank: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=223',",
+                  "    // tenet: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=309',",
+                  "    // tesla: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=115',",
+                  "    // volkswagen: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=89',",
+                  "    // volvo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=90',",
+                  "    // vortex: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=107',",
+                  "    // voyah: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=210',",
+                  "    // zeekr: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=212',",
+                  "    // gaz: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=100',",
+                  "    // moskvich: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=102',",
+                  "    // uaz: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=101',",
+                  "    // dongfeng: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=125',",
+                  "    // li: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=189',",
+                  "    // linkAndCo: 'https://www.drom.ru/api/sales/model-list/by-firm-id?firmId=228',",
+                  "};",
+                  "",
+                  "var DELAY_MS = 800;",
+                  "",
+                  "/**",
+                  " * Глобальное состояние",
+                  " */",
+                  "var result = {};",
+                  "var brands = Object.keys(SOURCES);",
+                  "var brandIndex = 0;",
+                  "var modelIndex = 0;",
+                  "var currentBrand = null;",
+                  "",
+                  "/**",
+                  " * Шаг 1 — получить модели брендов",
+                  " */",
+                  "function fetchModels() {",
+                  "    if (brandIndex >= brands.length) {",
+                  "        // все бренды обработаны → начинаем поколения",
+                  "        brandIndex = 0;",
+                  "        fetchGenerationsForBrand();",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    currentBrand = brands[brandIndex];",
+                  "    var url = SOURCES[currentBrand];",
+                  "",
+                  "    console.log('🚘 Fetch models for ' + currentBrand);",
+                  "",
+                  "    pm.sendRequest(url, function (err, res) {",
+                  "        result[currentBrand] = [];",
+                  "",
+                  "        if (!err && res) {",
+                  "            try {",
+                  "                var json = res.json();",
+                  "                var list = [];",
+                  "",
+                  "                // ВАЖНО: корректный путь",
+                  "                if (json && json.data && json.data.regular) {",
+                  "                    list = json.data.regular;",
+                  "                }",
+                  "",
+                  "                for (var i = 0; i < list.length; i++) {",
+                  "                    result[currentBrand].push({",
+                  "                        id: list[i].id,",
+                  "                        name: list[i].name,",
+                  "                        generations: []",
+                  "                    });",
+                  "                }",
+                  "",
+                  "                console.log(",
+                  "                    '📦 Models loaded for ' + currentBrand + ': ' +",
+                  "                    result[currentBrand].length",
+                  "                );",
+                  "",
+                  "            } catch (e) {",
+                  "                console.log('❌ Parse error for models');",
+                  "            }",
+                  "        }",
+                  "",
+                  "        brandIndex++;",
+                  "        setTimeout(fetchModels, DELAY_MS);",
+                  "    });",
+                  "}",
+                  "",
+                  "/**",
+                  " * Шаг 2 — получить поколения для текущего бренда",
+                  " */",
+                  "function fetchGenerationsForBrand() {",
+                  "    if (brandIndex >= brands.length) {",
+                  "        saveResult();",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    currentBrand = brands[brandIndex];",
+                  "    modelIndex = 0;",
+                  "",
+                  "    console.log('🧬 Fetch generations for brand ' + currentBrand);",
+                  "",
+                  "    fetchGenerationItem();",
+                  "}",
+                  "",
+                  "function fetchGenerationItem() {",
+                  "    var models = result[currentBrand];",
+                  "",
+                  "    if (!models || modelIndex >= models.length) {",
+                  "        brandIndex++;",
+                  "        setTimeout(fetchGenerationsForBrand, DELAY_MS);",
+                  "        return;",
+                  "    }",
+                  "",
+                  "    var model = models[modelIndex];",
+                  "    var url =",
+                  "        'https://www.drom.ru/api/sales/generation-list/by-model-id?modelId=' +",
+                  "        model.id;",
+                  "",
+                  "    console.log(",
+                  "        '🔄 ' + currentBrand +",
+                  "        ' → modelId=' + model.id",
+                  "    );",
+                  "",
+                  "    pm.sendRequest(url, function (err, res) {",
+                  "        if (!err && res) {",
+                  "            try {",
+                  "                var json = res.json();",
+                  "",
+                  "                if (json && json.data && json.data.generations) {",
+                  "                    model.generations = json.data.generations;",
+                  "                } else if (json && json.generations) {",
+                  "                    model.generations = json.generations;",
+                  "                } else {",
+                  "                    model.generations = [];",
+                  "                }",
+                  "",
+                  "                console.log(",
+                  "                    '   ↳ generations: ' + model.generations.length",
+                  "                );",
+                  "",
+                  "            } catch (e) {",
+                  "                model.generations = [];",
+                  "            }",
+                  "        } else {",
+                  "            model.generations = [];",
+                  "        }",
+                  "",
+                  "        modelIndex++;",
+                  "        setTimeout(fetchGenerationItem, DELAY_MS);",
+                  "    });",
+                  "}",
+                  "",
+                  "/**",
+                  " * Шаг 3 — сохранить результат",
+                  " */",
+                  "function saveResult() {",
+                  "    pm.environment.set(",
+                  "        'final_result',",
+                  "        JSON.stringify(result, null, 2)",
+                  "    );",
+                  "",
+                  "    console.log('✅ FINAL RESULT SAVED');",
+                  "    console.log(",
+                  "        'Brands:', brands.length,",
+                  "        'Total JSON size:',",
+                  "        pm.environment.get('final_result').length",
+                  "    );",
+                  "}",
+                  "",
+                  "/**",
+                  " * ▶ Старт",
+                  " */",
+                  "fetchModels();",
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.UpdateModelGenerationCars\",\n    \"params\": {{final_result}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}",
+              "host": [
+                "{{base_url}}"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "doc",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"Doc\",\n    \"params\": {\n        \"getMethodByName\": \"Storage.GetModelGeneration\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "ForTest",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.ForTest\",\n    \"params\": {\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "Auth",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.Auth\",\n    \"params\": {\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "AuthVerify",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.AuthVerify\",\n    \"params\": {\n        \"email\": \"Rafeenkovlad@gmail.com\",\n        \"pin\": 9023\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "GetVin",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            {
+              "key": "token",
+              "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NjkzMzI3OTIuNzYzMTk0LCJleHAiOjE3Njk0MTkxOTIuNzYzMTk0LCJzdWIiOiIzIiwiZW1haWwiOiJyYWZlZW5rb3ZsYWRAZ21haWwuY29tIn0.ROuYpQZM5kHb_7adUeY3m8zWQQBGbF7wVydPQFGem6sVdTx6V1G2SbB34Csc8SyOlxOu3s5YIxp4u6TyeUCFHZjghA1kISe9usVgz_uXHm2mn7OaY_3ICuGAb5tWi71oOFCtIcceVmHC-_MUoHzRJfBKiVnNMADj4L-ZulWqVpENWPtlIYeNo7zP8cvR7wPnzAaSgeLElQ2wZ8vCWZmrBjuwQDj5NRzxF7Tjrvylwl_VLd8pOfAC4AebnM4D7Jqrcm__r2d6VMBlQA4m6mttTo10GApZo9M_UgH0GI1yUCC0fFHA5OQlUR2Yc8qTGQ-H-FB5v_4okfbk0DK6KcmuWg",
+              "type": "string"
+            }
+          ]
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.GetVin\",\n    \"params\": {\n        \"vin\": \"123\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "GetProfile",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "user-agent": true,
+          "accept": true
+        },
+        "followRedirects": false
+      },
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 0,\n    \"method\": \"Storage.GetProfile\",\n    \"params\": {\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "GetBrand",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "user-agent": true,
+          "accept": true
+        },
+        "followRedirects": false
+      },
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 0,\n    \"method\": \"Storage.GetBrand\",\n    \"params\": {\n        \"search\": \"мерс\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "GetModelCar",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "user-agent": true,
+          "accept": true
+        },
+        "followRedirects": false
+      },
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 0,\n    \"method\": \"Storage.GetModelCar\",\n    \"params\": {\n        \"brandId\": 11,\n        \"search\": \"\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "GetModelGeneration",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "user-agent": true,
+          "accept": true
+        },
+        "followRedirects": false
+      },
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 0,\n    \"method\": \"Storage.GetModelGeneration\",\n    \"params\": {\n        \"modelCarId\": 2339\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "UpdateProfile",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "host": true,
+          "user-agent": true,
+          "accept": true,
+          "accept-encoding": true,
+          "connection": true
+        }
+      },
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"Storage.UpdateProfile\",\n    \"params\": {\n        \"email\": \"rafeenkovlad@gmail.com\",\n        \"phone\": \"+7952-8163898\"\n\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "https://podbor-av.ru.tuna.am/",
+          "protocol": "https",
+          "host": [
+            "podbor-av",
+            "ru",
+            "tuna",
+            "am"
+          ],
+          "path": [
+            ""
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    },
+    {
+      "name": "DecodeVin",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test(\"Successful POST request\", function () {",
+              "    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+              "});",
+              ""
+            ],
+            "type": "text/javascript",
+            "packages": {},
+            "requests": {}
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disabledSystemHeaders": {
+          "host": true,
+          "user-agent": true,
+          "accept": true,
+          "accept-encoding": true,
+          "connection": true
+        }
+      },
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n    \"id\": 1,\n    \"method\": \"DecodeVin\",\n    \"params\": {\n        \"vin\": \"WVWZZZ1KZ6W612305\"\n    }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{base_url}}",
+          "host": [
+            "{{base_url}}"
+          ]
+        },
+        "description": "This is a POST request, submitting data to an API via the request body. This request submits JSON data, and the data is reflected in the response.\n\nA successful POST request typically returns a `200 OK` or `201 Created` response code."
+      },
+      "response": []
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NjkzMzI3OTIuNzYzMTk0LCJleHAiOjE3Njk0MTkxOTIuNzYzMTk0LCJzdWIiOiIzIiwiZW1haWwiOiJyYWZlZW5rb3ZsYWRAZ21haWwuY29tIn0.ROuYpQZM5kHb_7adUeY3m8zWQQBGbF7wVydPQFGem6sVdTx6V1G2SbB34Csc8SyOlxOu3s5YIxp4u6TyeUCFHZjghA1kISe9usVgz_uXHm2mn7OaY_3ICuGAb5tWi71oOFCtIcceVmHC-_MUoHzRJfBKiVnNMADj4L-ZulWqVpENWPtlIYeNo7zP8cvR7wPnzAaSgeLElQ2wZ8vCWZmrBjuwQDj5NRzxF7Tjrvylwl_VLd8pOfAC4AebnM4D7Jqrcm__r2d6VMBlQA4m6mttTo10GApZo9M_UgH0GI1yUCC0fFHA5OQlUR2Yc8qTGQ-H-FB5v_4okfbk0DK6KcmuWg",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "id",
+      "value": "1"
+    },
+    {
+      "key": "base_url",
+      "value": "https://template.postman-echo.com"
+    },
+    {
+      "key": "remote_url",
+      "value": ""
+    }
+  ]
+}

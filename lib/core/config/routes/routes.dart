@@ -2,7 +2,6 @@ import 'package:get/get.dart';
 
 import 'package:flutter_application_1/ui/mobile/screens/auth/login.dart';
 import 'package:flutter_application_1/ui/mobile/screens/auth/sign_up/phone_verification.dart';
-import 'package:flutter_application_1/ui/mobile/screens/auth/sign_up/sign_up.dart';
 import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
 import 'package:flutter_application_1/ui/mobile/screens/launch/landing.dart';
 import 'package:flutter_application_1/ui/mobile/screens/launch/splash_screen.dart';
@@ -24,12 +23,8 @@ class AppRoutes {
       page: () => Login(),
     ),
     GetPage(
-      name: AppLinks.signUp,
-      page: () => SignUp(),
-    ),
-    GetPage(
       name: AppLinks.phoneVerification,
-      page: () => PhoneVerification(),
+      page: () => const PhoneVerification(phone: ''),
     ),
     GetPage(
       name: AppLinks.chooseUserType,
@@ -51,7 +46,6 @@ class AppLinks {
   static const splashScreen = '/splash_screen';
   static const landing = '/landing';
   static const login = '/login';
-  static const signUp = '/sign_up';
   static const phoneVerification = '/phone_verification';
   static const chooseUserType = '/choose_user_type';
   static const userHome = '/user_home';

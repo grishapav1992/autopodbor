@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/app/main.dart';
 import 'package:flutter_application_1/ui/common/widgets/common_image_view_widget.dart';
@@ -31,7 +31,7 @@ class PricingDetails extends StatelessWidget {
     return Scaffold(
       appBar: simpleAppBar(title: "pricingTool".tr),
       body: ListView(
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         shrinkWrap: true,
         children: [
@@ -176,5 +176,3 @@ class PricingDetails extends StatelessWidget {
     );
   }
 }
-
-

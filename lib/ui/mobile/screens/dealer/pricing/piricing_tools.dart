@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/app/main.dart';
@@ -35,7 +35,7 @@ class PricingTools extends StatelessWidget {
         ],
       ),
       body: ListView(
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         shrinkWrap: true,
         children: [
@@ -270,11 +270,7 @@ class _VehicleCard extends StatelessWidget {
                 weight: FontWeight.w500,
                 color: kHintColor,
               ),
-              MyText(
-                text: '120 из 400 ',
-                size: 14,
-                weight: FontWeight.w600,
-              ),
+              MyText(text: '120 из 400 ', size: 14, weight: FontWeight.w600),
             ],
           ),
           SizedBox(height: 10),
@@ -292,5 +288,3 @@ class _VehicleCard extends StatelessWidget {
     );
   }
 }
-
-

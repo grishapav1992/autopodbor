@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_check_box_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_drop_down_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -91,5 +91,3 @@ class InteriorDetails extends StatelessWidget {
     );
   }
 }
-
-

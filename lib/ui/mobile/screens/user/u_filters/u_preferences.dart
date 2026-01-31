@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_check_box_tile_widget.dart';
@@ -93,7 +93,7 @@ class _UPreferencesState extends State<UPreferences> {
       appBar: simpleAppBar(title: "preferences".tr),
       body: ListView(
         shrinkWrap: true,
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         children: [
           MyExpandableTile(
@@ -450,5 +450,3 @@ class MyExpandableTile extends StatelessWidget {
     );
   }
 }
-
-

@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/u_filters/u_make.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/u_filters/u_model.dart';
@@ -43,7 +43,7 @@ class _UFilterState extends State<UFilter> {
           ),
           Expanded(
             child: ListView(
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.listPaddingWithBottomBar(),
               physics: BouncingScrollPhysics(),
               shrinkWrap: true,
               children: [
@@ -142,4 +142,3 @@ class _UFilterState extends State<UFilter> {
     );
   }
 }
-

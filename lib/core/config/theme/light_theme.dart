@@ -5,6 +5,14 @@ import '../../constants/app_fonts.dart';
 final ThemeData lightTheme = ThemeData(
   scaffoldBackgroundColor: kPrimaryColor,
   fontFamily: AppFonts.URBANIST,
+  fontFamilyFallback: const [
+    'SF Pro Text',
+    'Helvetica',
+    'Roboto',
+    'Arial',
+    'Noto Sans',
+    'sans-serif',
+  ],
   appBarTheme: AppBarTheme(
     elevation: 0,
     backgroundColor: kPrimaryColor,
@@ -14,6 +22,14 @@ final ThemeData lightTheme = ThemeData(
       fontSize: 18,
       fontWeight: FontWeight.w600,
       fontFamily: AppFonts.URBANIST,
+      fontFamilyFallback: const [
+        'SF Pro Text',
+        'Helvetica',
+        'Roboto',
+        'Arial',
+        'Noto Sans',
+        'sans-serif',
+      ],
     ),
   ),
   splashColor: kSecondaryColor.withValues(alpha: 0.08),

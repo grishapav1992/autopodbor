@@ -1,8 +1,16 @@
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart';
 
 class AppFonts {
   // ignore: non_constant_identifier_names
-  static final URBANIST = GoogleFonts.urbanist().fontFamily;
+  static String get URBANIST {
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.iOS:
+      case TargetPlatform.macOS:
+        return 'SF Pro Text';
+      default:
+        return 'Roboto';
+    }
+  }
 
   // ignore: non_constant_identifier_names
   static get GLACIAL_INDIFFERENCE => null;

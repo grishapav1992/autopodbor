@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_fonts.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
@@ -40,7 +40,7 @@ class _UShowroomDetailsState extends State<UShowroomDetails> {
             Expanded(
               child: ListView(
                 shrinkWrap: true,
-                padding: EdgeInsets.zero,
+                padding: EdgeInsets.zero.copyWith(bottom: 96),
                 physics: BouncingScrollPhysics(),
                 children: [
                   CommonImageView(
@@ -65,7 +65,7 @@ class _UShowroomDetailsState extends State<UShowroomDetails> {
                               color: kSecondaryColor,
                             ),
                             MyText(
-                              text: ' - РћС‚РєСЂС‹РІР°РµС‚СЃСЏ РІ 13:00 ',
+                              text: ' - Открывается в 13:00 ',
                               size: 12,
                               color: kHintColor,
                               weight: FontWeight.w600,
@@ -95,7 +95,7 @@ class _UShowroomDetailsState extends State<UShowroomDetails> {
                             ),
                             MyText(
                               paddingLeft: 6,
-                              text: 'СѓР». РҐСЌРјРїС‚РѕРЅ, 634',
+                              text: 'ул. Хэмптон, 634',
                               size: 12,
                               weight: FontWeight.w600,
                               color: kHintColor,
@@ -238,14 +238,14 @@ class _Cars extends StatelessWidget {
                       paddingBottom: 4,
                     ),
                     MyText(
-                      text: 'РљСЂР°С‚РєРѕРµ РѕРїРёСЃР°РЅРёРµ Р°РІС‚РѕРјРѕР±РёР»СЏ.',
+                      text: 'Краткое описание автомобиля.',
                       size: 12,
                       weight: FontWeight.w500,
                       paddingBottom: 6,
                       color: kHintColor,
                     ),
                     MyText(
-                      text: 'в‚Ѕ120 000',
+                      text: '₽120 000',
                       size: 16,
                       color: kSecondaryColor,
                       weight: FontWeight.w600,
@@ -275,4 +275,3 @@ class _Divider extends StatelessWidget {
     );
   }
 }
-

@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/app/main.dart';
@@ -21,7 +21,7 @@ class Profile extends StatelessWidget {
       appBar: simpleAppBar(haveLeading: true, title: "userProfile".tr),
       body: ListView(
         shrinkWrap: true,
-        padding: AppSizes.HORIZONTAL,
+        padding: AppSizes.HORIZONTAL.copyWith(bottom: 96),
         physics: BouncingScrollPhysics(),
         children: [
           Container(
@@ -183,4 +183,3 @@ class _ProfileTile extends StatelessWidget {
     );
   }
 }
-

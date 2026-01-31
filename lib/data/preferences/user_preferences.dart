@@ -1,3 +1,5 @@
+﻿import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserSimplePreferences {
@@ -14,6 +16,10 @@ class UserSimplePreferences {
   static const _reportModelsKey = 'reportModels';
   static const _reportInspectorsKey = 'reportInspectors';
   static const _reportSortOrderKey = 'reportSortOrder';
+  static const _brandCacheKey = 'brandCache';
+  static const _brandCacheTsKey = 'brandCacheTs';
+  static const _brandRusCacheKey = 'brandRusCache';
+  static const _autoRequestsKey = 'autoRequests';
 
   static Future init() async {
     pref = await SharedPreferences.getInstance();
@@ -125,5 +131,103 @@ class UserSimplePreferences {
   static Future<String?> getReportSortOrder() async {
     // ignore: await_only_futures
     return await pref!.getString(_reportSortOrderKey);
+  }
+
+  static Future setBrandCache(
+    List<String> values,
+    Map<String, String> rusByName,
+  ) async {
+    await pref!.setStringList(_brandCacheKey, values);
+    final combined = values
+        .map((name) => '$name|${rusByName[name] ?? ''}')
+        .toList();
+    await pref!.setStringList(_brandRusCacheKey, combined);
+    await pref!.setInt(_brandCacheTsKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static Future<List<String>?> getBrandCache() async {
+    // ignore: await_only_futures
+    return await pref!.getStringList(_brandCacheKey);
+  }
+
+  static Future<Map<String, String>> getBrandRusCache() async {
+    // ignore: await_only_futures
+    final list = await pref!.getStringList(_brandRusCacheKey);
+    final map = <String, String>{};
+    if (list == null) return map;
+    for (final entry in list) {
+      final idx = entry.indexOf('|');
+      if (idx <= 0) continue;
+      final name = entry.substring(0, idx);
+      final rus = entry.substring(idx + 1);
+      map[name] = rus;
+    }
+    return map;
+  }
+
+  static Future<int?> getBrandCacheTimestamp() async {
+    // ignore: await_only_futures
+    return await pref!.getInt(_brandCacheTsKey);
+  }
+
+  static Future clearBrandCache() async {
+    await pref!.remove(_brandCacheKey);
+    await pref!.remove(_brandCacheTsKey);
+    await pref!.remove(_brandRusCacheKey);
+  }
+
+  static String _sanitizeStatus(String? value) {
+    if (value == null || value.isEmpty) return 'Создана';
+    if (value.contains('?')) return 'Создана';
+    if (value == 'РЎРѕР·РґР°РЅР°') return 'Создана';
+    if (value == 'Р’ СЂР°Р±РѕС‚Рµ') return 'В работе';
+    if (value == 'Р—Р°РІРµСЂС€РµРЅР°') return 'Завершена';
+    if (value == 'РћС‚РјРµРЅРµРЅР°') return 'Отменена';
+    return value;
+  }
+
+  static Future<List<Map<String, dynamic>>> getAutoRequests() async {
+    // ignore: await_only_futures
+    final list = await pref!.getStringList(_autoRequestsKey) ?? [];
+    final result = <Map<String, dynamic>>[];
+    for (final raw in list) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          final status = decoded['status'];
+          if (status is String) {
+            decoded['status'] = _sanitizeStatus(status);
+          }
+          result.add(decoded);
+        }
+      } catch (_) {}
+    }
+    return result;
+  }
+
+  static Future setAutoRequests(List<Map<String, dynamic>> values) async {
+    final list = values.map(jsonEncode).toList();
+    await pref!.setStringList(_autoRequestsKey, list);
+  }
+
+  static Future addAutoRequest(Map<String, dynamic> value) async {
+    final list = await getAutoRequests();
+    list.insert(0, value);
+    await setAutoRequests(list);
+  }
+
+  static Future updateAutoRequest(
+    String id,
+    Map<String, dynamic> patch,
+  ) async {
+    final list = await getAutoRequests();
+    for (var i = 0; i < list.length; i++) {
+      final item = list[i];
+      if (item['id'] == id) {
+        list[i] = {...item, ...patch};
+        break;
+      }
+    }
+    await setAutoRequests(list);
   }
 }

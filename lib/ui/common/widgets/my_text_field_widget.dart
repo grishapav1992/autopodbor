@@ -1,8 +1,7 @@
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_fonts.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
+import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:country_picker/country_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -129,10 +128,6 @@ class PhoneField extends StatefulWidget {
 }
 
 class _PhoneFieldState extends State<PhoneField> {
-  String countryFlag = '🇺🇸';
-  String countryCode = '1';
-  bool isFocused = false;
-
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -141,105 +136,20 @@ class _PhoneFieldState extends State<PhoneField> {
         cursorColor: kTertiaryColor,
         controller: widget.controller,
         onChanged: widget.onChanged,
+        keyboardType: TextInputType.phone,
+        inputFormatters: [RuPhoneFormatter()],
         textInputAction: TextInputAction.next,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
         decoration: InputDecoration(
           filled: true,
           fillColor: kWhiteColor,
-          prefixIcon: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 80,
-                child: Row(
-                  children: [
-                    SizedBox(width: 15),
-                    Image.asset(Assets.imagesPhone, height: 24),
-                    MyText(
-                      paddingLeft: 10,
-                      paddingRight: 10,
-                      onTap: () {
-                        showCountryPicker(
-                          context: context,
-                          countryListTheme: CountryListThemeData(
-                            flagSize: 25,
-                            backgroundColor: kPrimaryColor,
-                            textStyle: TextStyle(
-                              fontSize: 14,
-                              color: kTertiaryColor,
-                              fontFamily: AppFonts.URBANIST,
-                            ),
-                            bottomSheetHeight: 500,
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(25.0),
-                              topRight: Radius.circular(25.0),
-                            ),
-                            searchTextStyle: TextStyle(
-                              fontSize: 14,
-                              color: kTertiaryColor,
-                              fontFamily: AppFonts.URBANIST,
-                            ),
-                            inputDecoration: InputDecoration(
-                              contentPadding: EdgeInsets.symmetric(
-                                horizontal: 15,
-                              ),
-                              fillColor: kWhiteColor,
-                              filled: true,
-                              hintText: 'Поиск',
-                              hintStyle: TextStyle(
-                                fontSize: 14,
-                                color: kQuaternaryColor,
-                                fontFamily: AppFonts.URBANIST,
-                              ),
-                              border: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: kSecondaryColor,
-                                  width: 1,
-                                ),
-                              borderRadius: BorderRadius.circular(8),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: kSecondaryColor,
-                                  width: 1,
-                                ),
-                              borderRadius: BorderRadius.circular(8),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: kSecondaryColor,
-                                  width: 1,
-                                ),
-                              borderRadius: BorderRadius.circular(8),
-                              ),
-                              focusedErrorBorder: OutlineInputBorder(
-                                borderSide: BorderSide(
-                                  color: kSecondaryColor,
-                                  width: 1,
-                                ),
-                              borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                          onSelect: (Country country) {
-                            setState(() {
-                              countryFlag = country.flagEmoji;
-                              countryCode = country.countryCode;
-                            });
-                          },
-                        );
-                      },
-                      text: ' +$countryCode',
-                      size: 14,
-                      weight: FontWeight.w600,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(left: 12, right: 6),
+            child: Image.asset(Assets.imagesPhone, height: 22),
           ),
+          prefixIconConstraints: const BoxConstraints(minWidth: 36),
           contentPadding: EdgeInsets.symmetric(horizontal: 15),
-          hintText: '000 000 0000',
+          hintText: '+7',
           hintStyle: TextStyle(
             fontSize: 12,
             color: kHintColor,

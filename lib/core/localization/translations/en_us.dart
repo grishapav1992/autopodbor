@@ -45,6 +45,18 @@ const Map<String, String> enUS = {
   "pleaseEnterYourCredentialsToGetStarted":
       'Please enter your credentials to get started.',
   "loginToYourAccount": 'Login to your account!',
+  "callMeTitle": 'Authorization',
+  "callMeSubtitle":
+      'To sign in, enter your phone number and tap Call. Then tap Check call.',
+  "callMeButton": 'Call',
+  "checkNumberButton": 'Check call',
+  "callMeError": 'Unable to start a call on this device.',
+  "callVerifyTitle": 'Verify phone',
+  "callVerifySubtitle":
+      'We will call the specified number. Answer the call to confirm.',
+  "callVerifySubtitleWithPhone":
+      'We will call {phone}. Answer the call to confirm.',
+  "callVerifyHint": 'If you missed the call, tap Call me again.',
   "vehicleSummary": 'Vehicle Summary',
   "leadSource": 'Lead Source',
   "type": 'Type',
@@ -84,8 +96,8 @@ const Map<String, String> enUS = {
   "update": 'Update',
   "dealRanking": 'Deal ranking: ',
   "continueAs": 'Continue as',
-  "user": 'User',
-  "dealer": 'Dealer',
+  "user": 'Client',
+  "dealer": 'Inspector',
   "baghdad": 'Baghdad',
   "mosul": 'Mosul',
   "basra": 'Basra',

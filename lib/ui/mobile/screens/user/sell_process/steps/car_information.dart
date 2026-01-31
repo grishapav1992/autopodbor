@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/ui/common/widgets/custom_drop_down_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/custom_drop_down_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -42,4 +42,3 @@ class CarInformation extends StatelessWidget {
     );
   }
 }
-

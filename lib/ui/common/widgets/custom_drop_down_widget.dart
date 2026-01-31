@@ -6,7 +6,7 @@ import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 
 // ignore: must_be_immutable
-class CustomDropDown extends StatelessWidget {
+class CustomDropDown extends StatefulWidget {
   CustomDropDown({
     super.key,
     required this.hint,
@@ -17,6 +17,10 @@ class CustomDropDown extends StatelessWidget {
     this.marginBottom,
     this.width,
     this.labelText,
+    this.enableSearch = false,
+    this.searchAltNames = const {},
+    this.searchHint = '\u041d\u0430\u0439\u0442\u0438...',
+    this.itemImages = const {},
   });
 
   final List<dynamic>? items;
@@ -26,36 +30,116 @@ class CustomDropDown extends StatelessWidget {
   String? labelText;
   Color? bgColor;
   double? marginBottom, width;
+  final bool enableSearch;
+  final Map<String, String> searchAltNames;
+  final String searchHint;
+  final Map<String, String> itemImages;
+
+  @override
+  State<CustomDropDown> createState() => _CustomDropDownState();
+}
+
+class _CustomDropDownState extends State<CustomDropDown> {
+  late final TextEditingController _searchController;
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.only(bottom: marginBottom ?? 16),
+      padding: EdgeInsets.only(bottom: widget.marginBottom ?? 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (labelText != null)
-            MyText(
-              text: labelText ?? '',
-              size: 12,
-              paddingBottom: 6,
-              weight: FontWeight.bold,
+          if (widget.labelText != null)
+            SizedBox(
+              height: 16,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: MyText(
+                  text: widget.labelText ?? '',
+                  size: 12,
+                  weight: FontWeight.bold,
+                  maxLines: 1,
+                  textOverflow: TextOverflow.ellipsis,
+                ),
+              ),
             ),
+          if (widget.labelText != null) const SizedBox(height: 6),
           DropdownButtonHideUnderline(
             child: DropdownButton2(
-              items: items!
+              items: widget.items!
                   .map(
                     (item) => DropdownMenuItem<dynamic>(
                       value: item,
-                      child: MyText(text: item, size: 12),
+                      child: _DropDownItem(
+                        label: item.toString(),
+                        imageUrl: widget.itemImages[item.toString()],
+                      ),
                     ),
                   )
                   .toList(),
-              value: selectedValue,
-              onChanged: onChanged,
+              value: widget.selectedValue,
+              onChanged: widget.onChanged,
               iconStyleData: IconStyleData(icon: SizedBox()),
               isDense: true,
               isExpanded: false,
+              dropdownSearchData: widget.enableSearch
+                  ? DropdownSearchData(
+                      searchController: _searchController,
+                      searchInnerWidgetHeight: 52,
+                      searchInnerWidget: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: widget.searchHint,
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            filled: true,
+                            fillColor: kWhiteColor,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 10,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: kBorderColor),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: BorderSide(color: kSecondaryColor),
+                            ),
+                          ),
+                        ),
+                      ),
+                      searchMatchFn: (item, searchValue) {
+                        final raw = item.value?.toString() ?? '';
+                        final q = searchValue.trim().toLowerCase();
+                        if (q.isEmpty) return true;
+                        if (raw.toLowerCase().contains(q)) {
+                          return true;
+                        }
+                        final alt =
+                            widget.searchAltNames[raw]?.toLowerCase() ?? '';
+                        return alt.contains(q);
+                      },
+                    )
+                  : null,
+              onMenuStateChange: widget.enableSearch
+                  ? (isOpen) {
+                      if (!isOpen) _searchController.clear();
+                    }
+                  : null,
               customButton: Container(
                 height: 48,
                 padding: EdgeInsets.symmetric(horizontal: 15),
@@ -69,10 +153,12 @@ class CustomDropDown extends StatelessWidget {
                   children: [
                     Expanded(
                       child: MyText(
-                        text: selectedValue == hint ? hint : selectedValue,
+                        text: widget.selectedValue == widget.hint
+                            ? widget.hint
+                            : widget.selectedValue,
                         size: 12,
                         weight: FontWeight.w500,
-                        color: selectedValue == hint
+                        color: widget.selectedValue == widget.hint
                             ? kHintColor
                             : kTertiaryColor,
                       ),
@@ -98,6 +184,37 @@ class CustomDropDown extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DropDownItem extends StatelessWidget {
+  const _DropDownItem({required this.label, this.imageUrl});
+
+  final String label;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = imageUrl;
+    return Row(
+      children: [
+        if (url != null && url.isNotEmpty) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: Image.network(
+              url,
+              width: 28,
+              height: 28,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) =>
+                  Container(width: 28, height: 28, color: kBorderColor),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
+        Expanded(child: MyText(text: label, size: 12)),
+      ],
     );
   }
 }

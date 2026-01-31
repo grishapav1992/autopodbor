@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/core/utils/global_instances.dart';
@@ -98,9 +98,9 @@ class _LanguageState extends State<Language> {
             MyButton(
               buttonText: 'continue'.tr,
               onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => ChooseLocation()),
-                );
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => ChooseLocation()));
               },
             ),
           ],

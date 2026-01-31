@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/app/main.dart';
@@ -60,7 +60,7 @@ class UDrawer extends StatelessWidget {
           Expanded(
             child: ListView(
               shrinkWrap: true,
-              padding: EdgeInsets.zero,
+              padding: EdgeInsets.zero.copyWith(bottom: 96),
               physics: BouncingScrollPhysics(),
               children: [
                 _DrawerTile(
@@ -131,4 +131,3 @@ class _DrawerTile extends StatelessWidget {
     );
   }
 }
-

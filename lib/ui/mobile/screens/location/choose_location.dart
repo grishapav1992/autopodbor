@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/mobile/screens/auth/login.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
@@ -34,7 +34,7 @@ class ChooseLocation extends StatelessWidget {
           Expanded(
             child: ListView(
               shrinkWrap: true,
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.listPaddingWithBottomBar(),
               physics: BouncingScrollPhysics(),
               children: [
                 CustomDropDown(
@@ -89,9 +89,9 @@ class ChooseLocation extends StatelessWidget {
             child: MyButton(
               buttonText: "continue".tr,
               onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => Login()),
-                );
+                Navigator.of(
+                  context,
+                ).push(MaterialPageRoute(builder: (_) => Login()));
               },
             ),
           ),
@@ -100,4 +100,3 @@ class ChooseLocation extends StatelessWidget {
     );
   }
 }
-

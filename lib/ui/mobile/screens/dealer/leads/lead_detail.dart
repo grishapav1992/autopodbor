@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -13,7 +13,7 @@ class LeadDetail extends StatelessWidget {
     return Scaffold(
       appBar: simpleAppBar(title: "leadsDetails".tr),
       body: ListView(
-        padding: AppSizes.DEFAULT,
+        padding: AppSizes.listPaddingWithBottomBar(),
         physics: BouncingScrollPhysics(),
         shrinkWrap: true,
         children: [
@@ -63,8 +63,8 @@ class LeadDetail extends StatelessWidget {
             child: Column(
               children: [
                 customColum(title: "date".tr, subtitle: '08/08/2024'),
-                customColum(title: "type".tr, subtitle: 'РџРѕС‡С‚Р°'),
-                customColum(title: "leadSource".tr, subtitle: 'РџСЂРѕРґР°Р¶Рё Р°РІС‚Рѕ'),
+                customColum(title: "type".tr, subtitle: 'Почта'),
+                customColum(title: "leadSource".tr, subtitle: 'Продажи авто'),
                 customColum(
                   title: "phone".tr,
                   subtitle: '035689899098',
@@ -90,8 +90,8 @@ class LeadDetail extends StatelessWidget {
             child: Column(
               children: [
                 customColum(title: "date".tr, subtitle: '08/08/2024'),
-                customColum(title: "type".tr, subtitle: 'РџРѕС‡С‚Р°'),
-                customColum(title: "leadSource".tr, subtitle: 'РџСЂРѕРґР°Р¶Рё Р°РІС‚Рѕ'),
+                customColum(title: "type".tr, subtitle: 'Почта'),
+                customColum(title: "leadSource".tr, subtitle: 'Продажи авто'),
                 customColum(
                   title: "phone".tr,
                   subtitle: '035689899098',
@@ -171,4 +171,3 @@ class LeadDetail extends StatelessWidget {
     );
   }
 }
-

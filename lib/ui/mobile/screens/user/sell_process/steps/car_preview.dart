@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/app/main.dart';
@@ -29,7 +29,7 @@ class CarPreview extends StatelessWidget {
           Expanded(
             child: ListView(
               shrinkWrap: true,
-              padding: EdgeInsets.zero,
+              padding: EdgeInsets.zero.copyWith(bottom: 96),
               physics: BouncingScrollPhysics(),
               children: [
                 CommonImageView(height: 200, width: Get.width, url: dummyImg),
@@ -128,10 +128,7 @@ class CarPreview extends StatelessWidget {
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Image.asset(
-                                    items[index]['icon'],
-                                    height: 26,
-                                  ),
+                                  Image.asset(items[index]['icon'], height: 26),
                                   MyText(
                                     text: items[index]['title'],
                                     size: 10,
@@ -284,6 +281,3 @@ class _SuccessDialog extends StatelessWidget {
     );
   }
 }
-
-
-

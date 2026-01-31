@@ -1,6 +1,7 @@
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/core/constants/popular_cars_ru.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/u_filters/u_filter.dart';
 import 'package:flutter_application_1/ui/common/widgets/bottom_sheets/custom_bottom_sheet_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_check_box_widget.dart';
@@ -14,23 +15,41 @@ class UMake extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> items = [
-      "abarth".tr,
-      "aixam".tr,
-      "alpina".tr,
-      "bentley".tr,
-      "bugatti".tr,
-      "abarth".tr,
-      "aixam".tr,
-      "alpina".tr,
-      "bentley".tr,
-      "bugatti".tr,
-      "abarth".tr,
-      "aixam".tr,
-      "alpina".tr,
-      "bentley".tr,
-      "bugatti".tr,
+    const extraMakes = [
+      'Abarth',
+      'Acura',
+      'Alfa Romeo',
+      'Aston Martin',
+      'Bentley',
+      'Bugatti',
+      'Cadillac',
+      'Chery',
+      'Chevrolet',
+      'Citroen',
+      'Ford',
+      'Geely',
+      'Haval',
+      'Honda',
+      'Hyundai',
+      'Jaguar',
+      'Jeep',
+      'Kia',
+      'Lexus',
+      'Mazda',
+      'Mitsubishi',
+      'Nissan',
+      'Peugeot',
+      'Renault',
+      'Skoda',
+      'Subaru',
+      'Suzuki',
+      'Toyota',
+      'Volkswagen',
+      'Volvo',
     ];
+    final items = sortMakesByPopularity(
+      {...kPopularMakesRu, ...extraMakes}.toList(),
+    );
     return CustomBottomSheet(
       height: Get.height * 0.9,
       buttonText: "done".tr,
@@ -50,7 +69,7 @@ class UMake extends StatelessWidget {
           ),
           Expanded(
             child: ListView(
-              padding: AppSizes.DEFAULT,
+              padding: AppSizes.listPaddingWithBottomBar(),
               physics: BouncingScrollPhysics(),
               shrinkWrap: true,
               children: [

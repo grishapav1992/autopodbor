@@ -20,6 +20,7 @@ void main() async {
   Get.put(LanguageController());
   Get.put(UserController());
   await UserSimplePreferences.init();
+  await UserSimplePreferences.clearBrandCache();
   runApp(MyApp());
 }
 
@@ -50,7 +51,13 @@ class MyApp extends StatelessWidget {
       defaultTransition: Transition.fadeIn,
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
-        return ResponsiveLayout(child: child);
+        final media = MediaQuery.of(context);
+        final scaled = media.textScaleFactor * 1.1;
+        final scale = scaled < 1.0 ? 1.0 : (scaled > 1.3 ? 1.3 : scaled);
+        return MediaQuery(
+          data: media.copyWith(textScaleFactor: scale),
+          child: ResponsiveLayout(child: child),
+        );
       },
     );
   }

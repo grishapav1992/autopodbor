@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/app/main.dart';
@@ -24,7 +24,7 @@ class UCarDetails extends StatelessWidget {
         },
         body: ListView(
           shrinkWrap: true,
-          padding: AppSizes.DEFAULT,
+          padding: AppSizes.listPaddingWithBottomBar(),
           physics: BouncingScrollPhysics(),
           children: [
             Row(
@@ -621,4 +621,3 @@ class _Divider extends StatelessWidget {
     );
   }
 }
-
