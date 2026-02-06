@@ -1,4 +1,4 @@
-import 'package:flutter_application_1/core/constants/app_colors.dart';
+﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
@@ -32,7 +32,7 @@ class _LandingScreenState extends State<LandingScreen> {
       image: Assets.imagesCarDealer,
     ),
     _LandingSlide(
-      title: 'Прозрачные статусы и отчёты',
+      title: 'Прозрачные статусы и отчеты',
       description:
           'Фиксируем этапы работы, результаты осмотров и рекомендации по покупке.',
       image: Assets.imagesCarPedia,
@@ -77,43 +77,58 @@ class _LandingScreenState extends State<LandingScreen> {
                   onPageChanged: (value) => setState(() => _index = value),
                   itemBuilder: (context, index) {
                     final slide = _slides[index];
-                    return Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          height: 220,
-                          width: 220,
-                          padding: const EdgeInsets.all(32),
-                          decoration: BoxDecoration(
-                            color: kWhiteColor,
-                            borderRadius: BorderRadius.circular(28),
-                            border: Border.all(color: kBorderColor, width: 1),
-                            boxShadow: [
-                              BoxShadow(
-                                color: kGreyColor.withValues(alpha: 0.12),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
+                    return LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  height: 220,
+                                  width: 220,
+                                  padding: const EdgeInsets.all(32),
+                                  decoration: BoxDecoration(
+                                    color: kWhiteColor,
+                                    borderRadius: BorderRadius.circular(28),
+                                    border: Border.all(
+                                      color: kBorderColor,
+                                      width: 1,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: kGreyColor.withValues(alpha: 0.12),
+                                        blurRadius: 20,
+                                        offset: const Offset(0, 10),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Image.asset(slide.image),
+                                ),
+                                const SizedBox(height: 28),
+                                MyText(
+                                  text: slide.title,
+                                  size: 20,
+                                  weight: FontWeight.w700,
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 12),
+                                MyText(
+                                  text: slide.description,
+                                  size: 14,
+                                  color: kGreyColor,
+                                  textAlign: TextAlign.center,
+                                  lineHeight: 1.5,
+                                ),
+                              ],
+                            ),
                           ),
-                          child: Image.asset(slide.image),
-                        ),
-                        const SizedBox(height: 28),
-                        MyText(
-                          text: slide.title,
-                          size: 20,
-                          weight: FontWeight.w700,
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        MyText(
-                          text: slide.description,
-                          size: 14,
-                          color: kGreyColor,
-                          textAlign: TextAlign.center,
-                          lineHeight: 1.5,
-                        ),
-                      ],
+                        );
+                      },
                     );
                   },
                 ),

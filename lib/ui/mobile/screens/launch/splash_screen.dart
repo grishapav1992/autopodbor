@@ -6,6 +6,9 @@ import 'package:flutter_application_1/core/localization/localization_controller/
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/core/utils/global_instances.dart';
 import 'package:flutter_application_1/ui/mobile/screens/auth/login.dart';
+import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
+import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
+import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -37,12 +40,31 @@ class _SplashScreenState extends State<SplashScreen> {
     Localization().selectedLocale('Русский');
   }
 
-  _splashHandler() {
-    Timer(Duration(seconds: 4), () {
+  void _splashHandler() {
+    Timer(const Duration(seconds: 4), () async {
       if (!mounted) return;
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => Login()));
+      final access = await UserSimplePreferences.getAccessToken();
+      final refresh = await UserSimplePreferences.getRefreshToken();
+      final role = await UserSimplePreferences.getUserRole();
+      if (!mounted) return;
+      final hasSession =
+          (access != null && access.isNotEmpty) &&
+          (refresh != null && refresh.isNotEmpty);
+      final Widget target;
+      if (hasSession) {
+        if (role == 'dealer') {
+          target = const DealerNavBar();
+        } else if (role == 'user') {
+          target = const UserNavBar();
+        } else {
+          target = const ChooseUserType();
+        }
+      } else {
+        target = const Login();
+      }
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => target),
+      );
     });
   }
 

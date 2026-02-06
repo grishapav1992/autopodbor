@@ -1,8 +1,7 @@
-import 'package:flutter_application_1/core/constants/app_colors.dart';
+﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
-
 import 'package:flutter/material.dart';
 
 // ignore: must_be_immutable
@@ -56,6 +55,10 @@ class _CustomDropDownState extends State<CustomDropDown> {
 
   @override
   Widget build(BuildContext context) {
+    final safeItems = (widget.items ?? const <dynamic>[]).toList();
+    final hasValue = safeItems.contains(widget.selectedValue);
+    final effectiveValue = hasValue ? widget.selectedValue : null;
+
     return Padding(
       padding: EdgeInsets.only(bottom: widget.marginBottom ?? 16),
       child: Column(
@@ -78,7 +81,7 @@ class _CustomDropDownState extends State<CustomDropDown> {
           if (widget.labelText != null) const SizedBox(height: 6),
           DropdownButtonHideUnderline(
             child: DropdownButton2(
-              items: widget.items!
+              items: safeItems
                   .map(
                     (item) => DropdownMenuItem<dynamic>(
                       value: item,
@@ -89,7 +92,7 @@ class _CustomDropDownState extends State<CustomDropDown> {
                     ),
                   )
                   .toList(),
-              value: widget.selectedValue,
+              value: effectiveValue,
               onChanged: widget.onChanged,
               iconStyleData: IconStyleData(icon: SizedBox()),
               isDense: true,
@@ -126,9 +129,7 @@ class _CustomDropDownState extends State<CustomDropDown> {
                         final raw = item.value?.toString() ?? '';
                         final q = searchValue.trim().toLowerCase();
                         if (q.isEmpty) return true;
-                        if (raw.toLowerCase().contains(q)) {
-                          return true;
-                        }
+                        if (raw.toLowerCase().contains(q)) return true;
                         final alt =
                             widget.searchAltNames[raw]?.toLowerCase() ?? '';
                         return alt.contains(q);
@@ -153,12 +154,14 @@ class _CustomDropDownState extends State<CustomDropDown> {
                   children: [
                     Expanded(
                       child: MyText(
-                        text: widget.selectedValue == widget.hint
+                        text: (effectiveValue == null ||
+                                widget.selectedValue == widget.hint)
                             ? widget.hint
                             : widget.selectedValue,
                         size: 12,
                         weight: FontWeight.w500,
-                        color: widget.selectedValue == widget.hint
+                        color: (effectiveValue == null ||
+                                widget.selectedValue == widget.hint)
                             ? kHintColor
                             : kTertiaryColor,
                       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
+import 'package:flutter_application_1/core/utils/contact_redaction.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
@@ -38,6 +39,9 @@ class InspectorProfileScreen extends StatelessWidget {
     final company = offer['company']?.toString() ?? '';
     final about = offer['about']?.toString() ?? '';
     final extra = offer['extra']?.toString() ?? '';
+    final aboutPublic = ContactRedaction.redactPublicText(about);
+    final extraPublic = ContactRedaction.redactPublicText(extra);
+    final hasHiddenContacts = aboutPublic.redacted || extraPublic.redacted;
     final city = offer['city']?.toString() ?? '';
     final rating = offer['rating']?.toString() ?? '-';
     final reviews = offer['reviews']?.toString() ?? '0';
@@ -50,7 +54,13 @@ class InspectorProfileScreen extends StatelessWidget {
     final days = offer['days']?.toString() ?? '';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Профиль автоподборщика')),
+      appBar: AppBar(
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back),
+        ),
+        title: const Text('Профиль автоподборщика'),
+      ),
       body: ListView(
         padding: AppSizes.listPaddingWithBottomBar(),
         children: [
@@ -85,12 +95,33 @@ class InspectorProfileScreen extends StatelessWidget {
             paddingBottom: 6,
           ),
           if (about.isNotEmpty)
-            MyText(text: about, size: 12, color: kGreyColor)
+            MyText(text: aboutPublic.text, size: 12, color: kGreyColor)
           else
             MyText(text: 'Описание не заполнено', size: 12, color: kGreyColor),
           if (extra.isNotEmpty) ...[
             const SizedBox(height: 8),
-            MyText(text: extra, size: 12, color: kGreyColor),
+            MyText(text: extraPublic.text, size: 12, color: kGreyColor),
+          ],
+          if (hasHiddenContacts) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: kSecondaryColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: kBorderColor),
+              ),
+              child: const MyText(
+                text:
+                    '\u041A\u043E\u043D\u0442\u0430\u043A\u0442\u044B '
+                    '\u0430\u0432\u0442\u043E\u043F\u043E\u0434\u0431\u043E\u0440\u0449\u0438\u043A\u0430 '
+                    '\u043E\u0442\u043A\u0440\u043E\u044E\u0442\u0441\u044F '
+                    '\u043F\u043E\u0441\u043B\u0435 \u0432\u044B\u0431\u043E\u0440\u0430 '
+                    '\u0438 \u043E\u043F\u043B\u0430\u0442\u044B.',
+                size: 11,
+                color: kGreyColor,
+              ),
+            ),
           ],
           const SizedBox(height: 16),
           MyText(

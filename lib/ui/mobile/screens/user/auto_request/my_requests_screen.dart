@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -64,9 +64,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 
   Future<void> _openCreate() async {
-    final created = await Navigator.of(
-      context,
-    ).push<bool>(MaterialPageRoute(builder: (_) => const AutoRequestScreen()));
+    final created = await Navigator.of(context)
+        .push<bool>(MaterialPageRoute(builder: (_) => const AutoRequestScreen()));
     if (created == true) {
       _load();
     }
@@ -74,9 +73,7 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   Future<void> _openDetail(Map<String, dynamic> request) async {
     final updated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => MyRequestDetailScreen(request: request),
-      ),
+      MaterialPageRoute(builder: (_) => MyRequestDetailScreen(request: request)),
     );
     if (updated == true) _load();
   }
@@ -114,33 +111,24 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
     return ListView(
       padding: AppSizes.listPaddingWithBottomBar(),
       children: [
-        Row(
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          runSpacing: 8,
           children: [
-            Expanded(
-              child: MyText(
-                text: 'Мои заявки',
-                size: 18,
-                weight: FontWeight.w700,
+            MyText(text: 'Мои заявки', size: 18, weight: FontWeight.w700),
+            TextButton.icon(
+              onPressed: _openCreate,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                minimumSize: const Size(0, 0),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: TextButton.icon(
-                onPressed: _openCreate,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  minimumSize: const Size(0, 0),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                icon: const Icon(Icons.add, size: 18, color: kSecondaryColor),
-                label: const Text(
-                  'Новая заявка',
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: kSecondaryColor, fontSize: 12),
-                ),
+              icon: const Icon(Icons.add, size: 18, color: kSecondaryColor),
+              label: const Text(
+                'Новая заявка',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: kSecondaryColor, fontSize: 12),
               ),
             ),
           ],
@@ -185,8 +173,6 @@ class _RequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final type = data['type'] ?? 'by_car';
     final title = data['title'] ?? 'Заявка';
-    final subtitle = data['subtitle'] ?? '';
-    final carLine = data['carLine'] ?? '';
     final requestNumber = data['requestNumber'] ?? data['id'] ?? '';
     final createdAt = data['createdAt'] ?? '';
     final status = data['status'] ?? 'Создана';
@@ -214,16 +200,11 @@ class _RequestCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
             ],
-            Row(
-              children: [
-                Expanded(
-                  child: MyText(text: title, size: 14, weight: FontWeight.w700),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 360;
+                final chip = Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: kSecondaryColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
@@ -234,11 +215,34 @@ class _RequestCard extends StatelessWidget {
                     weight: FontWeight.w700,
                     color: kSecondaryColor,
                   ),
-                ),
-              ],
+                );
+                if (compact) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      MyText(text: title, size: 14, weight: FontWeight.w700),
+                      const SizedBox(height: 6),
+                      chip,
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(
+                      child: MyText(text: title, size: 14, weight: FontWeight.w700),
+                    ),
+                    const SizedBox(width: 8),
+                    chip,
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 8),
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 MyText(
                   text: status,
@@ -246,7 +250,6 @@ class _RequestCard extends StatelessWidget {
                   weight: FontWeight.w600,
                   color: statusColor,
                 ),
-                const Spacer(),
                 MyText(text: createdAt, size: 11, color: kGreyColor),
               ],
             ),

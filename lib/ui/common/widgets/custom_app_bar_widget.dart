@@ -15,17 +15,28 @@ AppBar simpleAppBar({
     automaticallyImplyLeading: false,
     titleSpacing: 20.0,
     leading: haveLeading
-        ? Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              GestureDetector(
-                onTap: () => Get.back(),
-                child: Image.asset(
-                  Assets.imagesArrowBackRounded,
-                  height: 32,
+        ? Builder(
+            builder: (context) => Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    final navigator = Navigator.of(context);
+                    if (navigator.canPop()) {
+                      navigator.pop();
+                      return;
+                    }
+                    if (Get.key.currentState?.canPop() == true) {
+                      Get.back();
+                    }
+                  },
+                  child: Image.asset(
+                    Assets.imagesArrowBackRounded,
+                    height: 32,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           )
         : null,
     title: MyText(text: title ?? '', size: 18, weight: FontWeight.w600),

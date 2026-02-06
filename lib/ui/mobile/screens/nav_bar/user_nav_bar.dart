@@ -211,6 +211,12 @@ class _UserNavBarState extends State<UserNavBar> {
       navigator.pop();
       return false;
     }
+    if (_currentIndex != 0) {
+      setState(() {
+        _currentIndex = 0;
+      });
+      return false;
+    }
     return true;
   }
 

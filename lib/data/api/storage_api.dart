@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 class BrandCatalog {
   final List<BrandItem> items;
@@ -96,39 +97,168 @@ class GenerationItem {
   String get label => 'Поколение $generation';
 }
 
+class AuthStartResult {
+  final String callPhone;
+  final String? sessionId;
+
+  const AuthStartResult({required this.callPhone, this.sessionId});
+}
+
+class AuthVerifyResult {
+  final String? accessToken;
+  final String? refreshToken;
+
+  const AuthVerifyResult({this.accessToken, this.refreshToken});
+
+  bool get hasTokens =>
+      accessToken != null &&
+      accessToken!.isNotEmpty &&
+      refreshToken != null &&
+      refreshToken!.isNotEmpty;
+}
+
 class StorageApi {
   static const String _endpoint = 'https://podbor-av.ru.tuna.am';
+
+  static int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value);
+    return null;
+  }
+
+  static String _extractString(
+    Map<String, dynamic> source,
+    List<String> keys,
+  ) {
+    for (final key in keys) {
+      final value = source[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return '';
+  }
+
+  static Map<String, dynamic> _asMap(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) {
+      return raw.map((key, value) => MapEntry(key.toString(), value));
+    }
+    return const <String, dynamic>{};
+  }
+
+  static Future<Map<String, dynamic>> _postRpc({
+    required String method,
+    required Map<String, dynamic> params,
+    Duration timeout = const Duration(seconds: 12),
+    bool includeAuth = true,
+  }) async {
+    final requestParams = Map<String, dynamic>.from(params);
+    final payload = <String, dynamic>{
+      'id': 0,
+      'method': method,
+      'params': requestParams,
+    };
+    final bytes = utf8.encode(json.encode(payload));
+    final headers = <String, String>{
+      'Content-Type': 'application/json',
+      'Content-Length': bytes.length.toString(),
+    };
+    if (includeAuth) {
+      final accessToken = await UserSimplePreferences.getAccessToken();
+      if (accessToken != null && accessToken.isNotEmpty) {
+        headers['Authorization'] = 'Bearer $accessToken';
+      }
+    }
+    final response = await http
+        .post(
+          Uri.parse(_endpoint),
+          headers: headers,
+          body: bytes,
+        )
+        .timeout(timeout);
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}');
+    }
+    final data = _asMap(json.decode(response.body));
+    if (data['response'] != 'ok') {
+      throw Exception('Bad response');
+    }
+    return data;
+  }
+
+  static Future<AuthStartResult> auth({
+    required String phone,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'storage.auth',
+      params: {'phone': phone},
+      timeout: timeout,
+      includeAuth: false,
+    );
+    final result = _asMap(data['result']);
+    final callPhone = _extractString(result, [
+      'callToPhone',
+      'callPhone',
+      'phoneForCall',
+      'authPhone',
+      'targetPhone',
+      'phone',
+    ]);
+    if (callPhone.isEmpty) {
+      throw Exception('Call phone is empty');
+    }
+    final sessionId = _extractString(result, ['sessionId', 'authId', 'id']);
+    return AuthStartResult(
+      callPhone: callPhone,
+      sessionId: sessionId.isEmpty ? null : sessionId,
+    );
+  }
+
+  static Future<AuthVerifyResult> authVerify({
+    required String phone,
+    String? sessionId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final params = <String, dynamic>{'phone': phone};
+    if (sessionId != null && sessionId.isNotEmpty) {
+      params['sessionId'] = sessionId;
+    }
+    final data = await _postRpc(
+      method: 'storage.authVerify',
+      params: params,
+      timeout: timeout,
+      includeAuth: false,
+    );
+    final result = _asMap(data['result']);
+    final accessToken = _extractString(result, [
+      'accessToken',
+      'access_token',
+      'token',
+      'access',
+    ]);
+    final refreshToken = _extractString(result, [
+      'refreshToken',
+      'refresh_token',
+      'refresh',
+    ]);
+    return AuthVerifyResult(
+      accessToken: accessToken.isEmpty ? null : accessToken,
+      refreshToken: refreshToken.isEmpty ? null : refreshToken,
+    );
+  }
 
   static Future<BrandCatalog> fetchBrandCatalog({
     String search = '',
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    final payload = <String, dynamic>{
-      'id': 0,
-      'method': 'Storage.GetBrand',
-      'params': {'search': search},
-    };
-    final bytes = utf8.encode(json.encode(payload));
-
-    final response = await http
-        .post(
-          Uri.parse(_endpoint),
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': bytes.length.toString(),
-          },
-          body: bytes,
-        )
-        .timeout(timeout);
-
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}');
-    }
-
-    final data = json.decode(response.body) as Map<String, dynamic>;
-    if (data['response'] != 'ok') {
-      throw Exception('Bad response');
-    }
+    final data = await _postRpc(
+      method: 'Storage.GetBrand',
+      params: {'search': search},
+      timeout: timeout,
+    );
 
     final result = data['result'];
     if (result is! List) {
@@ -145,9 +275,10 @@ class StorageApi {
     final rusByName = <String, String>{};
     final idByName = <String, int>{};
     for (final item in result) {
-      if (item is Map && item['name'] is String && item['id'] is int) {
+      if (item is Map && item['name'] is String) {
         final name = item['name'] as String;
-        final id = item['id'] as int;
+        final id = _asInt(item['id']);
+        if (id == null) continue;
         final nameRus = item['nameRus'] is String
             ? item['nameRus'] as String
             : '';
@@ -181,44 +312,24 @@ class StorageApi {
     String search = '',
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    final payload = <String, dynamic>{
-      'id': 0,
-      'method': 'Storage.GetModelCar',
-      'params': {'brandId': brandId, 'search': search},
-    };
-    final bytes = utf8.encode(json.encode(payload));
-    final response = await http
-        .post(
-          Uri.parse(_endpoint),
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': bytes.length.toString(),
-          },
-          body: bytes,
-        )
-        .timeout(timeout);
-
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}');
-    }
-
-    final data = json.decode(response.body) as Map<String, dynamic>;
-    if (data['response'] != 'ok') {
-      throw Exception('Bad response');
-    }
+    final data = await _postRpc(
+      method: 'Storage.GetModelCar',
+      params: {'brandId': brandId, 'search': search},
+      timeout: timeout,
+    );
 
     final result = data['result'];
     if (result is! List) return [];
     final items = <ModelItem>[];
     for (final item in result) {
-      if (item is Map &&
-          item['id'] is int &&
-          item['brandId'] is int &&
-          item['model'] is String) {
+      if (item is Map && item['model'] is String) {
+        final id = _asInt(item['id']);
+        final brand = _asInt(item['brandId']);
+        if (id == null || brand == null) continue;
         items.add(
           ModelItem(
-            id: item['id'] as int,
-            brandId: item['brandId'] as int,
+            id: id,
+            brandId: brand,
             model: item['model'] as String,
             modelRus: item['modelRus'] is String
                 ? item['modelRus'] as String
@@ -235,44 +346,26 @@ class StorageApi {
     required int modelCarId,
     Duration timeout = const Duration(seconds: 8),
   }) async {
-    final payload = <String, dynamic>{
-      'id': 0,
-      'method': 'Storage.GetModelGeneration',
-      'params': {'modelCarId': modelCarId},
-    };
-    final bytes = utf8.encode(json.encode(payload));
-    final response = await http
-        .post(
-          Uri.parse(_endpoint),
-          headers: {
-            'Content-Type': 'application/json',
-            'Content-Length': bytes.length.toString(),
-          },
-          body: bytes,
-        )
-        .timeout(timeout);
-
-    if (response.statusCode != 200) {
-      throw Exception('HTTP ${response.statusCode}');
-    }
-
-    final data = json.decode(response.body) as Map<String, dynamic>;
-    if (data['response'] != 'ok') {
-      throw Exception('Bad response');
-    }
+    final data = await _postRpc(
+      method: 'Storage.GetModelGeneration',
+      params: {'modelCarId': modelCarId},
+      timeout: timeout,
+    );
 
     final result = data['result'];
     if (result is! List) return [];
     final items = <GenerationItem>[];
     for (final item in result) {
-      if (item is! Map || item['id'] is! int) continue;
+      if (item is! Map) continue;
+      final id = _asInt(item['id']);
+      if (id == null) continue;
       final frames = _parseFrames(item['frames']);
       final restylings = _parseRestylings(item['restylings']);
       items.add(
         GenerationItem(
-          id: item['id'] as int,
-          modelCarId: item['modelCarId'] is int ? item['modelCarId'] as int : 0,
-          generation: item['generation'] is int ? item['generation'] as int : 0,
+          id: id,
+          modelCarId: _asInt(item['modelCarId']) ?? 0,
+          generation: _asInt(item['generation']) ?? 0,
           frames: frames,
           restylings: restylings,
         ),
@@ -286,14 +379,20 @@ class StorageApi {
     if (raw is! List) return [];
     final items = <FrameItem>[];
     for (final item in raw) {
-      if (item is Map && item['id'] is int && item['frame'] is String) {
-        items.add(FrameItem(id: item['id'] as int, frame: item['frame']));
+      if (item is Map && item['frame'] is String) {
+        final id = _asInt(item['id']);
+        if (id == null) continue;
+        items.add(FrameItem(id: id, frame: item['frame']));
       }
     }
     return items;
   }
 
   static int? _parseYear(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is String && raw.length >= 4) {
+      return int.tryParse(raw.substring(0, 4));
+    }
     if (raw is Map && raw['date'] is String) {
       final date = raw['date'] as String;
       if (date.length >= 4) {
@@ -308,13 +407,14 @@ class StorageApi {
     final items = <PhotoItem>[];
     for (final item in raw) {
       if (item is Map &&
-          item['id'] is int &&
           item['size'] is String &&
           item['urlX1'] is String &&
           item['urlX2'] is String) {
+        final id = _asInt(item['id']);
+        if (id == null) continue;
         items.add(
           PhotoItem(
-            id: item['id'] as int,
+            id: id,
             size: item['size'] as String,
             urlX1: item['urlX1'] as String,
             urlX2: item['urlX2'] as String,
@@ -329,14 +429,16 @@ class StorageApi {
     if (raw is! List) return [];
     final items = <RestylingItem>[];
     for (final item in raw) {
-      if (item is! Map || item['id'] is! int || item['restyling'] == null) {
+      if (item is! Map || item['restyling'] == null) {
         continue;
       }
+      final id = _asInt(item['id']);
+      if (id == null) continue;
       final frames = _parseFrames(item['frames']);
       final photos = _parsePhotos(item['photos']);
       items.add(
         RestylingItem(
-          id: item['id'] as int,
+          id: id,
           restyling: item['restyling'].toString(),
           yearStart: _parseYear(item['yearStart']),
           yearEnd: _parseYear(item['yearEnd']),

@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
@@ -185,56 +185,44 @@ class _InspectorCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            runSpacing: 6,
             children: [
-              MyText(
-                text: 'Успешные сделки: $success',
-                size: 11,
-                color: kGreyColor,
-              ),
-              const Spacer(),
+              MyText(text: 'Успешные сделки: $success', size: 11, color: kGreyColor),
               MyText(text: 'Отчетов: $reports', size: 11, color: kGreyColor),
             ],
           ),
           const SizedBox(height: 6),
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            runSpacing: 6,
             children: [
               MyText(text: 'Отзывы: $reviews', size: 11, color: kGreyColor),
-              const Spacer(),
-              MyText(
-                text: 'Опыт: $experience лет',
-                size: 11,
-                color: kGreyColor,
-              ),
+              MyText(text: 'Опыт: $experience лет', size: 11, color: kGreyColor),
             ],
           ),
           if (city.isNotEmpty || responseHours.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 6,
               children: [
                 if (city.isNotEmpty)
                   MyText(text: 'Город: $city', size: 11, color: kGreyColor),
-                const Spacer(),
                 if (responseHours.isNotEmpty)
-                  MyText(
-                    text: 'Ответ: $responseHours ч',
-                    size: 11,
-                    color: kGreyColor,
-                  ),
+                  MyText(text: 'Ответ: $responseHours ч', size: 11, color: kGreyColor),
               ],
             ),
           ],
           if (price.isNotEmpty || days.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Row(
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 6,
               children: [
                 if (price.isNotEmpty)
-                  MyText(
-                    text: 'Цена: $price руб.',
-                    size: 11,
-                    color: kGreyColor,
-                  ),
-                const Spacer(),
+                  MyText(text: 'Цена: $price руб.', size: 11, color: kGreyColor),
                 if (days.isNotEmpty)
                   MyText(text: 'Срок: $days дн.', size: 11, color: kGreyColor),
               ],

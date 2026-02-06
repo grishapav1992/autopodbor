@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -35,7 +35,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Отчёт'),
+        title: const Text('Отчет'),
         leading: IconButton(
           onPressed: () => Navigator.of(context).pop(),
           icon: const Icon(Icons.arrow_back),
@@ -87,7 +87,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
           ),
           const SizedBox(height: 6),
           MyText(
-            text: 'Дата отчёта: ${report['date'] ?? '-'}',
+            text: 'Дата отчета: ${report['date'] ?? '-'}',
             size: 12,
             color: kGreyColor,
           ),
@@ -112,7 +112,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
           _InfoRow(title: 'Оценка', value: report['score'] ?? '-'),
           _InfoRow(title: 'Рыночная цена', value: report['price'] ?? '-'),
           _InfoRow(
-            title: 'Отчётов по авто',
+            title: 'Отчетов по авто',
             value: '${report['reportsCount'] ?? 1}',
           ),
           const SizedBox(height: 12),
@@ -140,7 +140,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             lineHeight: 1.4,
           ),
           const SizedBox(height: 16),
-          const _SectionTitle(text: 'Платная часть отчёта'),
+          const _SectionTitle(text: 'Платная часть отчета'),
           const SizedBox(height: 6),
           _LockedInfoCard(
             title: 'Толщина ЛКП и окрасы',
@@ -170,9 +170,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             ElevatedButton(
               onPressed: () {
                 setState(() => _purchased = true);
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(const SnackBar(content: Text('Отчёт куплен')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Отчет куплен')),
+                );
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: kSecondaryColor,
@@ -182,7 +182,7 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                 ),
               ),
               child: const Text(
-                'Купить отчёт',
+                'Купить отчет',
                 style: TextStyle(color: kWhiteColor, fontSize: 12),
               ),
             ),
@@ -251,13 +251,15 @@ class _LockedInfoCard extends StatelessWidget {
                 child: Container(
                   color: Colors.white.withValues(alpha: 0.6),
                   alignment: Alignment.center,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
                     children: const [
                       Icon(Icons.lock, size: 16, color: kGreyColor),
-                      SizedBox(width: 6),
                       Text(
-                        'Доступно после покупки',
+                        'Скрыто до покупки',
                         style: TextStyle(fontSize: 12, color: kGreyColor),
                       ),
                     ],
@@ -286,7 +288,17 @@ class _InfoRow extends StatelessWidget {
           Expanded(
             child: MyText(text: title, size: 12, color: kGreyColor),
           ),
-          MyText(text: value, size: 12, weight: FontWeight.w600),
+          const SizedBox(width: 8),
+          Flexible(
+            child: MyText(
+              text: value,
+              size: 12,
+              weight: FontWeight.w600,
+              textAlign: TextAlign.right,
+              maxLines: 2,
+              textOverflow: TextOverflow.ellipsis,
+            ),
+          ),
         ],
       ),
     );

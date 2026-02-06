@@ -3,6 +3,7 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
@@ -24,6 +25,7 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
       currentIndex = index;
     });
     _userController.chooseRole(index == 0 ? UserRole.user : UserRole.dealer);
+    UserSimplePreferences.setUserRole(index == 0 ? 'user' : 'dealer');
   }
 
   @override
@@ -70,11 +72,27 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
             const Spacer(flex: 4),
             MyButton(
               buttonText: "continue".tr,
-              onTap: () {
+              onTap: () async {
                 final role = currentIndex == 0
                     ? UserRole.user
                     : UserRole.dealer;
                 _userController.chooseRole(role);
+                UserSimplePreferences.setUserRole(
+                  role == UserRole.user ? 'user' : 'dealer',
+                );
+                final access = await UserSimplePreferences.getAccessToken();
+                final refresh = await UserSimplePreferences.getRefreshToken();
+                final hasSession =
+                    (access != null && access.isNotEmpty) &&
+                    (refresh != null && refresh.isNotEmpty);
+                if (hasSession) {
+                  if (role == UserRole.user) {
+                    Get.offAllNamed(AppLinks.userHome);
+                  } else {
+                    Get.offAllNamed(AppLinks.dealerHome);
+                  }
+                  return;
+                }
                 Get.offAllNamed(AppLinks.login);
               },
             ),
@@ -133,6 +151,9 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
                 weight: FontWeight.w600,
                 color: currentIndex == index ? kPrimaryColor : kTertiaryColor,
                 paddingTop: 16,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                textOverflow: TextOverflow.ellipsis,
               ),
             ],
           ),

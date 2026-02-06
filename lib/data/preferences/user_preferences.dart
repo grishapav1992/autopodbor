@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +20,10 @@ class UserSimplePreferences {
   static const _brandCacheTsKey = 'brandCacheTs';
   static const _brandRusCacheKey = 'brandRusCache';
   static const _autoRequestsKey = 'autoRequests';
+  static const _inspectorAboutKey = 'inspectorAbout';
+  static const _accessTokenKey = 'accessToken';
+  static const _refreshTokenKey = 'refreshToken';
+  static const _userRoleKey = 'userRole';
 
   static Future init() async {
     pref = await SharedPreferences.getInstance();
@@ -216,10 +220,7 @@ class UserSimplePreferences {
     await setAutoRequests(list);
   }
 
-  static Future updateAutoRequest(
-    String id,
-    Map<String, dynamic> patch,
-  ) async {
+  static Future updateAutoRequest(String id, Map<String, dynamic> patch) async {
     final list = await getAutoRequests();
     for (var i = 0; i < list.length; i++) {
       final item = list[i];
@@ -229,5 +230,46 @@ class UserSimplePreferences {
       }
     }
     await setAutoRequests(list);
+  }
+
+  static Future setInspectorAbout(String value) async {
+    await pref!.setString(_inspectorAboutKey, value);
+  }
+
+  static Future<String?> getInspectorAbout() async {
+    // ignore: await_only_futures
+    return await pref!.getString(_inspectorAboutKey);
+  }
+
+  static Future<void> setAuthTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    await pref!.setString(_accessTokenKey, accessToken);
+    await pref!.setString(_refreshTokenKey, refreshToken);
+  }
+
+  static Future<String?> getAccessToken() async {
+    // ignore: await_only_futures
+    return await pref!.getString(_accessTokenKey);
+  }
+
+  static Future<String?> getRefreshToken() async {
+    // ignore: await_only_futures
+    return await pref!.getString(_refreshTokenKey);
+  }
+
+  static Future<void> clearAuthTokens() async {
+    await pref!.remove(_accessTokenKey);
+    await pref!.remove(_refreshTokenKey);
+  }
+
+  static Future<void> setUserRole(String role) async {
+    await pref!.setString(_userRoleKey, role);
+  }
+
+  static Future<String?> getUserRole() async {
+    // ignore: await_only_futures
+    return await pref!.getString(_userRoleKey);
   }
 }

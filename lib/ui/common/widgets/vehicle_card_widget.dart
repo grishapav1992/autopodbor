@@ -86,10 +86,14 @@ class VehicleCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: 27),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Expanded(
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 220),
                 child: MyText(
                   text: 'Автосалон «Автоцентр»',
                   size: 12,
@@ -97,25 +101,33 @@ class VehicleCard extends StatelessWidget {
                   weight: FontWeight.w500,
                   maxLines: 1,
                   textOverflow: TextOverflow.ellipsis,
-                  paddingRight: 10,
                 ),
               ),
-              Image.asset(Assets.imagesLocation, height: 16),
-              MyText(
-                paddingLeft: 4,
-                text: '3 256 км',
-                size: 12,
-                color: kHintColor,
-                weight: FontWeight.w500,
-                paddingRight: 30,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(Assets.imagesLocation, height: 16),
+                  MyText(
+                    paddingLeft: 4,
+                    text: '3 256 км',
+                    size: 12,
+                    color: kHintColor,
+                    weight: FontWeight.w500,
+                  ),
+                ],
               ),
-              Image.asset(Assets.imagesReviews, height: 16),
-              MyText(
-                paddingLeft: 4,
-                text: '12[4]',
-                size: 12,
-                color: kHintColor,
-                weight: FontWeight.w500,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(Assets.imagesReviews, height: 16),
+                  MyText(
+                    paddingLeft: 4,
+                    text: '12[4]',
+                    size: 12,
+                    color: kHintColor,
+                    weight: FontWeight.w500,
+                  ),
+                ],
               ),
             ],
           ),
