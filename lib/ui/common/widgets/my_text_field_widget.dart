@@ -62,6 +62,7 @@ class _MyTextFieldState extends State<MyTextField> {
           TextFormField(
             textAlign: widget.textAlign ?? TextAlign.start,
             onTap: widget.onTap,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             textAlignVertical: widget.prefix != null || widget.suffix != null
                 ? TextAlignVertical.center
                 : null,
@@ -138,6 +139,7 @@ class _PhoneFieldState extends State<PhoneField> {
       child: TextFormField(
         cursorColor: kTertiaryColor,
         controller: widget.controller,
+        onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
         onChanged: widget.onChanged,
         keyboardType: TextInputType.number,
         inputFormatters: [RuPhoneFormatter()],

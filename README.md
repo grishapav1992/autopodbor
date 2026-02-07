@@ -22,6 +22,14 @@ flutter pub get
 flutter run
 ```
 
+### One-shot для macOS
+
+```bash
+chmod +x scripts/mac_refresh_run.sh
+./scripts/mac_refresh_run.sh            # по умолчанию flutter run
+./scripts/mac_refresh_run.sh -d ios     # пример запуска на iOS
+```
+
 ## Сборка
 
 ```bash

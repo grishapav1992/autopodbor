@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 
 
 
@@ -88,6 +88,62 @@ bool _looksNumericCode(String value) {
 
 
   return RegExp(r'^\d+$').hasMatch(trimmed);
+
+
+
+}
+
+
+
+bool _matchesRestylingQuery(_RestylingCardData data, String query) {
+
+
+
+  final q = query.trim().toLowerCase();
+
+
+
+  if (q.isEmpty) return true;
+
+
+
+  return data.title.toLowerCase().contains(q) ||
+
+
+
+      data.subtitle.toLowerCase().contains(q);
+
+
+
+}
+
+
+
+String _fallbackRestylingTitle(String rawValue) {
+
+
+
+  final trimmed = rawValue.trim();
+
+
+
+  if (trimmed.isEmpty) return 'Поколение';
+
+
+
+  if (trimmed == 'Без рестайлинга') return trimmed;
+
+
+
+  if (RegExp(r'^rest:\d+$').hasMatch(trimmed)) return 'Поколение';
+
+
+
+  if (RegExp(r'^gen:\d+\|').hasMatch(trimmed)) return 'Поколение';
+
+
+
+  return trimmed;
 
 
 
@@ -1535,9 +1591,17 @@ class _AutoRequestScreenState extends State<AutoRequestScreen>
 
         ),
 
-        body: TabBarView(
+        body: GestureDetector(
 
-          children: [_ByCarForm(), _TurnkeyForm()],
+          behavior: HitTestBehavior.translucent,
+
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+
+          child: TabBarView(
+
+            children: [_ByCarForm(), _TurnkeyForm()],
+
+          ),
 
         ),
 
@@ -2921,7 +2985,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-        const SnackBar(content: Text('\u0421\u0430\u0447\u0430\u043B\u0430 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u0430\u0440\u043A\u0443 \u0438 \u043C\u043E\u0434\u0435\u043B\u044C.')),
+        const SnackBar(content: Text('Сначала выберите марку и модель.')),
 
 
 
@@ -2993,35 +3057,15 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-            final options = _RemoteCarCatalog.restylingsFor(
+            final media = MediaQuery.of(ctx);
 
 
 
-              car.make,
+            final sheetHeight =
 
 
 
-              car.model,
-
-
-
-            );
-
-
-
-            final filtered = options.where((opt) {
-
-
-
-              if (query.trim().isEmpty) return true;
-
-
-
-              return opt.toLowerCase().contains(query.trim().toLowerCase());
-
-
-
-            }).toList();
+                (media.size.height - media.padding.top) * 0.88;
 
 
 
@@ -3029,31 +3073,47 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-            return SafeArea(
+            return AnimatedPadding(
 
 
 
-              child: Padding(
+              duration: const Duration(milliseconds: 120),
 
 
 
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+              curve: Curves.easeOut,
 
 
 
-                child: Column(
+              padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
 
 
 
-                  mainAxisSize: MainAxisSize.min,
+              child: SafeArea(
 
 
 
-                  children: [
+                child: Padding(
 
 
 
-                    Row(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+
+
+
+                  child: SizedBox(
+
+
+
+                    height: sheetHeight,
+
+
+
+                    child: Column(
+
+
+
+                      mainAxisSize: MainAxisSize.max,
 
 
 
@@ -3061,343 +3121,31 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-                        Expanded(
+                        Row(
 
 
 
-                          child: MyText(
+                          children: [
 
 
 
-                            text: 'Поколение',
+                            Expanded(
 
 
 
-                            size: 16,
+                              child: MyText(
 
 
 
-                            weight: FontWeight.w700,
+                                text: 'Поколение',
 
 
 
-                          ),
+                                size: 16,
 
 
 
-                        ),
-
-
-
-                        IconButton(
-
-
-
-                          onPressed: () => Navigator.pop(ctx),
-
-
-
-                          icon: const Icon(Icons.close, size: 20),
-
-
-
-                        ),
-
-
-
-                      ],
-
-
-
-                    ),
-
-
-
-                    const SizedBox(height: 8),
-
-
-
-                    TextField(
-
-
-
-                      onChanged: (v) => setSheet(() => query = v),
-
-
-
-                      decoration: InputDecoration(
-
-
-
-                        hintText: 'Найти...',
-
-
-
-                        prefixIcon: const Icon(Icons.search, size: 18),
-
-
-
-                        filled: true,
-
-
-
-                        fillColor: kWhiteColor,
-
-
-
-                        contentPadding: const EdgeInsets.symmetric(
-
-
-
-                          horizontal: 10,
-
-
-
-                          vertical: 10,
-
-
-
-                        ),
-
-
-
-                        enabledBorder: OutlineInputBorder(
-
-
-
-                          borderRadius: BorderRadius.circular(10),
-
-
-
-                          borderSide: BorderSide(color: kBorderColor),
-
-
-
-                        ),
-
-
-
-                        focusedBorder: OutlineInputBorder(
-
-
-
-                          borderRadius: BorderRadius.circular(10),
-
-
-
-                          borderSide: BorderSide(color: kSecondaryColor),
-
-
-
-                        ),
-
-
-
-                      ),
-
-
-
-                    ),
-
-
-
-                    const SizedBox(height: 8),
-
-
-
-                    Expanded(
-
-
-
-                      child: ValueListenableBuilder<int>(
-
-
-
-                        valueListenable: _RemoteCarCatalog.stamp,
-
-
-
-                        builder: (ctx, _, __) {
-
-
-
-                          if (filtered.isEmpty &&
-
-
-
-                              _RemoteCarCatalog.isRestylingsLoading(
-
-
-
-                                car.make,
-
-
-
-                                car.model,
-
-
-
-                              )) {
-
-
-
-                            return const Center(
-
-
-
-                              child: CircularProgressIndicator(strokeWidth: 2),
-
-
-
-                            );
-
-
-
-                          }
-
-
-
-                          final items = filtered
-
-
-
-                              .map(
-
-
-
-                                (rest) => _buildRestylingCardDataFor(
-
-
-
-                                  car.make,
-
-
-
-                                  car.model,
-
-
-
-                                  rest,
-
-
-
-                                ),
-
-
-
-                              )
-
-
-
-                              .toList();
-
-
-
-                          return ListView.separated(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            itemCount: items.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final data = items[index];
-                              final selected = car.restyling == data.value;
-                              return SizedBox(
-                                width: double.infinity,
-                                child: _RestylingCard(
-                                  title: data.title,
-                                  subtitle: data.subtitle,
-                                  imageUrl: data.imageUrl,
-                                  selected: selected,
-                                  onTap: () {
-                                    Navigator.pop(ctx);
-                                    _setCarPatch(
-                                      car.id,
-                                      _CarItemPatch(restyling: data.value),
-                                    );
-                                  },
-                                ),
-                              );
-                            },
-                          );
-
-
-
-                        },
-
-
-
-                      ),
-
-
-
-                    ),
-
-
-
-                    const SizedBox(height: 12),
-
-
-
-                    Row(
-
-
-
-                      children: [
-
-
-
-                        Expanded(
-
-
-
-                          child: OutlinedButton(
-
-
-
-                            onPressed: () {
-
-
-
-                              Navigator.pop(ctx);
-
-
-
-                              _setCarPatch(
-
-
-
-                                car.id,
-
-
-
-                                _CarItemPatch(restyling: ''),
-
-
-
-                              );
-
-
-
-                            },
-
-
-
-                            style: OutlinedButton.styleFrom(
-
-
-
-                              side: BorderSide(color: kSecondaryColor),
-
-
-
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-
-
-
-                              shape: RoundedRectangleBorder(
-
-
-
-                                borderRadius: BorderRadius.circular(12),
+                                weight: FontWeight.w700,
 
 
 
@@ -3409,15 +3157,103 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-                            child: const Text(
+                            IconButton(
 
 
 
-                              '\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C',
+                              onPressed: () => Navigator.pop(ctx),
 
 
 
-                              style: TextStyle(color: kSecondaryColor),
+                              icon: const Icon(Icons.close, size: 20),
+
+
+
+                            ),
+
+
+
+                          ],
+
+
+
+                        ),
+
+
+
+                        const SizedBox(height: 8),
+
+
+
+                        TextField(
+
+
+
+                          onChanged: (v) => setSheet(() => query = v),
+
+
+
+                          decoration: InputDecoration(
+
+
+
+                            hintText: 'Найти...',
+
+
+
+                            prefixIcon: const Icon(Icons.search, size: 18),
+
+
+
+                            filled: true,
+
+
+
+                            fillColor: kWhiteColor,
+
+
+
+                            contentPadding: const EdgeInsets.symmetric(
+
+
+
+                              horizontal: 10,
+
+
+
+                              vertical: 10,
+
+
+
+                            ),
+
+
+
+                            enabledBorder: OutlineInputBorder(
+
+
+
+                              borderRadius: BorderRadius.circular(10),
+
+
+
+                              borderSide: BorderSide(color: kBorderColor),
+
+
+
+                            ),
+
+
+
+                            focusedBorder: OutlineInputBorder(
+
+
+
+                              borderRadius: BorderRadius.circular(10),
+
+
+
+                              borderSide: BorderSide(color: kSecondaryColor),
 
 
 
@@ -3433,6 +3269,402 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
+                        const SizedBox(height: 8),
+
+
+
+                        Expanded(
+
+
+
+                          child: ValueListenableBuilder<int>(
+
+
+
+                            valueListenable: _RemoteCarCatalog.stamp,
+
+
+
+                            builder: (ctx, _, __) {
+
+
+
+                              final options = _RemoteCarCatalog.restylingsFor(
+
+
+
+                                car.make,
+
+
+
+                                car.model,
+
+
+
+                              );
+
+
+
+                              final items = options
+
+
+
+                                  .map(
+
+
+
+                                    (rest) => _buildRestylingCardDataFor(
+
+
+
+                                      car.make,
+
+
+
+                                      car.model,
+
+
+
+                                      rest,
+
+
+
+                                    ),
+
+
+
+                                  )
+
+
+
+                                  .where(
+
+
+
+                                    (item) => _matchesRestylingQuery(item, query),
+
+
+
+                                  )
+
+
+
+                                  .toList();
+
+
+
+                              final loading =
+
+
+
+                                  _RemoteCarCatalog.isRestylingsLoading(
+
+
+
+                                car.make,
+
+
+
+                                car.model,
+
+
+
+                              );
+
+
+
+
+
+
+
+                              if (items.isEmpty && loading) {
+
+
+
+                                return const Center(
+
+
+
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+
+
+
+                                );
+
+
+
+                              }
+
+
+
+
+
+
+
+                              if (items.isEmpty) {
+
+
+
+                                return const Center(
+
+
+
+                                  child: MyText(
+
+
+
+                                    text: 'Ничего не найдено',
+
+
+
+                                    size: 12,
+
+
+
+                                    color: kGreyColor,
+
+
+
+                                  ),
+
+
+
+                                );
+
+
+
+                              }
+
+
+
+
+
+
+
+                              return ListView.separated(
+
+
+
+                                padding: const EdgeInsets.only(bottom: 6),
+
+
+
+                                itemCount: items.length,
+
+
+
+                                separatorBuilder: (_, __) =>
+
+
+
+                                    const SizedBox(height: 12),
+
+
+
+                                itemBuilder: (context, index) {
+
+
+
+                                  final data = items[index];
+
+
+
+                                  final selected = car.restyling == data.value;
+
+
+
+                                  return SizedBox(
+
+
+
+                                    width: double.infinity,
+
+
+
+                                    child: _RestylingCard(
+
+
+
+                                      title: data.title,
+
+
+
+                                      subtitle: data.subtitle,
+
+
+
+                                      imageUrl: data.imageUrl,
+
+
+
+                                      selected: selected,
+
+
+
+                                      onTap: () {
+
+
+
+                                        Navigator.pop(ctx);
+
+
+
+                                        _setCarPatch(
+
+
+
+                                          car.id,
+
+
+
+                                          _CarItemPatch(restyling: data.value),
+
+
+
+                                        );
+
+
+
+                                      },
+
+
+
+                                    ),
+
+
+
+                                  );
+
+
+
+                                },
+
+
+
+                              );
+
+
+
+                            },
+
+
+
+                          ),
+
+
+
+                        ),
+
+
+
+                        const SizedBox(height: 12),
+
+
+
+                        Row(
+
+
+
+                          children: [
+
+
+
+                            Expanded(
+
+
+
+                              child: OutlinedButton(
+
+
+
+                                onPressed: () {
+
+
+
+                                  Navigator.pop(ctx);
+
+
+
+                                  _setCarPatch(
+
+
+
+                                    car.id,
+
+
+
+                                    _CarItemPatch(restyling: ''),
+
+
+
+                                  );
+
+
+
+                                },
+
+
+
+                                style: OutlinedButton.styleFrom(
+
+
+
+                                  side: BorderSide(color: kSecondaryColor),
+
+
+
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+
+
+
+                                  shape: RoundedRectangleBorder(
+
+
+
+                                    borderRadius: BorderRadius.circular(12),
+
+
+
+                                  ),
+
+
+
+                                ),
+
+
+
+                                child: const Text(
+
+
+
+                                  'Сбросить',
+
+
+
+                                  style: TextStyle(color: kSecondaryColor),
+
+
+
+                                ),
+
+
+
+                              ),
+
+
+
+                            ),
+
+
+
+                          ],
+
+
+
+                        ),
+
+
+
                       ],
 
 
@@ -3441,7 +3673,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-                  ],
+                  ),
 
 
 
@@ -3474,13 +3706,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
   }
-
-
-
-
-
-
-
   bool _looksNumericCode(String value) {
 
 
@@ -3666,7 +3891,11 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-      title: title.isEmpty ? (restLabel.isEmpty ? rest : restLabel) : title,
+      title: title.isEmpty
+          ? _fallbackRestylingTitle(
+              restLabel.isEmpty ? baseRestLabel : restLabel,
+            )
+          : title,
 
 
 
@@ -3743,6 +3972,10 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
     return ListView(
+
+
+
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
 
 
 
@@ -7044,31 +7277,63 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-            return SafeArea(
+            final media = MediaQuery.of(ctx);
 
 
 
-              child: Padding(
+            final sheetHeight =
 
 
 
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                (media.size.height - media.padding.top) * 0.88;
 
 
 
-                child: Column(
 
 
 
-                  mainAxisSize: MainAxisSize.min,
+
+            return AnimatedPadding(
 
 
 
-                  children: [
+              duration: const Duration(milliseconds: 120),
 
 
 
-                    Row(
+              curve: Curves.easeOut,
+
+
+
+              padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
+
+
+
+              child: SafeArea(
+
+
+
+                child: Padding(
+
+
+
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+
+
+
+                  child: SizedBox(
+
+
+
+                    height: sheetHeight,
+
+
+
+                    child: Column(
+
+
+
+                      mainAxisSize: MainAxisSize.max,
 
 
 
@@ -7076,23 +7341,143 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-                        Expanded(
+                        Row(
 
 
 
-                          child: MyText(
+                          children: [
 
 
 
-                            text: 'Поколение',
+                            Expanded(
 
 
 
-                            size: 16,
+                              child: MyText(
 
 
 
-                            weight: FontWeight.w700,
+                                text: 'Поколение',
+
+
+
+                                size: 16,
+
+
+
+                                weight: FontWeight.w700,
+
+
+
+                              ),
+
+
+
+                            ),
+
+
+
+                            IconButton(
+
+
+
+                              onPressed: () => Navigator.pop(ctx),
+
+
+
+                              icon: const Icon(Icons.close, size: 20),
+
+
+
+                            ),
+
+
+
+                          ],
+
+
+
+                        ),
+
+
+
+                        const SizedBox(height: 8),
+
+
+
+                        TextField(
+
+
+
+                          onChanged: (v) => setSheet(() => query = v),
+
+
+
+                          decoration: InputDecoration(
+
+
+
+                            hintText: 'Найти...',
+
+
+
+                            prefixIcon: const Icon(Icons.search, size: 18),
+
+
+
+                            filled: true,
+
+
+
+                            fillColor: kWhiteColor,
+
+
+
+                            contentPadding: const EdgeInsets.symmetric(
+
+
+
+                              horizontal: 10,
+
+
+
+                              vertical: 10,
+
+
+
+                            ),
+
+
+
+                            enabledBorder: OutlineInputBorder(
+
+
+
+                              borderRadius: BorderRadius.circular(10),
+
+
+
+                              borderSide: BorderSide(color: kBorderColor),
+
+
+
+                            ),
+
+
+
+                            focusedBorder: OutlineInputBorder(
+
+
+
+                              borderRadius: BorderRadius.circular(10),
+
+
+
+                              borderSide: BorderSide(color: kSecondaryColor),
+
+
+
+                            ),
 
 
 
@@ -7104,303 +7489,215 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-                        IconButton(
+                        const SizedBox(height: 8),
 
 
 
-                          onPressed: () => Navigator.pop(ctx),
+                        Expanded(
 
 
 
-                          icon: const Icon(Icons.close, size: 20),
+                          child: ValueListenableBuilder<int>(
 
 
 
-                        ),
+                            valueListenable: _RemoteCarCatalog.stamp,
 
 
 
-                      ],
+                            builder: (ctx, _, __) {
 
 
 
-                    ),
+                              final options = _allRestylingsForSelection(
 
 
 
-                    const SizedBox(height: 8),
+                                _tkMakes,
 
 
 
-                    TextField(
+                                _tkModels,
 
 
 
-                      onChanged: (v) => setSheet(() => query = v),
-
-
-
-                      decoration: InputDecoration(
-
-
-
-                        hintText: 'Найти...',
-
-
-
-                        prefixIcon: const Icon(Icons.search, size: 18),
-
-
-
-                        filled: true,
-
-
-
-                        fillColor: kWhiteColor,
-
-
-
-                        contentPadding: const EdgeInsets.symmetric(
-
-
-
-                          horizontal: 10,
-
-
-
-                          vertical: 10,
-
-
-
-                        ),
-
-
-
-                        enabledBorder: OutlineInputBorder(
-
-
-
-                          borderRadius: BorderRadius.circular(10),
-
-
-
-                          borderSide: BorderSide(color: kBorderColor),
-
-
-
-                        ),
-
-
-
-                        focusedBorder: OutlineInputBorder(
-
-
-
-                          borderRadius: BorderRadius.circular(10),
-
-
-
-                          borderSide: BorderSide(color: kSecondaryColor),
-
-
-
-                        ),
-
-
-
-                      ),
-
-
-
-                    ),
-
-
-
-                    const SizedBox(height: 8),
-
-
-
-                    Expanded(
-
-
-
-                      child: ValueListenableBuilder<int>(
-
-
-
-                        valueListenable: _RemoteCarCatalog.stamp,
-
-
-
-                        builder: (ctx, _, __) {
-
-
-
-                          final options = _allRestylingsForSelection(
-
-
-
-                            _tkMakes,
-
-
-
-                            _tkModels,
-
-
-
-                          );
-
-
-
-                          final filtered = options.where((opt) {
-
-
-
-                            if (query.trim().isEmpty) return true;
-
-
-
-                            return opt.toLowerCase().contains(
-
-
-
-                              query.trim().toLowerCase(),
-
-
-
-                            );
-
-
-
-                          }).toList();
-
-
-
-
-
-
-
-                          final items = filtered
-
-
-
-                              .map((rest) => _buildRestylingCardData(rest))
-
-
-
-                              .toList();
-
-
-
-
-
-
-
-                          return ListView.separated(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            itemCount: items.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 12),
-                            itemBuilder: (context, index) {
-                              final data = items[index];
-                              final selected = temp.contains(data.value);
-                              return SizedBox(
-                                width: double.infinity,
-                                child: _RestylingCard(
-                                  title: data.title,
-                                  subtitle: data.subtitle,
-                                  imageUrl: data.imageUrl,
-                                  selected: selected,
-                                  onTap: () => setSheet(() {
-                                        if (selected) {
-                                          temp.remove(data.value);
-                                        } else {
-                                          temp.add(data.value);
-                                        }
-                                      }),
-                                ),
                               );
+
+
+
+                              final items = options
+
+
+
+                                  .map((rest) => _buildRestylingCardData(rest))
+
+
+
+                                  .where(
+
+
+
+                                    (item) => _matchesRestylingQuery(item, query),
+
+
+
+                                  )
+
+
+
+                                  .toList();
+
+
+
+
+
+
+
+                              if (items.isEmpty) {
+
+
+
+                                return const Center(
+
+
+
+                                  child: MyText(
+
+
+
+                                    text: 'Ничего не найдено',
+
+
+
+                                    size: 12,
+
+
+
+                                    color: kGreyColor,
+
+
+
+                                  ),
+
+
+
+                                );
+
+
+
+                              }
+
+
+
+
+
+
+
+                              return ListView.separated(
+
+
+
+                                padding: const EdgeInsets.only(bottom: 6),
+
+
+
+                                itemCount: items.length,
+
+
+
+                                separatorBuilder: (_, __) =>
+
+
+
+                                    const SizedBox(height: 12),
+
+
+
+                                itemBuilder: (context, index) {
+
+
+
+                                  final data = items[index];
+
+
+
+                                  final selected = temp.contains(data.value);
+
+
+
+                                  return SizedBox(
+
+
+
+                                    width: double.infinity,
+
+
+
+                                    child: _RestylingCard(
+
+
+
+                                      title: data.title,
+
+
+
+                                      subtitle: data.subtitle,
+
+
+
+                                      imageUrl: data.imageUrl,
+
+
+
+                                      selected: selected,
+
+
+
+                                      onTap: () => setSheet(() {
+
+
+
+                                        if (selected) {
+
+
+
+                                          temp.remove(data.value);
+
+
+
+                                        } else {
+
+
+
+                                          temp.add(data.value);
+
+
+
+                                        }
+
+
+
+                                      }),
+
+
+
+                                    ),
+
+
+
+                                  );
+
+
+
+                                },
+
+
+
+                              );
+
+
+
                             },
-                          );
-
-
-
-                        },
-
-
-
-                      ),
-
-
-
-                    ),
-
-
-
-                    const SizedBox(height: 12),
-
-
-
-                    Row(
-
-
-
-                      children: [
-
-
-
-                        Expanded(
-
-
-
-                          child: OutlinedButton(
-
-
-
-                            onPressed: () => setSheet(() => temp.clear()),
-
-
-
-                            style: OutlinedButton.styleFrom(
-
-
-
-                              side: BorderSide(color: kSecondaryColor),
-
-
-
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-
-
-
-                              shape: RoundedRectangleBorder(
-
-
-
-                                borderRadius: BorderRadius.circular(12),
-
-
-
-                              ),
-
-
-
-                            ),
-
-
-
-                            child: const Text(
-
-
-
-                              '\u0421\u0431\u0440\u043E\u0441\u0438\u0442\u044C',
-
-
-
-                              style: TextStyle(color: kSecondaryColor),
-
-
-
-                            ),
 
 
 
@@ -7412,51 +7709,71 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-                        const SizedBox(width: 12),
+                        const SizedBox(height: 12),
 
 
 
-                        Expanded(
+                        Row(
 
 
 
-                          child: ElevatedButton(
+                          children: [
 
 
 
-                            onPressed: () {
+                            Expanded(
 
 
 
-                              _setRestylings(List<String>.from(temp));
+                              child: OutlinedButton(
 
 
 
-                              Navigator.pop(ctx);
+                                onPressed: () => setSheet(() => temp.clear()),
 
 
 
-                            },
+                                style: OutlinedButton.styleFrom(
 
 
 
-                            style: ElevatedButton.styleFrom(
+                                  side: BorderSide(color: kSecondaryColor),
 
 
 
-                              backgroundColor: kSecondaryColor,
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
 
 
 
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
 
 
 
-                              shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
 
 
 
-                                borderRadius: BorderRadius.circular(12),
+                                  ),
+
+
+
+                                ),
+
+
+
+                                child: const Text(
+
+
+
+                                  'Сбросить',
+
+
+
+                                  style: TextStyle(color: kSecondaryColor),
+
+
+
+                                ),
 
 
 
@@ -7468,15 +7785,79 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-                            child: const Text(
+                            const SizedBox(width: 12),
 
 
 
-                              '\u041F\u0440\u0438\u043C\u0435\u043D\u0438\u0442\u044C',
+                            Expanded(
 
 
 
-                              style: TextStyle(color: kWhiteColor),
+                              child: ElevatedButton(
+
+
+
+                                onPressed: () {
+
+
+
+                                  _setRestylings(List<String>.from(temp));
+
+
+
+                                  Navigator.pop(ctx);
+
+
+
+                                },
+
+
+
+                                style: ElevatedButton.styleFrom(
+
+
+
+                                  backgroundColor: kSecondaryColor,
+
+
+
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+
+
+
+                                  shape: RoundedRectangleBorder(
+
+
+
+                                    borderRadius: BorderRadius.circular(12),
+
+
+
+                                  ),
+
+
+
+                                ),
+
+
+
+                                child: const Text(
+
+
+
+                                  'Применить',
+
+
+
+                                  style: TextStyle(color: kWhiteColor),
+
+
+
+                                ),
+
+
+
+                              ),
 
 
 
@@ -7484,7 +7865,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-                          ),
+                          ],
 
 
 
@@ -7500,7 +7881,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-                  ],
+                  ),
 
 
 
@@ -7533,13 +7914,6 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
   }
-
-
-
-
-
-
-
   _RestylingCardData _buildRestylingCardData(String rest) {
 
 
@@ -7821,7 +8195,11 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-      title: title.isEmpty ? (restLabel.isEmpty ? restName : restLabel) : title,
+      title: title.isEmpty
+          ? _fallbackRestylingTitle(
+              restLabel.isEmpty ? baseRestLabel : restLabel,
+            )
+          : title,
 
 
 
@@ -8114,6 +8492,10 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
     return ListView(
+
+
+
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
 
 
 

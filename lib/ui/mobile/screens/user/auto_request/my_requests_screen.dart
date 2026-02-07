@@ -83,12 +83,15 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    Widget content;
+
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      content = const Center(child: CircularProgressIndicator(strokeWidth: 2));
+      return SafeArea(top: true, bottom: false, child: content);
     }
 
     if (_requests.isEmpty) {
-      return Center(
+      content = Center(
         child: Padding(
           padding: AppSizes.DEFAULT,
           child: Column(
@@ -109,9 +112,10 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
           ),
         ),
       );
+      return SafeArea(top: true, bottom: false, child: content);
     }
 
-    return ListView(
+    content = ListView(
       padding: AppSizes.listPaddingWithBottomBar(),
       children: [
         Wrap(
@@ -142,6 +146,8 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         ),
       ],
     );
+
+    return SafeArea(top: true, bottom: false, child: content);
   }
 }
 
