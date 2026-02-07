@@ -43,6 +43,7 @@ import 'package:flutter/material.dart';
 
 
 import 'package:flutter/services.dart';
+import 'package:flutter/scheduler.dart';
 
 
 
@@ -618,6 +619,24 @@ class _RemoteCarCatalog {
 
   }
 
+  static String _restylingValueFor(GenerationItem gen, RestylingItem rest) {
+    if (rest.id > 0) {
+      return 'rest:${rest.id}';
+    }
+    final start = rest.yearStart?.toString() ?? 'na';
+    final end = rest.yearEnd?.toString() ?? 'na';
+    final raw = rest.restyling.trim().isEmpty ? 'none' : rest.restyling.trim();
+    return 'gen:${gen.generation}|rest:$raw|$start-$end';
+  }
+
+  static String _restylingLabelFor(RestylingItem rest) {
+    final raw = rest.restyling.trim();
+    if (raw.isEmpty) {
+      return '\u0411\u0435\u0437 \u0440\u0435\u0441\u0442\u0430\u0439\u043b\u0438\u043d\u0433\u0430';
+    }
+    return raw;
+  }
+
 
 
 
@@ -888,19 +907,10 @@ class _RemoteCarCatalog {
 
 
 
-          final label = rest.restyling.trim().isEmpty
+          final value = _restylingValueFor(gen, rest);
+          final label = _restylingLabelFor(rest);
 
-
-
-              ? '\u0411\u0435\u0437 \u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433\u0430'
-
-
-
-              : rest.restyling;
-
-
-
-          restylings.add(label);
+          restylings.add(value);
 
 
 
@@ -908,7 +918,7 @@ class _RemoteCarCatalog {
 
 
 
-            _restylingKey(brandId, model, label),
+            _restylingKey(brandId, model, value),
 
 
 
@@ -945,6 +955,7 @@ class _RemoteCarCatalog {
 
 
                   .toList(),
+              restylingLabel: label,
 
 
 
@@ -964,7 +975,7 @@ class _RemoteCarCatalog {
 
 
 
-                _restylingKey(brandId, model, label),
+                _restylingKey(brandId, model, value),
 
 
 
@@ -996,7 +1007,7 @@ class _RemoteCarCatalog {
 
 
 
-              restylingPhotoByKey[_restylingKey(brandId, model, label)] = url;
+              restylingPhotoByKey[_restylingKey(brandId, model, value)] = url;
 
 
 
@@ -1036,7 +1047,7 @@ class _RemoteCarCatalog {
 
 
 
-            final set = yearsByRestyling.putIfAbsent(label, () => <int>{});
+            final set = yearsByRestyling.putIfAbsent(value, () => <int>{});
 
 
 
@@ -1703,17 +1714,16 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
   void _handleRemoteUpdate() {
-
-
-
     if (!mounted) return;
-
-
-
-    setState(() {});
-
-
-
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle || phase == SchedulerPhase.postFrameCallbacks) {
+      setState(() {});
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
 
@@ -2658,7 +2668,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-        car.restyling.trim(),
+        _restylingDisplayFor(car.make, car.model, car.restyling).trim(),
 
 
 
@@ -2742,7 +2752,8 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-        'generation': c.restyling.trim(),
+        'generation': _restylingDisplayFor(c.make, c.model, c.restyling).trim(),
+        'generationValue': c.restyling.trim(),
 
 
 
@@ -3526,7 +3537,8 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-    final restLabel = rest == '\u0411\u0435\u0437 \u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433\u0430' ? '' : rest;
+    final baseRestLabel = meta?.restylingLabel ?? rest;
+    final restLabel = baseRestLabel == '\u0411\u0435\u0437 \u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433\u0430' ? '' : baseRestLabel;
 
 
 
@@ -3654,7 +3666,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-      title: title.isEmpty ? rest : title,
+      title: title.isEmpty ? (restLabel.isEmpty ? rest : restLabel) : title,
 
 
 
@@ -4820,6 +4832,7 @@ class _CarCard extends StatelessWidget {
 
 
 
+                      keyboardType: TextInputType.number,
                       inputFormatters: [_RuPhoneFormatter()],
 
 
@@ -5969,17 +5982,16 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
   void _handleRemoteUpdate() {
-
-
-
     if (!mounted) return;
-
-
-
-    setState(() {});
-
-
-
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase == SchedulerPhase.idle || phase == SchedulerPhase.postFrameCallbacks) {
+      setState(() {});
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
 
@@ -6164,7 +6176,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-        _RemoteCarCatalog.ensureRestylings(mk, md);
+
 
 
 
@@ -7680,7 +7692,8 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-    final restLabel = restName == '\u0411\u0435\u0437 \u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433\u0430' ? '' : restName;
+    final baseRestLabel = meta?.restylingLabel ?? restName;
+    final restLabel = baseRestLabel == '\u0411\u0435\u0437 \u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433\u0430' ? '' : baseRestLabel;
 
 
 
@@ -7808,7 +7821,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-      title: title.isEmpty ? restName : title,
+      title: title.isEmpty ? (restLabel.isEmpty ? restName : restLabel) : title,
 
 
 
@@ -7980,11 +7993,11 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-    final carLine = restylings.isNotEmpty
+    final carLine = restylingDisplay.isNotEmpty
 
 
 
-        ? 'Поколения: ${restylings.join(', ')}'
+        ? 'Поколения: ${restylingDisplay.join(', ')}'
 
 
 
@@ -9062,6 +9075,7 @@ class _RestylingMeta {
 
 
     required this.frames,
+    required this.restylingLabel,
 
 
 
@@ -9086,6 +9100,7 @@ class _RestylingMeta {
 
 
   final List<String> frames;
+  final String restylingLabel;
 
 
 

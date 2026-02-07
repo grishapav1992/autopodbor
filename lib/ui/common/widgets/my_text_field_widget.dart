@@ -23,6 +23,7 @@ class MyTextField extends StatefulWidget {
     this.onTap,
     this.textAlign,
     this.inputFormatters,
+    this.keyboardType,
   });
 
   String? labelText, hintText;
@@ -36,6 +37,7 @@ class MyTextField extends StatefulWidget {
   final VoidCallback? onTap;
   TextAlign? textAlign;
   List<TextInputFormatter>? inputFormatters;
+  TextInputType? keyboardType;
 
   @override
   State<MyTextField> createState() => _MyTextFieldState();
@@ -69,6 +71,7 @@ class _MyTextFieldState extends State<MyTextField> {
             controller: widget.controller,
             onChanged: widget.onChanged,
             inputFormatters: widget.inputFormatters,
+            keyboardType: widget.keyboardType,
             textInputAction: TextInputAction.next,
             obscureText: widget.isObSecure!,
             obscuringCharacter: '*',
@@ -136,7 +139,7 @@ class _PhoneFieldState extends State<PhoneField> {
         cursorColor: kTertiaryColor,
         controller: widget.controller,
         onChanged: widget.onChanged,
-        keyboardType: TextInputType.phone,
+        keyboardType: TextInputType.number,
         inputFormatters: [RuPhoneFormatter()],
         textInputAction: TextInputAction.next,
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),

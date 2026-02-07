@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -64,8 +64,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 
   Future<void> _openCreate() async {
-    final created = await Navigator.of(context)
-        .push<bool>(MaterialPageRoute(builder: (_) => const AutoRequestScreen()));
+    final created = await Navigator.of(
+      context,
+    ).push<bool>(MaterialPageRoute(builder: (_) => const AutoRequestScreen()));
     if (created == true) {
       _load();
     }
@@ -73,7 +74,9 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
 
   Future<void> _openDetail(Map<String, dynamic> request) async {
     final updated = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => MyRequestDetailScreen(request: request)),
+      MaterialPageRoute(
+        builder: (_) => MyRequestDetailScreen(request: request),
+      ),
     );
     if (updated == true) _load();
   }
@@ -148,6 +151,11 @@ class _RequestCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final VoidCallback onTap;
 
+  String _cleanInternalRestTag(String text) {
+    final cleaned = text.replaceAll(RegExp(r'\brest:\d+\b'), '').trim();
+    return cleaned.replaceAll(RegExp(r'\s{2,}'), ' ');
+  }
+
   Color _statusColor(String status) {
     switch (status) {
       case 'Создана':
@@ -172,7 +180,7 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final type = data['type'] ?? 'by_car';
-    final title = data['title'] ?? 'Заявка';
+    final title = _cleanInternalRestTag((data['title'] ?? 'Заявка').toString());
     final requestNumber = data['requestNumber'] ?? data['id'] ?? '';
     final createdAt = data['createdAt'] ?? '';
     final status = data['status'] ?? 'Создана';
@@ -204,7 +212,10 @@ class _RequestCard extends StatelessWidget {
               builder: (context, constraints) {
                 final compact = constraints.maxWidth < 360;
                 final chip = Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: kSecondaryColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
@@ -229,7 +240,11 @@ class _RequestCard extends StatelessWidget {
                 return Row(
                   children: [
                     Expanded(
-                      child: MyText(text: title, size: 14, weight: FontWeight.w700),
+                      child: MyText(
+                        text: title,
+                        size: 14,
+                        weight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     chip,
