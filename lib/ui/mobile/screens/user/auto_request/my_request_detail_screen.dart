@@ -11,6 +11,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'package:flutter_application_1/ui/mobile/screens/user/auto_request/inspector_profile_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const String kStatusCreated = 'Создана';
 
@@ -137,10 +138,12 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
       cars = await StorageApi.getRequestCars(requestId: id);
     } catch (_) {}
     if (!mounted) return;
+    final previousCars = (_data['requestCars'] as List<dynamic>?) ?? const [];
+    final mergedCars = cars.isNotEmpty ? cars : previousCars;
     final dueDate =
         _data['dueDate']?.toString().isNotEmpty == true ? _data['dueDate'] : _extractDueDate(cars);
     setState(() {
-      _data['requestCars'] = cars;
+      _data['requestCars'] = mergedCars;
       if (dueDate != null && dueDate.toString().isNotEmpty) {
         _data['dueDate'] = dueDate;
       }
@@ -201,6 +204,17 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
       }
       return ids;
     }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      ids.addAll(_extractRestylingIds(map['id']));
+      ids.addAll(_extractRestylingIds(map['restylingId']));
+      ids.addAll(_extractRestylingIds(map['generationId']));
+      ids.addAll(_extractRestylingIds(map['restyling']));
+      ids.addAll(_extractRestylingIds(map['restylings']));
+      ids.addAll(_extractRestylingIds(map['generation']));
+      ids.addAll(_extractRestylingIds(map['generations']));
+      return ids;
+    }
     if (raw is int) return [raw];
     if (raw is num) return [raw.toInt()];
     final text = raw?.toString() ?? '';
@@ -216,10 +230,138 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     return ids;
   }
 
-  String _restylingIdsLabel(dynamic raw) {
-    final ids = _extractRestylingIds(raw);
-    if (ids.isEmpty) return '';
-    return ids.join(', ');
+  List<String> _stringList(dynamic raw) {
+    if (raw is List) {
+      final out = <String>[];
+      for (final item in raw) {
+        out.addAll(_stringList(item));
+      }
+      return out;
+    }
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      for (final key in const [
+        'nameRus',
+        'modelRus',
+        'markName',
+        'brandName',
+        'makeName',
+        'generationName',
+        'restylingName',
+        'name',
+        'model',
+        'generation',
+        'restyling',
+      ]) {
+        final values = _stringList(map[key]);
+        if (values.isNotEmpty) return values;
+      }
+      final fallbackId = map['id'] ?? map['restylingId'] ?? map['generationId'];
+      final idText = fallbackId?.toString().trim() ?? '';
+      if (idText.isNotEmpty) return [idText];
+      return const [];
+    }
+    final value = raw?.toString().trim() ?? '';
+    if (value.isEmpty) return const [];
+    return [value];
+  }
+
+  List<String> _collectRequestCarValues(
+    List<dynamic> requestCars,
+    List<String> keys,
+  ) {
+    final out = <String>{};
+    for (final raw in requestCars) {
+      if (raw is! Map) continue;
+      final car = Map<String, dynamic>.from(raw);
+      for (final key in keys) {
+        out.addAll(_stringList(car[key]));
+      }
+    }
+    return out.toList();
+  }
+
+  String _firstStringByKeys(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final values = _stringList(source[key]);
+      if (values.isEmpty) continue;
+      for (final value in values) {
+        final cleaned = _cleanInternalRestTag(value).trim();
+        if (cleaned.isNotEmpty) return cleaned;
+      }
+    }
+    return '';
+  }
+
+  List<String> _byCarRestylingLabels(Map<String, dynamic> car) {
+    final labels = <String>[
+      ..._stringList(car['restylings']),
+      ..._stringList(car['restyling']),
+      ..._stringList(car['generation']),
+      ..._stringList(car['generationName']),
+      ..._stringList(car['restylingName']),
+    ];
+    final cleaned = labels
+        .map((e) => _cleanInternalRestTag(e).trim())
+        .where((e) => e.isNotEmpty)
+        .map((e) => RegExp(r'^\d+$').hasMatch(e) ? 'ID $e' : e)
+        .toSet()
+        .toList();
+    if (cleaned.isNotEmpty) return cleaned;
+
+    final ids = <int>[
+      ..._extractRestylingIds(car['restylings']),
+      ..._extractRestylingIds(car['restyling']),
+      ..._extractRestylingIds(car['restylingId']),
+      ..._extractRestylingIds(car['restylingIds']),
+      ..._extractRestylingIds(car['generation']),
+      ..._extractRestylingIds(car['generationId']),
+    ].toSet().toList();
+    return ids.map((e) => 'ID $e').toList();
+  }
+
+  String _formatPhoneReadable(String value) {
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.length == 11 && (digits.startsWith('7') || digits.startsWith('8'))) {
+      final normalized = digits.startsWith('8') ? '7${digits.substring(1)}' : digits;
+      return '+7 (${normalized.substring(1, 4)}) ${normalized.substring(4, 7)}-${normalized.substring(7, 9)}-${normalized.substring(9, 11)}';
+    }
+    return value;
+  }
+
+  String _urlHost(String value) {
+    final raw = value.trim();
+    if (raw.isEmpty) return '';
+    Uri? uri = Uri.tryParse(raw);
+    if (uri == null || uri.host.isEmpty) {
+      uri = Uri.tryParse('https://$raw');
+    }
+    return (uri?.host ?? '').replaceFirst(RegExp(r'^www\.'), '');
+  }
+
+  Future<void> _openListingUrl(String value) async {
+    final raw = value.trim();
+    if (raw.isEmpty) return;
+    Uri? uri = Uri.tryParse(raw);
+    if (uri == null || uri.host.isEmpty) {
+      uri = Uri.tryParse('https://$raw');
+    }
+    if (uri == null) {
+      _showError('Не удалось открыть ссылку.');
+      return;
+    }
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    _showError('Не удалось открыть ссылку.');
+  }
+
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: kSecondaryColor),
+    );
   }
 
   Future<void> _selectOffer(Map<String, dynamic> offer) async {
@@ -518,15 +660,26 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
       ];
     }
     if (requestCars.isNotEmpty) {
-      return requestCars.map((raw) {
+      return requestCars.asMap().entries.map((entry) {
+        final index = entry.key + 1;
+        final raw = entry.value;
         final car = Map<String, dynamic>.from(raw as Map);
-        final restylings = _restylingIdsLabel(car['restylings']);
-        final phone = car['phone'] ?? car['sellerPhone'];
-        final url = car['url'] ?? car['sourceUrl'];
+        final restylingLabels = _byCarRestylingLabels(car);
+        final phoneRaw = (car['phone'] ?? car['sellerPhone'] ?? '').toString().trim();
+        final urlRaw = (car['url'] ?? car['sourceUrl'] ?? '').toString().trim();
         final dueAt = _formatServerDate(car['dueAt'] ?? car['due_at'] ?? car['due']);
-        final title = restylings.isNotEmpty
-            ? 'Поколения: $restylings'
-            : 'Автомобиль';
+        final make = _firstStringByKeys(
+          car,
+          const ['makeName', 'brandName', 'markName', 'make', 'brand', 'mark'],
+        );
+        final model = _firstStringByKeys(
+          car,
+          const ['modelRus', 'modelName', 'model'],
+        );
+        final carName = [make, model].where((e) => e.isNotEmpty).join(' ');
+        final title = carName.isNotEmpty ? carName : 'Автомобиль №$index';
+        final phone = phoneRaw.isEmpty ? '' : _formatPhoneReadable(phoneRaw);
+        final host = _urlHost(urlRaw);
 
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
@@ -540,15 +693,71 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               MyText(text: title, size: 13, weight: FontWeight.w600),
+              if (restylingLabels.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                const MyText(
+                  text: 'Поколение',
+                  size: 11,
+                  color: kGreyColor,
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: restylingLabels
+                      .map(
+                        (label) => Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: kPrimaryColor,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: kBorderColor),
+                          ),
+                          child: MyText(
+                            text: label,
+                            size: 11,
+                            color: kTertiaryColor,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
               if (dueAt.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 MyText(text: 'Срок: $dueAt', size: 12, color: kGreyColor),
               ],
-              if ((url ?? '').toString().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                MyText(text: 'Ссылка: $url', size: 12, color: kGreyColor),
+              if (urlRaw.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: MyText(
+                        text: 'Объявление: ${host.isEmpty ? urlRaw : host}',
+                        size: 12,
+                        color: kGreyColor,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _openListingUrl(urlRaw),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(0, 0),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Открыть',
+                        style: TextStyle(color: kSecondaryColor, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
               ],
-              if ((phone ?? '').toString().isNotEmpty) ...[
+              if (phone.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 MyText(text: 'Телефон: $phone', size: 12, color: kGreyColor),
               ],
@@ -603,34 +812,123 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
   }
 
   List<Widget> _buildTurnkey() {
-    final makes = (_data['makes'] as List<dynamic>?)?.cast<String>() ?? [];
+    final requestCars = (_data['requestCars'] as List<dynamic>?) ?? [];
+    final savedMakes = (_data['makes'] as List<dynamic>?) ?? const [];
+    final savedModels = (_data['models'] as List<dynamic>?) ?? const [];
+    final savedRestylings = (_data['restylings'] as List<dynamic>?) ?? const [];
+    final makes = <String>[
+      ...savedMakes.expand(_stringList),
+      ..._collectRequestCarValues(
+        requestCars,
+        const ['make', 'brand', 'makeName', 'brandName', 'mark', 'markName'],
+      ),
+    ].where((e) => e.trim().isNotEmpty).toSet().toList();
 
-    final models = (_data['models'] as List<dynamic>?)?.cast<String>() ?? [];
+    final models = <String>[
+      ...savedModels.expand(_stringList),
+      ..._collectRequestCarValues(
+        requestCars,
+        const ['model', 'modelName'],
+      ),
+    ].where((e) => e.trim().isNotEmpty).toSet().toList();
 
     final restylings = <String>[];
-    final requestCars = (_data['requestCars'] as List<dynamic>?) ?? [];
     for (final raw in requestCars) {
       if (raw is! Map) continue;
-      final ids = _extractRestylingIds(raw['restylings']);
-      restylings.addAll(ids.map((e) => e.toString()));
+      final car = Map<String, dynamic>.from(raw);
+      final labels = _collectRequestCarValues(
+        [car],
+        const [
+          'restylingName',
+          'restyling',
+          'generationName',
+          'generation',
+          'restylings',
+        ],
+      );
+      if (labels.isNotEmpty) {
+        restylings.addAll(labels);
+      }
+      final ids = <int>[
+        ..._extractRestylingIds(car['restylings']),
+        ..._extractRestylingIds(car['restyling']),
+        ..._extractRestylingIds(car['restylingId']),
+        ..._extractRestylingIds(car['restylingIds']),
+        ..._extractRestylingIds(car['generation']),
+        ..._extractRestylingIds(car['generationId']),
+      ];
+      if (labels.isEmpty) {
+        restylings.addAll(ids.map((e) => e.toString()));
+      }
     }
     if (restylings.isEmpty) {
       restylings.addAll(
-        ((_data['restylings'] as List<dynamic>?)?.cast<String>() ?? [])
+        savedRestylings
+            .expand(_stringList)
             .map(_cleanInternalRestTag),
       );
     }
+    final normalizedRestylings = restylings
+        .map((e) => _cleanInternalRestTag(e).trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
+    final generationLabels = normalizedRestylings
+        .map(
+          (value) => RegExp(r'^\d+$').hasMatch(value)
+              ? 'Поколение #$value'
+              : value,
+        )
+        .toList();
+
 
     return [
-      _ChipRow(label: 'Марка', values: makes),
-
-      const SizedBox(height: 8),
-
-      _ChipRow(label: 'Модель', values: models),
-
-      const SizedBox(height: 8),
-
-      _ChipRow(label: 'Поколение', values: restylings),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: kWhiteColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kBorderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const MyText(
+              text: 'Критерии подбора',
+              size: 13,
+              weight: FontWeight.w700,
+            ),
+            const SizedBox(height: 8),
+            _ChipRow(label: 'Марка', values: makes),
+            const SizedBox(height: 8),
+            _ChipRow(label: 'Модель', values: models),
+            const SizedBox(height: 8),
+            _ChipRow(label: 'Поколение', values: generationLabels),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: kSecondaryColor.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: const [
+                  Icon(Icons.info_outline, size: 16, color: kGreyColor),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: MyText(
+                      text: 'Ссылка на объявление для заявки "Под ключ" не требуется.',
+                      size: 11,
+                      color: kGreyColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     ];
   }
 
@@ -1429,3 +1727,4 @@ class _ChipRow extends StatelessWidget {
     );
   }
 }
+

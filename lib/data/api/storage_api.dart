@@ -223,6 +223,37 @@ class StorageApi {
     return data;
   }
 
+  static Future<bool> hasSavedSession({bool probeWithGetBrand = false}) async {
+    final accessToken = await UserSimplePreferences.getAccessToken();
+    final refreshToken = await UserSimplePreferences.getRefreshToken();
+    final hasAccess = accessToken != null && accessToken.isNotEmpty;
+    final hasRefresh = refreshToken != null && refreshToken.isNotEmpty;
+
+    if (probeWithGetBrand) {
+      // Force an authenticated probe call. If access token is expired,
+      // _postRpc will run the standard 401 -> RefreshToken -> retry flow.
+      return _probeSessionByGetBrand();
+    }
+
+    if (!hasAccess && !hasRefresh) return false;
+    if (hasAccess) return true;
+
+    return _tryRefreshTokens();
+  }
+
+  static Future<bool> _probeSessionByGetBrand() async {
+    try {
+      await _postRpc(
+        method: 'Storage.GetBrand',
+        params: {'search': ''},
+        timeout: const Duration(seconds: 8),
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> _tryRefreshTokens() async {
     try {
       final refreshToken = await UserSimplePreferences.getRefreshToken();
@@ -261,7 +292,7 @@ class StorageApi {
     Duration timeout = const Duration(seconds: 12),
   }) async {
     final data = await _postRpc(
-      method: 'storage.auth',
+      method: 'Storage.Auth',
       params: {'phone': phone},
       timeout: timeout,
       includeAuth: false,
@@ -295,7 +326,7 @@ class StorageApi {
       params['sessionId'] = sessionId;
     }
     final data = await _postRpc(
-      method: 'storage.authVerify',
+      method: 'Storage.AuthVerify',
       params: params,
       timeout: timeout,
       includeAuth: false,

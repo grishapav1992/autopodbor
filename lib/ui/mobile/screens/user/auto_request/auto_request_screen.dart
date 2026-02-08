@@ -7838,13 +7838,36 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
   }
+  int? _turnkeyRestylingIdFor(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
 
+    final parts = trimmed.split('|');
+    if (parts.length >= 3) {
+      final make = parts[0].trim();
+      final model = parts[1].trim();
+      final restName = parts.sublist(2).join('|').trim();
+      final id = _RemoteCarCatalog.restylingIdFor(make, model, restName);
+      if (id != null && id > 0) return id;
+    }
 
+    final directId = _RemoteCarCatalog.restylingIdFor('', '', trimmed);
+    if (directId != null && directId > 0) return directId;
 
+    final makes = _tkMakes.isNotEmpty ? _tkMakes : _carCatalog.keys.toList();
+    final selectedModels = _tkModels;
+    for (final make in makes) {
+      final models = selectedModels.isNotEmpty
+          ? selectedModels
+          : _RemoteCarCatalog.modelsFor(make);
+      for (final model in models) {
+        final id = _RemoteCarCatalog.restylingIdFor(make, model, trimmed);
+        if (id != null && id > 0) return id;
+      }
+    }
 
-
-
-
+    return null;
+  }
     Future<void> _submitTurnkey() async {
     final dueDateValid = _validateDueDate();
     if (!dueDateValid) {
@@ -7853,8 +7876,9 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     }
 
     final restylingIds = _tkRestylings
-        .map((r) => _RemoteCarCatalog.restylingIdFor('', '', r))
+        .map(_turnkeyRestylingIdFor)
         .whereType<int>()
+        .toSet()
         .toList();
     final dueAt = _dueDate == null ? null : _formatDateIso(_dueDate!);
     final requestCars = [
@@ -9259,6 +9283,7 @@ class _RestylingCard extends StatelessWidget {
 
 
 }
+
 
 
 

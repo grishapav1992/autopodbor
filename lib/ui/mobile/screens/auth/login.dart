@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -45,10 +45,17 @@ class _LoginState extends State<Login> {
   String _normalizePhone(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
-    if (digits.startsWith('8') && digits.length == 11) return '+7${digits.substring(1)}';
-    if (digits.startsWith('7') && digits.length == 11) return '+$digits';
-    if (digits.length == 10) return '+7$digits';
-    return '+$digits';
+    String normalizedDigits = digits;
+    if (digits.startsWith('8') && digits.length == 11) {
+      normalizedDigits = '7${digits.substring(1)}';
+    } else if (!digits.startsWith('7') && digits.length == 10) {
+      normalizedDigits = '7$digits';
+    }
+    return '+$normalizedDigits';
+  }
+
+  bool _isValidPhoneForAuth(String normalizedPhone) {
+    return RegExp(r'^\+7\d{10}$').hasMatch(normalizedPhone);
   }
 
   void _showError(String message) {
@@ -61,9 +68,8 @@ class _LoginState extends State<Login> {
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
     final phone = _normalizePhone(_phoneController.text.trim());
-    final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
-    if (digitsLen < 11) {
-      _showError('Р’РІРµРґРёС‚Рµ РєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°.');
+    if (!_isValidPhoneForAuth(phone)) {
+      _showError('Введите корректный номер телефона.');
       return;
     }
 
@@ -73,7 +79,7 @@ class _LoginState extends State<Login> {
       _requestPhone = phone;
       _callPhone = '';
       _sessionId = null;
-      _statusText = 'Р—Р°РїСЂР°С€РёРІР°РµРј РЅРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°...';
+      _statusText = 'Запрашиваем номер для звонка...';
     });
 
     try {
@@ -83,12 +89,12 @@ class _LoginState extends State<Login> {
         _callPhone = result.callPhone;
         _sessionId = result.sessionId;
         _statusText =
-            'РћР¶РёРґР°РµРј Р·РІРѕРЅРѕРє СЃ РЅРѕРјРµСЂР° $_requestPhone РЅР° $_callPhone. РџСЂРѕРІРµСЂРєР° РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕ 3 РјРёРЅСѓС‚.';
+            'Ожидаем звонок с номера $_requestPhone на $_callPhone. Проверка выполняется автоматически до 3 минут.';
       });
       unawaited(_startAutoVerify(phone, currentOp));
     } catch (_) {
       if (!mounted || currentOp != _opId) return;
-      _showError('РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ Р°РІС‚РѕСЂРёР·Р°С†РёСЋ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·.');
+      _showError('Не удалось начать авторизацию. Попробуйте еще раз.');
       setState(() {
         _statusText = '';
       });
@@ -102,7 +108,7 @@ class _LoginState extends State<Login> {
   Future<void> _openDialer() async {
     final target = _callPhone.trim();
     if (target.isEmpty) {
-      _showError('РЎРЅР°С‡Р°Р»Р° РЅР°Р¶РјРёС‚Рµ "Р”Р°Р»РµРµ", С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ РЅРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°.');
+      _showError('Сначала нажмите "Далее", чтобы получить номер для звонка.');
       return;
     }
     final uri = Uri(
@@ -113,14 +119,14 @@ class _LoginState extends State<Login> {
       await launchUrl(uri);
       return;
     }
-    _showError('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ РґР»СЏ Р·РІРѕРЅРєР°.');
+    _showError('Не удалось открыть приложение для звонка.');
   }
 
   Future<void> _startAutoVerify(String phone, int startOp) async {
     if (!mounted || startOp != _opId || _callPhone.isEmpty) return;
     setState(() {
       _isVerifyLoading = true;
-      _statusText = 'Р–РґРµРј Р·РІРѕРЅРѕРє Рё РїСЂРѕРІРµСЂСЏРµРј Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё...';
+      _statusText = 'Ждем звонок и проверяем автоматически...';
     });
 
     final deadline = DateTime.now().add(const Duration(minutes: 3));
@@ -138,7 +144,7 @@ class _LoginState extends State<Login> {
           if (!mounted || startOp != _opId) return;
           setState(() {
             _isVerifyLoading = false;
-            _statusText = 'РЎС‚Р°С‚СѓСЃ РїСЂРѕРІРµСЂРєРё: РІСЃРµ OK. Р’С‹РїРѕР»РЅСЏРµРј РІС…РѕРґ...';
+            _statusText = 'Статус проверки: все OK. Выполняем вход...';
           });
           await Future.delayed(const Duration(milliseconds: 700));
           if (!mounted || startOp != _opId) return;
@@ -154,9 +160,9 @@ class _LoginState extends State<Login> {
     setState(() {
       _isVerifyLoading = false;
       _statusText =
-          'РЎС‚Р°С‚СѓСЃ РїСЂРѕРІРµСЂРєРё: РЅРµ OK. РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґС‚РІРµСЂРґРёС‚СЊ Р·РІРѕРЅРѕРє Р·Р° 3 РјРёРЅСѓС‚С‹.';
+          'Статус проверки: не OK. Не удалось подтвердить звонок за 3 минуты.';
     });
-  }\n
+  }
   void _proceedAfterCheck() {
     final controller = Get.find<UserController>();
     if (controller.isDealer) {
@@ -181,14 +187,14 @@ class _LoginState extends State<Login> {
         children: [
           const AuthHeading(
             textAlign: TextAlign.center,
-            title: 'РђРІС‚РѕСЂРёР·Р°С†РёСЏ',
+            title: 'Авторизация',
             subTitle:
-                'Р’РІРµРґРёС‚Рµ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР° Рё РЅР°Р¶РјРёС‚Рµ "Р”Р°Р»РµРµ". Р—Р°С‚РµРј РїРѕР·РІРѕРЅРёС‚Рµ РЅР° РІС‹РґР°РЅРЅС‹Р№ РЅРѕРјРµСЂ вЂ” РїСЂРѕРІРµСЂРєР° РїСЂРѕР№РґРµС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.',
+                'Введите номер телефона и нажмите "Далее". Затем позвоните на выданный номер — проверка пройдет автоматически.',
           ),
           PhoneField(controller: _phoneController),
           if (_requestPhone.isNotEmpty)
             MyText(
-              text: 'Р’Р°С€ РЅРѕРјРµСЂ: $_requestPhone',
+              text: 'Ваш номер: $_requestPhone',
               size: 12,
               color: kGreyColor,
               paddingBottom: 8,
@@ -223,7 +229,7 @@ class _LoginState extends State<Login> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const MyText(text: 'РќРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°', size: 11, color: kGreyColor),
+                            const MyText(text: 'Номер для звонка', size: 11, color: kGreyColor),
                             const SizedBox(height: 2),
                             MyText(
                               text: _callPhone,
@@ -233,7 +239,7 @@ class _LoginState extends State<Login> {
                             ),
                             const SizedBox(height: 2),
                             const MyText(
-                              text: 'РќР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ Р·РІРѕРЅРѕРє',
+                              text: 'Нажмите, чтобы открыть звонок',
                               size: 10,
                               color: kGreyColor,
                             ),
@@ -247,7 +253,7 @@ class _LoginState extends State<Login> {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: const MyText(
-                          text: 'РџРѕР·РІРѕРЅРёС‚СЊ',
+                          text: 'Позвонить',
                           size: 10,
                           color: kSecondaryColor,
                           weight: FontWeight.w700,
@@ -273,7 +279,7 @@ class _LoginState extends State<Login> {
           if (_callPhone.isEmpty)
             MyButton(
               onTap: _startAuth,
-              buttonText: _isAuthLoading ? 'Р—Р°РіСЂСѓР·РєР°...' : 'Р”Р°Р»РµРµ',
+              buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
               bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
             )
           else
@@ -285,7 +291,7 @@ class _LoginState extends State<Login> {
                 border: Border.all(color: kBorderColor),
               ),
               child: const MyText(
-                text: 'РќР°Р¶РјРёС‚Рµ РЅР° РЅРѕРјРµСЂ РІС‹С€Рµ Рё РІС‹РїРѕР»РЅРёС‚Рµ Р·РІРѕРЅРѕРє.',
+                text: 'Нажмите на номер выше и выполните звонок.',
                 size: 11,
                 color: kGreyColor,
               ),

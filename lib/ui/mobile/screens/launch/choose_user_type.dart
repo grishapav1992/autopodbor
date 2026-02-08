@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -26,6 +29,7 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
     });
     _userController.chooseRole(index == 0 ? UserRole.user : UserRole.dealer);
     UserSimplePreferences.setUserRole(index == 0 ? 'user' : 'dealer');
+    unawaited(StorageApi.hasSavedSession(probeWithGetBrand: true));
   }
 
   @override
@@ -80,11 +84,9 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
                 UserSimplePreferences.setUserRole(
                   role == UserRole.user ? 'user' : 'dealer',
                 );
-                final access = await UserSimplePreferences.getAccessToken();
-                final refresh = await UserSimplePreferences.getRefreshToken();
-                final hasSession =
-                    (access != null && access.isNotEmpty) &&
-                    (refresh != null && refresh.isNotEmpty);
+                final hasSession = await StorageApi.hasSavedSession(
+                  probeWithGetBrand: true,
+                );
                 if (hasSession) {
                   if (role == UserRole.user) {
                     Get.offAllNamed(AppLinks.userHome);
