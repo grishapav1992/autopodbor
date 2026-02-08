@@ -4,7 +4,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 
-import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 
@@ -37,6 +37,7 @@ class MyRequestDetailScreen extends StatefulWidget {
 
 class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
   late Map<String, dynamic> _data;
+  bool _loadingCars = false;
 
   final ScrollController _scrollController = ScrollController();
 
@@ -47,11 +48,33 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     return cleaned.replaceAll(RegExp(r'\s{2,}'), ' ');
   }
 
+  String _normalizeRequestNumber(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+    if (RegExp(r'[A-Za-z]').hasMatch(value)) return value;
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return value;
+    final six = digits.length > 6 ? digits.substring(digits.length - 6) : digits.padLeft(6, '0');
+    return 'F$six';
+  }
+
+  String _requestMeta(String requestNumber, String createdAt) {
+    final num = _normalizeRequestNumber(requestNumber);
+    final date = createdAt.trim();
+    if (num.isEmpty && date.isEmpty) return '';
+    if (num.isEmpty) return date;
+    if (date.isEmpty) return '№ $num';
+    return '№ $num | $date';
+  }
+
   @override
   void initState() {
     super.initState();
 
     _data = Map<String, dynamic>.from(widget.request);
+    if (_isServerRequest()) {
+      _loadServerCars();
+    }
   }
 
   @override
@@ -61,13 +84,66 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     super.dispose();
   }
 
-  Future<void> _updateRequest(Map<String, dynamic> patch) async {
-    final id = _data['id'] as String?;
+  bool _isServerRequest() {
+    return _data['server'] == true;
+  }
 
+  int? _requestId() {
+    final raw = _data['id'] ?? _data['requestId'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
+  String _formatServerDate(dynamic raw) {
+    if (raw == null) return '';
+    if (raw is DateTime) return _formatDate(raw);
+    if (raw is num) {
+      final ms = raw > 1000000000000 ? raw.toInt() : (raw * 1000).toInt();
+      return _formatDate(DateTime.fromMillisecondsSinceEpoch(ms));
+    }
+    final text = raw.toString().trim();
+    if (text.isEmpty) return '';
+    try {
+      return _formatDate(DateTime.parse(text));
+    } catch (_) {}
+    return text;
+  }
+
+  Future<void> _loadServerCars() async {
+    final id = _requestId();
     if (id == null) return;
+    setState(() {
+      _loadingCars = true;
+    });
+    List<Map<String, dynamic>> cars = [];
+    try {
+      cars = await StorageApi.getRequestCars(requestId: id);
+    } catch (_) {}
+    if (!mounted) return;
+    final dueDate =
+        _data['dueDate']?.toString().isNotEmpty == true ? _data['dueDate'] : _extractDueDate(cars);
+    setState(() {
+      _data['requestCars'] = cars;
+      if (dueDate != null && dueDate.toString().isNotEmpty) {
+        _data['dueDate'] = dueDate;
+      }
+      _loadingCars = false;
+    });
+  }
 
-    await UserSimplePreferences.updateAutoRequest(id, patch);
+  String _extractDueDate(List<Map<String, dynamic>> cars) {
+    for (final car in cars) {
+      final raw = car['dueAt'] ?? car['due_at'] ?? car['due'];
+      final formatted = _formatServerDate(raw);
+      if (formatted.isNotEmpty) return formatted;
+    }
+    return '';
+  }
 
+  Future<void> _updateRequest(Map<String, dynamic> patch) async {
+    if (_isServerRequest()) return;
     setState(() {
       _data.addAll(patch);
     });
@@ -99,6 +175,36 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     }
 
     return null;
+  }
+
+  List<int> _extractRestylingIds(dynamic raw) {
+    final ids = <int>[];
+    if (raw is List) {
+      for (final item in raw) {
+        final id = _extractRestylingIds(item);
+        ids.addAll(id);
+      }
+      return ids;
+    }
+    if (raw is int) return [raw];
+    if (raw is num) return [raw.toInt()];
+    final text = raw?.toString() ?? '';
+    if (text.isEmpty) return ids;
+    final match = RegExp(r'rest:(\d+)').firstMatch(text);
+    if (match != null) {
+      final parsed = int.tryParse(match.group(1) ?? '');
+      if (parsed != null) ids.add(parsed);
+      return ids;
+    }
+    final parsed = int.tryParse(text);
+    if (parsed != null) ids.add(parsed);
+    return ids;
+  }
+
+  String _restylingIdsLabel(dynamic raw) {
+    final ids = _extractRestylingIds(raw);
+    if (ids.isEmpty) return '';
+    return ids.join(', ');
   }
 
   Future<void> _selectOffer(Map<String, dynamic> offer) async {
@@ -144,7 +250,11 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
   }
 
   Future<void> _markDone() async {
+    final id = _data['id'] as String?;
+    if (id == null || id.isEmpty) return;
     await _updateRequest({'status': kStatusDone});
+    if (!mounted) return;
+    Navigator.of(context).pop(true);
   }
 
   Color _statusColor(String status) {
@@ -254,14 +364,23 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     final type = _data['type'] ?? 'by_car';
 
     final status = _data['status'] ?? kStatusCreated;
+    final isServer = _isServerRequest();
 
-    final title = _cleanInternalRestTag((_data['title'] ?? '').toString());
+    var title = _cleanInternalRestTag((_data['title'] ?? '').toString());
+    if (title.isEmpty) {
+      title = type == 'turnkey' ? 'Под ключ' : 'По авто';
+    }
 
     final subtitle = _cleanInternalRestTag(
       (_data['subtitle'] ?? '').toString(),
     );
 
-    final selectedOffer = _selectedOffer();
+    final selectedOffer = isServer ? null : _selectedOffer();
+    final dueDate = _data['dueDate']?.toString() ?? '';
+    final requestMeta = _requestMeta(
+      (_data['requestNumber'] ?? _data['id'] ?? '').toString(),
+      (_data['createdAt'] ?? '').toString(),
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -284,18 +403,20 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
 
           const SizedBox(height: 10),
 
-          _MainAction(
-            status: status,
+          if (!isServer) ...[
+            _MainAction(
+              status: status,
 
-            dueDate: _dueDateLabel(selectedOffer),
+              dueDate: _dueDateLabel(selectedOffer),
 
-            onPrimary:
-                (status == kStatusCreated || status == kStatusAwaitPayment)
-                ? _scrollToOffers
-                : null,
-          ),
+              onPrimary:
+                  (status == kStatusCreated || status == kStatusAwaitPayment)
+                  ? _scrollToOffers
+                  : null,
+            ),
 
-          const SizedBox(height: 12),
+            const SizedBox(height: 12),
+          ],
 
           Wrap(
             alignment: WrapAlignment.spaceBetween,
@@ -331,13 +452,10 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
                 ),
               ),
 
-              MyText(
-                text: _data['createdAt'] ?? '',
-
-                size: 11,
-
-                color: kGreyColor,
-              ),
+              if (requestMeta.isNotEmpty)
+                MyText(text: requestMeta, size: 11, color: kGreyColor),
+              if (dueDate.isNotEmpty)
+                MyText(text: 'Срок: $dueDate', size: 11, color: kGreyColor),
             ],
           ),
 
@@ -365,19 +483,67 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
 
           const SizedBox(height: 20),
 
-          _buildOffersSection(status, selectedOffer),
+          if (!isServer) ...[
+            _buildOffersSection(status, selectedOffer),
 
-          const SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-          _buildActions(status),
+            _buildActions(status),
+          ],
         ],
       ),
     );
   }
 
   List<Widget> _buildByCar() {
-    final cars = (_data['cars'] as List<dynamic>?) ?? [];
+    final requestCars = (_data['requestCars'] as List<dynamic>?) ?? [];
+    if (_loadingCars && requestCars.isEmpty) {
+      return [
+        MyText(text: 'Загрузка...', size: 12, color: kGreyColor),
+      ];
+    }
+    if (requestCars.isNotEmpty) {
+      return requestCars.map((raw) {
+        final car = Map<String, dynamic>.from(raw as Map);
+        final restylings = _restylingIdsLabel(car['restylings']);
+        final phone = car['phone'] ?? car['sellerPhone'];
+        final url = car['url'] ?? car['sourceUrl'];
+        final dueAt = _formatServerDate(car['dueAt'] ?? car['due_at'] ?? car['due']);
+        final title = restylings.isNotEmpty
+            ? 'Поколения: $restylings'
+            : 'Автомобиль';
 
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: kWhiteColor,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              MyText(text: title, size: 13, weight: FontWeight.w600),
+              if (dueAt.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                MyText(text: 'Срок: $dueAt', size: 12, color: kGreyColor),
+              ],
+              if ((url ?? '').toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                MyText(text: 'Ссылка: $url', size: 12, color: kGreyColor),
+              ],
+              if ((phone ?? '').toString().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                MyText(text: 'Телефон: $phone', size: 12, color: kGreyColor),
+              ],
+            ],
+          ),
+        );
+      }).toList();
+    }
+
+    final cars = (_data['cars'] as List<dynamic>?) ?? [];
     if (cars.isEmpty) {
       return [
         MyText(text: 'Автомобили не добавлены', size: 12, color: kGreyColor),
@@ -386,60 +552,32 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
 
     return cars.map((raw) {
       final car = Map<String, dynamic>.from(raw as Map);
-
       final make = car['make'] ?? '-';
-
       final model = car['model'] ?? '-';
-
       final generation = _cleanInternalRestTag(
         (car['generation'] ?? '').toString(),
       );
-
       return Container(
         margin: const EdgeInsets.only(bottom: 10),
-
         padding: const EdgeInsets.all(12),
-
         decoration: BoxDecoration(
           color: kWhiteColor,
-
           borderRadius: BorderRadius.circular(12),
-
           border: Border.all(color: kBorderColor),
         ),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
-
           children: [
             MyText(
               text: '$make $model $generation'.trim(),
-
               size: 13,
-
               weight: FontWeight.w600,
             ),
-
-            if ((car['plate'] ?? '').toString().isNotEmpty) ...[
-              const SizedBox(height: 4),
-
-              MyText(
-                text: 'Госномер: ${car['plate']}',
-
-                size: 12,
-
-                color: kGreyColor,
-              ),
-            ],
-
             if ((car['sourceUrl'] ?? '').toString().isNotEmpty) ...[
               const SizedBox(height: 4),
-
               MyText(
                 text: 'Ссылка: ${car['sourceUrl']}',
-
                 size: 12,
-
                 color: kGreyColor,
               ),
             ],
@@ -454,10 +592,19 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
 
     final models = (_data['models'] as List<dynamic>?)?.cast<String>() ?? [];
 
-    final restylings =
+    final restylings = <String>[];
+    final requestCars = (_data['requestCars'] as List<dynamic>?) ?? [];
+    for (final raw in requestCars) {
+      if (raw is! Map) continue;
+      final ids = _extractRestylingIds(raw['restylings']);
+      restylings.addAll(ids.map((e) => e.toString()));
+    }
+    if (restylings.isEmpty) {
+      restylings.addAll(
         ((_data['restylings'] as List<dynamic>?)?.cast<String>() ?? [])
-            .map(_cleanInternalRestTag)
-            .toList();
+            .map(_cleanInternalRestTag),
+      );
+    }
 
     return [
       _ChipRow(label: 'Марка', values: makes),

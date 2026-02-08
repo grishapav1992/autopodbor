@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
-import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/auto_request/auto_request_screen.dart';
@@ -38,29 +38,87 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   }
 
   Future<void> _load() async {
-    final list = await UserSimplePreferences.getAutoRequests();
-    final allowedStatuses = <String>{
-      'Создана',
-      'Ожидает оплаты',
-      'Оплачено (эскроу)',
-      'В работе',
-      'Завершена',
-      'Отменена',
-      'Возврат',
-    };
-    final normalized = list.map((raw) {
-      final data = Map<String, dynamic>.from(raw);
-      final status = data['status']?.toString() ?? '';
-      if (!allowedStatuses.contains(status)) {
-        data['status'] = 'Создана';
-      }
-      return data;
-    }).toList();
+    setState(() {
+      _loading = true;
+    });
+    List<Map<String, dynamic>> list = [];
+    try {
+      list = await StorageApi.getRequests();
+    } catch (_) {}
+    final normalized = list.map(_normalizeRequest).toList();
     if (!mounted) return;
     setState(() {
       _requests = normalized;
       _loading = false;
     });
+  }
+
+  String _formatDate(DateTime value) {
+    final d = value.day.toString().padLeft(2, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    return '$d.$m.${value.year}';
+  }
+
+  String _formatServerDate(dynamic raw) {
+    if (raw == null) return '';
+    if (raw is DateTime) return _formatDate(raw);
+    if (raw is num) {
+      final ms = raw > 1000000000000 ? raw.toInt() : (raw * 1000).toInt();
+      return _formatDate(DateTime.fromMillisecondsSinceEpoch(ms));
+    }
+    final text = raw.toString().trim();
+    if (text.isEmpty) return '';
+    try {
+      return _formatDate(DateTime.parse(text));
+    } catch (_) {}
+    return text;
+  }
+
+  String _normalizeStatus(dynamic raw) {
+    final text = raw?.toString().trim() ?? '';
+    if (text.isEmpty) return 'Создана';
+    final lower = text.toLowerCase();
+    if (lower.contains('создан') || lower.contains('create')) return 'Создана';
+    if (lower.contains('ожид') || lower.contains('wait')) return 'Ожидает оплаты';
+    if (lower.contains('опла') || lower.contains('paid')) return 'Оплачено (эскроу)';
+    if (lower.contains('работ') || lower.contains('progress')) return 'В работе';
+    if (lower.contains('заверш') || lower.contains('done') || lower.contains('complete')) {
+      return 'Завершена';
+    }
+    if (lower.contains('отмен') || lower.contains('cancel')) return 'Отменена';
+    if (lower.contains('возврат') || lower.contains('refund')) return 'Возврат';
+    return text;
+  }
+
+  Map<String, dynamic> _normalizeRequest(Map<String, dynamic> raw) {
+    final typeRaw = raw['requestType'] ?? raw['type'] ?? raw['request_type'];
+    final type = typeRaw?.toString() == 'turnkey' ? 'turnkey' : 'by_car';
+    final createdAt =
+        _formatServerDate(raw['createdAt'] ?? raw['created_at'] ?? raw['created']);
+    final dueDate = _formatServerDate(raw['dueAt'] ?? raw['due_at'] ?? raw['due']);
+    final requestNumber = raw['requestNumber'] ??
+        raw['request_number'] ??
+        raw['number'] ??
+        '';
+    final title = raw['title']?.toString() ??
+        (type == 'turnkey' ? 'Под ключ' : 'По авто');
+    final subtitle = raw['subtitle']?.toString() ?? '';
+    final data = <String, dynamic>{
+      'id': raw['id'] ?? raw['requestId'],
+      'requestNumber': requestNumber,
+      'type': type,
+      'title': title,
+      'subtitle': subtitle,
+      'status': _normalizeStatus(raw['status'] ?? raw['state']),
+      'createdAt': createdAt,
+      'dueDate': dueDate,
+      'server': true,
+    };
+    if (raw['requestCars'] != null) data['requestCars'] = raw['requestCars'];
+    if (raw['cars'] != null && data['requestCars'] == null) {
+      data['requestCars'] = raw['cars'];
+    }
+    return data;
   }
 
   Future<void> _openCreate() async {
@@ -162,6 +220,25 @@ class _RequestCard extends StatelessWidget {
     return cleaned.replaceAll(RegExp(r'\s{2,}'), ' ');
   }
 
+  String _normalizeRequestNumber(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+    if (RegExp(r'[A-Za-z]').hasMatch(value)) return value;
+    final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return value;
+    final six = digits.length > 6 ? digits.substring(digits.length - 6) : digits.padLeft(6, '0');
+    return 'F$six';
+  }
+
+  String _requestMeta(String requestNumber, String createdAt) {
+    final num = _normalizeRequestNumber(requestNumber);
+    final date = createdAt.trim();
+    if (num.isEmpty && date.isEmpty) return '';
+    if (num.isEmpty) return date;
+    if (date.isEmpty) return '№ $num';
+    return '№ $num | $date';
+  }
+
   Color _statusColor(String status) {
     switch (status) {
       case 'Создана':
@@ -189,6 +266,8 @@ class _RequestCard extends StatelessWidget {
     final title = _cleanInternalRestTag((data['title'] ?? 'Заявка').toString());
     final requestNumber = data['requestNumber'] ?? data['id'] ?? '';
     final createdAt = data['createdAt'] ?? '';
+    final dueDate = data['dueDate']?.toString() ?? '';
+    final requestMeta = _requestMeta(requestNumber.toString(), createdAt.toString());
     final status = data['status'] ?? 'Создана';
     final statusColor = _statusColor(status);
 
@@ -205,9 +284,9 @@ class _RequestCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (requestNumber.toString().isNotEmpty) ...[
+            if (requestMeta.isNotEmpty) ...[
               MyText(
-                text: '№ $requestNumber',
+                text: requestMeta,
                 size: 11,
                 weight: FontWeight.w600,
                 color: kGreyColor,
@@ -271,7 +350,8 @@ class _RequestCard extends StatelessWidget {
                   weight: FontWeight.w600,
                   color: statusColor,
                 ),
-                MyText(text: createdAt, size: 11, color: kGreyColor),
+                if (dueDate.isNotEmpty)
+                  MyText(text: 'Срок: $dueDate', size: 11, color: kGreyColor),
               ],
             ),
           ],

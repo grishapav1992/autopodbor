@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -117,6 +117,13 @@ class AuthVerifyResult {
       refreshToken!.isNotEmpty;
 }
 
+class CreateRequestResult {
+  final int id;
+  final String requestNumber;
+
+  const CreateRequestResult({required this.id, required this.requestNumber});
+}
+
 class StorageApi {
   static const String _endpoint = 'https://podbor-av.ru.tuna.am';
 
@@ -153,6 +160,7 @@ class StorageApi {
     required Map<String, dynamic> params,
     Duration timeout = const Duration(seconds: 12),
     bool includeAuth = true,
+    bool allowRefresh = true,
   }) async {
     final requestParams = Map<String, dynamic>.from(params);
     final payload = <String, dynamic>{
@@ -178,14 +186,74 @@ class StorageApi {
           body: bytes,
         )
         .timeout(timeout);
+    if (response.statusCode == 401 && includeAuth && allowRefresh) {
+      final refreshed = await _tryRefreshTokens();
+      if (refreshed) {
+        return _postRpc(
+          method: method,
+          params: params,
+          timeout: timeout,
+          includeAuth: includeAuth,
+          allowRefresh: false,
+        );
+      }
+    }
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}');
     }
     final data = _asMap(json.decode(response.body));
-    if (data['response'] != 'ok') {
+    final responseFlag = data['response']?.toString().toLowerCase() ?? '';
+    if (responseFlag != 'ok') {
+      if (includeAuth &&
+          allowRefresh &&
+          responseFlag.contains('unauthor')) {
+        final refreshed = await _tryRefreshTokens();
+        if (refreshed) {
+          return _postRpc(
+            method: method,
+            params: params,
+            timeout: timeout,
+            includeAuth: includeAuth,
+            allowRefresh: false,
+          );
+        }
+      }
       throw Exception('Bad response');
     }
     return data;
+  }
+
+  static Future<bool> _tryRefreshTokens() async {
+    try {
+      final refreshToken = await UserSimplePreferences.getRefreshToken();
+      if (refreshToken == null || refreshToken.isEmpty) return false;
+      final data = await _postRpc(
+        method: 'RefreshToken',
+        params: {'refreshToken': refreshToken},
+        includeAuth: false,
+        allowRefresh: false,
+      );
+      final result = _asMap(data['result']);
+      final accessToken = _extractString(result, [
+        'accessToken',
+        'access_token',
+        'token',
+        'access',
+      ]);
+      final newRefreshToken = _extractString(result, [
+        'refreshToken',
+        'refresh_token',
+        'refresh',
+      ]);
+      if (accessToken.isEmpty || newRefreshToken.isEmpty) return false;
+      await UserSimplePreferences.setAuthTokens(
+        accessToken: accessToken,
+        refreshToken: newRefreshToken,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<AuthStartResult> auth({
@@ -248,6 +316,93 @@ class StorageApi {
       accessToken: accessToken.isEmpty ? null : accessToken,
       refreshToken: refreshToken.isEmpty ? null : refreshToken,
     );
+  }
+
+  static Future<CreateRequestResult> createRequest({
+    required String requestType,
+    required List<Map<String, dynamic>> requestCars,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.CreateRequest',
+      params: {
+        'requestType': requestType,
+        'requestCars': requestCars,
+      },
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final id = _asInt(result['id']) ?? 0;
+    final requestNumber = _extractString(result, [
+      'requestNumber',
+      'request_number',
+      'number',
+    ]);
+    return CreateRequestResult(id: id, requestNumber: requestNumber);
+  }
+
+  static Future<List<Map<String, dynamic>>> getRequests({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetRequest',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is List) {
+      return result
+          .whereType<Map>()
+          .map((e) => _asMap(e))
+          .toList();
+    }
+    if (result is Map) {
+      final map = _asMap(result);
+      final list = map['items'] ??
+          map['requests'] ??
+          map['data'] ??
+          map['list'];
+      if (list is List) {
+        return list
+            .whereType<Map>()
+            .map((e) => _asMap(e))
+            .toList();
+      }
+    }
+    return [];
+  }
+
+  static Future<List<Map<String, dynamic>>> getRequestCars({
+    required int requestId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetRequestCar',
+      params: {'requestId': requestId},
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is List) {
+      return result
+          .whereType<Map>()
+          .map((e) => _asMap(e))
+          .toList();
+    }
+    if (result is Map) {
+      final map = _asMap(result);
+      final list = map['items'] ??
+          map['cars'] ??
+          map['requestCars'] ??
+          map['data'] ??
+          map['list'];
+      if (list is List) {
+        return list
+            .whereType<Map>()
+            .map((e) => _asMap(e))
+            .toList();
+      }
+    }
+    return [];
   }
 
   static Future<BrandCatalog> fetchBrandCatalog({
@@ -450,3 +605,4 @@ class StorageApi {
     return items;
   }
 }
+

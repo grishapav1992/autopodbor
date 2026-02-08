@@ -1,12 +1,14 @@
-import 'package:flutter_application_1/core/constants/app_colors.dart';
+﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
 
 
 
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 
 
-
 import 'package:flutter_application_1/core/constants/popular_cars_ru.dart';
+
+
+
 
 
 
@@ -18,7 +20,6 @@ import 'package:flutter_application_1/data/api/storage_api.dart';
 
 
 
-import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 
 
@@ -69,10 +70,89 @@ String _formatDate(DateTime value) {
 
 }
 
+String _formatDateIso(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '${value.year}-$month-$day';
+}
+
+DateTime? _tryParseRuDate(String value) {
+  final raw = value.trim();
+  if (raw.isEmpty) return null;
+  final match = RegExp(r'^(\d{2})\.(\d{2})\.(\d{4})$').firstMatch(raw);
+  if (match == null) return null;
+  final day = int.tryParse(match.group(1) ?? '');
+  final month = int.tryParse(match.group(2) ?? '');
+  final year = int.tryParse(match.group(3) ?? '');
+  if (day == null || month == null || year == null) return null;
+  if (month < 1 || month > 12) return null;
+  final lastDay = DateTime(year, month + 1, 0).day;
+  if (day < 1 || day > lastDay) return null;
+  return DateTime(year, month, day);
+}
 
 
 
 
+
+class _RuDateFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final length = digits.length.clamp(0, 8);
+    final buffer = StringBuffer();
+    for (int i = 0; i < length; i++) {
+      if (i == 2 || i == 4) buffer.write('.');
+      buffer.write(digits[i]);
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+class _RuPhoneFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.startsWith('8') || digits.startsWith('7')) {
+      digits = digits.substring(1);
+    }
+    if (digits.length > 10) {
+      digits = digits.substring(0, 10);
+    }
+
+    String take(int start, int length) {
+      if (digits.length <= start) return '';
+      final end = start + length;
+      return digits.substring(start, end > digits.length ? digits.length : end);
+    }
+
+    final g1 = take(0, 3);
+    final g2 = take(3, 3);
+    final g3 = take(6, 2);
+    final g4 = take(8, 2);
+
+    var out = '+7';
+    if (g1.isNotEmpty) out += g1;
+    if (g2.isNotEmpty) out += '-$g2';
+    if (g3.isNotEmpty) out += '-$g3';
+    if (g4.isNotEmpty) out += '-$g4';
+
+    return TextEditingValue(
+      text: out,
+      selection: TextSelection.collapsed(offset: out.length),
+    );
+  }
+}
 
 
 bool _looksNumericCode(String value) {
@@ -633,10 +713,6 @@ class _RemoteCarCatalog {
 
 
 
-  static final Map<String, List<String>> yearsByKey = {};
-
-
-
   static final Map<String, bool> modelsLoading = {};
 
 
@@ -951,10 +1027,6 @@ class _RemoteCarCatalog {
 
 
 
-      final yearsByRestyling = <String, Set<int>>{};
-
-
-
       for (final gen in generations) {
 
 
@@ -983,6 +1055,7 @@ class _RemoteCarCatalog {
 
 
               generation: gen.generation,
+              restylingId: rest.id,
 
 
 
@@ -1075,54 +1148,6 @@ class _RemoteCarCatalog {
 
 
 
-          final start = rest.yearStart;
-
-
-
-          final end = rest.yearEnd;
-
-
-
-          if (start != null || end != null) {
-
-
-
-            final y1 = start ?? end!;
-
-
-
-            final y2 = end ?? start!;
-
-
-
-            final from = y1 <= y2 ? y1 : y2;
-
-
-
-            final to = y1 <= y2 ? y2 : y1;
-
-
-
-            final set = yearsByRestyling.putIfAbsent(value, () => <int>{});
-
-
-
-            for (int y = from; y <= to; y++) {
-
-
-
-              set.add(y);
-
-
-
-            }
-
-
-
-          }
-
-
-
         }
 
 
@@ -1132,33 +1157,6 @@ class _RemoteCarCatalog {
 
 
       restylingsByKey[modelKey] = restylings.toList()..sort();
-
-
-
-      for (final entry in yearsByRestyling.entries) {
-
-
-
-        final years = entry.value.toList()..sort();
-
-
-
-        yearsByKey[_restylingKey(brandId, model, entry.key)] = years
-
-
-
-            .map((e) => e.toString())
-
-
-
-            .toList();
-
-
-
-      }
-
-
-
     } catch (_) {}
 
 
@@ -1373,57 +1371,26 @@ class _RemoteCarCatalog {
 
   }
 
-
-
-
-
-
-
-  static List<String> yearsFor(String make, String model, String restyling) {
-
-
-
-    final brandId = brandIdByName[make];
-
-
-
-    if (brandId != null) {
-
-
-
-      final key = _restylingKey(brandId, model, restyling);
-
-
-
-      final remote = yearsByKey[key];
-
-
-
-      if (remote != null && remote.isNotEmpty) {
-
-
-
-        return remote;
-
-
-
-      }
-
-
-
-    }
-
-
-
-    final years = _yearCatalog[make]?[model]?[restyling] ?? const <int>[];
-
-
-
-    return years.map((e) => e.toString()).toList();
-
-
-
+  static int? restylingIdFor(
+    String make,
+    String model,
+    String restyling,
+  ) {
+    final meta = restylingMetaFor(make, model, restyling);
+    final id = meta?.restylingId;
+    if (id != null && id > 0) return id;
+    return _parseRestylingId(restyling);
   }
+
+  static int? _parseRestylingId(String value) {
+    final match = RegExp(r'^rest:(\d+)$').firstMatch(value.trim());
+    if (match == null) return null;
+    return int.tryParse(match.group(1) ?? '');
+  }
+
+
+
+
 
 
 
@@ -1718,6 +1685,12 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
+  DateTime? _dueDate;
+  final TextEditingController _dueDateController = TextEditingController();
+  String _dueDateError = '';
+
+
+
 
 
 
@@ -1762,6 +1735,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
     _RemoteCarCatalog.stamp.removeListener(_handleRemoteUpdate);
+    _dueDateController.dispose();
 
 
 
@@ -1789,10 +1763,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
       setState(() {});
     });
   }
-
-
-
-
 
 
 
@@ -1870,6 +1840,32 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
   }
 
+  void _onDueDateChanged(String value) {
+    if (_dueDateError.isNotEmpty) {
+      setState(() {
+        _dueDateError = '';
+      });
+    }
+    _dueDate = _tryParseRuDate(value);
+  }
+
+  bool _validateDueDate() {
+    _dueDateError = '';
+    final raw = _dueDateController.text.trim();
+    if (raw.isEmpty) {
+      _dueDate = null;
+      return true;
+    }
+    final parsed = _tryParseRuDate(raw);
+    if (parsed == null) {
+      _dueDate = null;
+      _dueDateError = 'Укажите дату в формате ДД.ММ.ГГГГ';
+      return false;
+    }
+    _dueDate = parsed;
+    return true;
+  }
+
 
 
 
@@ -1936,18 +1932,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-  List<String> _getYearOptions(String make, String model, String restyling) {
-
-
-
-    return _RemoteCarCatalog.yearsFor(make, model, restyling);
-
-
-
-  }
-
-
-
 
 
 
@@ -1968,6 +1952,16 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
+  }
+
+  List<int> _restylingIdsForCar(_CarItem car) {
+    final id = _RemoteCarCatalog.restylingIdFor(
+      car.make,
+      car.model,
+      car.restyling,
+    );
+    if (id == null || id <= 0) return const [];
+    return [id];
   }
 
 
@@ -1992,14 +1986,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-      c.plate?.trim() ?? '',
-
-
-
-      c.vin?.trim() ?? '',
-
-
-
       c.note?.trim() ?? '',
 
 
@@ -2013,10 +1999,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
       c.restyling.trim(),
-
-
-
-      c.year.trim(),
 
 
 
@@ -2180,70 +2162,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-        if (patch.plate != null) {
-
-
-
-          final key = patch.plate!.trim();
-
-
-
-          final hit = _plateLookup[key];
-
-
-
-          if (hit != null) {
-
-
-
-            _cars[i] = next.copyWith(
-
-
-
-              _CarItemPatch(
-
-
-
-                make: hit.make,
-
-
-
-                model: hit.model,
-
-
-
-                restyling: hit.restyling,
-
-
-
-                year: hit.year,
-
-
-
-                vin: hit.vin ?? next.vin,
-
-
-
-              ),
-
-
-
-            );
-
-
-
-            return;
-
-
-
-          }
-
-
-
-        }
-
-
-
 
 
 
@@ -2256,7 +2174,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-            _CarItemPatch(model: '', restyling: '', year: ''),
+            _CarItemPatch(model: '', restyling: ''),
 
 
 
@@ -2292,7 +2210,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-          _cars[i] = next.copyWith(_CarItemPatch(restyling: '', year: ''));
+          _cars[i] = next.copyWith(_CarItemPatch(restyling: ''));
 
 
 
@@ -2313,30 +2231,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
           }
-
-
-
-          return;
-
-
-
-        }
-
-
-
-        if (patch.restyling != null && patch.year == null) {
-
-
-
-          final opts = _getYearOptions(next.make, next.model, next.restyling);
-
-
-
-          final latest = opts.isNotEmpty ? opts.last : '';
-
-
-
-          _cars[i] = next.copyWith(_CarItemPatch(year: latest));
 
 
 
@@ -2385,6 +2279,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
     _carErrors.clear();
+    final dueDateValid = _validateDueDate();
 
 
 
@@ -2560,11 +2455,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-          c.restyling.trim().isNotEmpty ||
-
-
-
-          c.year.trim().isNotEmpty;
+          c.restyling.trim().isNotEmpty;
 
 
 
@@ -2616,18 +2507,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-        if (c.year.trim().isEmpty)
-
-
-
-          ce['year'] =
-
-
-
-              '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043E\u0434';
-
-
-
       }
 
 
@@ -2668,7 +2547,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-    return _formError.isEmpty && _carErrors.isEmpty;
+    return _formError.isEmpty && _carErrors.isEmpty && dueDateValid;
 
 
 
@@ -2680,264 +2559,49 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
 
-  Future<void> _submitByCar() async {
-
-
-
+    Future<void> _submitByCar() async {
     if (!_validateCars()) return;
 
-
-
-
-
-
-
     final activeCars = _cars.where((c) => !_isCarEmpty(c)).toList();
-
-
-
     if (activeCars.isEmpty) return;
 
-
-
-
-
-
-
-    final now = DateTime.now();
-
-
-
-    final id = 'REQ-${now.millisecondsSinceEpoch}';
-
-
-
-
-
-
-
-    String carLabel(_CarItem car, int index) {
-
-
-
-      final parts = [
-
-
-
-        car.make.trim(),
-
-
-
-        car.model.trim(),
-
-
-
-        _restylingDisplayFor(car.make, car.model, car.restyling).trim(),
-
-
-
-        car.year.trim(),
-
-
-
-      ].where((v) => v.isNotEmpty).toList();
-
-
-
-      return parts.isEmpty ? 'Авто ${index + 1}' : parts.join(' ');
-
-
-
-    }
-
-
-
-
-
-
-
-    final carNames = <String>[];
-
-
-
-    for (int i = 0; i < activeCars.length; i++) {
-
-
-
-      carNames.add(carLabel(activeCars[i], i));
-
-
-
-    }
-
-
-
-
-
-
-
-    final title = activeCars.length == 1
-
-
-
-        ? 'По авто: ${carNames.first}'
-
-
-
-        : 'По авто: ${carNames.first} +${activeCars.length - 1}';
-
-
-
-    final subtitle = 'Автомобилей: ${activeCars.length}';
-
-
-
-    final carLine = carNames.join(', ');
-
-
-
-
-
-
-
-    final carsPayload = activeCars.map((c) {
-
-
-
+    final dueAt = _dueDate == null ? null : _formatDateIso(_dueDate!);
+    final requestCars = activeCars.map((c) {
+      final phone = c.sellerPhone.trim();
+      final url = c.sourceUrl.trim();
       return {
-
-
-
-        'make': c.make.trim(),
-
-
-
-        'model': c.model.trim(),
-
-
-
-        'generation': _restylingDisplayFor(c.make, c.model, c.restyling).trim(),
-        'generationValue': c.restyling.trim(),
-
-
-
-        'year': c.year.trim(),
-
-
-
-        'sourceUrl': c.sourceUrl.trim(),
-
-
-
-        'sellerPhone': c.sellerPhone.trim(),
-
-
-
-        'plate': c.plate?.trim() ?? '',
-
-
-
-        'vin': c.vin?.trim() ?? '',
-
-
-
-        'note': c.note?.trim() ?? '',
-
-
-
+        'restylings': _restylingIdsForCar(c),
+        'phone': phone.isEmpty ? null : phone,
+        'url': url.isEmpty ? null : url,
+        if (dueAt != null) 'dueAt': dueAt,
       };
-
-
-
     }).toList();
 
-
-
-
-
-
-
-    await UserSimplePreferences.addAutoRequest({
-
-
-
-      'id': id,
-
-
-
-      'requestNumber': (now.millisecondsSinceEpoch % 100000).toString(),
-
-
-
-      'type': 'by_car',
-
-
-
-      'title': title,
-
-
-
-      'subtitle': subtitle,
-
-
-
-      'carLine': carLine,
-
-
-
-      'status': '\u0421\u043E\u0437\u0434\u0430\u043D\u0430',
-
-
-
-      'createdAt': _formatDate(now),
-
-
-
-      'cars': carsPayload,
-
-
-
-      'offers': _sampleOffers(id),
-
-
-
-      'selectedOfferId': null,
-
-
-
-      'paidAt': null,
-
-
-
-    });
-
-
-
-
-
-
+    try {
+      await StorageApi.createRequest(
+        requestType: 'by_car',
+        requestCars: requestCars,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось отправить заявку.')),
+        );
+      }
+      return;
+    }
 
     if (!mounted) return;
-
-
 
     _showCreatedSnack(context);
 
-
-
     await Future.delayed(const Duration(milliseconds: 900));
-
-
 
     if (!mounted) return;
 
-
-
     Navigator.of(context).pop(true);
-
-
-
   }
+
 
 
 
@@ -4118,6 +3782,16 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
         const SizedBox(height: 12),
+        MyTextField(
+          labelText: '\u0421\u0440\u043e\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f \u0434\u043e',
+          hintText: '\u0414\u0414.\u041c\u041c.\u0413\u0413\u0413\u0413',
+          controller: _dueDateController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [_RuDateFormatter()],
+          onChanged: _onDueDateChanged,
+        ),
+        _ErrorText(text: _dueDateError),
+        const SizedBox(height: 12),
 
 
 
@@ -4174,26 +3848,6 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 
             restylingDisplay: _restylingDisplayFor(
-
-
-
-              _cars[i].make,
-
-
-
-              _cars[i].model,
-
-
-
-              _cars[i].restyling,
-
-
-
-            ),
-
-
-
-            yearOptions: _getYearOptions(
 
 
 
@@ -4361,10 +4015,6 @@ class _CarCard extends StatelessWidget {
 
 
 
-    required this.yearOptions,
-
-
-
     required this.makeAltNames,
 
 
@@ -4446,10 +4096,6 @@ class _CarCard extends StatelessWidget {
 
 
   final String restylingDisplay;
-
-
-
-  final List<String> yearOptions;
 
 
 
@@ -4537,18 +4183,6 @@ class _CarCard extends StatelessWidget {
 
 
 
-    final plate = item.plate?.trim() ?? '';
-
-
-
-    if (plate.isNotEmpty)
-
-
-
-      return '\u0413\u043E\u0441\u043D\u043E\u043C\u0435\u0440: $plate';
-
-
-
     if (item.make.isNotEmpty && item.model.isNotEmpty) {
 
 
@@ -4557,11 +4191,7 @@ class _CarCard extends StatelessWidget {
 
 
 
-          '${restylingDisplay.isNotEmpty ? ' $restylingDisplay' : ''}'
-
-
-
-          '${item.year.isNotEmpty ? ' ${item.year}' : ''}';
+          '${restylingDisplay.isNotEmpty ? ' $restylingDisplay' : ''}';
 
 
 
@@ -4598,10 +4228,6 @@ class _CarCard extends StatelessWidget {
 
 
     final restylings = restylingOptions;
-
-
-
-    final years = yearOptions;
 
 
 
@@ -4674,10 +4300,6 @@ class _CarCard extends StatelessWidget {
 
 
     );
-
-
-
-    final yearItems = withHint('\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043E\u0434', years, item.year);
 
 
 
@@ -5025,26 +4647,6 @@ class _CarCard extends StatelessWidget {
 
 
 
-                    _twoColumn(
-                      context,
-                      left: MyTextField(
-                        labelText:
-                            '\u0413\u043E\u0441\u043D\u043E\u043C\u0435\u0440',
-                        hintText: 'A123BC77',
-                        marginBottom: 0,
-                        onChanged: (v) =>
-                            onChanged(_CarItemPatch(plate: v)),
-                      ),
-                      right: MyTextField(
-                        labelText: 'VIN',
-                        hintText: 'VIN',
-                        marginBottom: 0,
-                        onChanged: (v) => onChanged(_CarItemPatch(vin: v)),
-                      ),
-                    ),
-
-
-
                     const SizedBox(height: 12),
 
 
@@ -5173,48 +4775,24 @@ class _CarCard extends StatelessWidget {
 
 
 
-                    _twoColumn(
-                      context,
-                      left: _SelectField(
-                        label:
-                            '\u041F\u043E\u043A\u043E\u043B\u0435\u043D\u0438\u0435 / \u043A\u0443\u0437\u043E\u0432',
-                        placeholder: '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043F\u043E\u043A\u043E\u043B\u0435\u043D\u0438\u0435',
-                        value: restylingDisplay.isEmpty
-                            ? item.restyling
-                            : restylingDisplay,
-                        enabled:
-                            item.make.isNotEmpty &&
-                            item.model.isNotEmpty &&
-                            !restylingLoading,
-                        loading: restylingLoading,
-                        onTap: onPickRestyling,
-                      ),
-                      right: CustomDropDown(
-                        hint:
-                            '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043E\u0434',
-                        labelText: '\u0413\u043E\u0434',
-                        items: yearItems,
-                        selectedValue: item.year.isEmpty
-                            ? '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043E\u0434'
-                            : item.year,
-                        onChanged: (value) {
-                          final v =
-                              value ==
-                                  '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0433\u043E\u0434'
-                              ? ''
-                              : value;
-                          onChanged(_CarItemPatch(year: v));
-                        },
-                      ),
+                    _SelectField(
+                      label:
+                          '\u041F\u043E\u043A\u043E\u043B\u0435\u043D\u0438\u0435 / \u043A\u0443\u0437\u043E\u0432',
+                      placeholder: '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043F\u043E\u043A\u043E\u043B\u0435\u043D\u0438\u0435',
+                      value: restylingDisplay.isEmpty
+                          ? item.restyling
+                          : restylingDisplay,
+                      enabled:
+                          item.make.isNotEmpty &&
+                          item.model.isNotEmpty &&
+                          !restylingLoading,
+                      loading: restylingLoading,
+                      onTap: onPickRestyling,
                     ),
 
 
 
                     _ErrorText(text: errors['restyling']),
-
-
-
-                    _ErrorText(text: errors['year']),
 
 
 
@@ -5338,18 +4916,6 @@ class _CarItem {
 
 
 
-    this.year = '',
-
-
-
-    this.vin = '',
-
-
-
-    this.plate = '',
-
-
-
     this.sourceUrl = '',
 
 
@@ -5383,18 +4949,6 @@ class _CarItem {
 
 
   final String restyling;
-
-
-
-  final String year;
-
-
-
-  final String? vin;
-
-
-
-  final String? plate;
 
 
 
@@ -5446,18 +5000,6 @@ class _CarItem {
 
 
 
-      year: patch.year ?? year,
-
-
-
-      vin: patch.vin ?? vin,
-
-
-
-      plate: patch.plate ?? plate,
-
-
-
       sourceUrl: patch.sourceUrl ?? sourceUrl,
 
 
@@ -5506,18 +5048,6 @@ class _CarItemPatch {
 
 
 
-    this.year,
-
-
-
-    this.vin,
-
-
-
-    this.plate,
-
-
-
     this.sourceUrl,
 
 
@@ -5547,18 +5077,6 @@ class _CarItemPatch {
 
 
   final String? restyling;
-
-
-
-  final String? year;
-
-
-
-  final String? vin;
-
-
-
-  final String? plate;
 
 
 
@@ -6159,6 +5677,12 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
+  DateTime? _dueDate;
+  final TextEditingController _dueDateController = TextEditingController();
+  String _dueDateError = '';
+
+
+
 
 
 
@@ -6199,6 +5723,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
     _RemoteCarCatalog.stamp.removeListener(_handleRemoteUpdate);
+    _dueDateController.dispose();
 
 
 
@@ -6233,6 +5758,31 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
+    void _onDueDateChanged(String value) {
+    if (_dueDateError.isNotEmpty) {
+      setState(() {
+        _dueDateError = '';
+      });
+    }
+    _dueDate = _tryParseRuDate(value);
+  }
+
+  bool _validateDueDate() {
+    _dueDateError = '';
+    final raw = _dueDateController.text.trim();
+    if (raw.isEmpty) {
+      _dueDate = null;
+      return true;
+    }
+    final parsed = _tryParseRuDate(raw);
+    if (parsed == null) {
+      _dueDate = null;
+      _dueDateError = 'Укажите дату в формате ДД.ММ.ГГГГ';
+      return false;
+    }
+    _dueDate = parsed;
+    return true;
+  }
   List<String> _allMakes() => _RemoteCarCatalog.makes();
 
 
@@ -8295,187 +7845,52 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
 
-  Future<void> _submitTurnkey() async {
-
-
-
-    final now = DateTime.now();
-
-
-
-    final id = 'REQ-${now.millisecondsSinceEpoch}';
-
-
-
-    final makes = List<String>.from(_tkMakes);
-
-
-
-    final models = List<String>.from(_tkModels);
-
-
-
-    final restylings = List<String>.from(_tkRestylings);
-
-
-
-    final restylingDisplay = _restylingDisplayList(restylings);
-
-
-
-
-
-
-
-    final titleParts = <String>[];
-
-
-
-    if (makes.isNotEmpty) titleParts.add(makes.join(', '));
-
-
-
-    if (models.isNotEmpty) titleParts.add(models.join(', '));
-
-
-
-    final title = titleParts.isEmpty
-
-
-
-        ? '\u041F\u043E\u0434 \u043A\u043B\u044E\u0447: \u043B\u044E\u0431\u0430\u044F \u043C\u0430\u0440\u043A\u0430'
-
-
-
-        : 'Под ключ: ${titleParts.join(' ')}';
-
-
-
-
-
-
-
-    final subtitleParts = <String>[];
-
-
-
-    if (makes.isNotEmpty) subtitleParts.add('Марки: ${makes.join(', ')}');
-
-
-
-    if (models.isNotEmpty) subtitleParts.add('Модели: ${models.join(', ')}');
-
-
-
-    final subtitle = subtitleParts.join(' В· ');
-
-
-
-    final carLine = restylingDisplay.isNotEmpty
-
-
-
-        ? 'Поколения: ${restylingDisplay.join(', ')}'
-
-
-
-        : '';
-
-
-
-
-
-
-
-    await UserSimplePreferences.addAutoRequest({
-
-
-
-      'id': id,
-
-
-
-      'requestNumber': (now.millisecondsSinceEpoch % 100000).toString(),
-
-
-
-      'type': 'turnkey',
-
-
-
-      'title': title,
-
-
-
-      'subtitle': subtitle,
-
-
-
-      'carLine': carLine,
-
-
-
-      'status': '\u0421\u043E\u0437\u0434\u0430\u043D\u0430',
-
-
-
-      'createdAt': _formatDate(now),
-
-
-
-      'makes': makes,
-
-
-
-      'models': models,
-
-
-
-      'restylings': restylingDisplay,
-
-
-
-      'offers': _sampleOffers(id),
-
-
-
-      'selectedOfferId': null,
-
-
-
-      'paidAt': null,
-
-
-
-    });
-
-
-
-
-
-
+    Future<void> _submitTurnkey() async {
+    final dueDateValid = _validateDueDate();
+    if (!dueDateValid) {
+      setState(() {});
+      return;
+    }
+
+    final restylingIds = _tkRestylings
+        .map((r) => _RemoteCarCatalog.restylingIdFor('', '', r))
+        .whereType<int>()
+        .toList();
+    final dueAt = _dueDate == null ? null : _formatDateIso(_dueDate!);
+    final requestCars = [
+      {
+        'restylings': restylingIds,
+        'phone': null,
+        'url': null,
+        if (dueAt != null) 'dueAt': dueAt,
+      }
+    ];
+
+    try {
+      await StorageApi.createRequest(
+        requestType: 'turnkey',
+        requestCars: requestCars,
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось отправить заявку.')),
+        );
+      }
+      return;
+    }
 
     if (!mounted) return;
-
-
 
     _showCreatedSnack(context);
 
-
-
     await Future.delayed(const Duration(milliseconds: 900));
-
-
 
     if (!mounted) return;
 
-
-
     Navigator.of(context).pop(true);
-
-
-
   }
+
 
 
 
@@ -8572,6 +7987,16 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
         const SizedBox(height: 16),
+        MyTextField(
+          labelText: '\u0421\u0440\u043e\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f \u0434\u043e',
+          hintText: '\u0414\u0414.\u041c\u041c.\u0413\u0413\u0413\u0413',
+          controller: _dueDateController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [_RuDateFormatter()],
+          onChanged: _onDueDateChanged,
+        ),
+        _ErrorText(text: _dueDateError),
+        const SizedBox(height: 16),
 
 
 
@@ -8646,26 +8071,6 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
         _twoColumn(
           context,
           left: MyTextField(
-            labelText: '\u0413\u043E\u0434 \u043E\u0442',
-            hintText: '2018',
-            marginBottom: 0,
-          ),
-          right: MyTextField(
-            labelText: '\u0413\u043E\u0434 \u0434\u043E',
-            hintText: '2022',
-            marginBottom: 0,
-          ),
-        ),
-
-
-
-        const SizedBox(height: 16),
-
-
-
-        _twoColumn(
-          context,
-          left: MyTextField(
             labelText: '\u041F\u0440\u043E\u0431\u0435\u0433 \u0434\u043E',
             hintText: '120000',
             marginBottom: 0,
@@ -8685,57 +8090,10 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
 
         MyTextField(
-
-
-
-          labelText:
-
-
-
-              '\u041e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e \u0434\u043e\u043b\u0436\u043d\u043e \u0431\u044b\u0442\u044c',
-
-
-
+          labelText: '\u0417\u0430\u043c\u0435\u0442\u043a\u0430',
           hintText:
-
-
-
-              '\u041e\u043f\u0446\u0438\u0438, \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043f\u044f\u0442\u0443\u044e',
-
-
-
+              '\u041f\u043e\u0436\u0435\u043b\u0430\u043d\u0438\u044f, \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u044f, \u043e\u043f\u0446\u0438\u0438',
           maxLines: 3,
-
-
-
-        ),
-
-
-
-        MyTextField(
-
-
-
-          labelText:
-
-
-
-              '\u0427\u0435\u0433\u043e \u0438\u0437\u0431\u0435\u0433\u0430\u0442\u044c',
-
-
-
-          hintText:
-
-
-
-              '\u041e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u044f, \u0442\u0430\u043a\u0441\u0438, \u0414\u0422\u041f',
-
-
-
-          maxLines: 3,
-
-
-
         ),
 
 
@@ -9445,6 +8803,7 @@ class _RestylingMeta {
 
 
     required this.generation,
+    required this.restylingId,
 
 
 
@@ -9470,6 +8829,7 @@ class _RestylingMeta {
 
 
   final int generation;
+  final int? restylingId;
 
 
 
@@ -9899,164 +9259,6 @@ class _RestylingCard extends StatelessWidget {
 
 
 }
-
-
-
-
-
-
-
-class _RuPhoneFormatter extends TextInputFormatter {
-
-
-
-  @override
-
-
-
-  TextEditingValue formatEditUpdate(
-
-
-
-    TextEditingValue oldValue,
-
-
-
-    TextEditingValue newValue,
-
-
-
-  ) {
-
-
-
-    String digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-
-
-
-    if (digits.startsWith('8') || digits.startsWith('7')) {
-
-
-
-      digits = digits.substring(1);
-
-
-
-    }
-
-
-
-    if (digits.length > 10) {
-
-
-
-      digits = digits.substring(0, 10);
-
-
-
-    }
-
-
-
-
-
-
-
-    String take(int start, int length) {
-
-
-
-      if (digits.length <= start) return '';
-
-
-
-      final end = start + length;
-
-
-
-      return digits.substring(start, end > digits.length ? digits.length : end);
-
-
-
-    }
-
-
-
-
-
-
-
-    final g1 = take(0, 3);
-
-
-
-    final g2 = take(3, 3);
-
-
-
-    final g3 = take(6, 2);
-
-
-
-    final g4 = take(8, 2);
-
-
-
-
-
-
-
-    var out = '+7';
-
-
-
-    if (g1.isNotEmpty) out += g1;
-
-
-
-    if (g2.isNotEmpty) out += '-$g2';
-
-
-
-    if (g3.isNotEmpty) out += '-$g3';
-
-
-
-    if (g4.isNotEmpty) out += '-$g4';
-
-
-
-
-
-
-
-    return TextEditingValue(
-
-
-
-      text: out,
-
-
-
-      selection: TextSelection.collapsed(offset: out.length),
-
-
-
-    );
-
-
-
-  }
-
-
-
-}
-
-
-
-
-
-
 
 
 
