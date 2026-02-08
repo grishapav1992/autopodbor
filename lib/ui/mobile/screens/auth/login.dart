@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -26,10 +26,6 @@ class Login extends StatefulWidget {
 
 class _LoginState extends State<Login> {
   final TextEditingController _phoneController = TextEditingController();
-  static const String _techAccessToken =
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzA1NDQ1NTIuMzExOTM3LCJleHAiOjE3NzA1ODc3NTIuMzExOTM3LCJzdWIiOiIyOCIsInR5cGUiOiJhdXRoIn0.bTI3AjNc5ZSVyf_ipBB7dYkIV9dctdjZEMPhXWITIocCmClP7EVP_HtIAK-BzFSqAAPG66Ue23SOm9Ih63KFNkVXkOnh6BqPGnXSRGkCLOXn5cD3hQunI77zeRV4i0bwyLRIkcAcCtfsn0hqmm_ub1sAOhqbktj-kaPfDcfaCaIbTCnogegdExZBIfj_bHmPJU5uj8eZyzDEV9YWVKBDIB2xB6_Bup2drO10IYBMifH9INcuvFd8adnZPzlVJiOtrwoEHP0IC2rfuBHYApLj4my6AOlN6pxd-FAS_sxEEhUzulP9ZHYAE76XEBfFqkdjJZpfHvDN4l2hv2GpMB5Pnw';
-  static const String _techRefreshToken =
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzAyMjk0MjYuMzc5Mjk5LCJleHAiOjE3NzI4MjE0MjYuMzc5Mjk5LCJzdWIiOiIyOCIsInR5cGUiOiJyZWZyZXNoIn0.lueu7sU6ZR3rgbsB1Q1r1ryX0hnP68wlMSqaH6sI4IMs1AaEQUAtguFKJhAuFYEz8ay-ruLHMXw_-v413bgl6jsqP3RTlZ04JY2RCpuPScADY1w9R6o9tixfLjuSH572JkEHgHnCSxbx5UKuR-NOlkLvweRhjSesRCQBy2CMy8chUJX7cbPmyXe3fnaYUjzo-mVWkva2ZBab6fu1QPf-8O9pj2DXWAbpHisvdUJDArhUVQKZm3GSch56MZzG8C-3GSEyrRTQ-SN5AqgXMH0KPiiw6pOmaKlDkEklRHF-ZO9kzIv7lLo8Vy-EIzz3dBDb78ih-nQtvbrOhzSBkZbdyw';
 
   String _requestPhone = '';
   String _callPhone = '';
@@ -67,7 +63,7 @@ class _LoginState extends State<Login> {
     final phone = _normalizePhone(_phoneController.text.trim());
     final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
     if (digitsLen < 11) {
-      _showError('Введите корректный номер телефона.');
+      _showError('Р’РІРµРґРёС‚Рµ РєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°.');
       return;
     }
 
@@ -77,7 +73,7 @@ class _LoginState extends State<Login> {
       _requestPhone = phone;
       _callPhone = '';
       _sessionId = null;
-      _statusText = 'Запрашиваем номер для звонка...';
+      _statusText = 'Р—Р°РїСЂР°С€РёРІР°РµРј РЅРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°...';
     });
 
     try {
@@ -87,12 +83,12 @@ class _LoginState extends State<Login> {
         _callPhone = result.callPhone;
         _sessionId = result.sessionId;
         _statusText =
-            'Ожидаем звонок с номера $_requestPhone на $_callPhone. Проверка выполняется автоматически до 3 минут.';
+            'РћР¶РёРґР°РµРј Р·РІРѕРЅРѕРє СЃ РЅРѕРјРµСЂР° $_requestPhone РЅР° $_callPhone. РџСЂРѕРІРµСЂРєР° РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕ 3 РјРёРЅСѓС‚.';
       });
       unawaited(_startAutoVerify(phone, currentOp));
     } catch (_) {
       if (!mounted || currentOp != _opId) return;
-      _showError('Не удалось начать авторизацию. Попробуйте еще раз.');
+      _showError('РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ Р°РІС‚РѕСЂРёР·Р°С†РёСЋ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·.');
       setState(() {
         _statusText = '';
       });
@@ -106,7 +102,7 @@ class _LoginState extends State<Login> {
   Future<void> _openDialer() async {
     final target = _callPhone.trim();
     if (target.isEmpty) {
-      _showError('Сначала нажмите "Далее", чтобы получить номер для звонка.');
+      _showError('РЎРЅР°С‡Р°Р»Р° РЅР°Р¶РјРёС‚Рµ "Р”Р°Р»РµРµ", С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ РЅРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°.');
       return;
     }
     final uri = Uri(
@@ -117,14 +113,14 @@ class _LoginState extends State<Login> {
       await launchUrl(uri);
       return;
     }
-    _showError('Не удалось открыть приложение для звонка.');
+    _showError('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ РґР»СЏ Р·РІРѕРЅРєР°.');
   }
 
   Future<void> _startAutoVerify(String phone, int startOp) async {
     if (!mounted || startOp != _opId || _callPhone.isEmpty) return;
     setState(() {
       _isVerifyLoading = true;
-      _statusText = 'Ждем звонок и проверяем автоматически...';
+      _statusText = 'Р–РґРµРј Р·РІРѕРЅРѕРє Рё РїСЂРѕРІРµСЂСЏРµРј Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё...';
     });
 
     final deadline = DateTime.now().add(const Duration(minutes: 3));
@@ -142,7 +138,7 @@ class _LoginState extends State<Login> {
           if (!mounted || startOp != _opId) return;
           setState(() {
             _isVerifyLoading = false;
-            _statusText = 'Статус проверки: все OK. Выполняем вход...';
+            _statusText = 'РЎС‚Р°С‚СѓСЃ РїСЂРѕРІРµСЂРєРё: РІСЃРµ OK. Р’С‹РїРѕР»РЅСЏРµРј РІС…РѕРґ...';
           });
           await Future.delayed(const Duration(milliseconds: 700));
           if (!mounted || startOp != _opId) return;
@@ -158,22 +154,9 @@ class _LoginState extends State<Login> {
     setState(() {
       _isVerifyLoading = false;
       _statusText =
-          'Статус проверки: не OK. Не удалось подтвердить звонок за 3 минуты.';
+          'РЎС‚Р°С‚СѓСЃ РїСЂРѕРІРµСЂРєРё: РЅРµ OK. РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґС‚РІРµСЂРґРёС‚СЊ Р·РІРѕРЅРѕРє Р·Р° 3 РјРёРЅСѓС‚С‹.';
     });
-  }
-
-  Future<void> _techSignIn() async {
-    await UserSimplePreferences.setAuthTokens(
-      accessToken: _techAccessToken,
-      refreshToken: _techRefreshToken,
-    );
-    if (!mounted) return;
-    setState(() {
-      _statusText = 'Технический вход активирован. Используем фиксированный токен.';
-    });
-    _proceedAfterCheck();
-  }
-
+  }\n
   void _proceedAfterCheck() {
     final controller = Get.find<UserController>();
     if (controller.isDealer) {
@@ -198,14 +181,14 @@ class _LoginState extends State<Login> {
         children: [
           const AuthHeading(
             textAlign: TextAlign.center,
-            title: 'Авторизация',
+            title: 'РђРІС‚РѕСЂРёР·Р°С†РёСЏ',
             subTitle:
-                'Введите номер телефона и нажмите "Далее". Затем позвоните на выданный номер — проверка пройдет автоматически.',
+                'Р’РІРµРґРёС‚Рµ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР° Рё РЅР°Р¶РјРёС‚Рµ "Р”Р°Р»РµРµ". Р—Р°С‚РµРј РїРѕР·РІРѕРЅРёС‚Рµ РЅР° РІС‹РґР°РЅРЅС‹Р№ РЅРѕРјРµСЂ вЂ” РїСЂРѕРІРµСЂРєР° РїСЂРѕР№РґРµС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.',
           ),
           PhoneField(controller: _phoneController),
           if (_requestPhone.isNotEmpty)
             MyText(
-              text: 'Ваш номер: $_requestPhone',
+              text: 'Р’Р°С€ РЅРѕРјРµСЂ: $_requestPhone',
               size: 12,
               color: kGreyColor,
               paddingBottom: 8,
@@ -240,7 +223,7 @@ class _LoginState extends State<Login> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const MyText(text: 'Номер для звонка', size: 11, color: kGreyColor),
+                            const MyText(text: 'РќРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°', size: 11, color: kGreyColor),
                             const SizedBox(height: 2),
                             MyText(
                               text: _callPhone,
@@ -250,7 +233,7 @@ class _LoginState extends State<Login> {
                             ),
                             const SizedBox(height: 2),
                             const MyText(
-                              text: 'Нажмите, чтобы открыть звонок',
+                              text: 'РќР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ Р·РІРѕРЅРѕРє',
                               size: 10,
                               color: kGreyColor,
                             ),
@@ -264,7 +247,7 @@ class _LoginState extends State<Login> {
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: const MyText(
-                          text: 'Позвонить',
+                          text: 'РџРѕР·РІРѕРЅРёС‚СЊ',
                           size: 10,
                           color: kSecondaryColor,
                           weight: FontWeight.w700,
@@ -290,7 +273,7 @@ class _LoginState extends State<Login> {
           if (_callPhone.isEmpty)
             MyButton(
               onTap: _startAuth,
-              buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
+              buttonText: _isAuthLoading ? 'Р—Р°РіСЂСѓР·РєР°...' : 'Р”Р°Р»РµРµ',
               bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
             )
           else
@@ -302,30 +285,14 @@ class _LoginState extends State<Login> {
                 border: Border.all(color: kBorderColor),
               ),
               child: const MyText(
-                text: 'Нажмите на номер выше и выполните звонок.',
+                text: 'РќР°Р¶РјРёС‚Рµ РЅР° РЅРѕРјРµСЂ РІС‹С€Рµ Рё РІС‹РїРѕР»РЅРёС‚Рµ Р·РІРѕРЅРѕРє.',
                 size: 11,
                 color: kGreyColor,
               ),
             ),
-          const SizedBox(height: 14),
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const MyText(
-              text: 'Технический вход',
-              size: 12,
-              color: kGreyColor,
-            ),
-            childrenPadding: const EdgeInsets.only(bottom: 4),
-            children: [
-              MyBorderButton(
-                onTap: _techSignIn,
-                buttonText: 'Войти по техническому коду',
-                textSize: 12,
-              ),
-            ],
-          ),
         ],
       ),
     );
   }
 }
+
