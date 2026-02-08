@@ -62,12 +62,27 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
   String _formatServerDate(dynamic raw) {
     if (raw == null) return '';
     if (raw is DateTime) return _formatDate(raw);
+    if (raw is Map) {
+      final mapDate = raw['date'] ?? raw['datetime'] ?? raw['value'];
+      if (mapDate != null) {
+        return _formatServerDate(mapDate);
+      }
+    }
     if (raw is num) {
       final ms = raw > 1000000000000 ? raw.toInt() : (raw * 1000).toInt();
       return _formatDate(DateTime.fromMillisecondsSinceEpoch(ms));
     }
     final text = raw.toString().trim();
     if (text.isEmpty) return '';
+    final dateMatch = RegExp(r'(\\d{4}-\\d{2}-\\d{2})').firstMatch(text);
+    if (dateMatch != null) {
+      final isoDate = dateMatch.group(1) ?? '';
+      if (isoDate.isNotEmpty) {
+        try {
+          return _formatDate(DateTime.parse(isoDate));
+        } catch (_) {}
+      }
+    }
     try {
       return _formatDate(DateTime.parse(text));
     } catch (_) {}
