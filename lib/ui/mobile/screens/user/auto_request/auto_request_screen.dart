@@ -17,6 +17,7 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 
 
 import 'package:flutter_application_1/data/api/storage_api.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 
 
@@ -2576,12 +2577,43 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
         if (dueAt != null) 'dueAt': dueAt,
       };
     }).toList();
+    final displayCars = activeCars.map((c) {
+      final restDisplay = _restylingDisplayFor(c.make, c.model, c.restyling);
+      final phone = c.sellerPhone.trim();
+      final url = c.sourceUrl.trim();
+      return {
+        'make': c.make,
+        'makeName': c.make,
+        'brandName': c.make,
+        'model': c.model,
+        'modelName': c.model,
+        'modelRus': c.model,
+        if (c.restyling.trim().isNotEmpty) 'restyling': c.restyling,
+        if (restDisplay.trim().isNotEmpty) 'restylingName': restDisplay.trim(),
+        if (phone.isNotEmpty) 'phone': phone,
+        if (url.isNotEmpty) 'url': url,
+        if (dueAt != null) 'dueAt': dueAt,
+      };
+    }).toList();
 
     try {
-      await StorageApi.createRequest(
+      final result = await StorageApi.createRequest(
         requestType: 'by_car',
         requestCars: requestCars,
       );
+      final override = <String, dynamic>{'requestCars': displayCars};
+      if (result.id > 0) {
+        await UserSimplePreferences.setRequestDisplayOverride(
+          result.id.toString(),
+          override,
+        );
+      }
+      if (result.requestNumber.trim().isNotEmpty) {
+        await UserSimplePreferences.setRequestDisplayOverride(
+          result.requestNumber.trim(),
+          override,
+        );
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -7881,14 +7913,25 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
         .toSet()
         .toList();
     final dueAt = _dueDate == null ? null : _formatDateIso(_dueDate!);
-    final requestCars = [
-      {
-        'restylings': restylingIds,
-        'phone': null,
-        'url': null,
-        if (dueAt != null) 'dueAt': dueAt,
-      }
-    ];
+    final requestCars = restylingIds.isEmpty
+        ? [
+            {
+              'restylings': <int>[],
+              'phone': null,
+              'url': null,
+              if (dueAt != null) 'dueAt': dueAt,
+            }
+          ]
+        : restylingIds
+            .map(
+              (id) => {
+                'restylings': [id],
+                'phone': null,
+                'url': null,
+                if (dueAt != null) 'dueAt': dueAt,
+              },
+            )
+            .toList();
 
     try {
       await StorageApi.createRequest(

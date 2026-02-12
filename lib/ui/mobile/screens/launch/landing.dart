@@ -2,6 +2,7 @@
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ class LandingScreen extends StatefulWidget {
 class _LandingScreenState extends State<LandingScreen> {
   final PageController _controller = PageController();
   int _index = 0;
+  bool _checkingSession = true;
 
   final List<_LandingSlide> _slides = const [
     _LandingSlide(
@@ -45,6 +47,24 @@ class _LandingScreenState extends State<LandingScreen> {
     super.dispose();
   }
 
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  Future<void> _checkSession() async {
+    final hasSession = await StorageApi.hasSavedSession(probeWithGetBrand: true);
+    if (!mounted) return;
+    if (hasSession) {
+      Get.offAllNamed(AppLinks.chooseUserType);
+      return;
+    }
+    setState(() {
+      _checkingSession = false;
+    });
+  }
+
   void _next() {
     if (_index < _slides.length - 1) {
       _controller.nextPage(
@@ -58,6 +78,13 @@ class _LandingScreenState extends State<LandingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingSession) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
     return Scaffold(
       body: SafeArea(
         child: Padding(

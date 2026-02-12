@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
@@ -7,7 +5,6 @@ import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
-import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -22,85 +19,97 @@ class ChooseUserType extends StatefulWidget {
 class _ChooseUserTypeState extends State<ChooseUserType> {
   int currentIndex = 0;
   final UserController _userController = Get.find<UserController>();
+  bool _navigating = false;
 
-  void getCurrentIndex(int index) {
+  Future<void> _selectRoleAndContinue(int index) async {
+    if (_navigating) return;
     setState(() {
       currentIndex = index;
     });
-    _userController.chooseRole(index == 0 ? UserRole.user : UserRole.dealer);
-    UserSimplePreferences.setUserRole(index == 0 ? 'user' : 'dealer');
-    unawaited(StorageApi.hasSavedSession(probeWithGetBrand: true));
+    final role = index == 0 ? UserRole.user : UserRole.dealer;
+    _userController.chooseRole(role);
+    UserSimplePreferences.setUserRole(role == UserRole.user ? 'user' : 'dealer');
+    setState(() {
+      _navigating = true;
+    });
+    final hasSession = await StorageApi.hasSavedSession(
+      probeWithGetBrand: true,
+    );
+    if (!mounted) return;
+    if (hasSession) {
+      Get.offAllNamed(role == UserRole.user ? AppLinks.userHome : AppLinks.dealerHome);
+      return;
+    }
+    Get.offAllNamed(AppLinks.login);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Padding(
-        padding: AppSizes.DEFAULT,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SizedBox(height: 50),
-            Column(children: [Image.asset(Assets.imagesLogo, height: 60)]),
-            const Spacer(flex: 5),
-            Column(
+      body: Stack(
+        children: [
+          Padding(
+            padding: AppSizes.DEFAULT,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                MyText(
-                  text: "continueAs".tr,
-                  size: 16,
-                  weight: FontWeight.w600,
-                  textAlign: TextAlign.center,
-                  paddingBottom: 30,
-                ),
-                Row(
+                const SizedBox(height: 50),
+                Column(children: [Image.asset(Assets.imagesLogo, height: 60)]),
+                const Spacer(flex: 5),
+                Column(
                   children: [
-                    userTypeButton(
-                      onTap: () => getCurrentIndex(0),
-                      icon: Assets.imagesAppUser,
-                      title: "user".tr,
-                      index: 0,
+                    MyText(
+                      text: "continueAs".tr,
+                      size: 16,
+                      weight: FontWeight.w600,
+                      textAlign: TextAlign.center,
+                      paddingBottom: 30,
                     ),
-                    const SizedBox(width: 16),
-                    userTypeButton(
-                      onTap: () => getCurrentIndex(1),
-                      icon: Assets.imagesCarDealer,
-                      title: "dealer".tr,
-                      index: 1,
+                    Row(
+                      children: [
+                        userTypeButton(
+                          onTap: () => _selectRoleAndContinue(0),
+                          icon: Assets.imagesAppUser,
+                          title: "user".tr,
+                          index: 0,
+                        ),
+                        const SizedBox(width: 16),
+                        userTypeButton(
+                          onTap: () => _selectRoleAndContinue(1),
+                          icon: Assets.imagesCarDealer,
+                          title: "dealer".tr,
+                          index: 1,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 60),
+                    const SizedBox(height: 60),
+                  ],
+                ),
+                const Spacer(flex: 4),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+          if (_navigating)
+            Positioned.fill(
+              child: Container(
+                color: kWhiteColor.withValues(alpha: 0.8),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    CircularProgressIndicator(strokeWidth: 2),
+                    SizedBox(height: 12),
+                    MyText(
+                      text: 'Проверяем доступ...',
+                      size: 12,
+                      color: kGreyColor,
                     ),
                   ],
                 ),
-                const SizedBox(height: 60),
-                const SizedBox(height: 60),
-              ],
+              ),
             ),
-            const Spacer(flex: 4),
-            MyButton(
-              buttonText: "continue".tr,
-              onTap: () async {
-                final role = currentIndex == 0
-                    ? UserRole.user
-                    : UserRole.dealer;
-                _userController.chooseRole(role);
-                UserSimplePreferences.setUserRole(
-                  role == UserRole.user ? 'user' : 'dealer',
-                );
-                final hasSession = await StorageApi.hasSavedSession(
-                  probeWithGetBrand: true,
-                );
-                if (hasSession) {
-                  if (role == UserRole.user) {
-                    Get.offAllNamed(AppLinks.userHome);
-                  } else {
-                    Get.offAllNamed(AppLinks.dealerHome);
-                  }
-                  return;
-                }
-                Get.offAllNamed(AppLinks.login);
-              },
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
+        ],
       ),
     );
   }

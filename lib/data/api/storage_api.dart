@@ -124,6 +124,13 @@ class CreateRequestResult {
   const CreateRequestResult({required this.id, required this.requestNumber});
 }
 
+class _TokenPair {
+  final String accessToken;
+  final String refreshToken;
+
+  const _TokenPair({required this.accessToken, required this.refreshToken});
+}
+
 class StorageApi {
   static const String _endpoint = 'https://podbor-av.ru.tuna.am';
 
@@ -206,7 +213,7 @@ class StorageApi {
     if (responseFlag != 'ok') {
       if (includeAuth &&
           allowRefresh &&
-          responseFlag.contains('unauthor')) {
+          _isUnauthorizedResponse(data, responseFlag)) {
         final refreshed = await _tryRefreshTokens();
         if (refreshed) {
           return _postRpc(
@@ -221,6 +228,46 @@ class StorageApi {
       throw Exception('Bad response');
     }
     return data;
+  }
+
+  static bool _isUnauthorizedResponse(
+    Map<String, dynamic> data,
+    String responseFlag,
+  ) {
+    if (responseFlag.contains('unauthor')) return true;
+    final errors = data['errors'];
+    final messages = <String>[];
+    if (errors is String) {
+      messages.add(errors);
+    } else if (errors is Map) {
+      final map = _asMap(errors);
+      if (map['message'] != null) {
+        messages.add(map['message'].toString());
+      }
+      for (final value in map.values) {
+        if (value == null) continue;
+        messages.add(value.toString());
+      }
+    } else if (errors is List) {
+      for (final item in errors) {
+        if (item == null) continue;
+        if (item is Map) {
+          final map = _asMap(item);
+          if (map['message'] != null) {
+            messages.add(map['message'].toString());
+          }
+          for (final value in map.values) {
+            if (value == null) continue;
+            messages.add(value.toString());
+          }
+        } else {
+          messages.add(item.toString());
+        }
+      }
+    }
+    return messages.any(
+      (m) => m.toLowerCase().contains('unauthor') || m.contains('401'),
+    );
   }
 
   static Future<bool> hasSavedSession({bool probeWithGetBrand = false}) async {
@@ -258,33 +305,68 @@ class StorageApi {
     try {
       final refreshToken = await UserSimplePreferences.getRefreshToken();
       if (refreshToken == null || refreshToken.isEmpty) return false;
-      final data = await _postRpc(
-        method: 'RefreshToken',
-        params: {'refreshToken': refreshToken},
-        includeAuth: false,
-        allowRefresh: false,
-      );
-      final result = _asMap(data['result']);
-      final accessToken = _extractString(result, [
-        'accessToken',
-        'access_token',
-        'token',
-        'access',
-      ]);
-      final newRefreshToken = _extractString(result, [
-        'refreshToken',
-        'refresh_token',
-        'refresh',
-      ]);
-      if (accessToken.isEmpty || newRefreshToken.isEmpty) return false;
+      final data = await _callRefreshToken(refreshToken);
+      if (data == null) return false;
+      final tokens = _extractTokens(data);
+      if (tokens == null) return false;
       await UserSimplePreferences.setAuthTokens(
-        accessToken: accessToken,
-        refreshToken: newRefreshToken,
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
       );
       return true;
     } catch (_) {
       return false;
     }
+  }
+
+  static Future<Map<String, dynamic>?> _callRefreshToken(String refreshToken) async {
+    try {
+      return await _postRpc(
+        method: 'RefreshToken',
+        params: {'refreshToken': refreshToken},
+        includeAuth: false,
+        allowRefresh: false,
+      );
+    } catch (_) {}
+    try {
+      return await _postRpc(
+        method: 'Storage.RefreshToken',
+        params: {'refreshToken': refreshToken},
+        includeAuth: false,
+        allowRefresh: false,
+      );
+    } catch (_) {}
+    return null;
+  }
+
+  static _TokenPair? _extractTokens(Map<String, dynamic> data) {
+    final result = _asMap(data['result']);
+    var accessToken = _extractString(result, [
+      'accessToken',
+      'access_token',
+      'token',
+      'access',
+    ]);
+    var refreshToken = _extractString(result, [
+      'refreshToken',
+      'refresh_token',
+      'refresh',
+    ]);
+    if (accessToken.isEmpty || refreshToken.isEmpty) {
+      accessToken = _extractString(data, [
+        'accessToken',
+        'access_token',
+        'token',
+        'access',
+      ]);
+      refreshToken = _extractString(data, [
+        'refreshToken',
+        'refresh_token',
+        'refresh',
+      ]);
+    }
+    if (accessToken.isEmpty || refreshToken.isEmpty) return null;
+    return _TokenPair(accessToken: accessToken, refreshToken: refreshToken);
   }
 
   static Future<AuthStartResult> auth({
