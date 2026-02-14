@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -14,6 +14,9 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/pep_consent.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -33,7 +36,13 @@ class _LoginState extends State<Login> {
   String _statusText = '';
   bool _isAuthLoading = false;
   bool _isVerifyLoading = false;
+  bool _termsAccepted = false;
+  bool _privacyAccepted = false;
+  bool _pepAccepted = false;
   int _opId = 0;
+
+  bool get _hasAcceptedAllConsents =>
+      _termsAccepted && _privacyAccepted && _pepAccepted;
 
   @override
   void dispose() {
@@ -45,10 +54,31 @@ class _LoginState extends State<Login> {
   String _normalizePhone(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
-    if (digits.startsWith('8') && digits.length == 11) return '+7${digits.substring(1)}';
-    if (digits.startsWith('7') && digits.length == 11) return '+$digits';
-    if (digits.length == 10) return '+7$digits';
+    String normalizedDigits = digits;
+    if (digits.startsWith('8') && digits.length == 11) {
+      normalizedDigits = '7${digits.substring(1)}';
+    } else if (!digits.startsWith('7') && digits.length == 10) {
+      normalizedDigits = '7$digits';
+    }
+    return '+$normalizedDigits';
+  }
+
+  bool _isValidPhoneForAuth(String normalizedPhone) {
+    return RegExp(r'^\+7\d{10}$').hasMatch(normalizedPhone);
+  }
+
+  String _normalizeCallPhoneForDisplay(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('+')) return trimmed;
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '+$trimmed';
     return '+$digits';
+  }
+
+  String _normalizeCallPhoneForDial(String raw) {
+    final normalized = _normalizeCallPhoneForDisplay(raw);
+    return normalized.replaceAll(RegExp(r'[^0-9+]'), '');
   }
 
   void _showError(String message) {
@@ -60,10 +90,13 @@ class _LoginState extends State<Login> {
 
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
+    if (!_hasAcceptedAllConsents) {
+      _showError('Подтвердите все согласия перед продолжением.');
+      return;
+    }
     final phone = _normalizePhone(_phoneController.text.trim());
-    final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
-    if (digitsLen < 11) {
-      _showError('Р’РІРµРґРёС‚Рµ РєРѕСЂСЂРµРєС‚РЅС‹Р№ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°.');
+    if (!_isValidPhoneForAuth(phone)) {
+      _showError('Введите корректный номер телефона.');
       return;
     }
 
@@ -73,22 +106,23 @@ class _LoginState extends State<Login> {
       _requestPhone = phone;
       _callPhone = '';
       _sessionId = null;
-      _statusText = 'Р—Р°РїСЂР°С€РёРІР°РµРј РЅРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°...';
+      _statusText = 'Запрашиваем номер для звонка...';
     });
 
     try {
       final result = await StorageApi.auth(phone: phone);
       if (!mounted || currentOp != _opId) return;
+      final callPhone = _normalizeCallPhoneForDisplay(result.callPhone);
       setState(() {
-        _callPhone = result.callPhone;
+        _callPhone = callPhone;
         _sessionId = result.sessionId;
         _statusText =
-            'РћР¶РёРґР°РµРј Р·РІРѕРЅРѕРє СЃ РЅРѕРјРµСЂР° $_requestPhone РЅР° $_callPhone. РџСЂРѕРІРµСЂРєР° РІС‹РїРѕР»РЅСЏРµС‚СЃСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РґРѕ 3 РјРёРЅСѓС‚.';
+            'Ожидаем звонок с номера $_requestPhone на $_callPhone. Проверка выполняется автоматически до 3 минут.';
       });
       unawaited(_startAutoVerify(phone, currentOp));
     } catch (_) {
       if (!mounted || currentOp != _opId) return;
-      _showError('РќРµ СѓРґР°Р»РѕСЃСЊ РЅР°С‡Р°С‚СЊ Р°РІС‚РѕСЂРёР·Р°С†РёСЋ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РµС‰Рµ СЂР°Р·.');
+      _showError('Не удалось начать авторизацию. Попробуйте еще раз.');
       setState(() {
         _statusText = '';
       });
@@ -100,27 +134,24 @@ class _LoginState extends State<Login> {
   }
 
   Future<void> _openDialer() async {
-    final target = _callPhone.trim();
+    final target = _normalizeCallPhoneForDial(_callPhone);
     if (target.isEmpty) {
-      _showError('РЎРЅР°С‡Р°Р»Р° РЅР°Р¶РјРёС‚Рµ "Р”Р°Р»РµРµ", С‡С‚РѕР±С‹ РїРѕР»СѓС‡РёС‚СЊ РЅРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°.');
+      _showError('Сначала нажмите "Далее", чтобы получить номер для звонка.');
       return;
     }
-    final uri = Uri(
-      scheme: 'tel',
-      path: target.replaceAll(RegExp(r'\s+'), ''),
-    );
+    final uri = Uri(scheme: 'tel', path: target);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
       return;
     }
-    _showError('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРёР»РѕР¶РµРЅРёРµ РґР»СЏ Р·РІРѕРЅРєР°.');
+    _showError('Не удалось открыть приложение для звонка.');
   }
 
   Future<void> _startAutoVerify(String phone, int startOp) async {
     if (!mounted || startOp != _opId || _callPhone.isEmpty) return;
     setState(() {
       _isVerifyLoading = true;
-      _statusText = 'Р–РґРµРј Р·РІРѕРЅРѕРє Рё РїСЂРѕРІРµСЂСЏРµРј Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё...';
+      _statusText = 'Ждем звонок и проверяем автоматически...';
     });
 
     final deadline = DateTime.now().add(const Duration(minutes: 3));
@@ -138,7 +169,7 @@ class _LoginState extends State<Login> {
           if (!mounted || startOp != _opId) return;
           setState(() {
             _isVerifyLoading = false;
-            _statusText = 'РЎС‚Р°С‚СѓСЃ РїСЂРѕРІРµСЂРєРё: РІСЃРµ OK. Р’С‹РїРѕР»РЅСЏРµРј РІС…РѕРґ...';
+            _statusText = 'Статус проверки: все OK. Выполняем вход...';
           });
           await Future.delayed(const Duration(milliseconds: 700));
           if (!mounted || startOp != _opId) return;
@@ -154,9 +185,10 @@ class _LoginState extends State<Login> {
     setState(() {
       _isVerifyLoading = false;
       _statusText =
-          'РЎС‚Р°С‚СѓСЃ РїСЂРѕРІРµСЂРєРё: РЅРµ OK. РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕРґС‚РІРµСЂРґРёС‚СЊ Р·РІРѕРЅРѕРє Р·Р° 3 РјРёРЅСѓС‚С‹.';
+          'Статус проверки: не OK. Не удалось подтвердить звонок за 3 минуты.';
     });
-  }\n
+  }
+
   void _proceedAfterCheck() {
     final controller = Get.find<UserController>();
     if (controller.isDealer) {
@@ -170,25 +202,110 @@ class _LoginState extends State<Login> {
     }
   }
 
+  void _openTerms() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const Terms()));
+  }
+
+  void _openPrivacyPolicy() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+  }
+
+  void _openPepConsent() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PepConsent()));
+  }
+
+  Widget _buildConsentTile({
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+    required String plainTextBeforeLink,
+    required String linkText,
+    required VoidCallback onLinkTap,
+    String plainTextAfterLink = '',
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Checkbox(
+            value: value,
+            onChanged: onChanged,
+            activeColor: kSecondaryColor,
+            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Wrap(
+                spacing: 3,
+                runSpacing: 3,
+                children: [
+                  if (plainTextBeforeLink.isNotEmpty)
+                    MyText(
+                      text: plainTextBeforeLink,
+                      size: 12,
+                      color: kTertiaryColor,
+                      lineHeight: 1.4,
+                    ),
+                  MyText(
+                    text: linkText,
+                    size: 12,
+                    color: kSecondaryColor,
+                    weight: FontWeight.w700,
+                    decoration: TextDecoration.underline,
+                    lineHeight: 1.4,
+                    onTap: onLinkTap,
+                  ),
+                  if (plainTextAfterLink.isNotEmpty)
+                    MyText(
+                      text: plainTextAfterLink,
+                      size: 12,
+                      color: kTertiaryColor,
+                      lineHeight: 1.4,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: ''),
+      appBar: simpleAppBar(
+        title: '',
+        onLeadingTap: () {
+          final navigator = Navigator.of(context);
+          if (navigator.canPop()) {
+            navigator.pop();
+            return;
+          }
+          Get.offAll(() => const ChooseUserType());
+        },
+      ),
       body: ListView(
-        shrinkWrap: true,
         physics: const BouncingScrollPhysics(),
         padding: AppSizes.DEFAULT,
         children: [
           const AuthHeading(
             textAlign: TextAlign.center,
-            title: 'РђРІС‚РѕСЂРёР·Р°С†РёСЏ',
+            title: 'Авторизация',
             subTitle:
-                'Р’РІРµРґРёС‚Рµ РЅРѕРјРµСЂ С‚РµР»РµС„РѕРЅР° Рё РЅР°Р¶РјРёС‚Рµ "Р”Р°Р»РµРµ". Р—Р°С‚РµРј РїРѕР·РІРѕРЅРёС‚Рµ РЅР° РІС‹РґР°РЅРЅС‹Р№ РЅРѕРјРµСЂ вЂ” РїСЂРѕРІРµСЂРєР° РїСЂРѕР№РґРµС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.',
+                'Введите номер телефона и нажмите "Далее". Затем позвоните на выданный номер — проверка пройдет автоматически.',
           ),
           PhoneField(controller: _phoneController),
           if (_requestPhone.isNotEmpty)
             MyText(
-              text: 'Р’Р°С€ РЅРѕРјРµСЂ: $_requestPhone',
+              text: 'Ваш номер: $_requestPhone',
               size: 12,
               color: kGreyColor,
               paddingBottom: 8,
@@ -201,7 +318,10 @@ class _LoginState extends State<Login> {
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: kWhiteColor,
                     borderRadius: BorderRadius.circular(12),
@@ -216,14 +336,22 @@ class _LoginState extends State<Login> {
                           color: kSecondaryColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.call_outlined, color: kSecondaryColor, size: 18),
+                        child: const Icon(
+                          Icons.call_outlined,
+                          color: kSecondaryColor,
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const MyText(text: 'РќРѕРјРµСЂ РґР»СЏ Р·РІРѕРЅРєР°', size: 11, color: kGreyColor),
+                            const MyText(
+                              text: 'Номер для звонка',
+                              size: 11,
+                              color: kGreyColor,
+                            ),
                             const SizedBox(height: 2),
                             MyText(
                               text: _callPhone,
@@ -233,7 +361,7 @@ class _LoginState extends State<Login> {
                             ),
                             const SizedBox(height: 2),
                             const MyText(
-                              text: 'РќР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ Р·РІРѕРЅРѕРє',
+                              text: 'Нажмите, чтобы открыть звонок',
                               size: 10,
                               color: kGreyColor,
                             ),
@@ -241,13 +369,16 @@ class _LoginState extends State<Login> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: kSecondaryColor.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(999),
                         ),
                         child: const MyText(
-                          text: 'РџРѕР·РІРѕРЅРёС‚СЊ',
+                          text: 'Позвонить',
                           size: 10,
                           color: kSecondaryColor,
                           weight: FontWeight.w700,
@@ -271,10 +402,49 @@ class _LoginState extends State<Login> {
               paddingBottom: 12,
             ),
           if (_callPhone.isEmpty)
-            MyButton(
-              onTap: _startAuth,
-              buttonText: _isAuthLoading ? 'Р—Р°РіСЂСѓР·РєР°...' : 'Р”Р°Р»РµРµ',
-              bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
+            Column(
+              children: [
+                _buildConsentTile(
+                  value: _termsAccepted,
+                  onChanged: (value) {
+                    setState(() => _termsAccepted = value ?? false);
+                  },
+                  plainTextBeforeLink: 'Принимаю',
+                  linkText: 'Пользовательское соглашение',
+                  onLinkTap: _openTerms,
+                ),
+                _buildConsentTile(
+                  value: _privacyAccepted,
+                  onChanged: (value) {
+                    setState(() => _privacyAccepted = value ?? false);
+                  },
+                  plainTextBeforeLink: 'Подтверждаю согласие с',
+                  linkText: 'Политикой ПДн',
+                  onLinkTap: _openPrivacyPolicy,
+                ),
+                _buildConsentTile(
+                  value: _pepAccepted,
+                  onChanged: (value) {
+                    setState(() => _pepAccepted = value ?? false);
+                  },
+                  plainTextBeforeLink: 'Даю',
+                  linkText: 'Согласие на ПЭП',
+                  onLinkTap: _openPepConsent,
+                ),
+                const SizedBox(height: 8),
+                Opacity(
+                  opacity: _hasAcceptedAllConsents ? 1 : 0.7,
+                  child: MyButton(
+                    onTap: _startAuth,
+                    buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
+                    bgColor: _isAuthLoading
+                        ? kGreyColor
+                        : (_hasAcceptedAllConsents
+                              ? kSecondaryColor
+                              : kGreyColor),
+                  ),
+                ),
+              ],
             )
           else
             Container(
@@ -285,7 +455,7 @@ class _LoginState extends State<Login> {
                 border: Border.all(color: kBorderColor),
               ),
               child: const MyText(
-                text: 'РќР°Р¶РјРёС‚Рµ РЅР° РЅРѕРјРµСЂ РІС‹С€Рµ Рё РІС‹РїРѕР»РЅРёС‚Рµ Р·РІРѕРЅРѕРє.',
+                text: 'Нажмите на номер выше и выполните звонок.',
                 size: 11,
                 color: kGreyColor,
               ),
@@ -295,4 +465,3 @@ class _LoginState extends State<Login> {
     );
   }
 }
-

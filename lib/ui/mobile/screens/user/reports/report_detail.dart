@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -52,16 +53,13 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                 child: PageView.builder(
                   itemCount: images.length,
                   itemBuilder: (context, index) {
-                    return Image.network(
-                      images[index],
+                    return CachedNetworkImage(
+                      imageUrl: images[index],
                       fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loading) {
-                        if (loading == null) return child;
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
+                      placeholder: (context, url) => const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      errorWidget: (context, url, error) {
                         return Container(
                           color: kBorderColor,
                           alignment: Alignment.center,
@@ -170,9 +168,9 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
             ElevatedButton(
               onPressed: () {
                 setState(() => _purchased = true);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Отчет куплен')),
-                );
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(const SnackBar(content: Text('Отчет куплен')));
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: kSecondaryColor,

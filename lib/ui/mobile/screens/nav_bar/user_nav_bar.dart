@@ -9,14 +9,17 @@ import 'package:flutter_application_1/ui/mobile/screens/user/auto_request/auto_r
 import 'package:flutter_application_1/ui/mobile/screens/user/auto_request/my_requests_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/reports/report_detail.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/u_drawer/u_drawer.dart';
-import 'package:flutter_application_1/ui/mobile/screens/user/inspectors/inspectors_screen.dart';
+import 'package:flutter_application_1/ui/mobile/screens/user/reports/purchased_reports_screen.dart';
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 class UserNavBar extends StatefulWidget {
-  const UserNavBar({super.key});
+  const UserNavBar({super.key, this.initialIndex = 0});
+
+  final int initialIndex;
 
   @override
   State<UserNavBar> createState() => _UserNavBarState();
@@ -63,6 +66,9 @@ class _UserNavBarState extends State<UserNavBar> {
   @override
   void initState() {
     super.initState();
+    final maxIndex = _navigatorKeys.length - 1;
+    final next = widget.initialIndex.clamp(0, maxIndex);
+    _currentIndex = next;
     _loadPrefs();
     _loadBrands();
   }
@@ -177,7 +183,7 @@ class _UserNavBarState extends State<UserNavBar> {
       {
         'icon': Assets.imagesProfile,
         'label':
-            '\u0410\u0432\u0442\u043e\u043f\u043e\u0434\u0431\u043e\u0440\u0449\u0438\u043a\u0438',
+            '\u041a\u0443\u043f\u043b\u0435\u043d\u043d\u044b\u0435 \u043e\u0442\u0447\u0435\u0442\u044b',
       },
     ];
 
@@ -197,7 +203,13 @@ class _UserNavBarState extends State<UserNavBar> {
               1,
               (_) => MyRequestsScreen(refresh: _requestsRefresh),
             ),
-            _buildTabNavigator(2, (_) => const InspectorsScreen()),
+            _buildTabNavigator(
+              2,
+              (_) => PurchasedReportsScreen(
+                reports: const [],
+                onOpenReports: () => _getCurrentIndex(0),
+              ),
+            ),
           ],
         ),
       ),
@@ -353,10 +365,13 @@ class _UserNavBarState extends State<UserNavBar> {
             bottom: 16,
             child: FloatingActionButton.extended(
               onPressed: () async {
-                final created = await Navigator.of(context).push<bool>(
+                final result = await Navigator.of(context).push<Object?>(
                   MaterialPageRoute(builder: (_) => const AutoRequestScreen()),
                 );
-                if (created == true) {
+                final created =
+                    result == true ||
+                    (result is Map && result['created'] == true);
+                if (created) {
                   _requestsRefresh.value++;
                   if (mounted) {
                     setState(() {
@@ -1127,23 +1142,18 @@ class _ReportCarouselState extends State<_ReportCarousel> {
                 itemBuilder: (context, index) {
                   final src = widget.images[index];
                   if (src.startsWith('http://') || src.startsWith('https://')) {
-                    return Image.network(
-                      src,
+                    return CachedNetworkImage(
+                      imageUrl: src,
                       fit: BoxFit.cover,
                       width: double.infinity,
-                      loadingBuilder: (context, child, loading) {
-                        if (loading == null) return child;
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: kBorderColor,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.broken_image),
-                        );
-                      },
+                      placeholder: (context, url) => const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: kBorderColor,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.broken_image),
+                      ),
                     );
                   }
                   return Image.asset(

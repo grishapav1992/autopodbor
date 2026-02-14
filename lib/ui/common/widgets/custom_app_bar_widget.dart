@@ -9,6 +9,7 @@ AppBar simpleAppBar({
   String? title,
   bool? centerTitle = true,
   List<Widget>? actions,
+  VoidCallback? onLeadingTap,
 }) {
   return AppBar(
     centerTitle: centerTitle,
@@ -21,6 +22,10 @@ AppBar simpleAppBar({
               children: [
                 GestureDetector(
                   onTap: () async {
+                    if (onLeadingTap != null) {
+                      onLeadingTap();
+                      return;
+                    }
                     final navigator = Navigator.of(context);
                     if (navigator.canPop()) {
                       navigator.pop();
@@ -30,10 +35,7 @@ AppBar simpleAppBar({
                       Get.back();
                     }
                   },
-                  child: Image.asset(
-                    Assets.imagesArrowBackRounded,
-                    height: 32,
-                  ),
+                  child: Image.asset(Assets.imagesArrowBackRounded, height: 32),
                 ),
               ],
             ),

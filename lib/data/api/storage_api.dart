@@ -1,5 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -124,8 +125,47 @@ class CreateRequestResult {
   const CreateRequestResult({required this.id, required this.requestNumber});
 }
 
+class _CreateRequestCacheEntry {
+  final DateTime sentAt;
+  final CreateRequestResult result;
+
+  const _CreateRequestCacheEntry({required this.sentAt, required this.result});
+}
+
+class _TokenPair {
+  final String accessToken;
+  final String refreshToken;
+
+  const _TokenPair({required this.accessToken, required this.refreshToken});
+}
+
 class StorageApi {
   static const String _endpoint = 'https://podbor-av.ru.tuna.am';
+  static final Map<String, Future<CreateRequestResult>>
+  _createRequestInFlightByKey = {};
+  static final Map<String, _CreateRequestCacheEntry> _recentCreateRequestByKey =
+      {};
+  static const Duration _createRequestDedupeWindow = Duration(seconds: 20);
+  static int _createRequestSeq = 0;
+
+  static void _debugCreateRequestLog(
+    String stage, {
+    required int seq,
+    required String requestType,
+    required String dedupeKey,
+    String extra = '',
+  }) {
+    assert(() {
+      final now = DateTime.now().toIso8601String();
+      final shortKey = dedupeKey.hashCode.toUnsigned(32).toRadixString(16);
+      final suffix = extra.trim().isEmpty ? '' : ' $extra';
+      developer.log(
+        '[CreateRequest][$now][#$seq][$stage][type=$requestType][key=$shortKey]$suffix',
+        name: 'StorageApi',
+      );
+      return true;
+    }());
+  }
 
   static int? _asInt(dynamic value) {
     if (value is int) return value;
@@ -134,10 +174,7 @@ class StorageApi {
     return null;
   }
 
-  static String _extractString(
-    Map<String, dynamic> source,
-    List<String> keys,
-  ) {
+  static String _extractString(Map<String, dynamic> source, List<String> keys) {
     for (final key in keys) {
       final value = source[key];
       if (value is String && value.trim().isNotEmpty) {
@@ -180,11 +217,7 @@ class StorageApi {
       }
     }
     final response = await http
-        .post(
-          Uri.parse(_endpoint),
-          headers: headers,
-          body: bytes,
-        )
+        .post(Uri.parse(_endpoint), headers: headers, body: bytes)
         .timeout(timeout);
     if (response.statusCode == 401 && includeAuth && allowRefresh) {
       final refreshed = await _tryRefreshTokens();
@@ -206,7 +239,7 @@ class StorageApi {
     if (responseFlag != 'ok') {
       if (includeAuth &&
           allowRefresh &&
-          responseFlag.contains('unauthor')) {
+          _isUnauthorizedResponse(data, responseFlag)) {
         final refreshed = await _tryRefreshTokens();
         if (refreshed) {
           return _postRpc(
@@ -223,32 +256,70 @@ class StorageApi {
     return data;
   }
 
-  static Future<bool> _tryRefreshTokens() async {
+  static bool _isUnauthorizedResponse(
+    Map<String, dynamic> data,
+    String responseFlag,
+  ) {
+    if (responseFlag.contains('unauthor')) return true;
+    final errors = data['errors'];
+    final messages = <String>[];
+    if (errors is String) {
+      messages.add(errors);
+    } else if (errors is Map) {
+      final map = _asMap(errors);
+      if (map['message'] != null) {
+        messages.add(map['message'].toString());
+      }
+      for (final value in map.values) {
+        if (value == null) continue;
+        messages.add(value.toString());
+      }
+    } else if (errors is List) {
+      for (final item in errors) {
+        if (item == null) continue;
+        if (item is Map) {
+          final map = _asMap(item);
+          if (map['message'] != null) {
+            messages.add(map['message'].toString());
+          }
+          for (final value in map.values) {
+            if (value == null) continue;
+            messages.add(value.toString());
+          }
+        } else {
+          messages.add(item.toString());
+        }
+      }
+    }
+    return messages.any(
+      (m) => m.toLowerCase().contains('unauthor') || m.contains('401'),
+    );
+  }
+
+  static Future<bool> hasSavedSession({bool probeWithGetBrand = false}) async {
+    final accessToken = await UserSimplePreferences.getAccessToken();
+    final refreshToken = await UserSimplePreferences.getRefreshToken();
+    final hasAccess = accessToken != null && accessToken.isNotEmpty;
+    final hasRefresh = refreshToken != null && refreshToken.isNotEmpty;
+
+    if (probeWithGetBrand) {
+      // Force an authenticated probe call. If access token is expired,
+      // _postRpc will run the standard 401 -> RefreshToken -> retry flow.
+      return _probeSessionByGetBrand();
+    }
+
+    if (!hasAccess && !hasRefresh) return false;
+    if (hasAccess) return true;
+
+    return _tryRefreshTokens();
+  }
+
+  static Future<bool> _probeSessionByGetBrand() async {
     try {
-      final refreshToken = await UserSimplePreferences.getRefreshToken();
-      if (refreshToken == null || refreshToken.isEmpty) return false;
-      final data = await _postRpc(
-        method: 'RefreshToken',
-        params: {'refreshToken': refreshToken},
-        includeAuth: false,
-        allowRefresh: false,
-      );
-      final result = _asMap(data['result']);
-      final accessToken = _extractString(result, [
-        'accessToken',
-        'access_token',
-        'token',
-        'access',
-      ]);
-      final newRefreshToken = _extractString(result, [
-        'refreshToken',
-        'refresh_token',
-        'refresh',
-      ]);
-      if (accessToken.isEmpty || newRefreshToken.isEmpty) return false;
-      await UserSimplePreferences.setAuthTokens(
-        accessToken: accessToken,
-        refreshToken: newRefreshToken,
+      await _postRpc(
+        method: 'Storage.GetBrand',
+        params: {'search': ''},
+        timeout: const Duration(seconds: 8),
       );
       return true;
     } catch (_) {
@@ -256,12 +327,82 @@ class StorageApi {
     }
   }
 
+  static Future<bool> _tryRefreshTokens() async {
+    try {
+      final refreshToken = await UserSimplePreferences.getRefreshToken();
+      if (refreshToken == null || refreshToken.isEmpty) return false;
+      final data = await _callRefreshToken(refreshToken);
+      if (data == null) return false;
+      final tokens = _extractTokens(data);
+      if (tokens == null) return false;
+      await UserSimplePreferences.setAuthTokens(
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      );
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _callRefreshToken(
+    String refreshToken,
+  ) async {
+    try {
+      return await _postRpc(
+        method: 'RefreshToken',
+        params: {'refreshToken': refreshToken},
+        includeAuth: false,
+        allowRefresh: false,
+      );
+    } catch (_) {}
+    try {
+      return await _postRpc(
+        method: 'Storage.RefreshToken',
+        params: {'refreshToken': refreshToken},
+        includeAuth: false,
+        allowRefresh: false,
+      );
+    } catch (_) {}
+    return null;
+  }
+
+  static _TokenPair? _extractTokens(Map<String, dynamic> data) {
+    final result = _asMap(data['result']);
+    var accessToken = _extractString(result, [
+      'accessToken',
+      'access_token',
+      'token',
+      'access',
+    ]);
+    var refreshToken = _extractString(result, [
+      'refreshToken',
+      'refresh_token',
+      'refresh',
+    ]);
+    if (accessToken.isEmpty || refreshToken.isEmpty) {
+      accessToken = _extractString(data, [
+        'accessToken',
+        'access_token',
+        'token',
+        'access',
+      ]);
+      refreshToken = _extractString(data, [
+        'refreshToken',
+        'refresh_token',
+        'refresh',
+      ]);
+    }
+    if (accessToken.isEmpty || refreshToken.isEmpty) return null;
+    return _TokenPair(accessToken: accessToken, refreshToken: refreshToken);
+  }
+
   static Future<AuthStartResult> auth({
     required String phone,
     Duration timeout = const Duration(seconds: 12),
   }) async {
     final data = await _postRpc(
-      method: 'storage.auth',
+      method: 'Storage.Auth',
       params: {'phone': phone},
       timeout: timeout,
       includeAuth: false,
@@ -295,7 +436,7 @@ class StorageApi {
       params['sessionId'] = sessionId;
     }
     final data = await _postRpc(
-      method: 'storage.authVerify',
+      method: 'Storage.AuthVerify',
       params: params,
       timeout: timeout,
       includeAuth: false,
@@ -321,24 +462,113 @@ class StorageApi {
   static Future<CreateRequestResult> createRequest({
     required String requestType,
     required List<Map<String, dynamic>> requestCars,
+    String? note,
+    String? city,
+    int? budgetFrom,
+    int? budgetTo,
+    int? maxMileage,
+    int? ownersCount,
     Duration timeout = const Duration(seconds: 12),
   }) async {
-    final data = await _postRpc(
-      method: 'Storage.CreateRequest',
-      params: {
-        'requestType': requestType,
-        'requestCars': requestCars,
-      },
-      timeout: timeout,
+    final seq = ++_createRequestSeq;
+    final payload = <String, dynamic>{
+      'requestType': requestType,
+      'requestCars': requestCars,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      if (city != null && city.trim().isNotEmpty) 'city': city.trim(),
+      if (budgetFrom != null) 'budgetFrom': budgetFrom,
+      if (budgetTo != null) 'budgetTo': budgetTo,
+      if (maxMileage != null) 'maxMileage': maxMileage,
+      if (ownersCount != null) 'ownersCount': ownersCount,
+    };
+    final dedupeKey = json.encode(payload);
+    _debugCreateRequestLog(
+      'prepare',
+      seq: seq,
+      requestType: requestType,
+      dedupeKey: dedupeKey,
+      extra: 'cars=${requestCars.length}',
     );
-    final result = _asMap(data['result']);
-    final id = _asInt(result['id']) ?? 0;
-    final requestNumber = _extractString(result, [
-      'requestNumber',
-      'request_number',
-      'number',
-    ]);
-    return CreateRequestResult(id: id, requestNumber: requestNumber);
+    final recent = _recentCreateRequestByKey[dedupeKey];
+    if (recent != null &&
+        DateTime.now().difference(recent.sentAt) <=
+            _createRequestDedupeWindow) {
+      _debugCreateRequestLog(
+        'dedupe_recent',
+        seq: seq,
+        requestType: requestType,
+        dedupeKey: dedupeKey,
+        extra: 'id=${recent.result.id} number=${recent.result.requestNumber}',
+      );
+      return recent.result;
+    }
+    final inFlight = _createRequestInFlightByKey[dedupeKey];
+    if (inFlight != null) {
+      _debugCreateRequestLog(
+        'dedupe_inflight',
+        seq: seq,
+        requestType: requestType,
+        dedupeKey: dedupeKey,
+      );
+      return inFlight;
+    }
+
+    final future = () async {
+      _debugCreateRequestLog(
+        'send',
+        seq: seq,
+        requestType: requestType,
+        dedupeKey: dedupeKey,
+      );
+      try {
+        final data = await _postRpc(
+          method: 'Storage.CreateRequest',
+          params: payload,
+          timeout: timeout,
+        );
+        final result = _asMap(data['result']);
+        final id = _asInt(result['id']) ?? 0;
+        final requestNumber = _extractString(result, [
+          'requestNumber',
+          'request_number',
+          'number',
+        ]);
+        final created = CreateRequestResult(
+          id: id,
+          requestNumber: requestNumber,
+        );
+        _recentCreateRequestByKey[dedupeKey] = _CreateRequestCacheEntry(
+          sentAt: DateTime.now(),
+          result: created,
+        );
+        _debugCreateRequestLog(
+          'success',
+          seq: seq,
+          requestType: requestType,
+          dedupeKey: dedupeKey,
+          extra: 'id=$id number=$requestNumber',
+        );
+        return created;
+      } catch (e) {
+        _debugCreateRequestLog(
+          'error',
+          seq: seq,
+          requestType: requestType,
+          dedupeKey: dedupeKey,
+          extra: e.toString(),
+        );
+        rethrow;
+      }
+    }();
+
+    _createRequestInFlightByKey[dedupeKey] = future;
+    try {
+      return await future;
+    } finally {
+      if (identical(_createRequestInFlightByKey[dedupeKey], future)) {
+        _createRequestInFlightByKey.remove(dedupeKey);
+      }
+    }
   }
 
   static Future<List<Map<String, dynamic>>> getRequests({
@@ -351,22 +581,14 @@ class StorageApi {
     );
     final result = data['result'];
     if (result is List) {
-      return result
-          .whereType<Map>()
-          .map((e) => _asMap(e))
-          .toList();
+      return result.whereType<Map>().map((e) => _asMap(e)).toList();
     }
     if (result is Map) {
       final map = _asMap(result);
-      final list = map['items'] ??
-          map['requests'] ??
-          map['data'] ??
-          map['list'];
+      final list =
+          map['items'] ?? map['requests'] ?? map['data'] ?? map['list'];
       if (list is List) {
-        return list
-            .whereType<Map>()
-            .map((e) => _asMap(e))
-            .toList();
+        return list.whereType<Map>().map((e) => _asMap(e)).toList();
       }
     }
     return [];
@@ -383,26 +605,33 @@ class StorageApi {
     );
     final result = data['result'];
     if (result is List) {
-      return result
-          .whereType<Map>()
-          .map((e) => _asMap(e))
-          .toList();
+      return result.whereType<Map>().map((e) => _asMap(e)).toList();
     }
     if (result is Map) {
       final map = _asMap(result);
-      final list = map['items'] ??
+      final list =
+          map['items'] ??
           map['cars'] ??
           map['requestCars'] ??
           map['data'] ??
           map['list'];
       if (list is List) {
-        return list
-            .whereType<Map>()
-            .map((e) => _asMap(e))
-            .toList();
+        return list.whereType<Map>().map((e) => _asMap(e)).toList();
       }
     }
     return [];
+  }
+
+  static Future<Map<String, dynamic>> parseCarSourceUrl({
+    required String url,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.ParseCarSourceUrl',
+      params: {'url': url},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
   }
 
   static Future<BrandCatalog> fetchBrandCatalog({
@@ -605,4 +834,3 @@ class StorageApi {
     return items;
   }
 }
-

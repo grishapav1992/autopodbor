@@ -20,6 +20,7 @@ class UserSimplePreferences {
   static const _brandCacheTsKey = 'brandCacheTs';
   static const _brandRusCacheKey = 'brandRusCache';
   static const _autoRequestsKey = 'autoRequests';
+  static const _requestDisplayOverridesKey = 'requestDisplayOverrides';
   static const _inspectorAboutKey = 'inspectorAbout';
   static const _accessTokenKey = 'accessToken';
   static const _refreshTokenKey = 'refreshToken';
@@ -218,6 +219,36 @@ class UserSimplePreferences {
     final list = await getAutoRequests();
     list.insert(0, value);
     await setAutoRequests(list);
+  }
+
+  static Future<Map<String, dynamic>> getRequestDisplayOverrides() async {
+    final raw = await pref!.getString(_requestDisplayOverridesKey);
+    if (raw == null || raw.trim().isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        return decoded.map((key, value) => MapEntry(key.toString(), value));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  static Future<Map<String, dynamic>?> getRequestDisplayOverride(String key) async {
+    final map = await getRequestDisplayOverrides();
+    final value = map[key];
+    if (value is Map) {
+      return value.map((k, v) => MapEntry(k.toString(), v));
+    }
+    return null;
+  }
+
+  static Future<void> setRequestDisplayOverride(
+    String key,
+    Map<String, dynamic> value,
+  ) async {
+    final map = await getRequestDisplayOverrides();
+    map[key] = value;
+    await pref!.setString(_requestDisplayOverridesKey, jsonEncode(map));
   }
 
   static Future updateAutoRequest(String id, Map<String, dynamic> patch) async {

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_fonts.dart';
 import 'package:flutter_application_1/core/localization/localization_controller/localization_controller.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/core/utils/global_instances.dart';
 import 'package:flutter_application_1/ui/mobile/screens/auth/login.dart';
@@ -43,13 +44,11 @@ class _SplashScreenState extends State<SplashScreen> {
   void _splashHandler() {
     Timer(const Duration(seconds: 4), () async {
       if (!mounted) return;
-      final access = await UserSimplePreferences.getAccessToken();
-      final refresh = await UserSimplePreferences.getRefreshToken();
+      final hasSession = await StorageApi.hasSavedSession(
+        probeWithGetBrand: true,
+      );
       final role = await UserSimplePreferences.getUserRole();
       if (!mounted) return;
-      final hasSession =
-          (access != null && access.isNotEmpty) &&
-          (refresh != null && refresh.isNotEmpty);
       final Widget target;
       if (hasSession) {
         if (role == 'dealer') {

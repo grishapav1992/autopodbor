@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 
-import 'package:flutter_application_1/data/api/storage_api.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 
@@ -37,7 +38,6 @@ class MyRequestDetailScreen extends StatefulWidget {
 
 class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
   late Map<String, dynamic> _data;
-  bool _loadingCars = false;
 
   final ScrollController _scrollController = ScrollController();
 
@@ -54,7 +54,9 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     if (RegExp(r'[A-Za-z]').hasMatch(value)) return value;
     final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return value;
-    final six = digits.length > 6 ? digits.substring(digits.length - 6) : digits.padLeft(6, '0');
+    final six = digits.length > 6
+        ? digits.substring(digits.length - 6)
+        : digits.padLeft(6, '0');
     return 'F$six';
   }
 
@@ -67,14 +69,18 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     return '№ $num | $date';
   }
 
+  Map<String, dynamic>? _asStringMap(dynamic raw) {
+    if (raw is Map<String, dynamic>) return raw;
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
 
     _data = Map<String, dynamic>.from(widget.request);
-    if (_isServerRequest()) {
-      _loadServerCars();
-    }
+    _applyDisplayOverride();
   }
 
   @override
@@ -96,65 +102,66 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     return null;
   }
 
-  String _formatServerDate(dynamic raw) {
-    if (raw == null) return '';
-    if (raw is DateTime) return _formatDate(raw);
-    if (raw is Map) {
-      final mapDate = raw['date'] ?? raw['datetime'] ?? raw['value'];
-      if (mapDate != null) {
-        return _formatServerDate(mapDate);
-      }
-    }
-    if (raw is num) {
-      final ms = raw > 1000000000000 ? raw.toInt() : (raw * 1000).toInt();
-      return _formatDate(DateTime.fromMillisecondsSinceEpoch(ms));
-    }
-    final text = raw.toString().trim();
-    if (text.isEmpty) return '';
-    final dateMatch = RegExp(r'(\\d{4}-\\d{2}-\\d{2})').firstMatch(text);
-    if (dateMatch != null) {
-      final isoDate = dateMatch.group(1) ?? '';
-      if (isoDate.isNotEmpty) {
-        try {
-          return _formatDate(DateTime.parse(isoDate));
-        } catch (_) {}
-      }
-    }
-    try {
-      return _formatDate(DateTime.parse(text));
-    } catch (_) {}
-    return text;
-  }
-
-  Future<void> _loadServerCars() async {
-    final id = _requestId();
-    if (id == null) return;
-    setState(() {
-      _loadingCars = true;
-    });
-    List<Map<String, dynamic>> cars = [];
-    try {
-      cars = await StorageApi.getRequestCars(requestId: id);
-    } catch (_) {}
+  Future<void> _applyDisplayOverride() async {
+    final override = await _loadDisplayOverride();
+    if (override == null) return;
     if (!mounted) return;
-    final dueDate =
-        _data['dueDate']?.toString().isNotEmpty == true ? _data['dueDate'] : _extractDueDate(cars);
     setState(() {
-      _data['requestCars'] = cars;
-      if (dueDate != null && dueDate.toString().isNotEmpty) {
-        _data['dueDate'] = dueDate;
+      const passthroughKeys = [
+        'city',
+        'cityName',
+        'location',
+        'make',
+        'brand',
+        'mark',
+        'makeName',
+        'brandName',
+        'markName',
+        'model',
+        'modelName',
+        'modelRus',
+        'budgetFrom',
+        'budgetTo',
+        'budget',
+        'mileageTo',
+        'ownersCount',
+        'note',
+        'comment',
+        'description',
+        'makes',
+        'models',
+        'restylings',
+      ];
+      for (final key in passthroughKeys) {
+        if (override[key] != null) {
+          _data[key] = override[key];
+        }
       }
-      _loadingCars = false;
+      final cars = override['requestCars'];
+      if (cars is List && cars.isNotEmpty) {
+        _data['requestCarsOverride'] = cars;
+        final existing = _data['requestCars'] as List<dynamic>?;
+        if (existing == null || existing.isEmpty) {
+          _data['requestCars'] = cars;
+        }
+      }
     });
   }
 
-  String _extractDueDate(List<Map<String, dynamic>> cars) {
-    for (final car in cars) {
-      final raw = car['dueAt'] ?? car['due_at'] ?? car['due'];
-      final formatted = _formatServerDate(raw);
-      if (formatted.isNotEmpty) return formatted;
+  Future<Map<String, dynamic>?> _loadDisplayOverride() async {
+    final id = _requestId();
+    if (id != null) {
+      final byId = await UserSimplePreferences.getRequestDisplayOverride(
+        id.toString(),
+      );
+      if (byId != null) return byId;
     }
-    return '';
+    final number =
+        _data['requestNumber'] ?? _data['request_number'] ?? _data['number'];
+    if (number != null) {
+      return UserSimplePreferences.getRequestDisplayOverride(number.toString());
+    }
+    return null;
   }
 
   Future<void> _updateRequest(Map<String, dynamic> patch) async {
@@ -169,7 +176,7 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
 
     if (raw == null) return [];
 
-    return raw.map((o) => Map<String, dynamic>.from(o as Map)).toList();
+    return raw.map(_asStringMap).whereType<Map<String, dynamic>>().toList();
   }
 
   Set<String> _canceledOffers() {
@@ -192,34 +199,715 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
     return null;
   }
 
-  List<int> _extractRestylingIds(dynamic raw) {
-    final ids = <int>[];
+  List<String> _stringList(dynamic raw) {
     if (raw is List) {
+      final out = <String>[];
       for (final item in raw) {
-        final id = _extractRestylingIds(item);
-        ids.addAll(id);
+        out.addAll(_stringList(item));
       }
-      return ids;
+      return out;
     }
-    if (raw is int) return [raw];
-    if (raw is num) return [raw.toInt()];
-    final text = raw?.toString() ?? '';
-    if (text.isEmpty) return ids;
-    final match = RegExp(r'rest:(\d+)').firstMatch(text);
-    if (match != null) {
-      final parsed = int.tryParse(match.group(1) ?? '');
-      if (parsed != null) ids.add(parsed);
-      return ids;
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      for (final key in const [
+        'nameRus',
+        'modelRus',
+        'markName',
+        'brandName',
+        'makeName',
+        'generationName',
+        'restylingName',
+        'name',
+        'model',
+        'generation',
+        'restyling',
+      ]) {
+        final values = _stringList(map[key]);
+        if (values.isNotEmpty) return values;
+      }
+      final fallbackId = map['id'] ?? map['restylingId'] ?? map['generationId'];
+      final idText = fallbackId?.toString().trim() ?? '';
+      if (idText.isNotEmpty) return [idText];
+      return const [];
     }
-    final parsed = int.tryParse(text);
-    if (parsed != null) ids.add(parsed);
-    return ids;
+    final value = raw?.toString().trim() ?? '';
+    if (value.isEmpty) return const [];
+    return [value];
   }
 
-  String _restylingIdsLabel(dynamic raw) {
-    final ids = _extractRestylingIds(raw);
-    if (ids.isEmpty) return '';
-    return ids.join(', ');
+  List<String> _collectRequestCarValues(
+    List<dynamic> requestCars,
+    List<String> keys,
+  ) {
+    final out = <String>{};
+    for (final raw in requestCars) {
+      if (raw is! Map) continue;
+      final car = Map<String, dynamic>.from(raw);
+      for (final key in keys) {
+        out.addAll(_stringList(car[key]));
+      }
+    }
+    return out.toList();
+  }
+
+  String _firstStringByKeys(Map<String, dynamic> source, List<String> keys) {
+    for (final key in keys) {
+      final values = _stringList(source[key]);
+      if (values.isEmpty) continue;
+      for (final value in values) {
+        final cleaned = _cleanInternalRestTag(value).trim();
+        if (cleaned.isNotEmpty) return cleaned;
+      }
+    }
+    return '';
+  }
+
+  String _generationLabelFromCar(Map<String, dynamic> car) {
+    final raw =
+        car['generationName'] ?? car['generationLabel'] ?? car['generation'];
+    final text = _cleanInternalRestTag(raw?.toString() ?? '').trim();
+    if (text.isEmpty) return '';
+    final lower = text.toLowerCase();
+    if (lower.contains('покол')) return text;
+    if (RegExp(r'^\d+$').hasMatch(text)) return 'Поколение $text';
+    return 'Поколение $text';
+  }
+
+  String _requestCarTitle(Map<String, dynamic> car) {
+    final make = _firstStringByKeys(car, const [
+      'makeName',
+      'brandName',
+      'markName',
+      'make',
+      'brand',
+      'mark',
+    ]);
+    final model = _firstStringByKeys(car, const [
+      'modelRus',
+      'modelName',
+      'model',
+      'nameRus',
+      'name',
+    ]);
+    final title = [make, model].where((e) => e.isNotEmpty).join(' ').trim();
+    return title.isEmpty ? 'Автомобиль' : title;
+  }
+
+  List<_TurnkeyRestylingCard> _turnkeyRestylingCards(
+    List<dynamic> requestCars,
+    List<dynamic> savedRestylings, {
+    String baseRequestTitle = '',
+  }) {
+    final groups = <_TurnkeyRestylingGroup>[];
+    for (final raw in requestCars) {
+      if (raw is! Map) continue;
+      final car = Map<String, dynamic>.from(raw);
+      final carTitle = _requestCarTitle(car);
+      final hasCarTitle =
+          carTitle.trim().isNotEmpty && carTitle.trim() != 'Автомобиль';
+      final groupBaseTitle = hasCarTitle ? carTitle : baseRequestTitle.trim();
+      final restylingRaw = car['restyling'] ?? car['restylings'];
+      final generationLabel = _generationLabelFromCar(car);
+      final generationValue = _generationValueFromLabel(generationLabel);
+      final fallbackPhoto = _extractCarPhotoUrl(car);
+      final fallbackPhotos = _collectPhotoUrlsFromCar(car, limit: 16);
+      final items = <Map<String, dynamic>>[];
+      if (restylingRaw is Map) {
+        items.add(Map<String, dynamic>.from(restylingRaw));
+      } else if (restylingRaw is List) {
+        for (final item in restylingRaw) {
+          if (item is! Map) continue;
+          items.add(Map<String, dynamic>.from(item));
+        }
+      }
+      if (items.isEmpty) {
+        final group = _TurnkeyRestylingGroup(
+          baseTitle: groupBaseTitle,
+          generationValue: generationValue,
+          photoUrl: fallbackPhoto,
+        );
+        for (final url in fallbackPhotos) {
+          group.addPhotoUrl(url);
+        }
+        groups.add(group);
+        continue;
+      }
+      for (final map in items) {
+        final start = _yearFromRaw(map['yearStart']);
+        final end = _yearFromRaw(map['yearEnd']);
+        final yearLabel = _formatYearRangeForHeader(start, end);
+        final restyling = _restylingValueFromMap(map);
+        final modifications = _modificationValuesFromMap(map);
+        final photoRaw = _pickPhotoUrl(map['photos']);
+        final photoUrl = photoRaw.isNotEmpty ? photoRaw : fallbackPhoto;
+        final range = _TurnkeyYearRange(
+          start: start,
+          end: end,
+          label: yearLabel,
+        );
+
+        _TurnkeyRestylingGroup? target;
+        for (final group in groups) {
+          if (group.baseTitle != groupBaseTitle) continue;
+          if (group.generationValue != generationValue) continue;
+          if (group.ranges.isEmpty || range.isUnknown) {
+            target = group;
+            break;
+          }
+          final hasOverlap = group.ranges.any((r) => _rangesOverlap(r, range));
+          if (hasOverlap) {
+            target = group;
+            break;
+          }
+        }
+        target ??= _TurnkeyRestylingGroup(
+          baseTitle: groupBaseTitle,
+          generationValue: generationValue,
+          photoUrl: photoUrl,
+        );
+        if (!groups.contains(target)) {
+          groups.add(target);
+        }
+        target.ranges.add(range);
+        if (restyling.isNotEmpty) target.restylings.add(restyling);
+        target.modifications.addAll(modifications);
+        for (final url in fallbackPhotos) {
+          target.addPhotoUrl(url);
+        }
+        if (photoUrl.isNotEmpty) {
+          target.addPhotoUrl(photoUrl);
+        }
+      }
+    }
+
+    final cards = <_TurnkeyRestylingCard>[];
+    for (final group in groups) {
+      final years = group.sortedYearLabels();
+      final restylings = <String>[];
+      for (final value in group.restylings) {
+        if (!restylings.contains(value)) restylings.add(value);
+      }
+      restylings.sort((a, b) {
+        if (a == b) return 0;
+        if (a == 'стартовый') return -1;
+        if (b == 'стартовый') return 1;
+        final aNum = int.tryParse(a);
+        final bNum = int.tryParse(b);
+        if (aNum != null && bNum != null) return aNum.compareTo(bNum);
+        return a.compareTo(b);
+      });
+      final modifications = <String>[];
+      for (final value in group.modifications) {
+        if (!modifications.contains(value)) modifications.add(value);
+      }
+      final defaultTitle = group.generationValue.isEmpty
+          ? 'Поколение'
+          : 'Поколение ${group.generationValue}';
+      final base = group.baseTitle.isNotEmpty ? group.baseTitle : defaultTitle;
+      final title = years.isNotEmpty ? '$base ${years.join(', ')}' : base;
+      final lines = <String>[];
+      if (group.generationValue.isNotEmpty) {
+        lines.add('Поколение: ${group.generationValue}');
+      }
+      if (restylings.isNotEmpty) {
+        lines.add('Рестайлинг: ${restylings.join(', ')}');
+      }
+      if (modifications.isNotEmpty) {
+        lines.add('Модификация: ${modifications.join(', ')}');
+      }
+      final photoUrls = group.photoUrls.isNotEmpty
+          ? List<String>.from(group.photoUrls)
+          : (group.photoUrl.isNotEmpty ? <String>[group.photoUrl] : <String>[]);
+      cards.add(
+        _TurnkeyRestylingCard(
+          title: title,
+          subtitle: lines.join('\n'),
+          photoUrl: group.photoUrl,
+          photoUrls: photoUrls,
+        ),
+      );
+    }
+
+    if (cards.isEmpty && savedRestylings.isNotEmpty) {
+      for (final raw in savedRestylings) {
+        final value = _cleanInternalRestTag(raw?.toString() ?? '').trim();
+        if (value.isEmpty) continue;
+        final label = RegExp(r'^\\d+$').hasMatch(value)
+            ? 'Поколение #$value'
+            : value;
+        cards.add(
+          _TurnkeyRestylingCard(
+            title: label,
+            subtitle: '',
+            photoUrl: '',
+            photoUrls: const [],
+          ),
+        );
+      }
+    }
+    final seen = <String>{};
+    final unique = <_TurnkeyRestylingCard>[];
+    for (final card in cards) {
+      final key =
+          '${card.title}|${card.subtitle}|${card.photoUrl}|${card.photoUrls.join(',')}';
+      if (seen.add(key)) unique.add(card);
+    }
+    return unique;
+  }
+
+  String _generationValueFromLabel(String label) {
+    final trimmed = label.trim();
+    if (trimmed.isEmpty) return '';
+    final match = RegExp(r'(\d+)').firstMatch(trimmed);
+    if (match != null) return match.group(1) ?? trimmed;
+    return trimmed
+        .replaceFirst(RegExp(r'^Поколение\s*', caseSensitive: false), '')
+        .trim();
+  }
+
+  String _formatYearRangeForHeader(int? start, int? end) {
+    if (start == null && end == null) return '';
+    if (start != null && end != null) return '$start-$end';
+    if (start != null) return '$start-н.в.';
+    return 'до $end';
+  }
+
+  String _restylingValueFromMap(Map<String, dynamic> map) {
+    final raw = _firstStringByKeys(map, const [
+      'restyling',
+      'restylingName',
+      'name',
+      'title',
+    ]);
+    final text = _cleanInternalRestTag(raw).trim();
+    if (text.isEmpty) return '';
+    if (text == '0') return 'стартовый';
+    return text;
+  }
+
+  List<String> _modificationValuesFromMap(Map<String, dynamic> map) {
+    final values = <String>{
+      ..._stringList(map['frames']),
+      ..._stringList(map['frame']),
+      ..._stringList(map['modification']),
+      ..._stringList(map['modifications']),
+    };
+    return values
+        .map((v) => _cleanInternalRestTag(v).trim())
+        .where((v) => v.isNotEmpty && !RegExp(r'^\d+$').hasMatch(v))
+        .toList();
+  }
+
+  bool _rangesOverlap(_TurnkeyYearRange a, _TurnkeyYearRange b) {
+    if (a.isUnknown || b.isUnknown) return true;
+    final aStart = a.start ?? a.end!;
+    final aEnd = a.end ?? a.start!;
+    final bStart = b.start ?? b.end!;
+    final bEnd = b.end ?? b.start!;
+    return aStart <= bEnd && bStart <= aEnd;
+  }
+
+  int? _yearFromRaw(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is Map) {
+      final map = Map<String, dynamic>.from(raw);
+      return _yearFromRaw(
+        map['date'] ?? map['value'] ?? map['datetime'] ?? map['year'],
+      );
+    }
+    if (raw is String && raw.length >= 4) {
+      return int.tryParse(raw.substring(0, 4));
+    }
+    return int.tryParse(raw.toString());
+  }
+
+  String _photoUrlFromPhotoMap(Map<String, dynamic> photo) {
+    final candidates = <String>[];
+    for (final key in const [
+      'url_x1',
+      'urlX1',
+      'url_x2',
+      'urlX2',
+      'imageUrl',
+      'photoUrl',
+      'image',
+      'photo',
+      'url',
+    ]) {
+      final value = _normalizeImageUrl(photo[key]?.toString() ?? '');
+      if (value.isEmpty) continue;
+      if (!candidates.contains(value)) candidates.add(value);
+    }
+    if (candidates.isEmpty) return '';
+    var best = candidates.first;
+    var bestScore = _photoQualityScore(best);
+    for (final url in candidates.skip(1)) {
+      final score = _photoQualityScore(url);
+      if (score > bestScore) {
+        bestScore = score;
+        best = url;
+      }
+    }
+    return best;
+  }
+
+  String _normalizeImageUrl(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return '';
+    final uri = Uri.tryParse(value);
+    if (uri != null && uri.hasScheme) return value;
+    if (value.startsWith('//')) return 'https:$value';
+    if (value.startsWith('/')) return '';
+    if (value.startsWith('www.')) return 'https://$value';
+    if (RegExp(r'^[A-Za-z0-9.-]+\.[A-Za-z]{2,}').hasMatch(value)) {
+      return 'https://$value';
+    }
+    return value;
+  }
+
+  String _pickPhotoUrl(dynamic photos) {
+    if (photos is Map) {
+      return _photoUrlFromPhotoMap(Map<String, dynamic>.from(photos));
+    }
+    if (photos is! List) return '';
+    final list = photos
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    if (list.isEmpty) return '';
+    int sizeRank(String size) {
+      final s = size.toLowerCase();
+      if (s == 'xl' || s.contains('xlarge') || s.contains('original')) return 6;
+      if (s == 'l' || s.contains('large')) return 5;
+      if (s == 'm' || s.contains('medium')) return 4;
+      if (s == 's' || s.contains('small')) return 3;
+      if (s.contains('thumb') || s.contains('preview')) return 1;
+      return 2;
+    }
+
+    Map<String, dynamic>? chosen;
+    var chosenSizeRank = -1;
+    var chosenQuality = -1000;
+    for (final item in list) {
+      final rank = sizeRank(item['size']?.toString() ?? '');
+      final url = _photoUrlFromPhotoMap(item);
+      final quality = _photoQualityScore(url);
+      if (chosen == null ||
+          rank > chosenSizeRank ||
+          (rank == chosenSizeRank && quality > chosenQuality)) {
+        chosen = item;
+        chosenSizeRank = rank;
+        chosenQuality = quality;
+      }
+    }
+    if (chosen == null) return '';
+    return _photoUrlFromPhotoMap(chosen);
+  }
+
+  String _extractCarPhotoUrl(Map<String, dynamic> car) {
+    for (final key in const [
+      'photoUrl',
+      'photo',
+      'imageUrl',
+      'image',
+      'thumbnail',
+      'preview',
+    ]) {
+      final directValue = _normalizeImageUrl(car[key]?.toString() ?? '');
+      if (directValue.isNotEmpty) return directValue;
+    }
+    final direct = _pickPhotoUrl(car['photos']);
+    if (direct.isNotEmpty) return direct;
+    final restylings = car['restyling'] ?? car['restylings'];
+    if (restylings is Map) {
+      final restMap = Map<String, dynamic>.from(restylings);
+      for (final key in const [
+        'photoUrl',
+        'photo',
+        'imageUrl',
+        'image',
+        'thumbnail',
+      ]) {
+        final directValue = _normalizeImageUrl(restMap[key]?.toString() ?? '');
+        if (directValue.isNotEmpty) return directValue;
+      }
+      final url = _pickPhotoUrl(restMap['photos']);
+      if (url.isNotEmpty) return url;
+    }
+    if (restylings is List) {
+      for (final item in restylings) {
+        if (item is! Map) continue;
+        final map = Map<String, dynamic>.from(item);
+        for (final key in const [
+          'photoUrl',
+          'photo',
+          'imageUrl',
+          'image',
+          'thumbnail',
+        ]) {
+          final directValue = _normalizeImageUrl(map[key]?.toString() ?? '');
+          if (directValue.isNotEmpty) return directValue;
+        }
+        final url = _pickPhotoUrl(map['photos']);
+        if (url.isNotEmpty) return url;
+      }
+    }
+    return '';
+  }
+
+  void _addPhotoUrl(List<String> urls, String raw, int limit) {
+    if (urls.length >= limit) return;
+    final url = _normalizeImageUrl(raw);
+    if (url.isEmpty) return;
+    if (!urls.contains(url)) {
+      urls.add(url);
+    }
+  }
+
+  void _addPhotosFrom(dynamic photos, List<String> urls, int limit) {
+    if (urls.length >= limit) return;
+    if (photos is Map) {
+      _addPhotoUrl(
+        urls,
+        _photoUrlFromPhotoMap(Map<String, dynamic>.from(photos)),
+        limit,
+      );
+      return;
+    }
+    if (photos is List) {
+      final list = photos
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (list.isEmpty) return;
+      final hasSize = list.any(
+        (p) => (p['size']?.toString().isNotEmpty ?? false),
+      );
+      if (hasSize) {
+        _addPhotoUrl(urls, _pickPhotoUrl(list), limit);
+        return;
+      }
+      for (final item in list) {
+        if (urls.length >= limit) break;
+        _addPhotoUrl(urls, _photoUrlFromPhotoMap(item), limit);
+      }
+    }
+  }
+
+  List<String> _collectPhotoUrlsFromCar(
+    Map<String, dynamic> car, {
+    int limit = 8,
+  }) {
+    final urls = <String>[];
+    for (final key in const [
+      'photoUrl',
+      'photo',
+      'imageUrl',
+      'image',
+      'thumbnail',
+      'preview',
+    ]) {
+      if (urls.length >= limit) break;
+      _addPhotoUrl(urls, car[key]?.toString() ?? '', limit);
+    }
+    _addPhotosFrom(car['photos'], urls, limit);
+    if (urls.length >= limit) return urls;
+    final restylings = car['restyling'] ?? car['restylings'];
+    if (restylings is Map) {
+      for (final key in const [
+        'photoUrl',
+        'photo',
+        'imageUrl',
+        'image',
+        'thumbnail',
+      ]) {
+        if (urls.length >= limit) break;
+        _addPhotoUrl(urls, restylings[key]?.toString() ?? '', limit);
+      }
+      _addPhotosFrom(restylings['photos'], urls, limit);
+    } else if (restylings is List) {
+      for (final item in restylings) {
+        if (urls.length >= limit) break;
+        if (item is! Map) continue;
+        for (final key in const [
+          'photoUrl',
+          'photo',
+          'imageUrl',
+          'image',
+          'thumbnail',
+        ]) {
+          if (urls.length >= limit) break;
+          _addPhotoUrl(urls, item[key]?.toString() ?? '', limit);
+        }
+        _addPhotosFrom(item['photos'], urls, limit);
+      }
+    }
+    return urls;
+  }
+
+  String _photoDedupKey(String raw) {
+    final normalized = _normalizeImageUrl(raw).trim();
+    if (normalized.isEmpty) return '';
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return normalized.toLowerCase();
+    final host = uri.host.toLowerCase();
+    final segments = uri.pathSegments
+        .where((e) => e.trim().isNotEmpty)
+        .toList();
+    if (segments.isEmpty) return normalized.toLowerCase();
+    final parent = segments.length > 1 ? segments[segments.length - 2] : '';
+    var file = segments.last.toLowerCase();
+    file = file.replaceFirst(
+      RegExp(r'\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$', caseSensitive: false),
+      '',
+    );
+    file = file.replaceAll(
+      RegExp(
+        r'([_-])?(x1|x2|thumb|thumbnail|preview|small|medium|large|mini|s|m|l|xl)$',
+        caseSensitive: false,
+      ),
+      '',
+    );
+    file = file.replaceAll(
+      RegExp(r'([_-])?\d{2,4}x\d{2,4}$', caseSensitive: false),
+      '',
+    );
+    final idMatch = RegExp(r'(\d{4,})').firstMatch(file);
+    final core = idMatch?.group(1) ?? file;
+    return '$host/${parent.toLowerCase()}/$core';
+  }
+
+  int _photoQualityScore(String raw) {
+    final value = raw.toLowerCase();
+    var score = 0;
+    if (value.contains('orig') ||
+        value.contains('original') ||
+        value.contains('full') ||
+        value.contains('hd')) {
+      score += 5;
+    }
+    if (value.contains('large') ||
+        value.contains('_l') ||
+        value.contains('-l')) {
+      score += 3;
+    }
+    final match = RegExp(r'(\d{2,4})x(\d{2,4})').firstMatch(value);
+    if (match != null) {
+      final w = int.tryParse(match.group(1) ?? '') ?? 0;
+      final h = int.tryParse(match.group(2) ?? '') ?? 0;
+      score += ((w * h) / 100000).round();
+    }
+    if (value.contains('thumb') ||
+        value.contains('thumbnail') ||
+        value.contains('preview') ||
+        value.contains('small') ||
+        value.contains('_s') ||
+        value.contains('-s')) {
+      score -= 3;
+    }
+    return score;
+  }
+
+  Future<void> _openPhotoGallery(
+    List<String> urls, {
+    int initialIndex = 0,
+  }) async {
+    final byKey = <String, String>{};
+    for (final raw in urls) {
+      final url = _normalizeImageUrl(raw).trim();
+      if (url.isEmpty) continue;
+      final key = _photoDedupKey(url);
+      if (key.isEmpty) continue;
+      final existing = byKey[key];
+      if (existing == null ||
+          _photoQualityScore(url) > _photoQualityScore(existing)) {
+        byKey[key] = url;
+      }
+    }
+    final unique = byKey.values.toList();
+    if (unique.isEmpty) return;
+    final safeIndex = initialIndex < 0
+        ? 0
+        : (initialIndex > unique.length - 1 ? unique.length - 1 : initialIndex);
+    await Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            _PhotoGalleryScreen(urls: unique, initialIndex: safeIndex),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  Widget _buildPhotoThumb(String url, {double size = 60, VoidCallback? onTap}) {
+    final placeholder = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: kSecondaryColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kBorderColor),
+      ),
+      child: const Icon(Icons.directions_car, size: 18, color: kGreyColor),
+    );
+    if (url.isEmpty) return placeholder;
+    final image = ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        placeholder: (context, imageUrl) {
+          return Stack(
+            alignment: Alignment.center,
+            children: [
+              placeholder,
+              SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: kSecondaryColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ],
+          );
+        },
+        errorWidget: (context, imageUrl, error) => placeholder,
+      ),
+    );
+    if (onTap == null) return image;
+    return GestureDetector(onTap: onTap, child: image);
+  }
+
+  Widget _buildDueBadge(String value, {double textSize = 11}) {
+    final tone = kYellowColor.withValues(alpha: 0.7);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: kYellowColor.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: kYellowColor.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule, size: 12, color: tone),
+          const SizedBox(width: 4),
+          MyText(
+            text: 'Срок до $value',
+            size: textSize,
+            weight: FontWeight.w700,
+            color: tone,
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _selectOffer(Map<String, dynamic> offer) async {
@@ -386,10 +1074,6 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
       title = type == 'turnkey' ? 'Под ключ' : 'По авто';
     }
 
-    final subtitle = _cleanInternalRestTag(
-      (_data['subtitle'] ?? '').toString(),
-    );
-
     final selectedOffer = isServer ? null : _selectedOffer();
     final dueDate = _data['dueDate']?.toString() ?? '';
     final requestMeta = _requestMeta(
@@ -469,8 +1153,7 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
 
               if (requestMeta.isNotEmpty)
                 MyText(text: requestMeta, size: 11, color: kGreyColor),
-              if (dueDate.isNotEmpty)
-                MyText(text: 'Срок: $dueDate', size: 11, color: kGreyColor),
+              if (dueDate.isNotEmpty) _buildDueBadge(dueDate),
             ],
           ),
 
@@ -511,67 +1194,91 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
   }
 
   List<Widget> _buildByCar() {
-    final requestCars = (_data['requestCars'] as List<dynamic>?) ?? [];
-    if (_loadingCars && requestCars.isEmpty) {
-      return [
-        MyText(text: 'Загрузка...', size: 12, color: kGreyColor),
-      ];
-    }
+    final requestCarsRaw = (_data['requestCars'] as List<dynamic>?) ?? [];
+    final requestCars = requestCarsRaw
+        .map(_asStringMap)
+        .whereType<Map<String, dynamic>>()
+        .toList();
     if (requestCars.isNotEmpty) {
-      return requestCars.map((raw) {
-        final car = Map<String, dynamic>.from(raw as Map);
-        final restylings = _restylingIdsLabel(car['restylings']);
-        final phone = car['phone'] ?? car['sellerPhone'];
-        final url = car['url'] ?? car['sourceUrl'];
-        final dueAt = _formatServerDate(car['dueAt'] ?? car['due_at'] ?? car['due']);
-        final title = restylings.isNotEmpty
-            ? 'Поколения: $restylings'
-            : 'Автомобиль';
-
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: kWhiteColor,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: kBorderColor),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              MyText(text: title, size: 13, weight: FontWeight.w600),
-              if (dueAt.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                MyText(text: 'Срок: $dueAt', size: 12, color: kGreyColor),
-              ],
-              if ((url ?? '').toString().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                MyText(text: 'Ссылка: $url', size: 12, color: kGreyColor),
-              ],
-              if ((phone ?? '').toString().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                MyText(text: 'Телефон: $phone', size: 12, color: kGreyColor),
-              ],
-            ],
-          ),
-        );
-      }).toList();
+      final cards = _turnkeyRestylingCards(
+        requestCarsRaw,
+        const [],
+        baseRequestTitle: '',
+      );
+      if (cards.isNotEmpty) {
+        return cards.asMap().entries.map((entry) {
+          final index = entry.key;
+          final card = entry.value;
+          final url = card.photoUrl;
+          final cardGalleryUrls = card.photoUrls.isNotEmpty
+              ? card.photoUrls
+              : (url.isNotEmpty ? <String>[url] : <String>[]);
+          final onOpenGallery = cardGalleryUrls.isEmpty
+              ? null
+              : () => _openPhotoGallery(cardGalleryUrls);
+          return GestureDetector(
+            onTap: onOpenGallery,
+            child: Container(
+              margin: EdgeInsets.only(
+                bottom: index == cards.length - 1 ? 0 : 8,
+              ),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: kSecondaryColor.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kBorderColor),
+              ),
+              child: Row(
+                children: [
+                  _buildPhotoThumb(url, size: 56, onTap: onOpenGallery),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MyText(
+                          text: card.title,
+                          size: 12,
+                          weight: FontWeight.w600,
+                          color: kTertiaryColor,
+                        ),
+                        if (card.subtitle.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          MyText(
+                            text: card.subtitle,
+                            size: 11,
+                            color: kGreyColor,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList();
+      }
     }
 
-    final cars = (_data['cars'] as List<dynamic>?) ?? [];
+    final carsRaw = (_data['cars'] as List<dynamic>?) ?? [];
+    final cars = carsRaw
+        .map(_asStringMap)
+        .whereType<Map<String, dynamic>>()
+        .toList();
     if (cars.isEmpty) {
       return [
         MyText(text: 'Автомобили не добавлены', size: 12, color: kGreyColor),
       ];
     }
 
-    return cars.map((raw) {
-      final car = Map<String, dynamic>.from(raw as Map);
+    return cars.map((car) {
       final make = car['make'] ?? '-';
       final model = car['model'] ?? '-';
       final generation = _cleanInternalRestTag(
         (car['generation'] ?? '').toString(),
       );
+      final note = (car['note'] ?? car['comment'] ?? '').toString().trim();
       return Container(
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(12),
@@ -596,6 +1303,10 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
                 color: kGreyColor,
               ),
             ],
+            if (note.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              MyText(text: 'Заметка: $note', size: 12, color: kGreyColor),
+            ],
           ],
         ),
       );
@@ -603,34 +1314,265 @@ class _MyRequestDetailScreenState extends State<MyRequestDetailScreen> {
   }
 
   List<Widget> _buildTurnkey() {
-    final makes = (_data['makes'] as List<dynamic>?)?.cast<String>() ?? [];
-
-    final models = (_data['models'] as List<dynamic>?)?.cast<String>() ?? [];
-
-    final restylings = <String>[];
     final requestCars = (_data['requestCars'] as List<dynamic>?) ?? [];
-    for (final raw in requestCars) {
-      if (raw is! Map) continue;
-      final ids = _extractRestylingIds(raw['restylings']);
-      restylings.addAll(ids.map((e) => e.toString()));
+    final savedMakes = (_data['makes'] as List<dynamic>?) ?? const [];
+    final savedModels = (_data['models'] as List<dynamic>?) ?? const [];
+    final savedRestylings = (_data['restylings'] as List<dynamic>?) ?? const [];
+    final makes = <String>[
+      ...savedMakes.expand(_stringList),
+      ..._stringList(_data['make']),
+      ..._stringList(_data['brand']),
+      ..._stringList(_data['mark']),
+      ..._stringList(_data['makeName']),
+      ..._stringList(_data['brandName']),
+      ..._stringList(_data['markName']),
+    ].where((e) => e.trim().isNotEmpty).toSet().toList();
+
+    final models = <String>[
+      ...savedModels.expand(_stringList),
+      ..._stringList(_data['model']),
+      ..._stringList(_data['modelName']),
+      ..._stringList(_data['modelRus']),
+    ].where((e) => e.trim().isNotEmpty).toSet().toList();
+
+    String firstFromDataOrCars(List<String> keys) {
+      final topLevel = _firstStringByKeys(_data, keys);
+      if (topLevel.isNotEmpty) return topLevel;
+      final fromCars = _collectRequestCarValues(requestCars, keys);
+      return fromCars.isNotEmpty ? fromCars.first : '';
     }
-    if (restylings.isEmpty) {
-      restylings.addAll(
-        ((_data['restylings'] as List<dynamic>?)?.cast<String>() ?? [])
-            .map(_cleanInternalRestTag),
-      );
+
+    String composeRequestTitle() {
+      final make = makes.isNotEmpty ? makes.first : '';
+      final model = models.isNotEmpty ? models.first : '';
+      return [make, model].where((e) => e.isNotEmpty).join(' ');
     }
+
+    final requestTitle = composeRequestTitle();
+
+    final restylingCards = _turnkeyRestylingCards(
+      requestCars,
+      savedRestylings,
+      baseRequestTitle: requestTitle,
+    );
+    final showFallbackChips = restylingCards.isEmpty;
+    final fallbackRestylings = showFallbackChips
+        ? savedRestylings
+              .expand(_stringList)
+              .map(_cleanInternalRestTag)
+              .where((e) => e.trim().isNotEmpty)
+              .toSet()
+              .toList()
+        : <String>[];
+    final city = firstFromDataOrCars(const [
+      'city',
+      'cityName',
+      'location',
+      'town',
+      'locality',
+    ]);
+    final budgetFrom = firstFromDataOrCars(const [
+      'budgetFrom',
+      'budget_from',
+      'budgetMin',
+      'budget_min',
+      'priceFrom',
+      'price_from',
+      'minPrice',
+      'min_price',
+    ]);
+    final budgetTo = firstFromDataOrCars(const [
+      'budgetTo',
+      'budget_to',
+      'budgetMax',
+      'budget_max',
+      'priceTo',
+      'price_to',
+      'maxPrice',
+      'max_price',
+    ]);
+    final budgetSingle = firstFromDataOrCars(const [
+      'budget',
+      'price',
+      'amount',
+    ]);
+    final mileageTo = firstFromDataOrCars(const [
+      'mileageTo',
+      'mileage_to',
+      'mileage',
+      'maxMileage',
+      'max_mileage',
+      'runTo',
+      'run_to',
+    ]);
+    final ownersCount = firstFromDataOrCars(const [
+      'ownersCount',
+      'owners_count',
+      'owners',
+      'maxOwners',
+      'max_owners',
+    ]);
+    final note = () {
+      final topLevel = _firstStringByKeys(_data, const [
+        'note',
+        'comment',
+        'description',
+        'notes',
+        'remark',
+      ]);
+      if (topLevel.isNotEmpty) return topLevel;
+      final noteFromCars = _collectRequestCarValues(requestCars, const [
+        'note',
+        'comment',
+        'description',
+        'notes',
+        'remark',
+      ]);
+      return noteFromCars.isNotEmpty ? noteFromCars.first : '';
+    }();
+    String budget = '';
+    if (budgetFrom.isNotEmpty && budgetTo.isNotEmpty) {
+      budget = '$budgetFrom - $budgetTo';
+    } else if (budgetFrom.isNotEmpty) {
+      budget = 'от $budgetFrom';
+    } else if (budgetTo.isNotEmpty) {
+      budget = 'до $budgetTo';
+    } else {
+      budget = budgetSingle;
+    }
+    final infoRows = <MapEntry<String, String>>[
+      MapEntry('Город', city),
+      MapEntry('Бюджет', budget),
+      MapEntry('Пробег до', mileageTo),
+      MapEntry('Владельцев', ownersCount),
+      MapEntry('Заметка', note),
+    ];
 
     return [
-      _ChipRow(label: 'Марка', values: makes),
-
-      const SizedBox(height: 8),
-
-      _ChipRow(label: 'Модель', values: models),
-
-      const SizedBox(height: 8),
-
-      _ChipRow(label: 'Поколение', values: restylings),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: kWhiteColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kBorderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const MyText(
+              text: 'Параметры заявки',
+              size: 13,
+              weight: FontWeight.w700,
+            ),
+            const SizedBox(height: 8),
+            ...infoRows.map(
+              (row) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: kGreyColor,
+                      height: 1.4,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '${row.key}: ',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      TextSpan(text: row.value),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: 10),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: kWhiteColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kBorderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const MyText(
+              text: 'Критерии подбора',
+              size: 13,
+              weight: FontWeight.w700,
+            ),
+            if (restylingCards.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Column(
+                children: restylingCards.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final card = entry.value;
+                  final url = card.photoUrl;
+                  final cardGalleryUrls = card.photoUrls.isNotEmpty
+                      ? card.photoUrls
+                      : (url.isNotEmpty ? <String>[url] : <String>[]);
+                  final onOpenGallery = cardGalleryUrls.isEmpty
+                      ? null
+                      : () => _openPhotoGallery(cardGalleryUrls);
+                  return GestureDetector(
+                    onTap: onOpenGallery,
+                    child: Container(
+                      margin: EdgeInsets.only(
+                        bottom: index == restylingCards.length - 1 ? 0 : 8,
+                      ),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: kSecondaryColor.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: kBorderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          _buildPhotoThumb(url, size: 56, onTap: onOpenGallery),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MyText(
+                                  text: card.title,
+                                  size: 12,
+                                  weight: FontWeight.w600,
+                                  color: kTertiaryColor,
+                                ),
+                                if (card.subtitle.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  MyText(
+                                    text: card.subtitle,
+                                    size: 11,
+                                    color: kGreyColor,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+            const SizedBox(height: 8),
+            if (showFallbackChips) ...[
+              _ChipRow(label: 'Марка', values: makes),
+              const SizedBox(height: 8),
+              _ChipRow(label: 'Модель', values: models),
+              const SizedBox(height: 8),
+              _ChipRow(label: 'Поколение', values: fallbackRestylings),
+            ],
+          ],
+        ),
+      ),
     ];
   }
 
@@ -1428,4 +2370,192 @@ class _ChipRow extends StatelessWidget {
       ],
     );
   }
+}
+
+class _PhotoGalleryScreen extends StatefulWidget {
+  const _PhotoGalleryScreen({required this.urls, this.initialIndex = 0});
+
+  final List<String> urls;
+  final int initialIndex;
+
+  @override
+  State<_PhotoGalleryScreen> createState() => _PhotoGalleryScreenState();
+}
+
+class _PhotoGalleryScreenState extends State<_PhotoGalleryScreen> {
+  late final PageController _controller;
+  late int _index;
+
+  @override
+  void initState() {
+    super.initState();
+    _index = widget.initialIndex < 0
+        ? 0
+        : (widget.initialIndex > widget.urls.length - 1
+              ? widget.urls.length - 1
+              : widget.initialIndex);
+    _controller = PageController(initialPage: _index);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            PageView.builder(
+              controller: _controller,
+              itemCount: widget.urls.length,
+              onPageChanged: (value) {
+                setState(() {
+                  _index = value;
+                });
+              },
+              itemBuilder: (context, index) {
+                final url = widget.urls[index];
+                return GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Center(
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 3,
+                      child: CachedNetworkImage(
+                        imageUrl: url,
+                        fit: BoxFit.contain,
+                        placeholder: (context, imageUrl) => const Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                        errorWidget: (context, imageUrl, error) {
+                          return const Icon(
+                            Icons.broken_image,
+                            size: 48,
+                            color: Colors.white70,
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            Positioned(
+              top: 4,
+              left: 4,
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close, color: Colors.white),
+              ),
+            ),
+            Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${_index + 1}/${widget.urls.length}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TurnkeyYearRange {
+  const _TurnkeyYearRange({
+    required this.start,
+    required this.end,
+    required this.label,
+  });
+
+  final int? start;
+  final int? end;
+  final String label;
+
+  bool get isUnknown => start == null && end == null;
+}
+
+class _TurnkeyRestylingGroup {
+  _TurnkeyRestylingGroup({
+    required this.baseTitle,
+    required this.generationValue,
+    required this.photoUrl,
+  });
+
+  final String baseTitle;
+  final String generationValue;
+  String photoUrl;
+  final List<String> photoUrls = [];
+  final List<_TurnkeyYearRange> ranges = [];
+  final List<String> restylings = [];
+  final List<String> modifications = [];
+
+  void addPhotoUrl(String raw) {
+    final value = raw.trim();
+    if (value.isEmpty) return;
+    if (!photoUrls.contains(value)) {
+      photoUrls.add(value);
+    }
+    if (photoUrl.isEmpty) {
+      photoUrl = value;
+    }
+  }
+
+  List<String> sortedYearLabels() {
+    final rows = <_TurnkeyYearRange>[];
+    final seen = <String>{};
+    for (final range in ranges) {
+      final label = range.label.trim();
+      if (label.isEmpty) continue;
+      if (seen.add(label)) rows.add(range);
+    }
+    rows.sort((a, b) {
+      final aEnd = a.end ?? a.start ?? -1;
+      final bEnd = b.end ?? b.start ?? -1;
+      final byEnd = bEnd.compareTo(aEnd);
+      if (byEnd != 0) return byEnd;
+      final aStart = a.start ?? a.end ?? -1;
+      final bStart = b.start ?? b.end ?? -1;
+      return bStart.compareTo(aStart);
+    });
+    return rows.map((e) => e.label).toList();
+  }
+}
+
+class _TurnkeyRestylingCard {
+  final String title;
+  final String subtitle;
+  final String photoUrl;
+  final List<String> photoUrls;
+
+  const _TurnkeyRestylingCard({
+    required this.title,
+    required this.subtitle,
+    required this.photoUrl,
+    required this.photoUrls,
+  });
 }
