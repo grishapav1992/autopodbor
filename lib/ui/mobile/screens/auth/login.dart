@@ -14,6 +14,9 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/pep_consent.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -33,7 +36,13 @@ class _LoginState extends State<Login> {
   String _statusText = '';
   bool _isAuthLoading = false;
   bool _isVerifyLoading = false;
+  bool _termsAccepted = false;
+  bool _privacyAccepted = false;
+  bool _pepAccepted = false;
   int _opId = 0;
+
+  bool get _hasAcceptedAllConsents =>
+      _termsAccepted && _privacyAccepted && _pepAccepted;
 
   @override
   void dispose() {
@@ -58,6 +67,20 @@ class _LoginState extends State<Login> {
     return RegExp(r'^\+7\d{10}$').hasMatch(normalizedPhone);
   }
 
+  String _normalizeCallPhoneForDisplay(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    if (trimmed.startsWith('+')) return trimmed;
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '+$trimmed';
+    return '+$digits';
+  }
+
+  String _normalizeCallPhoneForDial(String raw) {
+    final normalized = _normalizeCallPhoneForDisplay(raw);
+    return normalized.replaceAll(RegExp(r'[^0-9+]'), '');
+  }
+
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -67,6 +90,10 @@ class _LoginState extends State<Login> {
 
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
+    if (!_hasAcceptedAllConsents) {
+      _showError('Подтвердите все согласия перед продолжением.');
+      return;
+    }
     final phone = _normalizePhone(_phoneController.text.trim());
     if (!_isValidPhoneForAuth(phone)) {
       _showError('Введите корректный номер телефона.');
@@ -85,8 +112,9 @@ class _LoginState extends State<Login> {
     try {
       final result = await StorageApi.auth(phone: phone);
       if (!mounted || currentOp != _opId) return;
+      final callPhone = _normalizeCallPhoneForDisplay(result.callPhone);
       setState(() {
-        _callPhone = result.callPhone;
+        _callPhone = callPhone;
         _sessionId = result.sessionId;
         _statusText =
             'Ожидаем звонок с номера $_requestPhone на $_callPhone. Проверка выполняется автоматически до 3 минут.';
@@ -106,15 +134,12 @@ class _LoginState extends State<Login> {
   }
 
   Future<void> _openDialer() async {
-    final target = _callPhone.trim();
+    final target = _normalizeCallPhoneForDial(_callPhone);
     if (target.isEmpty) {
       _showError('Сначала нажмите "Далее", чтобы получить номер для звонка.');
       return;
     }
-    final uri = Uri(
-      scheme: 'tel',
-      path: target.replaceAll(RegExp(r'\s+'), ''),
-    );
+    final uri = Uri(scheme: 'tel', path: target);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
       return;
@@ -163,6 +188,7 @@ class _LoginState extends State<Login> {
           'Статус проверки: не OK. Не удалось подтвердить звонок за 3 минуты.';
     });
   }
+
   void _proceedAfterCheck() {
     final controller = Get.find<UserController>();
     if (controller.isDealer) {
@@ -176,12 +202,97 @@ class _LoginState extends State<Login> {
     }
   }
 
+  void _openTerms() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const Terms()));
+  }
+
+  void _openPrivacyPolicy() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+  }
+
+  void _openPepConsent() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PepConsent()));
+  }
+
+  Widget _buildConsentTile({
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+    required String plainTextBeforeLink,
+    required String linkText,
+    required VoidCallback onLinkTap,
+    String plainTextAfterLink = '',
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Checkbox(
+            value: value,
+            onChanged: onChanged,
+            activeColor: kSecondaryColor,
+            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Wrap(
+                spacing: 3,
+                runSpacing: 3,
+                children: [
+                  if (plainTextBeforeLink.isNotEmpty)
+                    MyText(
+                      text: plainTextBeforeLink,
+                      size: 12,
+                      color: kTertiaryColor,
+                      lineHeight: 1.4,
+                    ),
+                  MyText(
+                    text: linkText,
+                    size: 12,
+                    color: kSecondaryColor,
+                    weight: FontWeight.w700,
+                    decoration: TextDecoration.underline,
+                    lineHeight: 1.4,
+                    onTap: onLinkTap,
+                  ),
+                  if (plainTextAfterLink.isNotEmpty)
+                    MyText(
+                      text: plainTextAfterLink,
+                      size: 12,
+                      color: kTertiaryColor,
+                      lineHeight: 1.4,
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: ''),
+      appBar: simpleAppBar(
+        title: '',
+        onLeadingTap: () {
+          final navigator = Navigator.of(context);
+          if (navigator.canPop()) {
+            navigator.pop();
+            return;
+          }
+          Get.offAll(() => const ChooseUserType());
+        },
+      ),
       body: ListView(
-        shrinkWrap: true,
         physics: const BouncingScrollPhysics(),
         padding: AppSizes.DEFAULT,
         children: [
@@ -207,7 +318,10 @@ class _LoginState extends State<Login> {
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: kWhiteColor,
                     borderRadius: BorderRadius.circular(12),
@@ -222,14 +336,22 @@ class _LoginState extends State<Login> {
                           color: kSecondaryColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.call_outlined, color: kSecondaryColor, size: 18),
+                        child: const Icon(
+                          Icons.call_outlined,
+                          color: kSecondaryColor,
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const MyText(text: 'Номер для звонка', size: 11, color: kGreyColor),
+                            const MyText(
+                              text: 'Номер для звонка',
+                              size: 11,
+                              color: kGreyColor,
+                            ),
                             const SizedBox(height: 2),
                             MyText(
                               text: _callPhone,
@@ -247,7 +369,10 @@ class _LoginState extends State<Login> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: kSecondaryColor.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(999),
@@ -277,10 +402,49 @@ class _LoginState extends State<Login> {
               paddingBottom: 12,
             ),
           if (_callPhone.isEmpty)
-            MyButton(
-              onTap: _startAuth,
-              buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
-              bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
+            Column(
+              children: [
+                _buildConsentTile(
+                  value: _termsAccepted,
+                  onChanged: (value) {
+                    setState(() => _termsAccepted = value ?? false);
+                  },
+                  plainTextBeforeLink: 'Принимаю',
+                  linkText: 'Пользовательское соглашение',
+                  onLinkTap: _openTerms,
+                ),
+                _buildConsentTile(
+                  value: _privacyAccepted,
+                  onChanged: (value) {
+                    setState(() => _privacyAccepted = value ?? false);
+                  },
+                  plainTextBeforeLink: 'Подтверждаю согласие с',
+                  linkText: 'Политикой ПДн',
+                  onLinkTap: _openPrivacyPolicy,
+                ),
+                _buildConsentTile(
+                  value: _pepAccepted,
+                  onChanged: (value) {
+                    setState(() => _pepAccepted = value ?? false);
+                  },
+                  plainTextBeforeLink: 'Даю',
+                  linkText: 'Согласие на ПЭП',
+                  onLinkTap: _openPepConsent,
+                ),
+                const SizedBox(height: 8),
+                Opacity(
+                  opacity: _hasAcceptedAllConsents ? 1 : 0.7,
+                  child: MyButton(
+                    onTap: _startAuth,
+                    buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
+                    bgColor: _isAuthLoading
+                        ? kGreyColor
+                        : (_hasAcceptedAllConsents
+                              ? kSecondaryColor
+                              : kGreyColor),
+                  ),
+                ),
+              ],
             )
           else
             Container(
@@ -301,4 +465,3 @@ class _LoginState extends State<Login> {
     );
   }
 }
-

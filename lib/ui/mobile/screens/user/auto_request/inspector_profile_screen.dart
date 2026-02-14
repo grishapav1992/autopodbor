@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
@@ -262,7 +263,21 @@ class _PhotoCarouselState extends State<_PhotoCarousel> {
               itemBuilder: (context, index) {
                 final src = items[index];
                 if (src.startsWith('http')) {
-                  return Image.network(src, fit: BoxFit.cover);
+                  return CachedNetworkImage(
+                    imageUrl: src,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Image.asset(
+                      Assets.imagesNoImageFound,
+                      fit: BoxFit.cover,
+                    ),
+                  );
                 }
                 return Image.asset(src, fit: BoxFit.cover);
               },

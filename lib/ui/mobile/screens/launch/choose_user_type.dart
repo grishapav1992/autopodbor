@@ -17,7 +17,7 @@ class ChooseUserType extends StatefulWidget {
 }
 
 class _ChooseUserTypeState extends State<ChooseUserType> {
-  int currentIndex = 0;
+  int? currentIndex;
   final UserController _userController = Get.find<UserController>();
   bool _navigating = false;
 
@@ -28,7 +28,9 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
     });
     final role = index == 0 ? UserRole.user : UserRole.dealer;
     _userController.chooseRole(role);
-    UserSimplePreferences.setUserRole(role == UserRole.user ? 'user' : 'dealer');
+    UserSimplePreferences.setUserRole(
+      role == UserRole.user ? 'user' : 'dealer',
+    );
     setState(() {
       _navigating = true;
     });
@@ -37,7 +39,9 @@ class _ChooseUserTypeState extends State<ChooseUserType> {
     );
     if (!mounted) return;
     if (hasSession) {
-      Get.offAllNamed(role == UserRole.user ? AppLinks.userHome : AppLinks.dealerHome);
+      Get.offAllNamed(
+        role == UserRole.user ? AppLinks.userHome : AppLinks.dealerHome,
+      );
       return;
     }
     Get.offAllNamed(AppLinks.login);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
@@ -90,11 +91,7 @@ class PurchasedReportsScreen extends StatelessWidget {
       child: ListView(
         padding: AppSizes.listPaddingWithBottomBar(),
         children: [
-          MyText(
-            text: 'Купленные отчеты',
-            size: 18,
-            weight: FontWeight.w700,
-          ),
+          MyText(text: 'Купленные отчеты', size: 18, weight: FontWeight.w700),
           const SizedBox(height: 12),
           ...reports.map(
             (report) => _PurchasedReportCard(
@@ -163,7 +160,10 @@ class _PurchasedReportCard extends StatelessWidget {
                   if (verdict.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: kSecondaryColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(999),
@@ -203,14 +203,18 @@ class _ReportThumb extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: hasImage
-          ? Image.network(
-              imageUrl,
+          ? CachedNetworkImage(
+              imageUrl: imageUrl,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.broken_image,
-                size: 24,
-                color: kGreyColor,
+              placeholder: (context, url) => const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
               ),
+              errorWidget: (context, url, error) =>
+                  const Icon(Icons.broken_image, size: 24, color: kGreyColor),
             )
           : const Icon(Icons.insert_photo, color: kGreyColor),
     );

@@ -12,6 +12,7 @@ import 'package:flutter_application_1/ui/mobile/screens/user/u_drawer/u_drawer.d
 import 'package:flutter_application_1/ui/mobile/screens/user/reports/purchased_reports_screen.dart';
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -181,7 +182,8 @@ class _UserNavBarState extends State<UserNavBar> {
       },
       {
         'icon': Assets.imagesProfile,
-        'label': '\u041a\u0443\u043f\u043b\u0435\u043d\u043d\u044b\u0435 \u043e\u0442\u0447\u0435\u0442\u044b',
+        'label':
+            '\u041a\u0443\u043f\u043b\u0435\u043d\u043d\u044b\u0435 \u043e\u0442\u0447\u0435\u0442\u044b',
       },
     ];
 
@@ -363,10 +365,13 @@ class _UserNavBarState extends State<UserNavBar> {
             bottom: 16,
             child: FloatingActionButton.extended(
               onPressed: () async {
-                final created = await Navigator.of(context).push<bool>(
+                final result = await Navigator.of(context).push<Object?>(
                   MaterialPageRoute(builder: (_) => const AutoRequestScreen()),
                 );
-                if (created == true) {
+                final created =
+                    result == true ||
+                    (result is Map && result['created'] == true);
+                if (created) {
                   _requestsRefresh.value++;
                   if (mounted) {
                     setState(() {
@@ -1137,23 +1142,18 @@ class _ReportCarouselState extends State<_ReportCarousel> {
                 itemBuilder: (context, index) {
                   final src = widget.images[index];
                   if (src.startsWith('http://') || src.startsWith('https://')) {
-                    return Image.network(
-                      src,
+                    return CachedNetworkImage(
+                      imageUrl: src,
                       fit: BoxFit.cover,
                       width: double.infinity,
-                      loadingBuilder: (context, child, loading) {
-                        if (loading == null) return child;
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: kBorderColor,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.broken_image),
-                        );
-                      },
+                      placeholder: (context, url) => const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: kBorderColor,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.broken_image),
+                      ),
                     );
                   }
                   return Image.asset(
