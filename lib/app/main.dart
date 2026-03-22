@@ -46,7 +46,7 @@ class MyApp extends StatelessWidget {
       title: 'АВТОХАБ',
       theme: lightTheme,
       themeMode: ThemeMode.light,
-      initialRoute: AppLinks.landing,
+      initialRoute: AppLinks.chooseUserType,
       getPages: AppRoutes.pages,
       defaultTransition: Transition.fadeIn,
       builder: (context, child) {
@@ -62,4 +62,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

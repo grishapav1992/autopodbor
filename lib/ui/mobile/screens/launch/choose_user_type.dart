@@ -1,12 +1,11 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
-import 'package:flutter_application_1/data/api/storage_api.dart';
-import 'package:flutter_application_1/state/user_controller.dart';
-import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class ChooseUserType extends StatefulWidget {
@@ -17,158 +16,130 @@ class ChooseUserType extends StatefulWidget {
 }
 
 class _ChooseUserTypeState extends State<ChooseUserType> {
-  int? currentIndex;
-  final UserController _userController = Get.find<UserController>();
-  bool _navigating = false;
+  int _currentIndex = 1;
 
-  Future<void> _selectRoleAndContinue(int index) async {
-    if (_navigating) return;
-    setState(() {
-      currentIndex = index;
-    });
-    final role = index == 0 ? UserRole.user : UserRole.dealer;
-    _userController.chooseRole(role);
-    UserSimplePreferences.setUserRole(
-      role == UserRole.user ? 'user' : 'dealer',
-    );
-    setState(() {
-      _navigating = true;
-    });
-    final hasSession = await StorageApi.hasSavedSession(
-      probeWithGetBrand: true,
-    );
+  Future<void> _continue() async {
+    final role = _currentIndex == 0 ? 'company' : 'specialist';
+    await UserSimplePreferences.setUserRole(role);
     if (!mounted) return;
-    if (hasSession) {
-      Get.offAllNamed(
-        role == UserRole.user ? AppLinks.userHome : AppLinks.dealerHome,
-      );
-      return;
-    }
     Get.offAllNamed(AppLinks.login);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          Padding(
-            padding: AppSizes.DEFAULT,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Padding(
+        padding: AppSizes.DEFAULT,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 44),
+            Center(child: Image.asset(Assets.imagesLogo, height: 58)),
+            const Spacer(flex: 5),
+            const MyText(
+              text: 'Выберите роль',
+              size: 18,
+              weight: FontWeight.w700,
+              textAlign: TextAlign.center,
+              paddingBottom: 22,
+            ),
+            Row(
               children: [
-                const SizedBox(height: 50),
-                Column(children: [Image.asset(Assets.imagesLogo, height: 60)]),
-                const Spacer(flex: 5),
-                Column(
-                  children: [
-                    MyText(
-                      text: "continueAs".tr,
-                      size: 16,
-                      weight: FontWeight.w600,
-                      textAlign: TextAlign.center,
-                      paddingBottom: 30,
-                    ),
-                    Row(
-                      children: [
-                        userTypeButton(
-                          onTap: () => _selectRoleAndContinue(0),
-                          icon: Assets.imagesAppUser,
-                          title: "user".tr,
-                          index: 0,
-                        ),
-                        const SizedBox(width: 16),
-                        userTypeButton(
-                          onTap: () => _selectRoleAndContinue(1),
-                          icon: Assets.imagesCarDealer,
-                          title: "dealer".tr,
-                          index: 1,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 60),
-                    const SizedBox(height: 60),
-                  ],
+                _roleCard(
+                  index: 0,
+                  icon: Icons.business_outlined,
+                  title: 'Компания',
+                  subtitle: 'Рабочее место компании',
                 ),
-                const Spacer(flex: 4),
-                const SizedBox(height: 24),
+                const SizedBox(width: 14),
+                _roleCard(
+                  index: 1,
+                  icon: Icons.handyman_outlined,
+                  title: 'Специалист',
+                  subtitle: 'Рабочее место автоподборщика',
+                ),
               ],
             ),
-          ),
-          if (_navigating)
-            Positioned.fill(
-              child: Container(
-                color: kWhiteColor.withValues(alpha: 0.8),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    CircularProgressIndicator(strokeWidth: 2),
-                    SizedBox(height: 12),
-                    MyText(
-                      text: 'Проверяем доступ...',
-                      size: 12,
-                      color: kGreyColor,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-        ],
+            const Spacer(flex: 4),
+            MyButton(buttonText: 'Продолжить', onTap: _continue),
+            const SizedBox(height: 20),
+          ],
+        ),
       ),
     );
   }
 
-  Widget userTypeButton({
-    required VoidCallback onTap,
-    required String icon,
-    required String title,
+  Widget _roleCard({
     required int index,
+    required IconData icon,
+    required String title,
+    required String subtitle,
   }) {
+    final selected = _currentIndex == index;
+
     return Expanded(
       child: GestureDetector(
-        onTap: onTap,
+        onTap: () => setState(() => _currentIndex = index),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          curve: Curves.easeIn,
-          height: 161,
+          curve: Curves.easeInOut,
+          height: 188,
           decoration: BoxDecoration(
-            boxShadow: currentIndex == index
-                ? [
-                    BoxShadow(
-                      offset: const Offset(0, 4),
-                      blurRadius: 10,
-                      color: kTertiaryColor.withValues(alpha: 0.1),
-                    ),
-                  ]
-                : [],
+            borderRadius: BorderRadius.circular(22),
+            color: selected ? kSecondaryColor : kWhiteColor,
             border: Border.all(
-              width: 1.0,
-              color: currentIndex == index
+              color: selected
                   ? kSecondaryColor
                   : kTertiaryColor.withValues(alpha: 0.1),
             ),
-            borderRadius: BorderRadius.circular(24),
-            color: currentIndex == index ? kSecondaryColor : kWhiteColor,
+            boxShadow: selected
+                ? [
+                    BoxShadow(
+                      offset: const Offset(0, 6),
+                      blurRadius: 14,
+                      color: kTertiaryColor.withValues(alpha: 0.12),
+                    ),
+                  ]
+                : [],
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              SizedBox(
-                height: 55,
-                width: 55,
-                child: Center(
-                  child: Image.asset(icon, height: index == 1 ? 50 : 40),
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  color: selected
+                      ? kWhiteColor.withValues(alpha: 0.18)
+                      : kSecondaryColor.withValues(alpha: 0.08),
+                ),
+                alignment: Alignment.center,
+                child: Icon(
+                  icon,
+                  size: 30,
+                  color: selected ? kWhiteColor : kSecondaryColor,
                 ),
               ),
               MyText(
                 text: title,
-                size: 18,
-                weight: FontWeight.w600,
-                color: currentIndex == index ? kPrimaryColor : kTertiaryColor,
-                paddingTop: 16,
-                maxLines: 2,
+                size: 17,
+                weight: FontWeight.w700,
+                color: selected ? kWhiteColor : kTertiaryColor,
                 textAlign: TextAlign.center,
-                textOverflow: TextOverflow.ellipsis,
+                paddingTop: 14,
+              ),
+              MyText(
+                text: subtitle,
+                size: 11,
+                color: selected
+                    ? kWhiteColor.withValues(alpha: 0.85)
+                    : kGreyColor,
+                textAlign: TextAlign.center,
+                paddingTop: 6,
+                lineHeight: 1.25,
+                maxLines: 2,
               ),
             ],
           ),

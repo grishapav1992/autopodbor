@@ -5,18 +5,14 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
-import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/headings_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_field_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
-import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/pep_consent.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -29,6 +25,10 @@ class Login extends StatefulWidget {
 
 class _LoginState extends State<Login> {
   final TextEditingController _phoneController = TextEditingController();
+  static const String _techAccessToken =
+      'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzA0MTAyOTMuNTU1NzQ0LCJleHAiOjE3NzA0NTM0OTMuNTU1NzQ0LCJzdWIiOiIyOCIsInR5cGUiOiJhdXRoIn0.aqlVCZtLzKWXCNoOXJOYxYdgY0cxX-LLKyH4aMil8Pkz3eNibKtnUuba017tfzY150Ov52ZCe6FMO5UH0spBUTR9aNYsb-KSemTECEGQvoqOvHQQmtoOV0bBYsa1WNprkbXnhPmQmdgmuCv9ss7RcHk9Uq758_3xS1kI9-y06OVHjNe8fyBInzF6ThxFQwfk24Ntcn2bBsssAEzZHTD1tOfTR5NcwdlNxuX5MQ-Z8t1drNVKm5nn32r4clwwoFmnYNmN0e90kh-NiXVO6i37AE9jTtyJo8jaM2rXu2MGGTz3oYnZS_w_yRM9pikaN5pMBsE0G-N1OkWJE3Acr9Ptug';
+  static const String _techRefreshToken =
+      'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzAyMjk0MjYuMzc5Mjk5LCJleHAiOjE3NzI4MjE0MjYuMzc5Mjk5LCJzdWIiOiIyOCIsInR5cGUiOiJyZWZyZXNoIn0.lueu7sU6ZR3rgbsB1Q1r1ryX0hnP68wlMSqaH6sI4IMs1AaEQUAtguFKJhAuFYEz8ay-ruLHMXw_-v413bgl6jsqP3RTlZ04JY2RCpuPScADY1w9R6o9tixfLjuSH572JkEHgHnCSxbx5UKuR-NOlkLvweRhjSesRCQBy2CMy8chUJX7cbPmyXe3fnaYUjzo-mVWkva2ZBab6fu1QPf-8O9pj2DXWAbpHisvdUJDArhUVQKZm3GSch56MZzG8C-3GSEyrRTQ-SN5AqgXMH0KPiiw6pOmaKlDkEklRHF-ZO9kzIv7lLo8Vy-EIzz3dBDb78ih-nQtvbrOhzSBkZbdyw';
 
   String _requestPhone = '';
   String _callPhone = '';
@@ -36,13 +36,7 @@ class _LoginState extends State<Login> {
   String _statusText = '';
   bool _isAuthLoading = false;
   bool _isVerifyLoading = false;
-  bool _termsAccepted = false;
-  bool _privacyAccepted = false;
-  bool _pepAccepted = false;
   int _opId = 0;
-
-  bool get _hasAcceptedAllConsents =>
-      _termsAccepted && _privacyAccepted && _pepAccepted;
 
   @override
   void dispose() {
@@ -54,31 +48,11 @@ class _LoginState extends State<Login> {
   String _normalizePhone(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
-    String normalizedDigits = digits;
-    if (digits.startsWith('8') && digits.length == 11) {
-      normalizedDigits = '7${digits.substring(1)}';
-    } else if (!digits.startsWith('7') && digits.length == 10) {
-      normalizedDigits = '7$digits';
-    }
-    return '+$normalizedDigits';
-  }
-
-  bool _isValidPhoneForAuth(String normalizedPhone) {
-    return RegExp(r'^\+7\d{10}$').hasMatch(normalizedPhone);
-  }
-
-  String _normalizeCallPhoneForDisplay(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('+')) return trimmed;
-    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return '+$trimmed';
+    if (digits.startsWith('8') && digits.length == 11)
+      return '+7${digits.substring(1)}';
+    if (digits.startsWith('7') && digits.length == 11) return '+$digits';
+    if (digits.length == 10) return '+7$digits';
     return '+$digits';
-  }
-
-  String _normalizeCallPhoneForDial(String raw) {
-    final normalized = _normalizeCallPhoneForDisplay(raw);
-    return normalized.replaceAll(RegExp(r'[^0-9+]'), '');
   }
 
   void _showError(String message) {
@@ -90,12 +64,9 @@ class _LoginState extends State<Login> {
 
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
-    if (!_hasAcceptedAllConsents) {
-      _showError('Подтвердите все согласия перед продолжением.');
-      return;
-    }
     final phone = _normalizePhone(_phoneController.text.trim());
-    if (!_isValidPhoneForAuth(phone)) {
+    final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
+    if (digitsLen < 11) {
       _showError('Введите корректный номер телефона.');
       return;
     }
@@ -112,9 +83,8 @@ class _LoginState extends State<Login> {
     try {
       final result = await StorageApi.auth(phone: phone);
       if (!mounted || currentOp != _opId) return;
-      final callPhone = _normalizeCallPhoneForDisplay(result.callPhone);
       setState(() {
-        _callPhone = callPhone;
+        _callPhone = result.callPhone;
         _sessionId = result.sessionId;
         _statusText =
             'Ожидаем звонок с номера $_requestPhone на $_callPhone. Проверка выполняется автоматически до 3 минут.';
@@ -134,12 +104,12 @@ class _LoginState extends State<Login> {
   }
 
   Future<void> _openDialer() async {
-    final target = _normalizeCallPhoneForDial(_callPhone);
+    final target = _callPhone.trim();
     if (target.isEmpty) {
       _showError('Сначала нажмите "Далее", чтобы получить номер для звонка.');
       return;
     }
-    final uri = Uri(scheme: 'tel', path: target);
+    final uri = Uri(scheme: 'tel', path: target.replaceAll(RegExp(r'\s+'), ''));
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
       return;
@@ -173,7 +143,7 @@ class _LoginState extends State<Login> {
           });
           await Future.delayed(const Duration(milliseconds: 700));
           if (!mounted || startOp != _opId) return;
-          _proceedAfterCheck();
+          await _proceedAfterCheck();
           return;
         }
       } catch (_) {}
@@ -189,110 +159,38 @@ class _LoginState extends State<Login> {
     });
   }
 
-  void _proceedAfterCheck() {
-    final controller = Get.find<UserController>();
-    if (controller.isDealer) {
-      UserSimplePreferences.setUserRole('dealer');
-      Get.offAll(() => const DealerNavBar());
-    } else if (controller.isUser) {
-      UserSimplePreferences.setUserRole('user');
-      Get.offAll(() => const UserNavBar());
-    } else {
-      Get.offAll(() => const ChooseUserType());
-    }
-  }
-
-  void _openTerms() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const Terms()));
-  }
-
-  void _openPrivacyPolicy() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
-  }
-
-  void _openPepConsent() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute(builder: (_) => const PepConsent()));
-  }
-
-  Widget _buildConsentTile({
-    required bool value,
-    required ValueChanged<bool?> onChanged,
-    required String plainTextBeforeLink,
-    required String linkText,
-    required VoidCallback onLinkTap,
-    String plainTextAfterLink = '',
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 2),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Checkbox(
-            value: value,
-            onChanged: onChanged,
-            activeColor: kSecondaryColor,
-            visualDensity: const VisualDensity(horizontal: -4, vertical: -4),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: Wrap(
-                spacing: 3,
-                runSpacing: 3,
-                children: [
-                  if (plainTextBeforeLink.isNotEmpty)
-                    MyText(
-                      text: plainTextBeforeLink,
-                      size: 12,
-                      color: kTertiaryColor,
-                      lineHeight: 1.4,
-                    ),
-                  MyText(
-                    text: linkText,
-                    size: 12,
-                    color: kSecondaryColor,
-                    weight: FontWeight.w700,
-                    decoration: TextDecoration.underline,
-                    lineHeight: 1.4,
-                    onTap: onLinkTap,
-                  ),
-                  if (plainTextAfterLink.isNotEmpty)
-                    MyText(
-                      text: plainTextAfterLink,
-                      size: 12,
-                      color: kTertiaryColor,
-                      lineHeight: 1.4,
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+  Future<void> _techSignIn() async {
+    await UserSimplePreferences.setAuthTokens(
+      accessToken: _techAccessToken,
+      refreshToken: _techRefreshToken,
     );
+    if (!mounted) return;
+    setState(() {
+      _statusText =
+          'Технический вход активирован. Используем фиксированный токен.';
+    });
+    await _proceedAfterCheck();
+  }
+
+  Future<void> _proceedAfterCheck() async {
+    final selectedRole = await UserSimplePreferences.getUserRole();
+    final sparkRole = selectedRole == 'company'
+        ? SparkJoyRole.company
+        : SparkJoyRole.specialist;
+    await SparkJoyStorage.login(sparkRole);
+    await UserSimplePreferences.setUserRole(
+      sparkRole == SparkJoyRole.company ? 'company' : 'specialist',
+    );
+    if (!mounted) return;
+    Get.offAll(() => const DealerNavBar());
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(
-        title: '',
-        onLeadingTap: () {
-          final navigator = Navigator.of(context);
-          if (navigator.canPop()) {
-            navigator.pop();
-            return;
-          }
-          Get.offAll(() => const ChooseUserType());
-        },
-      ),
+      appBar: simpleAppBar(title: ''),
       body: ListView(
+        shrinkWrap: true,
         physics: const BouncingScrollPhysics(),
         padding: AppSizes.DEFAULT,
         children: [
@@ -402,49 +300,10 @@ class _LoginState extends State<Login> {
               paddingBottom: 12,
             ),
           if (_callPhone.isEmpty)
-            Column(
-              children: [
-                _buildConsentTile(
-                  value: _termsAccepted,
-                  onChanged: (value) {
-                    setState(() => _termsAccepted = value ?? false);
-                  },
-                  plainTextBeforeLink: 'Принимаю',
-                  linkText: 'Пользовательское соглашение',
-                  onLinkTap: _openTerms,
-                ),
-                _buildConsentTile(
-                  value: _privacyAccepted,
-                  onChanged: (value) {
-                    setState(() => _privacyAccepted = value ?? false);
-                  },
-                  plainTextBeforeLink: 'Подтверждаю согласие с',
-                  linkText: 'Политикой ПДн',
-                  onLinkTap: _openPrivacyPolicy,
-                ),
-                _buildConsentTile(
-                  value: _pepAccepted,
-                  onChanged: (value) {
-                    setState(() => _pepAccepted = value ?? false);
-                  },
-                  plainTextBeforeLink: 'Даю',
-                  linkText: 'Согласие на ПЭП',
-                  onLinkTap: _openPepConsent,
-                ),
-                const SizedBox(height: 8),
-                Opacity(
-                  opacity: _hasAcceptedAllConsents ? 1 : 0.7,
-                  child: MyButton(
-                    onTap: _startAuth,
-                    buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
-                    bgColor: _isAuthLoading
-                        ? kGreyColor
-                        : (_hasAcceptedAllConsents
-                              ? kSecondaryColor
-                              : kGreyColor),
-                  ),
-                ),
-              ],
+            MyButton(
+              onTap: _startAuth,
+              buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
+              bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
             )
           else
             Container(
@@ -460,6 +319,23 @@ class _LoginState extends State<Login> {
                 color: kGreyColor,
               ),
             ),
+          const SizedBox(height: 14),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const MyText(
+              text: 'Технический вход',
+              size: 12,
+              color: kGreyColor,
+            ),
+            childrenPadding: const EdgeInsets.only(bottom: 4),
+            children: [
+              MyBorderButton(
+                onTap: _techSignIn,
+                buttonText: 'Войти по техническому коду',
+                textSize: 12,
+              ),
+            ],
+          ),
         ],
       ),
     );
