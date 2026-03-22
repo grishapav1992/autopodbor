@@ -5,15 +5,14 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
-import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/headings_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_field_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
-import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -49,7 +48,8 @@ class _LoginState extends State<Login> {
   String _normalizePhone(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
-    if (digits.startsWith('8') && digits.length == 11) return '+7${digits.substring(1)}';
+    if (digits.startsWith('8') && digits.length == 11)
+      return '+7${digits.substring(1)}';
     if (digits.startsWith('7') && digits.length == 11) return '+$digits';
     if (digits.length == 10) return '+7$digits';
     return '+$digits';
@@ -109,10 +109,7 @@ class _LoginState extends State<Login> {
       _showError('Сначала нажмите "Далее", чтобы получить номер для звонка.');
       return;
     }
-    final uri = Uri(
-      scheme: 'tel',
-      path: target.replaceAll(RegExp(r'\s+'), ''),
-    );
+    final uri = Uri(scheme: 'tel', path: target.replaceAll(RegExp(r'\s+'), ''));
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri);
       return;
@@ -146,7 +143,7 @@ class _LoginState extends State<Login> {
           });
           await Future.delayed(const Duration(milliseconds: 700));
           if (!mounted || startOp != _opId) return;
-          _proceedAfterCheck();
+          await _proceedAfterCheck();
           return;
         }
       } catch (_) {}
@@ -169,22 +166,23 @@ class _LoginState extends State<Login> {
     );
     if (!mounted) return;
     setState(() {
-      _statusText = 'Технический вход активирован. Используем фиксированный токен.';
+      _statusText =
+          'Технический вход активирован. Используем фиксированный токен.';
     });
-    _proceedAfterCheck();
+    await _proceedAfterCheck();
   }
 
-  void _proceedAfterCheck() {
-    final controller = Get.find<UserController>();
-    if (controller.isDealer) {
-      UserSimplePreferences.setUserRole('dealer');
-      Get.offAll(() => const DealerNavBar());
-    } else if (controller.isUser) {
-      UserSimplePreferences.setUserRole('user');
-      Get.offAll(() => const UserNavBar());
-    } else {
-      Get.offAll(() => const ChooseUserType());
-    }
+  Future<void> _proceedAfterCheck() async {
+    final selectedRole = await UserSimplePreferences.getUserRole();
+    final sparkRole = selectedRole == 'company'
+        ? SparkJoyRole.company
+        : SparkJoyRole.specialist;
+    await SparkJoyStorage.login(sparkRole);
+    await UserSimplePreferences.setUserRole(
+      sparkRole == SparkJoyRole.company ? 'company' : 'specialist',
+    );
+    if (!mounted) return;
+    Get.offAll(() => const DealerNavBar());
   }
 
   @override
@@ -218,7 +216,10 @@ class _LoginState extends State<Login> {
                 borderRadius: BorderRadius.circular(12),
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: kWhiteColor,
                     borderRadius: BorderRadius.circular(12),
@@ -233,14 +234,22 @@ class _LoginState extends State<Login> {
                           color: kSecondaryColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: const Icon(Icons.call_outlined, color: kSecondaryColor, size: 18),
+                        child: const Icon(
+                          Icons.call_outlined,
+                          color: kSecondaryColor,
+                          size: 18,
+                        ),
                       ),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const MyText(text: 'Номер для звонка', size: 11, color: kGreyColor),
+                            const MyText(
+                              text: 'Номер для звонка',
+                              size: 11,
+                              color: kGreyColor,
+                            ),
                             const SizedBox(height: 2),
                             MyText(
                               text: _callPhone,
@@ -258,7 +267,10 @@ class _LoginState extends State<Login> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: kSecondaryColor.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(999),
