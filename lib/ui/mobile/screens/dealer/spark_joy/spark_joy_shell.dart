@@ -255,31 +255,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     ];
   }
 
-  String _title() {
-    if (_role == SparkJoyRole.company) {
-      switch (_index) {
-        case 0:
-          return 'Дашборд';
-        case 1:
-          return 'Специалисты';
-        case 2:
-          return 'Заявки';
-        case 3:
-          return 'Отчёты';
-      }
-    } else {
-      switch (_index) {
-        case 0:
-          return 'Мои отчёты';
-        case 1:
-          return 'Заявки';
-        case 2:
-          return 'Профиль';
-      }
-    }
-    return 'AutoCheck';
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -298,31 +273,23 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            const Icon(
-              Icons.build_circle_outlined,
-              size: 18,
-              color: kSecondaryColor,
-            ),
-            const SizedBox(width: 6),
-            const MyText(text: 'AutoCheck', size: 15, weight: FontWeight.w700),
-            const SizedBox(width: 8),
-            MyText(text: '· ${_title()}', size: 12, color: kGreyColor),
-          ],
-        ),
+        automaticallyImplyLeading: false,
         actions: [
           Container(
             margin: const EdgeInsets.only(right: 8),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            constraints: const BoxConstraints(minHeight: 32),
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
               color: kSecondaryColor.withValues(alpha: 0.08),
             ),
             child: MyText(
               text: sparkJoyRoleLabel(_role),
-              size: 10,
+              size: 12,
+              maxLines: 1,
+              lineHeight: 1.1,
+              textAlign: TextAlign.center,
               color: kSecondaryColor,
               weight: FontWeight.w700,
             ),

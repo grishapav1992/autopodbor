@@ -7,3 +7,7 @@ bool get vinOcrSupported => false;
 Future<VinOcrResult> scanVinFromImageBytes(Uint8List bytes) async {
   return const VinOcrResult.unsupported();
 }
+
+Future<Uint8List?> pickVinImageBytes({required bool preferCamera}) async {
+  return null;
+}

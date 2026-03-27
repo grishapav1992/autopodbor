@@ -219,6 +219,60 @@
     return Promise.all(canvases.map(canvasToBlob));
   }
 
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  window.vinPickImage = function vinPickImage(useCamera) {
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*,.heic,.heif';
+      if (useCamera) {
+        input.setAttribute('capture', 'environment');
+      }
+      input.style.position = 'fixed';
+      input.style.left = '-10000px';
+      input.style.top = '-10000px';
+      document.body.appendChild(input);
+
+      const cleanup = () => {
+        input.value = '';
+        if (input.parentNode) {
+          input.parentNode.removeChild(input);
+        }
+      };
+
+      input.addEventListener(
+        'change',
+        async () => {
+          const file = input.files && input.files[0];
+          if (!file) {
+            cleanup();
+            resolve('');
+            return;
+          }
+          try {
+            const dataUrl = await readFileAsDataUrl(file);
+            cleanup();
+            resolve(dataUrl);
+          } catch (_) {
+            cleanup();
+            resolve('');
+          }
+        },
+        { once: true },
+      );
+
+      input.click();
+    });
+  };
+
   window.vinOcrScan = async function vinOcrScan(dataUrl) {
     const tesseractReady = await ensureTesseractLoaded();
     if (!tesseractReady) {

@@ -13,6 +13,34 @@ bool get vinOcrSupported {
   return fn != null;
 }
 
+Uint8List? _decodeDataUrlBytes(String dataUrl) {
+  if (!dataUrl.startsWith('data:')) return null;
+  final commaIndex = dataUrl.indexOf(',');
+  if (commaIndex <= 0 || commaIndex >= dataUrl.length - 1) return null;
+  final payload = dataUrl.substring(commaIndex + 1);
+  try {
+    return base64Decode(payload);
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<Uint8List?> pickVinImageBytes({required bool preferCamera}) async {
+  final fn = js_util.getProperty<Object?>(html.window, 'vinPickImage');
+  if (fn == null) return null;
+  try {
+    final promise = js_util.callMethod<Object?>(html.window, 'vinPickImage', [
+      preferCamera,
+    ]);
+    final result = await js_util.promiseToFuture<Object?>(promise as Object);
+    final dataUrl = (result ?? '').toString();
+    if (dataUrl.isEmpty) return null;
+    return _decodeDataUrlBytes(dataUrl);
+  } catch (_) {
+    return null;
+  }
+}
+
 String _detectImageMime(Uint8List bytes) {
   if (bytes.length >= 4 &&
       bytes[0] == 0x89 &&
