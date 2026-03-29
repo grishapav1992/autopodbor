@@ -930,6 +930,7 @@ class _SparkJoyCreateReportScreenState
 
   late Map<String, _MediaGroupState> _mediaState;
   Map<String, List<String>> _mediaCustomTagsByScope = {};
+  Map<String, List<String>> _mediaCustomSeriousTagsByScope = {};
   Map<String, List<String>> _mediaDisabledDefaultTagsByScope = {};
   Map<String, List<String>> _mediaTagOrderByScope = {};
   final Map<String, Uint8List> _dataUrlImageBytesCache = {};
@@ -937,7 +938,9 @@ class _SparkJoyCreateReportScreenState
   int _stepIndex = 0;
   bool _editingSection = false;
 
-  bool _mileageMismatch = false;
+  final ScrollController _pageScrollController = ScrollController();
+
+  bool? _mileageMismatch;
   bool _vinUnreadable = false;
 
   bool? _docsOwnerMatch;
@@ -1099,11 +1102,16 @@ class _SparkJoyCreateReportScreenState
       text: _read(draft, 'inspector', fallback: 'Специалист'),
     );
 
-    _mileageMismatch = _readBool(
-      draft,
-      'mileageMismatch',
-      fallback: _readBool(draft, 'mileageMatchesClaimed'),
-    );
+    _mileageMismatch = _readTriState(draft['mileageMismatch']);
+    if (_mileageMismatch == null &&
+        draft.containsKey('mileageMatchesClaimed')) {
+      final legacyMatchesClaimed = _readTriState(
+        draft['mileageMatchesClaimed'],
+      );
+      if (legacyMatchesClaimed != null) {
+        _mileageMismatch = !legacyMatchesClaimed;
+      }
+    }
     _vinUnreadable = _readBool(draft, 'vinUnreadable');
 
     _docsOwnerMatch = _readTriState(draft['docsOwnerMatch']);
@@ -1166,6 +1174,9 @@ class _SparkJoyCreateReportScreenState
 
     _mediaState = _initMediaState(draft);
     _mediaCustomTagsByScope = _readStringListMap(draft['mediaCustomTags']);
+    _mediaCustomSeriousTagsByScope = _readStringListMap(
+      draft['mediaCustomSeriousTags'],
+    );
     _mediaDisabledDefaultTagsByScope = _readStringListMap(
       draft['mediaDisabledDefaultTags'],
     );
@@ -1178,6 +1189,7 @@ class _SparkJoyCreateReportScreenState
 
   @override
   void dispose() {
+    _pageScrollController.dispose();
     _reportNameController.dispose();
     _vinController.dispose();
     _plateController.dispose();
@@ -1816,6 +1828,7 @@ class _SparkJoyCreateReportScreenState
     String groupKey, {
     String? elementType,
     Map<String, List<String>>? customTagsByScope,
+    Map<String, List<String>>? customSeriousTagsByScope,
     Map<String, List<String>>? disabledDefaultTagsByScope,
     Map<String, List<String>>? tagOrderByScope,
     bool includeDisabledDefaults = false,
@@ -1870,10 +1883,16 @@ class _SparkJoyCreateReportScreenState
       final serious =
           _diagnosticSeriousTagsByElement[elementType] ?? const <String>{};
       final resolvedCustom = customTagsByScope ?? _mediaCustomTagsByScope;
+      final resolvedCustomSerious =
+          customSeriousTagsByScope ?? _mediaCustomSeriousTagsByScope;
       final resolvedDisabled =
           disabledDefaultTagsByScope ?? _mediaDisabledDefaultTagsByScope;
       final scopeKey = _mediaTagScopeKey(groupKey, elementType: elementType);
       final custom = resolvedCustom[scopeKey] ?? const <String>[];
+      final customSerious =
+          (resolvedCustomSerious[scopeKey] ?? const <String>[])
+              .map((tag) => tag.toLowerCase())
+              .toSet();
       final disabledDefaults = (resolvedDisabled[scopeKey] ?? const <String>[])
           .map((tag) => tag.toLowerCase())
           .toSet();
@@ -1890,7 +1909,13 @@ class _SparkJoyCreateReportScreenState
         if (dedup.contains(label)) continue;
         dedup.add(label);
         result.add(
-          _MediaTagOption(label: label, severity: 'minor', isCustom: true),
+          _MediaTagOption(
+            label: label,
+            severity: customSerious.contains(label.toLowerCase())
+                ? 'serious'
+                : 'minor',
+            isCustom: true,
+          ),
         );
       }
       return applyOrderingAndVisibility(
@@ -1907,10 +1932,15 @@ class _SparkJoyCreateReportScreenState
     final options = _mediaTagOptionsByGroup[sourceGroup] ?? const <String>[];
     final serious = _mediaSeriousTagsByGroup[sourceGroup] ?? const <String>{};
     final resolvedCustom = customTagsByScope ?? _mediaCustomTagsByScope;
+    final resolvedCustomSerious =
+        customSeriousTagsByScope ?? _mediaCustomSeriousTagsByScope;
     final resolvedDisabled =
         disabledDefaultTagsByScope ?? _mediaDisabledDefaultTagsByScope;
     final scopeKey = _mediaTagScopeKey(groupKey, elementType: elementType);
     final custom = resolvedCustom[scopeKey] ?? const <String>[];
+    final customSerious = (resolvedCustomSerious[scopeKey] ?? const <String>[])
+        .map((tag) => tag.toLowerCase())
+        .toSet();
     final disabledDefaults = (resolvedDisabled[scopeKey] ?? const <String>[])
         .map((tag) => tag.toLowerCase())
         .toSet();
@@ -1927,7 +1957,13 @@ class _SparkJoyCreateReportScreenState
       if (dedup.contains(label)) continue;
       dedup.add(label);
       result.add(
-        _MediaTagOption(label: label, severity: 'minor', isCustom: true),
+        _MediaTagOption(
+          label: label,
+          severity: customSerious.contains(label.toLowerCase())
+              ? 'serious'
+              : 'minor',
+          isCustom: true,
+        ),
       );
     }
     return applyOrderingAndVisibility(
@@ -1941,6 +1977,7 @@ class _SparkJoyCreateReportScreenState
     String groupKey, {
     String? elementType,
     Map<String, List<String>>? customTagsByScope,
+    Map<String, List<String>>? customSeriousTagsByScope,
     Map<String, List<String>>? disabledDefaultTagsByScope,
     Map<String, List<String>>? tagOrderByScope,
     bool includeDisabledDefaults = false,
@@ -1949,6 +1986,7 @@ class _SparkJoyCreateReportScreenState
       groupKey,
       elementType: elementType,
       customTagsByScope: customTagsByScope,
+      customSeriousTagsByScope: customSeriousTagsByScope,
       disabledDefaultTagsByScope: disabledDefaultTagsByScope,
       tagOrderByScope: tagOrderByScope,
       includeDisabledDefaults: includeDisabledDefaults,
@@ -2217,7 +2255,7 @@ class _SparkJoyCreateReportScreenState
       penalty += 5;
       checklist.add('Не указан пробег автомобиля.');
     }
-    if (_mileageMismatch) {
+    if (_mileageMismatch == true) {
       penalty += 5;
       checklist.add('Пробег вызывает сомнения по состоянию автомобиля.');
     }
@@ -2232,7 +2270,9 @@ class _SparkJoyCreateReportScreenState
           'value': mileage.isEmpty ? 'Не указан' : mileage,
           'severity': mileage.isEmpty
               ? 'minor'
-              : (_mileageMismatch ? 'minor' : 'ok'),
+              : (_mileageMismatch == true
+                    ? 'minor'
+                    : (_mileageMismatch == false ? 'ok' : 'info')),
         },
         if (_engineVolumeController.text.trim().isNotEmpty)
           {
@@ -2594,6 +2634,15 @@ class _SparkJoyCreateReportScreenState
       if (tags.isEmpty) continue;
       customTagsPayload[entry.key] = tags;
     }
+    final customSeriousTagsPayload = <String, List<String>>{};
+    for (final entry in _mediaCustomSeriousTagsByScope.entries) {
+      final tags = entry.value
+          .map((tag) => tag.trim())
+          .where((tag) => tag.isNotEmpty)
+          .toList();
+      if (tags.isEmpty) continue;
+      customSeriousTagsPayload[entry.key] = tags;
+    }
     final disabledDefaultsPayload = <String, List<String>>{};
     for (final entry in _mediaDisabledDefaultTagsByScope.entries) {
       final tags = entry.value
@@ -2682,6 +2731,7 @@ class _SparkJoyCreateReportScreenState
       'inspector': _inspectorController.text.trim(),
       'mediaGroupsState': mediaPayload,
       'mediaCustomTags': customTagsPayload,
+      'mediaCustomSeriousTags': customSeriousTagsPayload,
       'mediaDisabledDefaultTags': disabledDefaultsPayload,
       'mediaTagOrder': tagOrderPayload,
     };
@@ -2943,6 +2993,12 @@ class _SparkJoyCreateReportScreenState
     var cameraStarting = false;
     var selectedSource = 'none';
     final supportsLiveCameraPreview = true;
+    var dialogActive = true;
+
+    void safeSetLocalState(StateSetter setLocalState, VoidCallback fn) {
+      if (!mounted || !dialogActive) return;
+      setLocalState(fn);
+    }
 
     Future<void> stopLiveCamera() async {
       final current = liveCameraController;
@@ -2959,7 +3015,7 @@ class _SparkJoyCreateReportScreenState
       Uint8List? fallbackBytes,
     ) async {
       await stopLiveCamera();
-      setLocalState(() {
+      safeSetLocalState(setLocalState, () {
         processing = true;
         cameraLive = false;
         previewBytes = bytes;
@@ -2990,7 +3046,7 @@ class _SparkJoyCreateReportScreenState
         }
       }
 
-      setLocalState(() {
+      safeSetLocalState(setLocalState, () {
         processing = false;
         rawText = finalRaw;
         error = finalError;
@@ -3009,7 +3065,7 @@ class _SparkJoyCreateReportScreenState
       StateSetter setLocalState,
     ) async {
       await stopLiveCamera();
-      setLocalState(() {
+      safeSetLocalState(setLocalState, () {
         selectedSource = source == ImageSource.gallery ? 'gallery' : 'camera';
         cameraLive = false;
         cameraInitialized = false;
@@ -3023,7 +3079,7 @@ class _SparkJoyCreateReportScreenState
           preferCamera: source == ImageSource.camera,
         );
         if (bytes == null) {
-          setLocalState(() {
+          safeSetLocalState(setLocalState, () {
             error = source == ImageSource.camera
                 ? 'Не удалось открыть камеру. Проверьте разрешение камеры в браузере и попробуйте снова.'
                 : 'Не удалось открыть галерею.';
@@ -3035,7 +3091,7 @@ class _SparkJoyCreateReportScreenState
         try {
           file = await picker.pickImage(source: source, imageQuality: 95);
         } catch (_) {
-          setLocalState(() {
+          safeSetLocalState(setLocalState, () {
             error = source == ImageSource.camera
                 ? 'Не удалось открыть системную камеру. Проверьте разрешение камеры.'
                 : 'Не удалось открыть галерею.';
@@ -3050,7 +3106,7 @@ class _SparkJoyCreateReportScreenState
 
     String mapLiveCameraError(Object error) {
       if (error is TimeoutException) {
-        return 'Камера не ответила вовремя. Нажмите «Системная камера» или попробуйте снова.';
+        return 'Камера не ответила вовремя. Разрешите доступ к камере и попробуйте снова.';
       }
       if (error is CameraException) {
         if (error.code == 'CameraAccessDenied' ||
@@ -3069,7 +3125,7 @@ class _SparkJoyCreateReportScreenState
       cameraStarting = true;
       const startupTimeout = Duration(seconds: 10);
 
-      setLocalState(() {
+      safeSetLocalState(setLocalState, () {
         selectedSource = 'camera';
         cameraLoading = true;
         cameraInitialized = false;
@@ -3082,7 +3138,9 @@ class _SparkJoyCreateReportScreenState
 
       try {
         await stopLiveCamera();
-        final cameras = await availableCameras().timeout(startupTimeout);
+        final cameras = kIsWeb
+            ? await availableCameras()
+            : await availableCameras().timeout(startupTimeout);
         if (cameras.isEmpty) {
           throw Exception('На устройстве не найдена камера.');
         }
@@ -3096,10 +3154,14 @@ class _SparkJoyCreateReportScreenState
           ResolutionPreset.medium,
           enableAudio: false,
         );
-        await nextController.initialize().timeout(startupTimeout);
+        if (kIsWeb) {
+          await nextController.initialize();
+        } else {
+          await nextController.initialize().timeout(startupTimeout);
+        }
 
         liveCameraController = nextController;
-        setLocalState(() {
+        safeSetLocalState(setLocalState, () {
           cameraInitialized = true;
           cameraLive = true;
           cameraLoading = false;
@@ -3108,7 +3170,7 @@ class _SparkJoyCreateReportScreenState
         debugPrint('VIN live camera error: $e');
         debugPrint(st.toString());
         await stopLiveCamera();
-        setLocalState(() {
+        safeSetLocalState(setLocalState, () {
           cameraLive = false;
           cameraInitialized = false;
           cameraLoading = false;
@@ -3136,7 +3198,7 @@ class _SparkJoyCreateReportScreenState
           openedSystemCamera = true;
         } catch (_) {}
         if (!openedSystemCamera) {
-          setLocalState(() {
+          safeSetLocalState(setLocalState, () {
             error =
                 'Не удалось снять VIN через live-камеру. Попробуйте системную камеру или галерею.';
           });
@@ -3144,315 +3206,334 @@ class _SparkJoyCreateReportScreenState
       }
     }
 
-    final resultVin = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setLocalState) {
-            final sanitized = _sanitizeVin(currentVin);
-            final valid = _isStrictVin(sanitized);
-            final isCameraMode = selectedSource == 'camera';
-            final canCapture =
-                cameraInitialized &&
-                liveCameraController != null &&
-                liveCameraController!.value.isInitialized &&
-                !processing;
+    final resultVin =
+        await showDialog<String>(
+          context: context,
+          builder: (context) {
+            return StatefulBuilder(
+              builder: (context, setLocalState) {
+                final sanitized = _sanitizeVin(currentVin);
+                final valid = _isStrictVin(sanitized);
+                final isCameraMode = selectedSource == 'camera';
+                final canCapture =
+                    cameraInitialized &&
+                    liveCameraController != null &&
+                    liveCameraController!.value.isInitialized &&
+                    !processing;
 
-            return AlertDialog(
-              title: const Text('Сканирование VIN'),
-              content: SizedBox(
-                width: 420,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const MyText(
-                        text: 'Выберите источник для сканирования VIN',
-                        size: 11,
-                        color: kGreyColor,
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
+                return AlertDialog(
+                  title: const Text('Сканирование VIN'),
+                  content: SizedBox(
+                    width: 420,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
-                            child: FilledButton.icon(
-                              onPressed: processing
-                                  ? null
-                                  : () => startLiveCamera(setLocalState),
-                              icon: const Icon(Icons.camera_alt_outlined),
-                              label: const Text('Открыть камеру'),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: processing
-                                  ? null
-                                  : () => pickAndRecognize(
-                                      ImageSource.gallery,
-                                      setLocalState,
-                                    ),
-                              icon: const Icon(Icons.photo_library_outlined),
-                              label: const Text('Из галереи'),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      if (isCameraMode &&
-                          supportsLiveCameraPreview &&
-                          previewBytes == null &&
-                          !processing) ...[
-                        Container(
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: AspectRatio(
-                            aspectRatio: 3 / 4,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                if (cameraInitialized &&
-                                    liveCameraController != null &&
-                                    liveCameraController!.value.isInitialized)
-                                  CameraPreview(liveCameraController!),
-                                IgnorePointer(
-                                  child: Column(
-                                    children: [
-                                      Expanded(
-                                        flex: 39,
-                                        child: Container(color: Colors.black54),
-                                      ),
-                                      Expanded(
-                                        flex: 22,
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              flex: 7,
-                                              child: Container(
-                                                color: Colors.black54,
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 86,
-                                              child: _VinGuideFrame(
-                                                animate:
-                                                    cameraLive &&
-                                                    !cameraLoading &&
-                                                    cameraError.isEmpty,
-                                              ),
-                                            ),
-                                            Expanded(
-                                              flex: 7,
-                                              child: Container(
-                                                color: Colors.black54,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      Expanded(
-                                        flex: 39,
-                                        child: Container(color: Colors.black54),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (cameraLoading)
-                                  const Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                                if (cameraError.isNotEmpty && !cameraLoading)
-                                  Center(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(24),
-                                      child: MyText(
-                                        text: cameraError,
-                                        size: 12,
-                                        color: kWhiteColor,
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ),
-                                  ),
-                                if (cameraLive &&
-                                    cameraError.isEmpty &&
-                                    !cameraLoading)
-                                  const Align(
-                                    alignment: Alignment(0, -0.34),
-                                    child: _VinGuideBadge(),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        FilledButton.icon(
-                          onPressed: canCapture
-                              ? () => captureFromLiveCamera(setLocalState)
-                              : null,
-                          icon: const Icon(Icons.document_scanner_outlined),
-                          label: const Text('Распознать'),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      if (previewBytes != null) ...[
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.memory(
-                            previewBytes!,
-                            height: 160,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      if (isCameraMode &&
-                          supportsLiveCameraPreview &&
-                          cameraError.isNotEmpty &&
-                          !processing) ...[
-                        MyText(text: cameraError, size: 11, color: kRedColor),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => pickAndRecognize(
-                            ImageSource.camera,
-                            setLocalState,
-                          ),
-                          icon: const Icon(Icons.photo_camera_outlined),
-                          label: const Text('Системная камера'),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: () => startLiveCamera(setLocalState),
-                          icon: const Icon(Icons.replay),
-                          label: const Text('Повторить запуск камеры'),
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      if (processing) ...[
-                        const Row(
-                          children: [
-                            SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: MyText(
-                                text: 'Распознаю VIN...',
-                                size: 11,
-                                color: kGreyColor,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      if (!vinOcrSupported) ...[
-                        const MyText(
-                          text: 'OCR недоступен. Можно вставить VIN вручную.',
-                          size: 11,
-                          color: kGreyColor,
-                        ),
-                        const SizedBox(height: 8),
-                      ],
-                      TextField(
-                        controller: controller,
-                        maxLength: 17,
-                        onChanged: (value) {
-                          final sanitizedValue = _sanitizeVin(value);
-                          if (sanitizedValue != value) {
-                            controller.value = TextEditingValue(
-                              text: sanitizedValue,
-                              selection: TextSelection.collapsed(
-                                offset: sanitizedValue.length,
-                              ),
-                            );
-                          }
-                          setLocalState(() {
-                            currentVin = sanitizedValue;
-                          });
-                        },
-                        decoration: _fieldDecoration(
-                          'Распознанный VIN (можно исправить)',
-                        ).copyWith(counterText: ''),
-                      ),
-                      if (sanitized.isNotEmpty && !valid)
-                        MyText(
-                          text: '${sanitized.length} из 17 символов',
-                          size: 11,
-                          color: kYellowColor,
-                        ),
-                      if (rawText.trim().isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        ExpansionTile(
-                          tilePadding: EdgeInsets.zero,
-                          title: const MyText(
-                            text: 'Сырой текст OCR',
+                          const MyText(
+                            text: 'Выберите источник для сканирования VIN',
                             size: 11,
                             color: kGreyColor,
                           ),
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: kBorderColor),
-                                borderRadius: BorderRadius.circular(10),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: processing
+                                      ? null
+                                      : () => startLiveCamera(setLocalState),
+                                  icon: const Icon(Icons.camera_alt_outlined),
+                                  label: const Text('Открыть камеру'),
+                                ),
                               ),
-                              child: SelectableText(
-                                rawText,
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  color: kGreyColor,
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: processing
+                                      ? null
+                                      : () => pickAndRecognize(
+                                          ImageSource.gallery,
+                                          setLocalState,
+                                        ),
+                                  icon: const Icon(
+                                    Icons.photo_library_outlined,
+                                  ),
+                                  label: const Text('Из галереи'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (isCameraMode &&
+                              supportsLiveCameraPreview &&
+                              previewBytes == null &&
+                              !processing) ...[
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: AspectRatio(
+                                aspectRatio: 3 / 4,
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    if (cameraInitialized &&
+                                        liveCameraController != null &&
+                                        liveCameraController!
+                                            .value
+                                            .isInitialized)
+                                      CameraPreview(liveCameraController!),
+                                    IgnorePointer(
+                                      child: Column(
+                                        children: [
+                                          Expanded(
+                                            flex: 39,
+                                            child: Container(
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 22,
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  flex: 7,
+                                                  child: Container(
+                                                    color: Colors.black54,
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  flex: 86,
+                                                  child: _VinGuideFrame(
+                                                    animate:
+                                                        cameraLive &&
+                                                        !cameraLoading &&
+                                                        cameraError.isEmpty,
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  flex: 7,
+                                                  child: Container(
+                                                    color: Colors.black54,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 39,
+                                            child: Container(
+                                              color: Colors.black54,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (cameraLoading)
+                                      const Center(
+                                        child: CircularProgressIndicator(),
+                                      ),
+                                    if (cameraError.isNotEmpty &&
+                                        !cameraLoading)
+                                      Center(
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(24),
+                                          child: MyText(
+                                            text: cameraError,
+                                            size: 12,
+                                            color: kWhiteColor,
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ),
+                                    if (cameraLive &&
+                                        cameraError.isEmpty &&
+                                        !cameraLoading)
+                                      const Align(
+                                        alignment: Alignment(0, -0.34),
+                                        child: _VinGuideBadge(),
+                                      ),
+                                  ],
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 10),
+                            FilledButton.icon(
+                              onPressed: canCapture
+                                  ? () => captureFromLiveCamera(setLocalState)
+                                  : null,
+                              icon: const Icon(Icons.document_scanner_outlined),
+                              label: const Text('Распознать'),
+                            ),
+                            const SizedBox(height: 10),
                           ],
-                        ),
-                      ],
-                      if (error != null && error!.trim().isNotEmpty) ...[
-                        const SizedBox(height: 8),
-                        MyText(text: error!, size: 11, color: kRedColor),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: () {
-                            if (isCameraMode) {
-                              startLiveCamera(setLocalState);
-                            } else {
-                              pickAndRecognize(
-                                ImageSource.gallery,
+                          if (previewBytes != null) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.memory(
+                                previewBytes!,
+                                height: 160,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          if (isCameraMode &&
+                              supportsLiveCameraPreview &&
+                              cameraError.isNotEmpty &&
+                              !processing) ...[
+                            MyText(
+                              text: cameraError,
+                              size: 11,
+                              color: kRedColor,
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () => pickAndRecognize(
+                                ImageSource.camera,
                                 setLocalState,
-                              );
-                            }
-                          },
-                          icon: const Icon(Icons.replay),
-                          label: const Text('Заново'),
-                        ),
-                      ],
-                    ],
+                              ),
+                              icon: const Icon(Icons.photo_camera_outlined),
+                              label: const Text('Системная камера'),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () => startLiveCamera(setLocalState),
+                              icon: const Icon(Icons.replay),
+                              label: const Text('Повторить запуск камеры'),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          if (processing) ...[
+                            const Row(
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: MyText(
+                                    text: 'Распознаю VIN...',
+                                    size: 11,
+                                    color: kGreyColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                          if (!vinOcrSupported) ...[
+                            const MyText(
+                              text:
+                                  'OCR недоступен. Можно вставить VIN вручную.',
+                              size: 11,
+                              color: kGreyColor,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          TextField(
+                            controller: controller,
+                            maxLength: 17,
+                            onChanged: (value) {
+                              final sanitizedValue = _sanitizeVin(value);
+                              if (sanitizedValue != value) {
+                                controller.value = TextEditingValue(
+                                  text: sanitizedValue,
+                                  selection: TextSelection.collapsed(
+                                    offset: sanitizedValue.length,
+                                  ),
+                                );
+                              }
+                              setLocalState(() {
+                                currentVin = sanitizedValue;
+                              });
+                            },
+                            decoration: _fieldDecoration(
+                              'Распознанный VIN (можно исправить)',
+                            ).copyWith(counterText: ''),
+                          ),
+                          if (sanitized.isNotEmpty && !valid)
+                            MyText(
+                              text: '${sanitized.length} из 17 символов',
+                              size: 11,
+                              color: kYellowColor,
+                            ),
+                          if (rawText.trim().isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            ExpansionTile(
+                              tilePadding: EdgeInsets.zero,
+                              title: const MyText(
+                                text: 'Сырой текст OCR',
+                                size: 11,
+                                color: kGreyColor,
+                              ),
+                              children: [
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    border: Border.all(color: kBorderColor),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: SelectableText(
+                                    rawText,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: kGreyColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (error != null && error!.trim().isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            MyText(text: error!, size: 11, color: kRedColor),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                if (isCameraMode) {
+                                  startLiveCamera(setLocalState);
+                                } else {
+                                  pickAndRecognize(
+                                    ImageSource.gallery,
+                                    setLocalState,
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.replay),
+                              label: const Text('Заново'),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Отмена'),
-                ),
-                TextButton(
-                  onPressed: !valid
-                      ? null
-                      : () => Navigator.of(context).pop(sanitized),
-                  child: const Text('Применить'),
-                ),
-              ],
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Отмена'),
+                    ),
+                    TextButton(
+                      onPressed: !valid
+                          ? null
+                          : () => Navigator.of(context).pop(sanitized),
+                      child: const Text('Применить'),
+                    ),
+                  ],
+                );
+              },
             );
           },
-        );
-      },
-    );
+        ).whenComplete(() {
+          dialogActive = false;
+        });
 
     await stopLiveCamera();
     controller.dispose();
@@ -3676,6 +3757,7 @@ class _SparkJoyCreateReportScreenState
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () {
                         if (generation.restylings.length == 1) {
+                          selectedGeneration = generation;
                           final result = buildSelection(
                             generation.restylings[0],
                           );
@@ -3847,6 +3929,13 @@ class _SparkJoyCreateReportScreenState
     await _saveDraft(showToast: false);
   }
 
+  void _scrollEditorToTop() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pageScrollController.hasClients) return;
+      _pageScrollController.jumpTo(0);
+    });
+  }
+
   Future<void> _openSection(int index) async {
     setState(() {
       _stepIndex = index;
@@ -3858,6 +3947,7 @@ class _SparkJoyCreateReportScreenState
         _ensureSummaryAutofill();
       }
     });
+    _scrollEditorToTop();
   }
 
   int _stepIndexById(String stepId) {
@@ -3882,6 +3972,7 @@ class _SparkJoyCreateReportScreenState
         _ensureSummaryAutofill();
       }
     });
+    _scrollEditorToTop();
   }
 
   void _openMediaGroupEditor(String groupKey) {
@@ -4110,6 +4201,14 @@ class _SparkJoyCreateReportScreenState
       return;
     }
 
+    final plateError = _plateError();
+    if (plateError != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(plateError)));
+      return;
+    }
+
     final duplicateDraft = await _findDuplicateVinDraft();
     if (duplicateDraft != null) {
       final openExisting = await _showDuplicateVinDialog(duplicateDraft);
@@ -4148,6 +4247,7 @@ class _SparkJoyCreateReportScreenState
         _ensureSummaryAutofill();
       }
     });
+    _scrollEditorToTop();
   }
 
   Future<void> _closeSection({bool save = false}) async {
@@ -4365,8 +4465,9 @@ class _SparkJoyCreateReportScreenState
   Widget _yesNoSelector({
     required String title,
     required bool? value,
-    required ValueChanged<bool> onChanged,
+    required ValueChanged<bool?> onChanged,
     String? subtitle,
+    bool allowClear = false,
   }) {
     return _card(
       child: Column(
@@ -4382,7 +4483,8 @@ class _SparkJoyCreateReportScreenState
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => onChanged(true),
+                  onPressed: () =>
+                      onChanged(allowClear && value == true ? null : true),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
                       color: value == true ? kGreenColor : kBorderColor,
@@ -4403,7 +4505,8 @@ class _SparkJoyCreateReportScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => onChanged(false),
+                  onPressed: () =>
+                      onChanged(allowClear && value == false ? null : false),
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
                       color: value == false ? kRedColor : kBorderColor,
@@ -4423,6 +4526,16 @@ class _SparkJoyCreateReportScreenState
               ),
             ],
           ),
+          if (allowClear) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: value == null ? null : () => onChanged(null),
+                child: const Text('Сбросить выбор'),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -4786,14 +4899,20 @@ class _SparkJoyCreateReportScreenState
                 onChanged: (value) {
                   final sanitized = _sanitizePlate(value);
                   final formatted = _formatPlate(sanitized);
-                  _plateController.value = TextEditingValue(
-                    text: formatted,
-                    selection: TextSelection.collapsed(
-                      offset: formatted.length,
-                    ),
-                  );
+                  if (formatted != value) {
+                    _plateController.value = TextEditingValue(
+                      text: formatted,
+                      selection: TextSelection.collapsed(
+                        offset: formatted.length,
+                      ),
+                      composing: TextRange.empty,
+                    );
+                  }
                   setState(() {});
                 },
+                textCapitalization: TextCapitalization.characters,
+                autocorrect: false,
+                enableSuggestions: false,
                 textAlign: TextAlign.center,
                 decoration: _fieldDecoration(
                   'А 000 АА 000',
@@ -4951,6 +5070,7 @@ class _SparkJoyCreateReportScreenState
         _yesNoSelector(
           title: 'По внешнему состоянию пробег не соответствует заявленному',
           value: _mileageMismatch,
+          allowClear: true,
           onChanged: (v) => setState(() => _mileageMismatch = v),
         ),
         const SizedBox(height: 10),
@@ -5501,6 +5621,10 @@ class _SparkJoyCreateReportScreenState
       for (final entry in _mediaCustomTagsByScope.entries)
         entry.key: [...entry.value],
     };
+    var customSeriousTagsByScope = <String, List<String>>{
+      for (final entry in _mediaCustomSeriousTagsByScope.entries)
+        entry.key: [...entry.value],
+    };
     var disabledDefaultTagsByScope = <String, List<String>>{
       for (final entry in _mediaDisabledDefaultTagsByScope.entries)
         entry.key: [...entry.value],
@@ -5523,6 +5647,10 @@ class _SparkJoyCreateReportScreenState
 
     final noteController = TextEditingController(text: item.inspection.note);
     final customTagController = TextEditingController();
+    var customTagSeverity = 'minor';
+    var customTagToolsExpanded = false;
+    var voiceToolsExpanded = false;
+    var paintToolsExpanded = false;
     final recorder = AudioRecorder();
     final player = AudioPlayer();
     final speechToText = SpeechToText();
@@ -5723,6 +5851,7 @@ class _SparkJoyCreateReportScreenState
                 groupKey,
                 elementType: elementType,
                 customTagsByScope: customTagsByScope,
+                customSeriousTagsByScope: customSeriousTagsByScope,
                 disabledDefaultTagsByScope: disabledDefaultTagsByScope,
                 tagOrderByScope: tagOrderByScope,
               );
@@ -5730,12 +5859,17 @@ class _SparkJoyCreateReportScreenState
                 groupKey,
                 elementType: elementType,
                 customTagsByScope: customTagsByScope,
+                customSeriousTagsByScope: customSeriousTagsByScope,
                 disabledDefaultTagsByScope: disabledDefaultTagsByScope,
                 tagOrderByScope: tagOrderByScope,
                 includeDisabledDefaults: true,
               );
               final customTagsInScope =
                   customTagsByScope[scopeKey] ?? const <String>[];
+              final selectedElementLabel = _mediaElementLabel(
+                groupKey,
+                elementType,
+              );
               final disabledDefaultsInScope =
                   disabledDefaultTagsByScope[scopeKey] ?? const <String>[];
               final viewportWidth = MediaQuery.of(context).size.width;
@@ -5874,25 +6008,67 @@ class _SparkJoyCreateReportScreenState
                                       ],
                                       if (canEditDetails && supportsPaint) ...[
                                         const SizedBox(height: 10),
-                                        _paintRangeBlock(
-                                          title: 'Толщина окраса',
-                                          from: paintFrom,
-                                          to: paintTo,
-                                          editing: paintEditing,
-                                          onToggle: () {
-                                            setLocalState(
-                                              () =>
-                                                  paintEditing = !paintEditing,
-                                            );
-                                          },
-                                          onChanged: (values) {
-                                            setLocalState(() {
-                                              paintFrom = values.start
-                                                  .roundToDouble();
-                                              paintTo = values.end
-                                                  .roundToDouble();
-                                            });
-                                          },
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            border: Border.all(
+                                              color: kBorderColor,
+                                            ),
+                                          ),
+                                          child: ExpansionTile(
+                                            key: ValueKey(
+                                              'paint-tools-$paintToolsExpanded',
+                                            ),
+                                            title: const MyText(
+                                              text:
+                                                  'Толщина ЛКП (дополнительно)',
+                                              size: 12,
+                                              weight: FontWeight.w700,
+                                            ),
+                                            initiallyExpanded:
+                                                paintToolsExpanded,
+                                            tilePadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                ),
+                                            childrenPadding:
+                                                const EdgeInsets.fromLTRB(
+                                                  10,
+                                                  0,
+                                                  10,
+                                                  10,
+                                                ),
+                                            onExpansionChanged: (expanded) {
+                                              setLocalState(
+                                                () => paintToolsExpanded =
+                                                    expanded,
+                                              );
+                                            },
+                                            children: [
+                                              _paintRangeBlock(
+                                                title: 'Толщина окраса',
+                                                from: paintFrom,
+                                                to: paintTo,
+                                                editing: paintEditing,
+                                                onToggle: () {
+                                                  setLocalState(
+                                                    () => paintEditing =
+                                                        !paintEditing,
+                                                  );
+                                                },
+                                                onChanged: (values) {
+                                                  setLocalState(() {
+                                                    paintFrom = values.start
+                                                        .roundToDouble();
+                                                    paintTo = values.end
+                                                        .roundToDouble();
+                                                  });
+                                                },
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ],
                                       if (canEditDetails) ...[
@@ -6458,511 +6634,764 @@ class _SparkJoyCreateReportScreenState
                                             ),
                                         ],
                                       ],
-                                      const SizedBox(height: 2),
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: TextField(
-                                              controller: customTagController,
-                                              decoration:
-                                                  _fieldDecoration(
-                                                    'Свой тег',
-                                                  ).copyWith(
-                                                    contentPadding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 12,
-                                                          vertical: 8,
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          border: Border.all(
+                                            color: kBorderColor,
+                                          ),
+                                        ),
+                                        child: ExpansionTile(
+                                          key: ValueKey(
+                                            'custom-tag-tools-$customTagToolsExpanded-${customTagsInScope.length}',
+                                          ),
+                                          title: MyText(
+                                            text:
+                                                'Свой тег (${customTagsInScope.length})',
+                                            size: 12,
+                                            weight: FontWeight.w700,
+                                          ),
+                                          subtitle: const MyText(
+                                            text:
+                                                'Добавить кастомный тег в группу',
+                                            size: 10,
+                                            color: kGreyColor,
+                                          ),
+                                          initiallyExpanded:
+                                              customTagToolsExpanded,
+                                          tilePadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                              ),
+                                          childrenPadding:
+                                              const EdgeInsets.fromLTRB(
+                                                10,
+                                                0,
+                                                10,
+                                                10,
+                                              ),
+                                          onExpansionChanged: (expanded) {
+                                            setLocalState(
+                                              () => customTagToolsExpanded =
+                                                  expanded,
+                                            );
+                                          },
+                                          children: [
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                ChoiceChip(
+                                                  label: const Text(
+                                                    'Незначительный',
+                                                  ),
+                                                  selected:
+                                                      customTagSeverity ==
+                                                      'minor',
+                                                  onSelected: (_) {
+                                                    setLocalState(
+                                                      () => customTagSeverity =
+                                                          'minor',
+                                                    );
+                                                  },
+                                                ),
+                                                ChoiceChip(
+                                                  label: const Text(
+                                                    'Серьёзный',
+                                                  ),
+                                                  selected:
+                                                      customTagSeverity ==
+                                                      'serious',
+                                                  selectedColor: kRedColor
+                                                      .withValues(alpha: 0.16),
+                                                  onSelected: (_) {
+                                                    setLocalState(
+                                                      () => customTagSeverity =
+                                                          'serious',
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 8),
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: TextField(
+                                                    controller:
+                                                        customTagController,
+                                                    decoration:
+                                                        _fieldDecoration(
+                                                          'Свой тег',
+                                                        ).copyWith(
+                                                          contentPadding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 12,
+                                                                vertical: 8,
+                                                              ),
                                                         ),
                                                   ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          OutlinedButton(
-                                            onPressed: () {
-                                              final input = customTagController
-                                                  .text
-                                                  .trim();
-                                              if (input.isEmpty) return;
+                                                ),
+                                                const SizedBox(width: 8),
+                                                OutlinedButton(
+                                                  onPressed: () {
+                                                    final input =
+                                                        customTagController.text
+                                                            .trim();
+                                                    if (input.isEmpty) return;
 
-                                              final next =
-                                                  customTagsByScope[scopeKey] !=
-                                                      null
-                                                  ? [
-                                                      ...customTagsByScope[scopeKey]!,
-                                                    ]
-                                                  : <String>[];
+                                                    final next =
+                                                        customTagsByScope[scopeKey] !=
+                                                            null
+                                                        ? [
+                                                            ...customTagsByScope[scopeKey]!,
+                                                          ]
+                                                        : <String>[];
 
-                                              String selectedValue = input;
-                                              final lower = input.toLowerCase();
-                                              for (final tag in next) {
-                                                if (tag.toLowerCase() ==
-                                                    lower) {
-                                                  selectedValue = tag;
-                                                  break;
-                                                }
-                                              }
-                                              if (!next.any(
-                                                (tag) =>
-                                                    tag.toLowerCase() == lower,
-                                              )) {
-                                                next.add(input);
-                                                selectedValue = input;
-                                              }
-                                              customTagsByScope[scopeKey] =
-                                                  next;
-                                              disabledDefaultTagsByScope[scopeKey] =
-                                                  (disabledDefaultTagsByScope[scopeKey] ??
-                                                          const <String>[])
-                                                      .where(
-                                                        (tag) =>
-                                                            tag.toLowerCase() !=
-                                                            lower,
-                                                      )
-                                                      .toList();
-                                              final order = [
-                                                ...(tagOrderByScope[scopeKey] ??
-                                                    const <String>[]),
-                                              ];
-                                              if (!order.any(
-                                                (tag) =>
-                                                    tag.toLowerCase() ==
-                                                    selectedValue.toLowerCase(),
-                                              )) {
-                                                order.add(selectedValue);
-                                              }
-                                              tagOrderByScope[scopeKey] = order;
-                                              if (!selectedTags.any(
-                                                (tag) =>
-                                                    tag.toLowerCase() ==
-                                                    selectedValue.toLowerCase(),
-                                              )) {
-                                                selectedTags.add(selectedValue);
-                                              }
-                                              customTagController.clear();
-                                              setLocalState(() {});
-                                            },
-                                            child: const Text('Добавить'),
-                                          ),
-                                        ],
-                                      ),
-                                      if (!manageTagsMode &&
-                                          customTagsInScope.isNotEmpty) ...[
-                                        const SizedBox(height: 6),
-                                        MyText(
-                                          text:
-                                              'Кастомные теги: ${customTagsInScope.length}',
-                                          size: 11,
-                                          color: kGreyColor,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Wrap(
-                                          spacing: 6,
-                                          runSpacing: 6,
-                                          children: customTagsInScope.map((
-                                            customTag,
-                                          ) {
-                                            final selected = selectedTags.any(
-                                              (tag) =>
-                                                  tag.toLowerCase() ==
-                                                  customTag.toLowerCase(),
-                                            );
-                                            return InputChip(
-                                              label: Text(customTag),
-                                              selected: selected,
-                                              onSelected: (_) {
-                                                setLocalState(() {
-                                                  if (selected) {
-                                                    selectedTags.removeWhere(
+                                                    String selectedValue =
+                                                        input;
+                                                    final lower = input
+                                                        .toLowerCase();
+                                                    for (final tag in next) {
+                                                      if (tag.toLowerCase() ==
+                                                          lower) {
+                                                        selectedValue = tag;
+                                                        break;
+                                                      }
+                                                    }
+                                                    if (!next.any(
                                                       (tag) =>
                                                           tag.toLowerCase() ==
-                                                          customTag
-                                                              .toLowerCase(),
-                                                    );
-                                                  } else {
-                                                    selectedTags.add(customTag);
-                                                  }
-                                                });
-                                              },
-                                              onDeleted: () {
-                                                setLocalState(() {
-                                                  final next =
-                                                      (customTagsByScope[scopeKey] ??
-                                                              const <String>[])
-                                                          .where(
-                                                            (tag) =>
-                                                                tag
-                                                                    .toLowerCase() !=
-                                                                customTag
-                                                                    .toLowerCase(),
-                                                          )
-                                                          .toList();
-                                                  if (next.isEmpty) {
-                                                    customTagsByScope.remove(
-                                                      scopeKey,
-                                                    );
-                                                  } else {
+                                                          lower,
+                                                    )) {
+                                                      next.add(input);
+                                                      selectedValue = input;
+                                                    }
                                                     customTagsByScope[scopeKey] =
                                                         next;
-                                                  }
-                                                  final order =
-                                                      (tagOrderByScope[scopeKey] ??
-                                                              const <String>[])
-                                                          .where(
-                                                            (tag) =>
-                                                                tag
-                                                                    .toLowerCase() !=
-                                                                customTag
-                                                                    .toLowerCase(),
-                                                          )
-                                                          .toList();
-                                                  if (order.isEmpty) {
-                                                    tagOrderByScope.remove(
-                                                      scopeKey,
+                                                    final customSerious =
+                                                        customSeriousTagsByScope[scopeKey] !=
+                                                            null
+                                                        ? [
+                                                            ...customSeriousTagsByScope[scopeKey]!,
+                                                          ]
+                                                        : <String>[];
+                                                    customSerious.removeWhere(
+                                                      (tag) =>
+                                                          tag.toLowerCase() ==
+                                                          selectedValue
+                                                              .toLowerCase(),
                                                     );
-                                                  } else {
+                                                    if (customTagSeverity ==
+                                                        'serious') {
+                                                      customSerious.add(
+                                                        selectedValue,
+                                                      );
+                                                    }
+                                                    if (customSerious.isEmpty) {
+                                                      customSeriousTagsByScope
+                                                          .remove(scopeKey);
+                                                    } else {
+                                                      customSeriousTagsByScope[scopeKey] =
+                                                          customSerious;
+                                                    }
+                                                    disabledDefaultTagsByScope[scopeKey] =
+                                                        (disabledDefaultTagsByScope[scopeKey] ??
+                                                                const <
+                                                                  String
+                                                                >[])
+                                                            .where(
+                                                              (tag) =>
+                                                                  tag.toLowerCase() !=
+                                                                  lower,
+                                                            )
+                                                            .toList();
+                                                    final order = [
+                                                      ...(tagOrderByScope[scopeKey] ??
+                                                          const <String>[]),
+                                                    ];
+                                                    if (!order.any(
+                                                      (tag) =>
+                                                          tag.toLowerCase() ==
+                                                          selectedValue
+                                                              .toLowerCase(),
+                                                    )) {
+                                                      order.add(selectedValue);
+                                                    }
                                                     tagOrderByScope[scopeKey] =
                                                         order;
-                                                  }
-                                                  selectedTags.removeWhere(
-                                                    (tag) =>
-                                                        tag.toLowerCase() ==
-                                                        customTag.toLowerCase(),
+                                                    if (!selectedTags.any(
+                                                      (tag) =>
+                                                          tag.toLowerCase() ==
+                                                          selectedValue
+                                                              .toLowerCase(),
+                                                    )) {
+                                                      selectedTags.add(
+                                                        selectedValue,
+                                                      );
+                                                    }
+                                                    customTagSeverity = 'minor';
+                                                    customTagController.clear();
+                                                    setLocalState(() {});
+                                                  },
+                                                  child: const Text('Добавить'),
+                                                ),
+                                              ],
+                                            ),
+                                            if (!manageTagsMode &&
+                                                customTagsInScope
+                                                    .isNotEmpty) ...[
+                                              const SizedBox(height: 6),
+                                              MyText(
+                                                text:
+                                                    'Кастомные теги: ${customTagsInScope.length}',
+                                                size: 11,
+                                                color: kGreyColor,
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Wrap(
+                                                spacing: 6,
+                                                runSpacing: 6,
+                                                children: customTagsInScope.map((
+                                                  customTag,
+                                                ) {
+                                                  final selected = selectedTags
+                                                      .any(
+                                                        (tag) =>
+                                                            tag.toLowerCase() ==
+                                                            customTag
+                                                                .toLowerCase(),
+                                                      );
+                                                  return InputChip(
+                                                    label: Text(customTag),
+                                                    selectedColor: _mediaTagColor(
+                                                      (customSeriousTagsByScope[scopeKey] ??
+                                                                  const <
+                                                                    String
+                                                                  >[])
+                                                              .any(
+                                                                (tag) =>
+                                                                    tag
+                                                                        .toLowerCase() ==
+                                                                    customTag
+                                                                        .toLowerCase(),
+                                                              )
+                                                          ? 'serious'
+                                                          : 'minor',
+                                                    ).withValues(alpha: 0.16),
+                                                    selected: selected,
+                                                    onSelected: (_) {
+                                                      setLocalState(() {
+                                                        if (selected) {
+                                                          selectedTags.removeWhere(
+                                                            (tag) =>
+                                                                tag
+                                                                    .toLowerCase() ==
+                                                                customTag
+                                                                    .toLowerCase(),
+                                                          );
+                                                        } else {
+                                                          selectedTags.add(
+                                                            customTag,
+                                                          );
+                                                        }
+                                                      });
+                                                    },
+                                                    onDeleted: () {
+                                                      setLocalState(() {
+                                                        final next =
+                                                            (customTagsByScope[scopeKey] ??
+                                                                    const <
+                                                                      String
+                                                                    >[])
+                                                                .where(
+                                                                  (tag) =>
+                                                                      tag
+                                                                          .toLowerCase() !=
+                                                                      customTag
+                                                                          .toLowerCase(),
+                                                                )
+                                                                .toList();
+                                                        if (next.isEmpty) {
+                                                          customTagsByScope
+                                                              .remove(scopeKey);
+                                                        } else {
+                                                          customTagsByScope[scopeKey] =
+                                                              next;
+                                                        }
+                                                        final order =
+                                                            (tagOrderByScope[scopeKey] ??
+                                                                    const <
+                                                                      String
+                                                                    >[])
+                                                                .where(
+                                                                  (tag) =>
+                                                                      tag
+                                                                          .toLowerCase() !=
+                                                                      customTag
+                                                                          .toLowerCase(),
+                                                                )
+                                                                .toList();
+                                                        if (order.isEmpty) {
+                                                          tagOrderByScope
+                                                              .remove(scopeKey);
+                                                        } else {
+                                                          tagOrderByScope[scopeKey] =
+                                                              order;
+                                                        }
+                                                        final serious =
+                                                            (customSeriousTagsByScope[scopeKey] ??
+                                                                    const <
+                                                                      String
+                                                                    >[])
+                                                                .where(
+                                                                  (tag) =>
+                                                                      tag
+                                                                          .toLowerCase() !=
+                                                                      customTag
+                                                                          .toLowerCase(),
+                                                                )
+                                                                .toList();
+                                                        if (serious.isEmpty) {
+                                                          customSeriousTagsByScope
+                                                              .remove(scopeKey);
+                                                        } else {
+                                                          customSeriousTagsByScope[scopeKey] =
+                                                              serious;
+                                                        }
+                                                        selectedTags.removeWhere(
+                                                          (tag) =>
+                                                              tag
+                                                                  .toLowerCase() ==
+                                                              customTag
+                                                                  .toLowerCase(),
+                                                        );
+                                                      });
+                                                    },
+                                                    visualDensity:
+                                                        VisualDensity.compact,
                                                   );
-                                                });
-                                              },
-                                              visualDensity:
-                                                  VisualDensity.compact,
-                                            );
-                                          }).toList(),
+                                                }).toList(),
+                                              ),
+                                            ],
+                                          ],
                                         ),
-                                      ],
+                                      ),
                                       if (canEditDetails) ...[
                                         const SizedBox(height: 10),
+                                        if (selectedElementLabel
+                                            .isNotEmpty) ...[
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 8,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: kBorderColor,
+                                              ),
+                                              color: kInputBgColor,
+                                            ),
+                                            child: MyText(
+                                              text:
+                                                  'Комментарий привязан к элементу: $selectedElementLabel',
+                                              size: 11,
+                                              color: kGreyColor,
+                                              weight: FontWeight.w700,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 8),
+                                        ],
                                         TextField(
                                           controller: noteController,
                                           minLines: 3,
                                           maxLines: 5,
                                           decoration: _fieldDecoration(
-                                            'Комментарий',
+                                            selectedElementLabel.isEmpty
+                                                ? 'Комментарий'
+                                                : 'Комментарий по элементу',
                                           ),
                                         ),
-                                        if (isDictating) ...[
-                                          const SizedBox(height: 6),
-                                          const MyText(
-                                            text: 'Идёт надиктовка...',
-                                            size: 11,
-                                            color: kRedColor,
-                                            weight: FontWeight.w700,
-                                          ),
-                                        ],
                                         const SizedBox(height: 10),
-                                        LayoutBuilder(
-                                          builder: (context, constraints) {
-                                            Widget holdButton({
-                                              required bool active,
-                                              required VoidCallback onDown,
-                                              required VoidCallback onUp,
-                                              required IconData icon,
-                                              required String activeLabel,
-                                              required String idleLabel,
-                                            }) {
-                                              return GestureDetector(
-                                                onTapDown: (_) => onDown(),
-                                                onTapUp: (_) => onUp(),
-                                                onTapCancel: onUp,
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 12,
-                                                        vertical: 10,
-                                                      ),
-                                                  decoration: BoxDecoration(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          10,
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                            border: Border.all(
+                                              color: kBorderColor,
+                                            ),
+                                          ),
+                                          child: ExpansionTile(
+                                            key: ValueKey(
+                                              'voice-tools-$voiceToolsExpanded-${audioRecordings.length}-$isDictating-$isRecording',
+                                            ),
+                                            title: MyText(
+                                              text:
+                                                  'Голосовые инструменты (${audioRecordings.length})',
+                                              size: 12,
+                                              weight: FontWeight.w700,
+                                            ),
+                                            subtitle: const MyText(
+                                              text:
+                                                  'Диктовка в текст и отдельные аудиозаметки',
+                                              size: 10,
+                                              color: kGreyColor,
+                                            ),
+                                            initiallyExpanded:
+                                                voiceToolsExpanded,
+                                            tilePadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 10,
+                                                ),
+                                            childrenPadding:
+                                                const EdgeInsets.fromLTRB(
+                                                  10,
+                                                  0,
+                                                  10,
+                                                  10,
+                                                ),
+                                            onExpansionChanged: (expanded) {
+                                              setLocalState(
+                                                () => voiceToolsExpanded =
+                                                    expanded,
+                                              );
+                                            },
+                                            children: [
+                                              if (isDictating) ...[
+                                                const SizedBox(height: 4),
+                                                const MyText(
+                                                  text: 'Идёт надиктовка...',
+                                                  size: 11,
+                                                  color: kRedColor,
+                                                  weight: FontWeight.w700,
+                                                ),
+                                              ],
+                                              const SizedBox(height: 8),
+                                              LayoutBuilder(
+                                                builder: (context, constraints) {
+                                                  Widget actionButton({
+                                                    required bool active,
+                                                    required VoidCallback
+                                                    onPressed,
+                                                    required IconData icon,
+                                                    required String label,
+                                                    required Color activeColor,
+                                                  }) {
+                                                    return OutlinedButton.icon(
+                                                      onPressed: onPressed,
+                                                      style: OutlinedButton.styleFrom(
+                                                        minimumSize: const Size(
+                                                          double.infinity,
+                                                          44,
                                                         ),
-                                                    border: Border.all(
-                                                      color: active
-                                                          ? kRedColor
-                                                                .withValues(
-                                                                  alpha: 0.4,
-                                                                )
-                                                          : kBorderColor,
-                                                    ),
-                                                    color: active
-                                                        ? kRedColor.withValues(
-                                                            alpha: 0.08,
-                                                          )
-                                                        : kInputBgColor,
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisAlignment:
-                                                        MainAxisAlignment
-                                                            .center,
-                                                    children: [
-                                                      Icon(
+                                                        side: BorderSide(
+                                                          color: active
+                                                              ? activeColor
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.42,
+                                                                    )
+                                                              : kBorderColor,
+                                                        ),
+                                                        backgroundColor: active
+                                                            ? activeColor
+                                                                  .withValues(
+                                                                    alpha: 0.08,
+                                                                  )
+                                                            : kInputBgColor,
+                                                      ),
+                                                      icon: Icon(
                                                         icon,
                                                         size: 16,
                                                         color: active
-                                                            ? kRedColor
+                                                            ? activeColor
                                                             : kSecondaryColor,
                                                       ),
-                                                      const SizedBox(width: 6),
-                                                      Flexible(
-                                                        child: MyText(
-                                                          text: active
-                                                              ? activeLabel
-                                                              : idleLabel,
-                                                          size: 11,
-                                                          maxLines: 1,
-                                                          textOverflow:
-                                                              TextOverflow
-                                                                  .ellipsis,
-                                                          textAlign:
-                                                              TextAlign.center,
-                                                          weight:
-                                                              FontWeight.w700,
-                                                          color: active
-                                                              ? kRedColor
-                                                              : kTertiaryColor,
-                                                        ),
+                                                      label: MyText(
+                                                        text: label,
+                                                        size: 11,
+                                                        maxLines: 1,
+                                                        textOverflow:
+                                                            TextOverflow
+                                                                .ellipsis,
+                                                        textAlign:
+                                                            TextAlign.center,
+                                                        weight: FontWeight.w700,
+                                                        color: active
+                                                            ? activeColor
+                                                            : kTertiaryColor,
                                                       ),
-                                                    ],
-                                                  ),
-                                                ),
-                                              );
-                                            }
+                                                    );
+                                                  }
 
-                                            final dictationButton = holdButton(
-                                              active: isDictating,
-                                              onDown: () =>
-                                                  startDictation(setLocalState),
-                                              onUp: () =>
-                                                  stopDictation(setLocalState),
-                                              icon: isDictating
-                                                  ? Icons.mic_off_rounded
-                                                  : Icons.mic_rounded,
-                                              activeLabel: 'Говорите...',
-                                              idleLabel: 'Зажмите для диктовки',
-                                            );
-                                            final recordingButton = holdButton(
-                                              active: isRecording,
-                                              onDown: () =>
-                                                  startRecording(setLocalState),
-                                              onUp: () =>
-                                                  stopRecording(setLocalState),
-                                              icon: isRecording
-                                                  ? Icons.radio_button_checked
-                                                  : Icons.graphic_eq_rounded,
-                                              activeLabel:
-                                                  'Запись ${recordingLabel()}',
-                                              idleLabel: 'Зажмите для записи',
-                                            );
-                                            if (constraints.maxWidth < 360) {
-                                              return Column(
-                                                children: [
-                                                  dictationButton,
-                                                  const SizedBox(height: 8),
-                                                  recordingButton,
-                                                ],
-                                              );
-                                            }
-                                            return Row(
-                                              children: [
-                                                Expanded(
-                                                  child: dictationButton,
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: recordingButton,
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Align(
-                                          alignment: Alignment.centerRight,
-                                          child: OutlinedButton.icon(
-                                            onPressed: () async {
-                                              final picked = await _pickFiles(
-                                                type: FileType.custom,
-                                                allowedExtensions: const [
-                                                  'mp3',
-                                                  'm4a',
-                                                  'wav',
-                                                  'aac',
-                                                  'ogg',
-                                                  'oga',
-                                                ],
-                                              );
-                                              if (picked.isEmpty) return;
-                                              setLocalState(() {
-                                                final next = <String>[
-                                                  ...audioRecordings,
-                                                  ...picked
-                                                      .where(
-                                                        (file) => file.isAudio,
-                                                      )
-                                                      .map(
-                                                        (file) => file.dataUrl,
-                                                      ),
-                                                ];
-                                                audioRecordings = next;
-                                              });
-                                            },
-                                            icon: const Icon(
-                                              Icons.upload_file_rounded,
-                                              size: 16,
-                                            ),
-                                            label: const Text(
-                                              'Добавить аудиофайл',
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: MyText(
-                                                text:
-                                                    'Аудиозаметки: ${audioRecordings.length}',
-                                                size: 11,
-                                                color: kGreyColor,
-                                                weight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        if (audioRecordings.isNotEmpty) ...[
-                                          const SizedBox(height: 6),
-                                          ...List.generate(audioRecordings.length, (
-                                            audioIndex,
-                                          ) {
-                                            final playing =
-                                                playingAudioIndex == audioIndex;
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                bottom: 6,
-                                              ),
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 8,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                  border: Border.all(
-                                                    color: kBorderColor,
-                                                  ),
-                                                  color: kInputBgColor,
-                                                ),
-                                                child: Row(
-                                                  children: [
-                                                    InkWell(
-                                                      onTap: () async {
-                                                        try {
-                                                          if (playing) {
-                                                            await player.stop();
-                                                            if (!dialogActive) {
-                                                              return;
-                                                            }
-                                                            setLocalState(
-                                                              () =>
-                                                                  playingAudioIndex =
-                                                                      -1,
+                                                  final dictationButton =
+                                                      actionButton(
+                                                        active: isDictating,
+                                                        onPressed: () async {
+                                                          if (isDictating) {
+                                                            await stopDictation(
+                                                              setLocalState,
                                                             );
                                                           } else {
-                                                            await player.stop();
-                                                            await player.play(
-                                                              UrlSource(
-                                                                audioRecordings[audioIndex],
-                                                              ),
-                                                            );
-                                                            if (!dialogActive) {
-                                                              return;
-                                                            }
-                                                            setLocalState(
-                                                              () =>
-                                                                  playingAudioIndex =
-                                                                      audioIndex,
+                                                            await startDictation(
+                                                              setLocalState,
                                                             );
                                                           }
-                                                        } catch (_) {
-                                                          await showMessage(
-                                                            'Не удалось воспроизвести аудио',
-                                                          );
-                                                        }
-                                                      },
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
-                                                          ),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              2,
+                                                        },
+                                                        icon: isDictating
+                                                            ? Icons
+                                                                  .mic_off_rounded
+                                                            : Icons.mic_rounded,
+                                                        label: isDictating
+                                                            ? 'Остановить диктовку'
+                                                            : 'Начать диктовку',
+                                                        activeColor: kRedColor,
+                                                      );
+                                                  final recordingButton = actionButton(
+                                                    active: isRecording,
+                                                    onPressed: () async {
+                                                      if (isRecording) {
+                                                        await stopRecording(
+                                                          setLocalState,
+                                                        );
+                                                      } else {
+                                                        await startRecording(
+                                                          setLocalState,
+                                                        );
+                                                      }
+                                                    },
+                                                    icon: isRecording
+                                                        ? Icons
+                                                              .radio_button_checked
+                                                        : Icons
+                                                              .graphic_eq_rounded,
+                                                    label: isRecording
+                                                        ? 'Остановить запись (${recordingLabel()})'
+                                                        : 'Записать голосовое',
+                                                    activeColor:
+                                                        kSecondaryColor,
+                                                  );
+                                                  if (constraints.maxWidth <
+                                                      360) {
+                                                    return Column(
+                                                      children: [
+                                                        dictationButton,
+                                                        const SizedBox(
+                                                          height: 8,
+                                                        ),
+                                                        recordingButton,
+                                                      ],
+                                                    );
+                                                  }
+                                                  return Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: dictationButton,
+                                                      ),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(
+                                                        child: recordingButton,
+                                                      ),
+                                                    ],
+                                                  );
+                                                },
+                                              ),
+                                              const SizedBox(height: 8),
+                                              Align(
+                                                alignment:
+                                                    Alignment.centerRight,
+                                                child: OutlinedButton.icon(
+                                                  onPressed: () async {
+                                                    final picked =
+                                                        await _pickFiles(
+                                                          type: FileType.custom,
+                                                          allowedExtensions:
+                                                              const [
+                                                                'mp3',
+                                                                'm4a',
+                                                                'wav',
+                                                                'aac',
+                                                                'ogg',
+                                                                'oga',
+                                                              ],
+                                                        );
+                                                    if (picked.isEmpty) return;
+                                                    setLocalState(() {
+                                                      final next = <String>[
+                                                        ...audioRecordings,
+                                                        ...picked
+                                                            .where(
+                                                              (file) =>
+                                                                  file.isAudio,
+                                                            )
+                                                            .map(
+                                                              (file) =>
+                                                                  file.dataUrl,
                                                             ),
-                                                        child: Icon(
-                                                          playing
-                                                              ? Icons
-                                                                    .pause_circle_outline
-                                                              : Icons
-                                                                    .play_circle_outline,
-                                                          size: 20,
-                                                          color:
-                                                              kSecondaryColor,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                      child: MyText(
-                                                        text:
-                                                            'Аудиозапись ${audioIndex + 1}',
-                                                        size: 11,
-                                                        color: kTertiaryColor,
-                                                      ),
-                                                    ),
-                                                    InkWell(
-                                                      onTap: () async {
-                                                        if (playingAudioIndex ==
-                                                            audioIndex) {
-                                                          await player.stop();
-                                                          playingAudioIndex =
-                                                              -1;
-                                                        }
-                                                        setLocalState(() {
-                                                          audioRecordings
-                                                              .removeAt(
-                                                                audioIndex,
-                                                              );
-                                                        });
-                                                      },
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
-                                                          ),
-                                                      child: const Padding(
-                                                        padding: EdgeInsets.all(
-                                                          2,
-                                                        ),
-                                                        child: Icon(
-                                                          Icons
-                                                              .delete_outline_rounded,
-                                                          size: 16,
-                                                          color: kGreyColor,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
+                                                      ];
+                                                      audioRecordings = next;
+                                                    });
+                                                  },
+                                                  icon: const Icon(
+                                                    Icons.upload_file_rounded,
+                                                    size: 16,
+                                                  ),
+                                                  label: const Text(
+                                                    'Добавить аудиофайл',
+                                                  ),
                                                 ),
                                               ),
-                                            );
-                                          }),
-                                        ],
+                                              if (audioRecordings
+                                                  .isNotEmpty) ...[
+                                                const SizedBox(height: 6),
+                                                ...List.generate(audioRecordings.length, (
+                                                  audioIndex,
+                                                ) {
+                                                  final playing =
+                                                      playingAudioIndex ==
+                                                      audioIndex;
+                                                  return Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                          bottom: 6,
+                                                        ),
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 10,
+                                                            vertical: 8,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10,
+                                                            ),
+                                                        border: Border.all(
+                                                          color: kBorderColor,
+                                                        ),
+                                                        color: kInputBgColor,
+                                                      ),
+                                                      child: Row(
+                                                        children: [
+                                                          InkWell(
+                                                            onTap: () async {
+                                                              try {
+                                                                if (playing) {
+                                                                  await player
+                                                                      .stop();
+                                                                  if (!dialogActive) {
+                                                                    return;
+                                                                  }
+                                                                  setLocalState(
+                                                                    () =>
+                                                                        playingAudioIndex =
+                                                                            -1,
+                                                                  );
+                                                                } else {
+                                                                  await player
+                                                                      .stop();
+                                                                  await player.play(
+                                                                    UrlSource(
+                                                                      audioRecordings[audioIndex],
+                                                                    ),
+                                                                  );
+                                                                  if (!dialogActive) {
+                                                                    return;
+                                                                  }
+                                                                  setLocalState(
+                                                                    () => playingAudioIndex =
+                                                                        audioIndex,
+                                                                  );
+                                                                }
+                                                              } catch (_) {
+                                                                await showMessage(
+                                                                  'Не удалось воспроизвести аудио',
+                                                                );
+                                                              }
+                                                            },
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                            child: Padding(
+                                                              padding:
+                                                                  const EdgeInsets.all(
+                                                                    2,
+                                                                  ),
+                                                              child: Icon(
+                                                                playing
+                                                                    ? Icons
+                                                                          .pause_circle_outline
+                                                                    : Icons
+                                                                          .play_circle_outline,
+                                                                size: 20,
+                                                                color:
+                                                                    kSecondaryColor,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 8,
+                                                          ),
+                                                          Expanded(
+                                                            child: MyText(
+                                                              text:
+                                                                  'Аудиозапись ${audioIndex + 1}',
+                                                              size: 11,
+                                                              color:
+                                                                  kTertiaryColor,
+                                                            ),
+                                                          ),
+                                                          InkWell(
+                                                            onTap: () async {
+                                                              if (playingAudioIndex ==
+                                                                  audioIndex) {
+                                                                await player
+                                                                    .stop();
+                                                                playingAudioIndex =
+                                                                    -1;
+                                                              }
+                                                              setLocalState(() {
+                                                                audioRecordings
+                                                                    .removeAt(
+                                                                      audioIndex,
+                                                                    );
+                                                              });
+                                                            },
+                                                            borderRadius:
+                                                                BorderRadius.circular(
+                                                                  999,
+                                                                ),
+                                                            child: const Padding(
+                                                              padding:
+                                                                  EdgeInsets.all(
+                                                                    2,
+                                                                  ),
+                                                              child: Icon(
+                                                                Icons
+                                                                    .delete_outline_rounded,
+                                                                size: 16,
+                                                                color:
+                                                                    kGreyColor,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  );
+                                                }),
+                                              ],
+                                            ],
+                                          ),
+                                        ),
                                       ],
                                     ],
                                   ),
@@ -7071,6 +7500,9 @@ class _SparkJoyCreateReportScreenState
 
     setState(() {
       _mediaCustomTagsByScope = _readStringListMap(customTagsByScope);
+      _mediaCustomSeriousTagsByScope = _readStringListMap(
+        customSeriousTagsByScope,
+      );
       _mediaDisabledDefaultTagsByScope = _readStringListMap(
         disabledDefaultTagsByScope,
       );
@@ -7313,6 +7745,9 @@ class _SparkJoyCreateReportScreenState
               final audioNotes = item.inspection.audioRecordings;
               final paintFrom = item.inspection.paintFrom;
               final paintTo = item.inspection.paintTo;
+              final noteDisplay = note.isEmpty
+                  ? 'Заметка не добавлена'
+                  : (elementLabel.isEmpty ? note : '[$elementLabel] $note');
 
               return Dialog.fullscreen(
                 child: Scaffold(
@@ -7641,7 +8076,7 @@ class _SparkJoyCreateReportScreenState
                           const SizedBox(height: 6),
                         ],
                         Text(
-                          note.isEmpty ? 'Заметка не добавлена' : note,
+                          noteDisplay,
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -9204,6 +9639,7 @@ class _SparkJoyCreateReportScreenState
           ],
         ),
         body: ListView(
+          controller: _pageScrollController,
           padding: AppSizes.listPaddingWithBottomBar(),
           children: [_editingSection ? _sectionEditor() : _sectionsOverview()],
         ),

@@ -30,134 +30,145 @@ class UserSimplePreferences {
     pref = await SharedPreferences.getInstance();
   }
 
+  static Future<SharedPreferences> _prefs() async {
+    final current = pref;
+    if (current != null) return current;
+    final loaded = await SharedPreferences.getInstance();
+    pref = loaded;
+    return loaded;
+  }
+
   static Future setLanguageIndex(int index) async {
-    await pref!.setInt(_languageIndexKey, index);
+    await (await _prefs()).setInt(_languageIndexKey, index);
   }
 
   static Future getLanguageIndex() async {
     // ignore: await_only_futures
-    return await pref!.getInt(_languageIndexKey);
+    return (await _prefs()).getInt(_languageIndexKey);
   }
 
   static Future isFirstLaunch(bool value) async {
-    await pref!.setBool(_chooseLanguageFirstTime, value);
+    await (await _prefs()).setBool(_chooseLanguageFirstTime, value);
   }
 
   static Future getIsFirstLaunch() async {
     // ignore: await_only_futures
-    return await pref!.getBool(_chooseLanguageFirstTime);
+    return (await _prefs()).getBool(_chooseLanguageFirstTime);
   }
 
   static Future setReportQuery(String value) async {
-    await pref!.setString(_reportQueryKey, value);
+    await (await _prefs()).setString(_reportQueryKey, value);
   }
 
   static Future getReportQuery() async {
     // ignore: await_only_futures
-    return await pref!.getString(_reportQueryKey);
+    return (await _prefs()).getString(_reportQueryKey);
   }
 
   static Future setReportVerdict(String value) async {
-    await pref!.setString(_reportVerdictKey, value);
+    await (await _prefs()).setString(_reportVerdictKey, value);
   }
 
   static Future getReportVerdict() async {
     // ignore: await_only_futures
-    return await pref!.getString(_reportVerdictKey);
+    return (await _prefs()).getString(_reportVerdictKey);
   }
 
   static Future setReportMake(String value) async {
-    await pref!.setString(_reportMakeKey, value);
+    await (await _prefs()).setString(_reportMakeKey, value);
   }
 
   static Future getReportMake() async {
     // ignore: await_only_futures
-    return await pref!.getString(_reportMakeKey);
+    return (await _prefs()).getString(_reportMakeKey);
   }
 
   static Future setReportModel(String value) async {
-    await pref!.setString(_reportModelKey, value);
+    await (await _prefs()).setString(_reportModelKey, value);
   }
 
   static Future getReportModel() async {
     // ignore: await_only_futures
-    return await pref!.getString(_reportModelKey);
+    return (await _prefs()).getString(_reportModelKey);
   }
 
   static Future setReportInspector(String value) async {
-    await pref!.setString(_reportInspectorKey, value);
+    await (await _prefs()).setString(_reportInspectorKey, value);
   }
 
   static Future getReportInspector() async {
     // ignore: await_only_futures
-    return await pref!.getString(_reportInspectorKey);
+    return (await _prefs()).getString(_reportInspectorKey);
   }
 
   static Future setReportVerdicts(List<String> values) async {
-    await pref!.setStringList(_reportVerdictsKey, values);
+    await (await _prefs()).setStringList(_reportVerdictsKey, values);
   }
 
   static Future<List<String>?> getReportVerdicts() async {
     // ignore: await_only_futures
-    return await pref!.getStringList(_reportVerdictsKey);
+    return (await _prefs()).getStringList(_reportVerdictsKey);
   }
 
   static Future setReportMakes(List<String> values) async {
-    await pref!.setStringList(_reportMakesKey, values);
+    await (await _prefs()).setStringList(_reportMakesKey, values);
   }
 
   static Future<List<String>?> getReportMakes() async {
     // ignore: await_only_futures
-    return await pref!.getStringList(_reportMakesKey);
+    return (await _prefs()).getStringList(_reportMakesKey);
   }
 
   static Future setReportModels(List<String> values) async {
-    await pref!.setStringList(_reportModelsKey, values);
+    await (await _prefs()).setStringList(_reportModelsKey, values);
   }
 
   static Future<List<String>?> getReportModels() async {
     // ignore: await_only_futures
-    return await pref!.getStringList(_reportModelsKey);
+    return (await _prefs()).getStringList(_reportModelsKey);
   }
 
   static Future setReportInspectors(List<String> values) async {
-    await pref!.setStringList(_reportInspectorsKey, values);
+    await (await _prefs()).setStringList(_reportInspectorsKey, values);
   }
 
   static Future<List<String>?> getReportInspectors() async {
     // ignore: await_only_futures
-    return await pref!.getStringList(_reportInspectorsKey);
+    return (await _prefs()).getStringList(_reportInspectorsKey);
   }
 
   static Future setReportSortOrder(String value) async {
-    await pref!.setString(_reportSortOrderKey, value);
+    await (await _prefs()).setString(_reportSortOrderKey, value);
   }
 
   static Future<String?> getReportSortOrder() async {
     // ignore: await_only_futures
-    return await pref!.getString(_reportSortOrderKey);
+    return (await _prefs()).getString(_reportSortOrderKey);
   }
 
   static Future setBrandCache(
     List<String> values,
     Map<String, String> rusByName,
   ) async {
-    await pref!.setStringList(_brandCacheKey, values);
+    await (await _prefs()).setStringList(_brandCacheKey, values);
     final combined = values
         .map((name) => '$name|${rusByName[name] ?? ''}')
         .toList();
-    await pref!.setStringList(_brandRusCacheKey, combined);
-    await pref!.setInt(_brandCacheTsKey, DateTime.now().millisecondsSinceEpoch);
+    await (await _prefs()).setStringList(_brandRusCacheKey, combined);
+    await (await _prefs()).setInt(
+      _brandCacheTsKey,
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   static Future<List<String>?> getBrandCache() async {
     // ignore: await_only_futures
-    return await pref!.getStringList(_brandCacheKey);
+    return (await _prefs()).getStringList(_brandCacheKey);
   }
 
   static Future<Map<String, String>> getBrandRusCache() async {
     // ignore: await_only_futures
-    final list = await pref!.getStringList(_brandRusCacheKey);
+    final list = (await _prefs()).getStringList(_brandRusCacheKey);
     final map = <String, String>{};
     if (list == null) return map;
     for (final entry in list) {
@@ -172,13 +183,13 @@ class UserSimplePreferences {
 
   static Future<int?> getBrandCacheTimestamp() async {
     // ignore: await_only_futures
-    return await pref!.getInt(_brandCacheTsKey);
+    return (await _prefs()).getInt(_brandCacheTsKey);
   }
 
   static Future clearBrandCache() async {
-    await pref!.remove(_brandCacheKey);
-    await pref!.remove(_brandCacheTsKey);
-    await pref!.remove(_brandRusCacheKey);
+    await (await _prefs()).remove(_brandCacheKey);
+    await (await _prefs()).remove(_brandCacheTsKey);
+    await (await _prefs()).remove(_brandRusCacheKey);
   }
 
   static String _sanitizeStatus(String? value) {
@@ -193,7 +204,7 @@ class UserSimplePreferences {
 
   static Future<List<Map<String, dynamic>>> getAutoRequests() async {
     // ignore: await_only_futures
-    final list = await pref!.getStringList(_autoRequestsKey) ?? [];
+    final list = (await _prefs()).getStringList(_autoRequestsKey) ?? [];
     final result = <Map<String, dynamic>>[];
     for (final raw in list) {
       try {
@@ -212,7 +223,7 @@ class UserSimplePreferences {
 
   static Future setAutoRequests(List<Map<String, dynamic>> values) async {
     final list = values.map(jsonEncode).toList();
-    await pref!.setStringList(_autoRequestsKey, list);
+    await (await _prefs()).setStringList(_autoRequestsKey, list);
   }
 
   static Future addAutoRequest(Map<String, dynamic> value) async {
@@ -222,7 +233,7 @@ class UserSimplePreferences {
   }
 
   static Future<Map<String, dynamic>> getRequestDisplayOverrides() async {
-    final raw = await pref!.getString(_requestDisplayOverridesKey);
+    final raw = (await _prefs()).getString(_requestDisplayOverridesKey);
     if (raw == null || raw.trim().isEmpty) return {};
     try {
       final decoded = jsonDecode(raw);
@@ -233,7 +244,9 @@ class UserSimplePreferences {
     return {};
   }
 
-  static Future<Map<String, dynamic>?> getRequestDisplayOverride(String key) async {
+  static Future<Map<String, dynamic>?> getRequestDisplayOverride(
+    String key,
+  ) async {
     final map = await getRequestDisplayOverrides();
     final value = map[key];
     if (value is Map) {
@@ -248,7 +261,10 @@ class UserSimplePreferences {
   ) async {
     final map = await getRequestDisplayOverrides();
     map[key] = value;
-    await pref!.setString(_requestDisplayOverridesKey, jsonEncode(map));
+    await (await _prefs()).setString(
+      _requestDisplayOverridesKey,
+      jsonEncode(map),
+    );
   }
 
   static Future updateAutoRequest(String id, Map<String, dynamic> patch) async {
@@ -264,43 +280,43 @@ class UserSimplePreferences {
   }
 
   static Future setInspectorAbout(String value) async {
-    await pref!.setString(_inspectorAboutKey, value);
+    await (await _prefs()).setString(_inspectorAboutKey, value);
   }
 
   static Future<String?> getInspectorAbout() async {
     // ignore: await_only_futures
-    return await pref!.getString(_inspectorAboutKey);
+    return (await _prefs()).getString(_inspectorAboutKey);
   }
 
   static Future<void> setAuthTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
-    await pref!.setString(_accessTokenKey, accessToken);
-    await pref!.setString(_refreshTokenKey, refreshToken);
+    await (await _prefs()).setString(_accessTokenKey, accessToken);
+    await (await _prefs()).setString(_refreshTokenKey, refreshToken);
   }
 
   static Future<String?> getAccessToken() async {
     // ignore: await_only_futures
-    return await pref!.getString(_accessTokenKey);
+    return (await _prefs()).getString(_accessTokenKey);
   }
 
   static Future<String?> getRefreshToken() async {
     // ignore: await_only_futures
-    return await pref!.getString(_refreshTokenKey);
+    return (await _prefs()).getString(_refreshTokenKey);
   }
 
   static Future<void> clearAuthTokens() async {
-    await pref!.remove(_accessTokenKey);
-    await pref!.remove(_refreshTokenKey);
+    await (await _prefs()).remove(_accessTokenKey);
+    await (await _prefs()).remove(_refreshTokenKey);
   }
 
   static Future<void> setUserRole(String role) async {
-    await pref!.setString(_userRoleKey, role);
+    await (await _prefs()).setString(_userRoleKey, role);
   }
 
   static Future<String?> getUserRole() async {
     // ignore: await_only_futures
-    return await pref!.getString(_userRoleKey);
+    return (await _prefs()).getString(_userRoleKey);
   }
 }

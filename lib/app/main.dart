@@ -20,7 +20,6 @@ void main() async {
   Get.put(LanguageController());
   Get.put(UserController());
   await UserSimplePreferences.init();
-  await UserSimplePreferences.clearBrandCache();
   runApp(MyApp());
 }
 

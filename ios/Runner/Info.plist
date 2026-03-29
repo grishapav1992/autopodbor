@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Камера нужна для сканирования VIN и фото осмотра автомобиля.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Доступ к галерее нужен для выбора фото VIN и фото осмотра.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
