@@ -199,9 +199,8 @@
     });
   }
 
-  async function buildOcrVariants(dataUrl) {
-    const source = await dataUrlToBlob(dataUrl);
-    const bitmap = await createImageBitmap(source);
+  async function buildOcrVariants(sourceBlob) {
+    const bitmap = await createImageBitmap(sourceBlob);
     const canvases = [
       makeVariantCanvas(bitmap, []),
       makeVariantCanvas(bitmap, [applyGrayscale]),
@@ -219,6 +218,11 @@
     return Promise.all(canvases.map(canvasToBlob));
   }
 
+  function mimeFromDataUrl(dataUrl) {
+    const match = /^data:([^;,]+)[;,]/i.exec(String(dataUrl || ''));
+    return match ? String(match[1] || '').toLowerCase() : '';
+  }
+
   function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -228,12 +232,32 @@
     });
   }
 
-  window.vinPickImage = function vinPickImage(useCamera) {
+  function readBlobAsDataUrl(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ''));
+      reader.onerror = () => reject(new Error('Не удалось прочитать blob'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function shouldUseNativeCameraInput() {
+    const ua = String(navigator.userAgent || '');
+    const isIPadOS =
+      navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || isIPadOS;
+    const isAndroid = /Android/i.test(ua);
+    return isIOS || isAndroid;
+  }
+
+  function pickVinFromFileInput(useCamera) {
     return new Promise((resolve) => {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = 'image/*,.heic,.heif';
+      input.multiple = false;
+      input.accept = useCamera ? 'image/*' : 'image/*,.heic,.heif';
       if (useCamera) {
+        input.capture = 'environment';
         input.setAttribute('capture', 'environment');
       }
       input.style.position = 'fixed';
@@ -271,6 +295,216 @@
 
       input.click();
     });
+  }
+
+  async function openLiveCameraStream() {
+    if (
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      throw new Error('Camera API unavailable');
+    }
+
+    const attempts = [
+      {
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      },
+      {
+        audio: false,
+        video: { facingMode: 'environment' },
+      },
+      {
+        audio: false,
+        video: true,
+      },
+    ];
+
+    let lastError = null;
+    for (const constraints of attempts) {
+      try {
+        return await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError || new Error('Не удалось открыть камеру');
+  }
+
+  async function pickVinFromLiveCamera() {
+    const stream = await openLiveCameraStream();
+
+    return new Promise((resolve) => {
+      const overlay = document.createElement('div');
+      overlay.style.position = 'fixed';
+      overlay.style.inset = '0';
+      overlay.style.background = 'rgba(0, 0, 0, 0.72)';
+      overlay.style.zIndex = '2147483647';
+      overlay.style.display = 'flex';
+      overlay.style.alignItems = 'center';
+      overlay.style.justifyContent = 'center';
+      overlay.style.padding = '20px';
+
+      const panel = document.createElement('div');
+      panel.style.background = '#0f172a';
+      panel.style.borderRadius = '12px';
+      panel.style.padding = '12px';
+      panel.style.width = 'min(640px, 94vw)';
+      panel.style.maxHeight = '90vh';
+      panel.style.display = 'flex';
+      panel.style.flexDirection = 'column';
+      panel.style.gap = '10px';
+
+      const title = document.createElement('div');
+      title.textContent = 'Наведите камеру на VIN и нажмите «Снять»';
+      title.style.color = '#e2e8f0';
+      title.style.font = '600 14px system-ui, -apple-system, sans-serif';
+
+      const videoWrap = document.createElement('div');
+      videoWrap.style.background = '#000';
+      videoWrap.style.borderRadius = '10px';
+      videoWrap.style.overflow = 'hidden';
+      videoWrap.style.aspectRatio = '4 / 3';
+
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.setAttribute('playsinline', 'true');
+      video.style.width = '100%';
+      video.style.height = '100%';
+      video.style.objectFit = 'cover';
+      video.srcObject = stream;
+      videoWrap.appendChild(video);
+
+      const actions = document.createElement('div');
+      actions.style.display = 'flex';
+      actions.style.justifyContent = 'space-between';
+      actions.style.gap = '8px';
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.textContent = 'Отмена';
+      cancelBtn.style.flex = '1';
+      cancelBtn.style.padding = '10px 12px';
+      cancelBtn.style.borderRadius = '10px';
+      cancelBtn.style.border = '1px solid #475569';
+      cancelBtn.style.background = 'transparent';
+      cancelBtn.style.color = '#e2e8f0';
+
+      const captureBtn = document.createElement('button');
+      captureBtn.type = 'button';
+      captureBtn.textContent = 'Снять';
+      captureBtn.style.flex = '1';
+      captureBtn.style.padding = '10px 12px';
+      captureBtn.style.borderRadius = '10px';
+      captureBtn.style.border = 'none';
+      captureBtn.style.background = '#0b5fff';
+      captureBtn.style.color = '#ffffff';
+      captureBtn.style.fontWeight = '600';
+
+      actions.appendChild(cancelBtn);
+      actions.appendChild(captureBtn);
+      panel.appendChild(title);
+      panel.appendChild(videoWrap);
+      panel.appendChild(actions);
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+
+      let settled = false;
+      const settle = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+
+      const stopStream = () => {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch (_) {}
+        });
+      };
+
+      const cleanup = () => {
+        stopStream();
+        if (overlay.parentNode) {
+          overlay.parentNode.removeChild(overlay);
+        }
+      };
+
+      cancelBtn.addEventListener('click', () => {
+        cleanup();
+        settle('');
+      });
+
+      overlay.addEventListener('click', (event) => {
+        if (event.target === overlay) {
+          cleanup();
+          settle('');
+        }
+      });
+
+      const readyTimeout = window.setTimeout(() => {
+        cleanup();
+        settle('');
+      }, 8000);
+
+      const markReady = async () => {
+        if (settled) return;
+        try {
+          await video.play();
+          window.clearTimeout(readyTimeout);
+        } catch (_) {
+          cleanup();
+          settle('');
+        }
+      };
+
+      video.addEventListener('loadedmetadata', () => {
+        void markReady();
+      });
+      void markReady();
+
+      captureBtn.addEventListener('click', async () => {
+        if (captureBtn.disabled) return;
+        captureBtn.disabled = true;
+        try {
+          const width = Math.max(1, video.videoWidth || 1280);
+          const height = Math.max(1, video.videoHeight || 720);
+          const canvas = createCanvas(width, height);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, width, height);
+          const blob = await canvasToBlob(canvas);
+          const dataUrl = await readBlobAsDataUrl(blob);
+          cleanup();
+          settle(dataUrl);
+        } catch (_) {
+          cleanup();
+          settle('');
+        }
+      });
+    });
+  }
+
+  window.vinPickImage = async function vinPickImage(useCamera) {
+    if (useCamera) {
+      try {
+        const captured = await pickVinFromLiveCamera();
+        if (captured) return captured;
+      } catch (_) {
+        if (shouldUseNativeCameraInput()) {
+          return pickVinFromFileInput(true);
+        }
+      }
+      return '';
+    }
+    return pickVinFromFileInput(false);
   };
 
   window.vinOcrScan = async function vinOcrScan(dataUrl) {
@@ -291,60 +525,84 @@
       };
     }
 
-    const { createWorker } = window.Tesseract;
-    const worker = await createWorker('eng', 1, { logger: () => {} });
-    const psmModes = ['8', '7', '13', '6'];
-    const variants = await buildOcrVariants(dataUrl);
-
-    let bestCandidate = '';
-    const candidateHits = new Map();
-    let bestScore = 0;
-    const rawLines = [];
-
     try {
-      for (const psm of psmModes) {
-        await worker.setParameters({
-          tessedit_char_whitelist: 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789',
-          tessedit_pageseg_mode: psm,
-        });
-
-        for (const variant of variants) {
-          const { data } = await worker.recognize(variant);
-          const raw = String(data && data.text ? data.text : '').trim();
-          if (raw) rawLines.push(`[PSM${psm}] ${raw}`);
-
-          const candidate = extractVin(raw);
-          if (!candidate) continue;
-          if (!passesVinHeuristics(candidate)) continue;
-
-          const nextHits = (candidateHits.get(candidate) || 0) + 1;
-          candidateHits.set(candidate, nextHits);
-          const score = candidateScore(candidate, nextHits);
-          if (!bestCandidate || score > bestScore) {
-            bestCandidate = candidate;
-            bestScore = score;
-          }
-        }
-
-        if (bestScore >= 3) break;
+      const { createWorker } = window.Tesseract;
+      const worker = await createWorker('eng', 1, { logger: () => {} });
+      const psmModes = ['8', '7', '13', '6'];
+      const sourceBlob = await dataUrlToBlob(dataUrl);
+      let variants = [];
+      try {
+        variants = await buildOcrVariants(sourceBlob);
+      } catch (_) {
+        variants = [sourceBlob];
       }
-    } finally {
-      await worker.terminate();
-    }
 
-    if (!bestCandidate || bestScore < 1) {
+      if (!variants.length) {
+        variants = [sourceBlob];
+      }
+
+      let bestCandidate = '';
+      const candidateHits = new Map();
+      let bestScore = 0;
+      const rawLines = [];
+
+      try {
+        for (const psm of psmModes) {
+          await worker.setParameters({
+            tessedit_char_whitelist: 'ABCDEFGHJKLMNPRSTUVWXYZ0123456789',
+            tessedit_pageseg_mode: psm,
+          });
+
+          for (const variant of variants) {
+            const { data } = await worker.recognize(variant);
+            const raw = String(data && data.text ? data.text : '').trim();
+            if (raw) rawLines.push(`[PSM${psm}] ${raw}`);
+
+            const candidate = extractVin(raw);
+            if (!candidate) continue;
+            if (!passesVinHeuristics(candidate)) continue;
+
+            const nextHits = (candidateHits.get(candidate) || 0) + 1;
+            candidateHits.set(candidate, nextHits);
+            const score = candidateScore(candidate, nextHits);
+            if (!bestCandidate || score > bestScore) {
+              bestCandidate = candidate;
+              bestScore = score;
+            }
+          }
+
+          if (bestScore >= 3) break;
+        }
+      } finally {
+        await worker.terminate();
+      }
+
+      if (!bestCandidate || bestScore < 1) {
+        const mime = mimeFromDataUrl(dataUrl);
+        const unsupportedFormatHint =
+          mime === 'image/heic' || mime === 'image/heif'
+            ? ' Формат HEIC/HEIF может распознаваться нестабильно в браузере: попробуйте JPEG/PNG.'
+            : '';
+        return {
+          vin: '',
+          rawText: rawLines.join('\n'),
+          error:
+            'Не удалось уверенно распознать VIN. Снимите VIN крупнее, без бликов и строго по центру рамки.' +
+            unsupportedFormatHint,
+        };
+      }
+
+      return {
+        vin: bestCandidate,
+        rawText: rawLines.join('\n'),
+        error: '',
+      };
+    } catch (error) {
       return {
         vin: '',
-        rawText: rawLines.join('\n'),
-        error:
-          'Не удалось уверенно распознать VIN. Снимите VIN крупнее, без бликов и строго по центру рамки.',
+        rawText: '',
+        error: `Ошибка OCR в браузере: ${error}`,
       };
     }
-
-    return {
-      vin: bestCandidate,
-      rawText: rawLines.join('\n'),
-      error: '',
-    };
   };
 })();

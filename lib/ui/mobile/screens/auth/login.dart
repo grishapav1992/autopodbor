@@ -25,6 +25,7 @@ class Login extends StatefulWidget {
 
 class _LoginState extends State<Login> {
   final TextEditingController _phoneController = TextEditingController();
+  static const String _techCodePassword = '12112016';
   static const String _techAccessToken =
       'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzA0MTAyOTMuNTU1NzQ0LCJleHAiOjE3NzA0NTM0OTMuNTU1NzQ0LCJzdWIiOiIyOCIsInR5cGUiOiJhdXRoIn0.aqlVCZtLzKWXCNoOXJOYxYdgY0cxX-LLKyH4aMil8Pkz3eNibKtnUuba017tfzY150Ov52ZCe6FMO5UH0spBUTR9aNYsb-KSemTECEGQvoqOvHQQmtoOV0bBYsa1WNprkbXnhPmQmdgmuCv9ss7RcHk9Uq758_3xS1kI9-y06OVHjNe8fyBInzF6ThxFQwfk24Ntcn2bBsssAEzZHTD1tOfTR5NcwdlNxuX5MQ-Z8t1drNVKm5nn32r4clwwoFmnYNmN0e90kh-NiXVO6i37AE9jTtyJo8jaM2rXu2MGGTz3oYnZS_w_yRM9pikaN5pMBsE0G-N1OkWJE3Acr9Ptug';
   static const String _techRefreshToken =
@@ -48,8 +49,9 @@ class _LoginState extends State<Login> {
   String _normalizePhone(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
-    if (digits.startsWith('8') && digits.length == 11)
+    if (digits.startsWith('8') && digits.length == 11) {
       return '+7${digits.substring(1)}';
+    }
     if (digits.startsWith('7') && digits.length == 11) return '+$digits';
     if (digits.length == 10) return '+7$digits';
     return '+$digits';
@@ -170,6 +172,62 @@ class _LoginState extends State<Login> {
           'Технический вход активирован. Используем фиксированный токен.';
     });
     await _proceedAfterCheck();
+  }
+
+  Future<void> _promptTechPasswordAndSignIn() async {
+    if (_isAuthLoading || _isVerifyLoading) return;
+
+    var passwordValue = '';
+    String? passwordError;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setLocalState) {
+            void submit() {
+              final value = passwordValue.trim();
+              if (value != _techCodePassword) {
+                setLocalState(() {
+                  passwordError = 'Неверный пароль';
+                });
+                return;
+              }
+              Navigator.of(dialogContext).pop(true);
+            }
+
+            return AlertDialog(
+              title: const Text('Технический код'),
+              content: TextField(
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                obscureText: true,
+                decoration: InputDecoration(
+                  hintText: 'Введите пароль',
+                  errorText: passwordError,
+                ),
+                onChanged: (value) {
+                  passwordValue = value;
+                  if (passwordError == null) return;
+                  setLocalState(() {
+                    passwordError = null;
+                  });
+                },
+                onSubmitted: (_) => submit(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  child: const Text('Отмена'),
+                ),
+                ElevatedButton(onPressed: submit, child: const Text('Войти')),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+    await _techSignIn();
   }
 
   Future<void> _proceedAfterCheck() async {
@@ -330,7 +388,7 @@ class _LoginState extends State<Login> {
             childrenPadding: const EdgeInsets.only(bottom: 4),
             children: [
               MyBorderButton(
-                onTap: _techSignIn,
+                onTap: _promptTechPasswordAndSignIn,
                 buttonText: 'Войти по техническому коду',
                 textSize: 12,
               ),

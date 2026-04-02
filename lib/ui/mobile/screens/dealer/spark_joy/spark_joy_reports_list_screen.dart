@@ -94,11 +94,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     await _load();
   }
 
-  Future<void> _deleteCompleted(String id) async {
-    await SparkJoyStorage.deleteCompleted(id);
-    await _load();
-  }
-
   List<Map<String, dynamic>> get _filteredDrafts {
     if (_search.trim().isEmpty) return _drafts;
     final query = _search.toLowerCase();
@@ -250,17 +245,25 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   color: kSecondaryColor,
                 ),
                 const SizedBox(height: 8),
-                InkWell(
-                  onTap: () => _deleteDraft(sjRead(draft, 'id')),
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.all(4),
-                    child: Icon(
-                      Icons.delete_outline,
-                      size: 16,
-                      color: kGreyColor,
+                OutlinedButton.icon(
+                  onPressed: () => _deleteDraft(sjRead(draft, 'id')),
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 30),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    side: const BorderSide(color: kBorderColor),
+                    foregroundColor: kGreyColor,
+                    backgroundColor: kInputBgColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
+                  label: const Text('Удалить'),
                 ),
               ],
             ),
@@ -329,19 +332,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                       text: sjRead(report, 'createdAt'),
                       size: 10,
                       color: kGreyColor,
-                    ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: () => _deleteCompleted(sjRead(report, 'id')),
-                      borderRadius: BorderRadius.circular(8),
-                      child: const Padding(
-                        padding: EdgeInsets.all(4),
-                        child: Icon(
-                          Icons.delete_outline,
-                          size: 16,
-                          color: kGreyColor,
-                        ),
-                      ),
                     ),
                   ],
                 ),

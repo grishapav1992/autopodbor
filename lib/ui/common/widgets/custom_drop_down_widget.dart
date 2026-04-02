@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
@@ -154,13 +154,15 @@ class _CustomDropDownState extends State<CustomDropDown> {
                   children: [
                     Expanded(
                       child: MyText(
-                        text: (effectiveValue == null ||
+                        text:
+                            (effectiveValue == null ||
                                 widget.selectedValue == widget.hint)
                             ? widget.hint
                             : widget.selectedValue,
                         size: 12,
                         weight: FontWeight.w500,
-                        color: (effectiveValue == null ||
+                        color:
+                            (effectiveValue == null ||
                                 widget.selectedValue == widget.hint)
                             ? kHintColor
                             : kTertiaryColor,
@@ -210,7 +212,7 @@ class _DropDownItem extends StatelessWidget {
               width: 28,
               height: 28,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) =>
+              errorBuilder: (_, _, _) =>
                   Container(width: 28, height: 28, color: kBorderColor),
             ),
           ),

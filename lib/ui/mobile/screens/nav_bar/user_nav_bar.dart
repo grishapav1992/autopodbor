@@ -61,7 +61,6 @@ class _UserNavBarState extends State<UserNavBar> {
   Timer? _brandRetryTimer;
   int _brandRetryCount = 0;
   String _brandError = '';
-  static const Duration _brandCacheTtl = Duration(hours: 24);
 
   @override
   void initState() {
@@ -99,7 +98,7 @@ class _UserNavBarState extends State<UserNavBar> {
     });
   }
 
-  Future<void> _loadBrands({bool forceRefresh = false}) async {
+  Future<void> _loadBrands() async {
     if (_brandLoading) return;
     _brandRetryTimer?.cancel();
     setState(() => _brandLoading = true);
@@ -193,8 +192,14 @@ class _UserNavBarState extends State<UserNavBar> {
       key: _key,
       drawer: UDrawer(),
       resizeToAvoidBottomInset: false,
-      body: WillPopScope(
-        onWillPop: _onWillPop,
+      body: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          final shouldPop = await _onWillPop();
+          if (!shouldPop || !context.mounted) return;
+          Navigator.of(context).maybePop();
+        },
         child: IndexedStack(
           index: _currentIndex,
           children: [
@@ -255,8 +260,8 @@ class _UserNavBarState extends State<UserNavBar> {
         onTap: (index) => _getCurrentIndex(index),
         selectedItemColor: kSecondaryColor,
         unselectedItemColor: kGreyColor,
-        items: items.map((data) {
-          final index = items.indexOf(data);
+        items: List.generate(items.length, (index) {
+          final data = items[index];
           return BottomNavigationBarItem(
             icon: Image.asset(
               data['icon'],
@@ -265,7 +270,7 @@ class _UserNavBarState extends State<UserNavBar> {
             ),
             label: data['label'],
           );
-        }).toList(),
+        }),
       ),
     );
   }
@@ -558,7 +563,7 @@ class _UserNavBarState extends State<UserNavBar> {
 
   void _openFilters(List<Map<String, dynamic>> reports) {
     if (_brandFallback && !_brandLoading) {
-      _loadBrands(forceRefresh: true);
+      _loadBrands();
     }
     final fallbackMakes = sortMakesByPopularity(
       reports.map((r) => r['make'] as String).toSet().toList(),
@@ -650,7 +655,7 @@ class _UserNavBarState extends State<UserNavBar> {
                                             : () {
                                                 _brandRetryTimer?.cancel();
                                                 _brandRetryCount = 0;
-                                                _loadBrands(forceRefresh: true);
+                                                _loadBrands();
                                               },
                                         child: const Text(
                                           '\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c',

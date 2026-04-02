@@ -142,7 +142,7 @@ class _SparkJoyAssignmentCreateScreenState
           const SizedBox(height: 10),
           _label('Специалист'),
           DropdownButtonFormField<String>(
-            value: _specialistId.isEmpty ? null : _specialistId,
+            initialValue: _specialistId.isEmpty ? null : _specialistId,
             decoration: _fieldDecoration('Выберите специалиста'),
             items: _specialists
                 .map(

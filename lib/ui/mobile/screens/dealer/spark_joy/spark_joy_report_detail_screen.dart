@@ -1,3 +1,7 @@
+import 'dart:convert';
+
+import 'package:cross_file/cross_file.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
@@ -18,6 +22,115 @@ class SparkJoyReportDetailScreen extends StatefulWidget {
 class _SparkJoyReportDetailScreenState
     extends State<SparkJoyReportDetailScreen> {
   int _imageIndex = 0;
+  final Map<String, Uint8List> _imageBytesCache = {};
+
+  Uint8List? _decodeDataUrlImageBytes(String source) {
+    if (!source.trimLeft().startsWith('data:')) return null;
+    final commaIndex = source.indexOf(',');
+    if (commaIndex <= 0 || commaIndex >= source.length - 1) return null;
+    final header = source.substring(0, commaIndex).toLowerCase();
+    if (!header.contains('image/') || !header.contains(';base64')) return null;
+    try {
+      return base64Decode(source.substring(commaIndex + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String? _extractLocalImagePath(String source) {
+    final normalized = source.trim();
+    if (normalized.isEmpty || normalized.startsWith('data:')) return null;
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return normalized;
+    if (!uri.hasScheme) return normalized;
+    if (uri.scheme == 'file') return uri.toFilePath();
+    return null;
+  }
+
+  Future<Uint8List?> _loadImageBytes(String source) async {
+    final normalized = source.trim();
+    if (normalized.isEmpty) return null;
+    final cached = _imageBytesCache[normalized];
+    if (cached != null) return cached;
+    final decoded = _decodeDataUrlImageBytes(normalized);
+    if (decoded != null) {
+      _imageBytesCache[normalized] = decoded;
+      return decoded;
+    }
+    final localPath = _extractLocalImagePath(normalized);
+    if (localPath == null) return null;
+    try {
+      final bytes = await XFile(localPath).readAsBytes();
+      if (bytes.isEmpty) return null;
+      _imageBytesCache[normalized] = bytes;
+      return bytes;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _reportImageWidget(String source) {
+    final normalized = source.trim();
+    final memoryBytes = _decodeDataUrlImageBytes(normalized);
+    if (memoryBytes != null) {
+      return Image.memory(
+        memoryBytes,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => Container(
+          color: kBorderColor,
+          alignment: Alignment.center,
+          child: const Icon(Icons.broken_image),
+        ),
+      );
+    }
+
+    final localPath = _extractLocalImagePath(normalized);
+    if (!kIsWeb && localPath != null) {
+      return FutureBuilder<Uint8List?>(
+        future: _loadImageBytes(normalized),
+        builder: (context, snapshot) {
+          final bytes = snapshot.data;
+          if (bytes == null) {
+            if (snapshot.connectionState == ConnectionState.done) {
+              return Container(
+                color: kBorderColor,
+                alignment: Alignment.center,
+                child: const Icon(Icons.broken_image),
+              );
+            }
+            return Container(
+              color: kBorderColor,
+              alignment: Alignment.center,
+              child: const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          }
+          return Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Container(
+              color: kBorderColor,
+              alignment: Alignment.center,
+              child: const Icon(Icons.broken_image),
+            ),
+          );
+        },
+      );
+    }
+
+    return Image.network(
+      normalized,
+      fit: BoxFit.cover,
+      errorBuilder: (_, _, _) => Container(
+        color: kBorderColor,
+        alignment: Alignment.center,
+        child: const Icon(Icons.broken_image),
+      ),
+    );
+  }
 
   List<String> _images() {
     final direct = widget.report['images'];
@@ -107,15 +220,7 @@ class _SparkJoyReportDetailScreenState
                     itemCount: images.length,
                     onPageChanged: (idx) => setState(() => _imageIndex = idx),
                     itemBuilder: (context, index) {
-                      return Image.network(
-                        images[index],
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: kBorderColor,
-                          alignment: Alignment.center,
-                          child: const Icon(Icons.broken_image),
-                        ),
-                      );
+                      return _reportImageWidget(images[index]);
                     },
                   ),
                   if (images.length > 1)
