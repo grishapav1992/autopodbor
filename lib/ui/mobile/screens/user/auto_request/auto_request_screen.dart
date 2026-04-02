@@ -24,14 +24,6 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter/services.dart';
 
-String _formatDate(DateTime value) {
-  final day = value.day.toString().padLeft(2, '0');
-
-  final month = value.month.toString().padLeft(2, '0');
-
-  return '$day.$month.${value.year}';
-}
-
 String _formatDateIso(DateTime value) {
   final month = value.month.toString().padLeft(2, '0');
   final day = value.day.toString().padLeft(2, '0');
@@ -171,136 +163,6 @@ Widget _twoColumn(
       );
     },
   );
-}
-
-List<Map<String, dynamic>> _sampleOffers(String requestId) {
-  return [
-    {
-      'id': '$requestId-o1',
-
-      'name': 'SelectCar',
-
-      'company': 'SelectCar Pro',
-
-      'rating': 4.9,
-
-      'reviews': 204,
-
-      'reports': 520,
-
-      'successDeals': 458,
-
-      'experienceYears': 8,
-
-      'memberSince': '2019',
-
-      'city': 'Алматы',
-
-      'responseHours': 2,
-
-      'price': 42000,
-
-      'days': 5,
-
-      'photos': [
-        'assets/car_hub/images/dm_image.png',
-
-        'assets/car_hub/images/dummy_map.png',
-
-        'assets/car_hub/images/no_image_found.png',
-      ],
-
-      'about':
-          'Подбираю автомобили под ключ. Специализация: немецкие и японские марки.',
-
-      'extra':
-          '\u041E\u0441\u043C\u043E\u0442\u0440 \u0438 \u0442\u043E\u0440\u0433 \u043F\u043E \u0433\u043E\u0440\u043E\u0434\u0443, \u0440\u0430\u0431\u043E\u0442\u0430\u044E \u0441 \u0432\u044B\u0435\u0437\u0434\u043E\u043C.',
-    },
-
-    {
-      'id': '$requestId-o2',
-
-      'name': 'AutoExpert',
-
-      'company': 'AutoExpert Team',
-
-      'rating': 4.8,
-
-      'reviews': 126,
-
-      'reports': 312,
-
-      'successDeals': 265,
-
-      'experienceYears': 6,
-
-      'memberSince': '2020',
-
-      'city': '\u041D\u0443\u0440-\u0421\u0443\u043B\u0442\u0430\u043D',
-
-      'responseHours': 4,
-
-      'price': 35000,
-
-      'days': 7,
-
-      'photos': [
-        'assets/car_hub/images/dm_image.png',
-
-        'assets/car_hub/images/events.png',
-
-        'assets/car_hub/images/no_image_found.png',
-      ],
-
-      'about':
-          '\u041E\u0441\u043C\u043E\u0442\u0440\u044B \u043F\u043E \u0433\u043E\u0440\u043E\u0434\u0443: \u044E\u0440\u0438\u0434\u0438\u0447\u0435\u0441\u043A\u0430\u044F \u043F\u0440\u043E\u0432\u0435\u0440\u043A\u0430, \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0430, \u0442\u043E\u0440\u0433.',
-
-      'extra':
-          '\u0420\u0430\u0431\u043E\u0442\u0430\u044E \u043F\u043E \u0433\u043E\u0440\u043E\u0434\u0443 \u0438 \u043E\u0431\u043B\u0430\u0441\u0442\u0438, \u043F\u043E\u043C\u043E\u0433\u0430\u044E \u0441 \u043E\u0444\u043E\u0440\u043C\u043B\u0435\u043D\u0438\u0435\u043C.',
-    },
-
-    {
-      'id': '$requestId-o3',
-
-      'name': 'CheckAuto',
-
-      'company': 'CheckAuto Lab',
-
-      'rating': 4.7,
-
-      'reviews': 88,
-
-      'reports': 190,
-
-      'successDeals': 143,
-
-      'experienceYears': 5,
-
-      'memberSince': '2021',
-
-      'city': 'Казань',
-
-      'responseHours': 6,
-
-      'price': 28000,
-
-      'days': 10,
-
-      'photos': [
-        'assets/car_hub/images/dm_image.png',
-
-        'assets/car_hub/images/dummy_map.png',
-
-        'assets/car_hub/images/no_image_found.png',
-      ],
-
-      'about':
-          '\u041F\u0440\u0435\u043C\u0438\u0430\u043B\u044C\u043D\u044B\u0435 \u0430\u0432\u0442\u043E \u0438 \u0432\u043D\u0435\u0434\u043E\u0440\u043E\u0436\u043D\u0438\u043A\u0438, \u0441\u043E\u043F\u0440\u043E\u0432\u043E\u0436\u0434\u0435\u043D\u0438\u0435 \u0441\u0434\u0435\u043B\u043A\u0438.',
-
-      'extra':
-          '\u041F\u0440\u043E\u0432\u0435\u0440\u043A\u0430 \u0438\u0441\u0442\u043E\u0440\u0438\u0438, \u0434\u0438\u0430\u0433\u043D\u043E\u0441\u0442\u0438\u043A\u0430, \u0444\u043E\u0442\u043E/\u0432\u0438\u0434\u0435\u043E \u043E\u0442\u0447\u0451\u0442.',
-    },
-  ];
 }
 
 class _RemoteCarCatalog {
@@ -2345,7 +2207,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
                           child: ValueListenableBuilder<int>(
                             valueListenable: _RemoteCarCatalog.stamp,
 
-                            builder: (ctx, _, __) {
+                            builder: (ctx, _, _) {
                               final options = _RemoteCarCatalog.restylingsFor(
                                 car.make,
 
@@ -2398,7 +2260,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
                                 itemCount: items.length,
 
-                                separatorBuilder: (_, __) =>
+                                separatorBuilder: (_, _) =>
                                     const SizedBox(height: 12),
 
                                 itemBuilder: (context, index) {
@@ -3051,7 +2913,7 @@ class _CarCard extends StatelessWidget {
                                       width: 56,
                                       height: 56,
                                       fit: BoxFit.cover,
-                                      placeholder: (_, __) => Container(
+                                      placeholder: (_, _) => Container(
                                         width: 56,
                                         height: 56,
                                         color: kWhiteColor,
@@ -3064,7 +2926,7 @@ class _CarCard extends StatelessWidget {
                                           ),
                                         ),
                                       ),
-                                      errorWidget: (_, __, ___) => Container(
+                                      errorWidget: (_, _, _) => Container(
                                         width: 56,
                                         height: 56,
                                         color: kWhiteColor,
@@ -3345,30 +3207,6 @@ class _CarItemPatch {
   final String? note;
 }
 
-class _PlateHit {
-  const _PlateHit({
-    required this.make,
-
-    required this.model,
-
-    required this.restyling,
-
-    required this.year,
-
-    this.vin,
-  });
-
-  final String make;
-
-  final String model;
-
-  final String restyling;
-
-  final String year;
-
-  final String? vin;
-}
-
 String _shortListingLabel(String url) {
   try {
     final u = Uri.parse(url);
@@ -3416,126 +3254,6 @@ const Map<String, Map<String, List<String>>> _carCatalog = {
 
     'Tiguan': ['I', 'II'],
   },
-};
-
-const Map<String, Map<String, Map<String, List<int>>>> _yearCatalog = {
-  'Toyota': {
-    'Camry': {
-      'XV40': [2006, 2007, 2008, 2009, 2010, 2011],
-
-      'XV50': [2012, 2013, 2014, 2015, 2016, 2017],
-
-      'XV70': [2018, 2019, 2020, 2021, 2022, 2023, 2024],
-    },
-
-    'Corolla': {
-      'E150': [2007, 2008, 2009, 2010, 2011, 2012, 2013],
-
-      'E170': [2014, 2015, 2016, 2017, 2018],
-
-      'E210': [2019, 2020, 2021, 2022, 2023, 2024],
-    },
-
-    'RAV4': {
-      'XA30': [2006, 2007, 2008, 2009, 2010, 2011, 2012],
-
-      'XA40': [2013, 2014, 2015, 2016, 2017, 2018],
-
-      'XA50': [2019, 2020, 2021, 2022, 2023, 2024],
-    },
-  },
-
-  'Ford': {
-    'Focus': {
-      'Mk1': [1998, 1999, 2000, 2001, 2002, 2003, 2004],
-
-      'Mk2': [2005, 2006, 2007, 2008, 2009, 2010, 2011],
-
-      'Mk3': [2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018],
-
-      'Mk4': [2018, 2019, 2020, 2021, 2022, 2023, 2024],
-    },
-
-    'Mondeo': {
-      'Mk3': [2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007],
-
-      'Mk4': [2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014],
-
-      'Mk5': [2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021],
-    },
-
-    'Kuga': {
-      'I': [2008, 2009, 2010, 2011, 2012],
-
-      'II': [2013, 2014, 2015, 2016, 2017, 2018, 2019],
-
-      'III': [2020, 2021, 2022, 2023, 2024],
-    },
-  },
-
-  'Volkswagen': {
-    'Golf': {
-      'Mk5': [2003, 2004, 2005, 2006, 2007, 2008, 2009],
-
-      'Mk6': [2008, 2009, 2010, 2011, 2012, 2013],
-
-      'Mk7': [2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019],
-
-      'Mk8': [2020, 2021, 2022, 2023, 2024],
-    },
-
-    'Passat': {
-      'B6': [2005, 2006, 2007, 2008, 2009, 2010],
-
-      'B7': [2010, 2011, 2012, 2013, 2014, 2015],
-
-      'B8': [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024],
-    },
-
-    'Tiguan': {
-      'I': [2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016],
-
-      'II': [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024],
-    },
-  },
-};
-
-const Map<String, _PlateHit> _plateLookup = {
-  'A123BC77': _PlateHit(
-    make: 'Toyota',
-
-    model: 'Camry',
-
-    restyling: 'XV70',
-
-    year: '2019',
-
-    vin: 'JTNB11HK1K3000001',
-  ),
-
-  'K777KK77': _PlateHit(
-    make: 'Volkswagen',
-
-    model: 'Golf',
-
-    restyling: 'Mk7',
-
-    year: '2016',
-
-    vin: 'WVWZZZ1KZGW000002',
-  ),
-
-  'M555MM77': _PlateHit(
-    make: 'Ford',
-
-    model: 'Focus',
-
-    restyling: 'Mk3',
-
-    year: '2015',
-
-    vin: 'WF0AXXWPMAP000003',
-  ),
 };
 
 class _TurnkeyForm extends StatefulWidget {
@@ -4150,7 +3868,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
                           child: ValueListenableBuilder<int>(
                             valueListenable: _RemoteCarCatalog.stamp,
 
-                            builder: (ctx, _, __) {
+                            builder: (ctx, _, _) {
                               final options = _allRestylingsForSelection(
                                 _tkMakes,
 
@@ -4182,7 +3900,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
                                 itemCount: items.length,
 
-                                separatorBuilder: (_, __) =>
+                                separatorBuilder: (_, _) =>
                                     const SizedBox(height: 12),
 
                                 itemBuilder: (context, index) {
@@ -4519,8 +4237,9 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
               if (meta.generation > 0) {
                 restEntry['generation'] = meta.generation;
               }
-              if (meta.yearStart != null)
+              if (meta.yearStart != null) {
                 restEntry['yearStart'] = meta.yearStart;
+              }
               if (meta.yearEnd != null) restEntry['yearEnd'] = meta.yearEnd;
               final frames = meta.frames
                   .map((e) => e.trim())

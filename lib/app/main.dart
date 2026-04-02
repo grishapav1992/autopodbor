@@ -1,4 +1,4 @@
-﻿/*
+/*
  * В© 2024 K-Tonix Solutions. All rights reserved.
  * Licensed under the K-Tonix Flutter UI Kit License Agreement.
  * Redistribution, resale, or public sharing of this source code is strictly prohibited.
@@ -51,11 +51,25 @@ class MyApp extends StatelessWidget {
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
         final media = MediaQuery.of(context);
-        final scaled = media.textScaleFactor * 1.1;
+        final scaled = media.textScaler.scale(1.0) * 1.1;
         final scale = scaled < 1.0 ? 1.0 : (scaled > 1.3 ? 1.3 : scaled);
-        return MediaQuery(
-          data: media.copyWith(textScaleFactor: scale),
-          child: ResponsiveLayout(child: child),
+        void dismissKeyboard() {
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
+
+        return GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: dismissKeyboard,
+          child: NotificationListener<UserScrollNotification>(
+            onNotification: (notification) {
+              dismissKeyboard();
+              return false;
+            },
+            child: MediaQuery(
+              data: media.copyWith(textScaler: TextScaler.linear(scale)),
+              child: ResponsiveLayout(child: child),
+            ),
+          ),
         );
       },
     );

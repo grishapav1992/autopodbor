@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/localization/translations/en_us.dart';
+import 'package:flutter_application_1/core/localization/translations/en_us.dart';
 import 'package:flutter_application_1/core/localization/translations/ru_ru.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter/cupertino.dart';
@@ -17,7 +17,7 @@ class LanguageController extends GetxController {
     isEnglish.value = currentIndex.value == 1;
   }
 
-  getCurrentLocale() {
+  String getCurrentLocale() {
     if (currentIndex.value == 0) {
       return 'ru';
     } else {

@@ -1,4 +1,4 @@
-// ignore_for_file: uri_does_not_exist
+// ignore_for_file: uri_does_not_exist, avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:convert';
 import 'dart:js_util' as js_util;
@@ -42,6 +42,29 @@ Future<Uint8List?> pickVinImageBytes({required bool preferCamera}) async {
 }
 
 String _detectImageMime(Uint8List bytes) {
+  // ISO-BMFF container (HEIC/HEIF/AVIF and others)
+  if (bytes.length >= 12 &&
+      bytes[4] == 0x66 &&
+      bytes[5] == 0x74 &&
+      bytes[6] == 0x79 &&
+      bytes[7] == 0x70) {
+    final brand = String.fromCharCodes(bytes.sublist(8, 12)).toLowerCase();
+    const heicBrands = {
+      'heic',
+      'heix',
+      'hevc',
+      'hevx',
+      'mif1',
+      'msf1',
+    };
+    if (heicBrands.contains(brand)) {
+      return 'image/heic';
+    }
+    const avifBrands = {'avif', 'avis'};
+    if (avifBrands.contains(brand)) {
+      return 'image/avif';
+    }
+  }
   if (bytes.length >= 4 &&
       bytes[0] == 0x89 &&
       bytes[1] == 0x50 &&

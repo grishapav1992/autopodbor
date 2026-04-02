@@ -28,8 +28,12 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна для сканирования VIN и фото осмотра автомобиля.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон нужен для записи голосовых заметок по элементам осмотра.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Доступ к галерее нужен для выбора фото VIN и фото осмотра.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Распознавание речи нужно для преобразования голосовой заметки в текст комментария.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

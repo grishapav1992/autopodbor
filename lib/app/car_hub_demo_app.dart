@@ -45,9 +45,26 @@ class CarHubDemoApp extends StatelessWidget {
           initialRoute: AppLinks.splashScreen,
           getPages: AppRoutes.pages,
           defaultTransition: Transition.fadeIn,
+          builder: (context, child) {
+            if (child == null) return const SizedBox.shrink();
+            void dismissKeyboard() {
+              FocusManager.instance.primaryFocus?.unfocus();
+            }
+
+            return GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: dismissKeyboard,
+              child: NotificationListener<UserScrollNotification>(
+                onNotification: (notification) {
+                  dismissKeyboard();
+                  return false;
+                },
+                child: child,
+              ),
+            );
+          },
         );
       },
     );
   }
 }
-

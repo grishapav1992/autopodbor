@@ -13,5 +13,5 @@ class AppFonts {
   }
 
   // ignore: non_constant_identifier_names
-  static get GLACIAL_INDIFFERENCE => null;
+  static Null get GLACIAL_INDIFFERENCE => null;
 }
