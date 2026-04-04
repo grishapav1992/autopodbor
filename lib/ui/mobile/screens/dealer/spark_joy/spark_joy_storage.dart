@@ -11,6 +11,7 @@ class SparkJoyStorage {
   static const String _roleKey = 'spark_joy_role_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
   static const String _completedKey = 'spark_joy_completed_v1';
+  static const String _legacySeedCompletedId = 'spark_report_seed_1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
@@ -39,8 +40,14 @@ class SparkJoyStorage {
 
   static Future<void> ensureSeedData() async {
     final completed = await loadCompleted();
-    if (completed.isNotEmpty) return;
-    await _writeList(_completedKey, [_seedCompletedReport()]);
+    final cleaned = completed
+        .where(
+          (report) => (report['id'] ?? '').toString() != _legacySeedCompletedId,
+        )
+        .toList();
+    if (cleaned.length != completed.length) {
+      await _writeList(_completedKey, cleaned);
+    }
   }
 
   static Future<List<Map<String, dynamic>>> loadDrafts() async {
@@ -116,99 +123,5 @@ class SparkJoyStorage {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
     await pref.setStringList(key, values.map(jsonEncode).toList());
-  }
-
-  static Map<String, dynamic> _seedCompletedReport() {
-    return {
-      'id': 'spark_report_seed_1',
-      'createdAt': '19.03.2026',
-      'updatedAt': '19.03.2026',
-      'reportName': 'Toyota Camry для клиента',
-      'car': 'Toyota Camry 2019',
-      'make': 'Toyota',
-      'model': 'Camry',
-      'generation': 'XV70',
-      'inspector': 'Максим Егоров',
-      'date': '19.03.2026',
-      'verdict': 'recommended',
-      'verdictLabel': 'Рекомендован',
-      'score': '88/100',
-      'issues': 'Мелкие сколы, косметический окрас переднего крыла',
-      'summary':
-          'Автомобиль в хорошем состоянии, критических замечаний по технике нет.',
-      'vin': 'JTNB11HK1K3000001',
-      'plate': 'A123BC77',
-      'mileage': '78000',
-      'owners': '2 владельца',
-      'engine': '2.5 бензин',
-      'transmission': 'AT',
-      'drive': 'Передний',
-      'reportsCount': 2,
-      'images': [
-        'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1200&q=80&auto=format&fit=crop',
-        'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&q=80&auto=format&fit=crop',
-      ],
-      'sections': [
-        {
-          'title': 'Автомобиль',
-          'status': 'ok',
-          'required': true,
-          'details': [
-            {
-              'label': 'Марка / модель',
-              'value': 'Toyota Camry 2019',
-              'severity': 'ok',
-            },
-            {'label': 'VIN', 'value': 'JTNB11HK1K3000001', 'severity': 'ok'},
-            {'label': 'Госномер', 'value': 'A123BC77', 'severity': 'ok'},
-          ],
-        },
-        {
-          'title': 'Кузов',
-          'status': 'warn',
-          'required': true,
-          'details': [
-            {
-              'label': 'Переднее левое крыло',
-              'value': 'Косметический окрас',
-              'severity': 'minor',
-            },
-          ],
-        },
-      ],
-      'checklist': [
-        {'text': 'Проверить торг по кузовным замечаниям'},
-        {'text': 'Перепроверить историю обслуживания у дилера'},
-      ],
-      'mediaGroups': {
-        'overview': [
-          {
-            'id': 'camry-overview-1',
-            'url':
-                'https://images.unsplash.com/photo-1503376780353-7e6692767b70?w=1200&q=80&auto=format&fit=crop',
-            'type': 'image',
-            'inspection': {'noDamage': true, 'isDraft': false, 'tags': []},
-          },
-        ],
-        'body': [
-          {
-            'id': 'camry-body-1',
-            'url':
-                'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?w=1200&q=80&auto=format&fit=crop',
-            'type': 'image',
-            'inspection': {
-              'noDamage': false,
-              'isDraft': false,
-              'tags': ['cosmetic_paint'],
-            },
-          },
-        ],
-      },
-      'summaryNote':
-          'Автомобиль технически исправен, критичных дефектов не выявлено.',
-      'expertConclusion':
-          'Рекомендую к покупке после небольшого торга на косметику.',
-      'fullInspection': true,
-    };
   }
 }

@@ -8,10 +8,14 @@ import 'package:camera/camera.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_audio_picker_port.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_types.dart';
@@ -28,11 +32,13 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
     this.initialReportName,
     this.draft,
     this.assignment,
+    this.commentAudioPickerPort,
   });
 
   final String? initialReportName;
   final Map<String, dynamic>? draft;
   final Map<String, dynamic>? assignment;
+  final SparkJoyCommentAudioPickerPort? commentAudioPickerPort;
 
   @override
   State<SparkJoyCreateReportScreen> createState() =>
@@ -819,7 +825,7 @@ class _SparkJoyCreateReportScreenState
     _StepConfig(
       id: 'legal',
       title: 'Юр. проверка',
-      description: 'Зафиксируйте статус юридической проверки автомобиля',
+      description: 'Юридический отчёт и загрузка файлов специалиста',
     ),
     _StepConfig(
       id: 'media',
@@ -843,7 +849,7 @@ class _SparkJoyCreateReportScreenState
       key: 'body',
       title: 'Кузов',
       description: 'ЛКП, вмятины, царапины, дефекты элементов',
-      required: true,
+      required: false,
       severeIfIssue: false,
     ),
     _MediaGroupConfig(
@@ -857,7 +863,7 @@ class _SparkJoyCreateReportScreenState
       key: 'glass',
       title: 'Остекление',
       description: 'Лобовое, боковые, заднее стекло',
-      required: true,
+      required: false,
       severeIfIssue: false,
     ),
     _MediaGroupConfig(
@@ -871,14 +877,14 @@ class _SparkJoyCreateReportScreenState
       key: 'underhood',
       title: 'Подкапотное пространство',
       description: 'Течи, крепеж, ремни, агрегаты',
-      required: true,
+      required: false,
       severeIfIssue: true,
     ),
     _MediaGroupConfig(
       key: 'interior',
       title: 'Салон',
       description: 'Износ, электроника, функции и опции',
-      required: true,
+      required: false,
       severeIfIssue: false,
     ),
     _MediaGroupConfig(
@@ -919,6 +925,7 @@ class _SparkJoyCreateReportScreenState
   late final TextEditingController _inspectionCityController;
   late final TextEditingController _inspectionDateController;
 
+  late final TextEditingController _docsMismatchCommentController;
   late final TextEditingController _legalNoteController;
   late final TextEditingController _tdNoteController;
   late final TextEditingController _summaryController;
@@ -940,11 +947,28 @@ class _SparkJoyCreateReportScreenState
   String? _appDocumentsPath;
   bool _microphonePermissionGranted = false;
   bool _speechPermissionGranted = false;
+  final SpeechToText _tdSpeechToText = SpeechToText();
+  bool _tdSpeechInitializing = false;
+  bool _tdSpeechAvailable = false;
+  bool _tdIsDictating = false;
+  bool _tdShouldDictate = false;
+  Timer? _draftAutosaveDebounce;
+  bool _draftSaveInProgress = false;
+  bool _draftSaveFailed = false;
+  bool _hasUnsavedDraftChanges = false;
+  bool _autosaveRequestedWhileSaving = false;
+  DateTime? _lastDraftSavedAt;
+  final List<TextEditingController> _autosaveControllers = [];
 
   int _stepIndex = 0;
   bool _editingSection = false;
 
   final ScrollController _pageScrollController = ScrollController();
+  final FocusNode _vinFocusNode = FocusNode();
+  final FocusNode _plateFocusNode = FocusNode();
+  final FocusNode _adLinkFocusNode = FocusNode();
+  final FocusNode _mileageFocusNode = FocusNode();
+  final FocusNode _inspectionCityFocusNode = FocusNode();
 
   bool? _mileageMismatch;
   bool _vinUnreadable = false;
@@ -960,6 +984,26 @@ class _SparkJoyCreateReportScreenState
   bool _legalPurchased = false;
   int _legalLoadToken = 0;
   List<_UploadedItem> _legalFiles = const [];
+  List<_UploadedItem> _docsCommentAudioFiles = const [];
+  List<_UploadedItem> _legalCommentAudioFiles = const [];
+  final AudioPlayer _sectionCommentAudioPlayer = AudioPlayer();
+  StreamSubscription<void>? _sectionCommentAudioCompleteSub;
+  final AudioRecorder _sectionCommentRecorder = AudioRecorder();
+  StreamSubscription<Uint8List>? _sectionCommentRecordSub;
+  Timer? _sectionCommentRecordTimer;
+  BytesBuilder? _sectionCommentRecordBuffer;
+  String? _activeSectionCommentRecordingKey;
+  final Map<String, int> _sectionCommentRecordingSeconds = {};
+  int _docsCommentPlayingAudioIndex = -1;
+  int _legalCommentPlayingAudioIndex = -1;
+  int _tdCommentPlayingAudioIndex = -1;
+  int _expertCommentPlayingAudioIndex = -1;
+  bool _docsIsDictating = false;
+  bool _docsShouldDictate = false;
+  bool _legalIsDictating = false;
+  bool _legalShouldDictate = false;
+  bool _expertIsDictating = false;
+  bool _expertShouldDictate = false;
 
   double _bodyPaintFrom = 80;
   double _bodyPaintTo = 200;
@@ -979,6 +1023,7 @@ class _SparkJoyCreateReportScreenState
   List<String> _tdSteeringTags = const [];
   List<String> _tdRideTags = const [];
   List<String> _tdBrakeTags = const [];
+  List<_UploadedItem> _tdCommentAudioFiles = const [];
 
   List<_UploadedItem> _expertAudioFiles = const [];
 
@@ -987,6 +1032,7 @@ class _SparkJoyCreateReportScreenState
   Set<int> _mediaGroupSelectedIndexes = <int>{};
   int _uploadedItemIdCounter = 0;
   int _localMediaFileCounter = 0;
+  late final SparkJoyCommentAudioPickerPort _commentAudioPickerPort;
 
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;
@@ -996,6 +1042,8 @@ class _SparkJoyCreateReportScreenState
   @override
   void initState() {
     super.initState();
+    _commentAudioPickerPort =
+        widget.commentAudioPickerPort ?? const SparkJoyPluginCommentAudioPickerPort();
     unawaited(_prepareStoragePaths());
     final draft = widget.draft ?? <String, dynamic>{};
     final assignment = widget.assignment ?? <String, dynamic>{};
@@ -1096,6 +1144,13 @@ class _SparkJoyCreateReportScreenState
       text: _read(draft, 'inspectionDate', fallback: _dateLabel(now)),
     );
 
+    _docsMismatchCommentController = TextEditingController(
+      text: _read(
+        draft,
+        'docsMismatchComment',
+        fallback: _read(draft, 'docsConflictComment'),
+      ),
+    );
     _legalNoteController = TextEditingController(
       text: _read(draft, 'legalNote'),
     );
@@ -1132,6 +1187,10 @@ class _SparkJoyCreateReportScreenState
     _legalTimedOut = _readBool(draft, 'legalTimedOut');
     _legalPurchased = _readBool(draft, 'legalPurchased');
     _legalFiles = _readUploadedList(draft['legalFiles']);
+    _docsCommentAudioFiles = _readUploadedList(draft['docsCommentAudioFiles']);
+    _legalCommentAudioFiles = _readUploadedList(
+      draft['legalCommentAudioFiles'],
+    );
     _bodyPaintFrom = _readDouble(draft, 'bodyPaintFrom', fallback: 80);
     _bodyPaintTo = _readDouble(draft, 'bodyPaintTo', fallback: 200);
     _structPaintFrom = _readDouble(draft, 'structPaintFrom', fallback: 80);
@@ -1168,6 +1227,7 @@ class _SparkJoyCreateReportScreenState
     _tdSteeringTags = _readStringList(draft['tdSteeringTags']);
     _tdRideTags = _readStringList(draft['tdRideTags']);
     _tdBrakeTags = _readStringList(draft['tdBrakeTags']);
+    _tdCommentAudioFiles = _readUploadedList(draft['tdCommentAudioFiles']);
     _tdMode = _normalizeTdMode(_read(draft, 'tdConductedMode'));
     if (_tdMode == null && legacyTdConducted != null) {
       if (legacyTdConducted == false) {
@@ -1194,11 +1254,31 @@ class _SparkJoyCreateReportScreenState
     if (_stepIndex == _steps.length - 1) {
       _ensureSummaryAutofill();
     }
+    _attachAutosaveListeners();
+    _sectionCommentAudioCompleteSub = _sectionCommentAudioPlayer
+        .onPlayerComplete
+        .listen((_) {
+          if (!mounted) return;
+          setState(() {
+            _docsCommentPlayingAudioIndex = -1;
+            _legalCommentPlayingAudioIndex = -1;
+            _tdCommentPlayingAudioIndex = -1;
+            _expertCommentPlayingAudioIndex = -1;
+          });
+        });
   }
 
   @override
   void dispose() {
+    unawaited(_tdSpeechToText.stop());
+    _draftAutosaveDebounce?.cancel();
+    _detachAutosaveListeners();
     _pageScrollController.dispose();
+    _vinFocusNode.dispose();
+    _plateFocusNode.dispose();
+    _adLinkFocusNode.dispose();
+    _mileageFocusNode.dispose();
+    _inspectionCityFocusNode.dispose();
     _reportNameController.dispose();
     _vinController.dispose();
     _plateController.dispose();
@@ -1218,13 +1298,68 @@ class _SparkJoyCreateReportScreenState
     _inspectionCityController.dispose();
     _inspectionDateController.dispose();
 
+    _docsMismatchCommentController.dispose();
     _legalNoteController.dispose();
     _tdNoteController.dispose();
     _summaryController.dispose();
     _expertController.dispose();
     _inspectorController.dispose();
+    _sectionCommentAudioCompleteSub?.cancel();
+    unawaited(_sectionCommentAudioPlayer.stop());
+    unawaited(_sectionCommentAudioPlayer.dispose());
+    _sectionCommentRecordTimer?.cancel();
+    unawaited(_sectionCommentRecordSub?.cancel() ?? Future.value());
+    unawaited(_sectionCommentRecorder.stop());
+    unawaited(_sectionCommentRecorder.dispose());
+    unawaited(_tdSpeechToText.stop());
+    _dataUrlImageBytesCache.clear();
+    _resolvedAudioPlaybackSources.clear();
 
     super.dispose();
+  }
+
+  void _attachAutosaveListeners() {
+    _autosaveControllers
+      ..clear()
+      ..addAll([
+        _reportNameController,
+        _vinController,
+        _plateController,
+        _brandController,
+        _modelController,
+        _generationController,
+        _adLinkController,
+        _mileageController,
+        _engineVolumeController,
+        _engineTypeController,
+        _gearboxTypeController,
+        _driveTypeController,
+        _colorController,
+        _trimController,
+        _ownersCountController,
+        _inspectionCityController,
+        _inspectionDateController,
+        _docsMismatchCommentController,
+        _legalNoteController,
+        _tdNoteController,
+        _summaryController,
+        _expertController,
+        _inspectorController,
+      ]);
+    for (final controller in _autosaveControllers) {
+      controller.addListener(_onAutosaveInputChanged);
+    }
+  }
+
+  void _detachAutosaveListeners() {
+    for (final controller in _autosaveControllers) {
+      controller.removeListener(_onAutosaveInputChanged);
+    }
+    _autosaveControllers.clear();
+  }
+
+  void _onAutosaveInputChanged() {
+    _markDraftDirty();
   }
 
   Map<String, _MediaGroupState> _initMediaState(Map<String, dynamic> draft) {
@@ -1344,6 +1479,36 @@ class _SparkJoyCreateReportScreenState
       nextExpertAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
+    final nextDocsCommentAudioFiles = <_UploadedItem>[];
+    for (final file in _docsCommentAudioFiles) {
+      final nextSource = await compactSource(
+        file.dataUrl,
+        mimeType: file.mimeType,
+        prefix: 'docs_comment_audio',
+      );
+      nextDocsCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
+    }
+
+    final nextLegalCommentAudioFiles = <_UploadedItem>[];
+    for (final file in _legalCommentAudioFiles) {
+      final nextSource = await compactSource(
+        file.dataUrl,
+        mimeType: file.mimeType,
+        prefix: 'legal_comment_audio',
+      );
+      nextLegalCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
+    }
+
+    final nextTdCommentAudioFiles = <_UploadedItem>[];
+    for (final file in _tdCommentAudioFiles) {
+      final nextSource = await compactSource(
+        file.dataUrl,
+        mimeType: file.mimeType,
+        prefix: 'td_comment_audio',
+      );
+      nextTdCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
+    }
+
     final nextMediaState = <String, _MediaGroupState>{};
     for (final entry in _mediaState.entries) {
       final groupKey = entry.key;
@@ -1417,6 +1582,9 @@ class _SparkJoyCreateReportScreenState
     setState(() {
       _legalFiles = nextLegalFiles;
       _expertAudioFiles = nextExpertAudioFiles;
+      _docsCommentAudioFiles = nextDocsCommentAudioFiles;
+      _legalCommentAudioFiles = nextLegalCommentAudioFiles;
+      _tdCommentAudioFiles = nextTdCommentAudioFiles;
       _mediaState = nextMediaState;
     });
     await _saveDraft(showToast: false);
@@ -1503,12 +1671,16 @@ class _SparkJoyCreateReportScreenState
         _resolvedAudioPlaybackSources[normalized] = persisted!;
         return _audioPlayerSource(persisted);
       }
+      throw StateError('Не удалось подготовить аудиофайл для воспроизведения');
     }
 
     return _audioPlayerSource(normalized);
   }
 
   Future<void> _playAudioSource(AudioPlayer player, String source) async {
+    if (source.trim().isEmpty) {
+      throw StateError('Пустой аудиофайл');
+    }
     final preparedSource = await _audioPlayerSourceForPlayback(source);
     await player.play(preparedSource);
   }
@@ -1978,8 +2150,15 @@ class _SparkJoyCreateReportScreenState
   List<_UploadedItem> _applyPartInspectionToFiles({
     required List<_UploadedItem> files,
     required _MediaPartInspection partInspection,
+    Set<String>? applyToFileUrls,
   }) {
     if (files.isEmpty) return const <_UploadedItem>[];
+    final normalizedTargetUrls = applyToFileUrls
+        ?.map((url) => url.trim())
+        .where((url) => url.isNotEmpty)
+        .toSet();
+    final applyToAll =
+        normalizedTargetUrls == null || normalizedTargetUrls.isEmpty;
     final urlsByTagLower = <String, Set<String>>{};
     final canonicalTagByLower = <String, String>{};
 
@@ -2010,6 +2189,8 @@ class _SparkJoyCreateReportScreenState
     final normalizedNote = partInspection.note.trim();
 
     return files.map((file) {
+      final applyForFile =
+          applyToAll || normalizedTargetUrls.contains(file.dataUrl);
       final tagsForFile = <String>[];
       if (!partInspection.noDamage) {
         for (final lower in orderedTagLowers) {
@@ -2019,17 +2200,23 @@ class _SparkJoyCreateReportScreenState
           }
         }
       }
+      final previous = file.inspection;
+      final nextNoDamage = tagsForFile.isEmpty
+          ? (applyForFile ? partInspection.noDamage : previous.noDamage)
+          : false;
       final inspection = _MediaInspection(
-        noDamage: partInspection.noDamage && tagsForFile.isEmpty,
+        noDamage: nextNoDamage,
         tags: tagsForFile,
-        note: normalizedNote,
-        elementType: normalizedElementType.isEmpty
-            ? null
-            : normalizedElementType,
-        audioRecordings: normalizedAudio,
-        paintFrom: partInspection.paintFrom,
-        paintTo: partInspection.paintTo,
-        isDraft: partInspection.isDraft,
+        note: applyForFile ? normalizedNote : previous.note,
+        elementType: applyForFile
+            ? (normalizedElementType.isEmpty ? null : normalizedElementType)
+            : previous.elementType,
+        audioRecordings: applyForFile
+            ? normalizedAudio
+            : [...previous.audioRecordings],
+        paintFrom: applyForFile ? partInspection.paintFrom : previous.paintFrom,
+        paintTo: applyForFile ? partInspection.paintTo : previous.paintTo,
+        isDraft: applyForFile ? partInspection.isDraft : previous.isDraft,
       );
       return file.copyWith(inspection: inspection);
     }).toList();
@@ -2090,8 +2277,10 @@ class _SparkJoyCreateReportScreenState
   Future<Uint8List?> _loadImageBytesFromSource(String source) async {
     final normalized = source.trim();
     if (normalized.isEmpty) return null;
-    final cached = _dataUrlImageBytesCache[normalized];
-    if (cached != null) return cached;
+    if (_isDataUrl(normalized)) {
+      final cached = _dataUrlImageBytesCache[normalized];
+      if (cached != null) return cached;
+    }
 
     final fromDataUrl = _decodeDataUrlImageBytes(normalized);
     if (fromDataUrl != null) return fromDataUrl;
@@ -2101,7 +2290,6 @@ class _SparkJoyCreateReportScreenState
     try {
       final bytes = await XFile(localPath).readAsBytes();
       if (bytes.isEmpty) return null;
-      _dataUrlImageBytesCache[normalized] = bytes;
       return bytes;
     } catch (_) {
       return null;
@@ -2220,16 +2408,18 @@ class _SparkJoyCreateReportScreenState
     required FileType type,
     List<String>? allowedExtensions,
     bool allowMultiple = true,
+    bool forceReadBytes = false,
   }) async {
     final result = await FilePicker.platform.pickFiles(
       type: type,
       allowedExtensions: allowedExtensions,
       allowMultiple: allowMultiple,
-      withData: kIsWeb,
+      withData: kIsWeb || forceReadBytes,
     );
     if (result == null || result.files.isEmpty) return const [];
 
     final items = <_UploadedItem>[];
+    var skippedBecauseNotPersisted = false;
     for (final file in result.files) {
       final fileName = file.name.trim().isEmpty ? 'picked_file' : file.name;
       final mimeType = _guessMimeType(fileName);
@@ -2254,10 +2444,14 @@ class _SparkJoyCreateReportScreenState
             prefix: 'picked',
           );
         }
-        if ((storedSource ?? '').isEmpty) {
+        if (kIsWeb && (storedSource ?? '').isEmpty) {
           final data = base64Encode(bytes);
           storedSource = 'data:$mimeType;base64,$data';
         }
+      }
+      if ((storedSource ?? '').trim().isEmpty) {
+        skippedBecauseNotPersisted = true;
+        continue;
       }
 
       items.add(
@@ -2269,6 +2463,9 @@ class _SparkJoyCreateReportScreenState
         ),
       );
     }
+    if (skippedBecauseNotPersisted) {
+      _showErrorSnack('Часть файлов не удалось сохранить локально');
+    }
     return items;
   }
 
@@ -2277,6 +2474,7 @@ class _SparkJoyCreateReportScreenState
     String prefix = 'picked',
   }) async {
     final items = <_UploadedItem>[];
+    var skippedBecauseNotPersisted = false;
     for (final file in files) {
       final fileName = file.name.trim().isEmpty ? 'media_file' : file.name;
       final mimeType = _guessMimeType(fileName);
@@ -2296,10 +2494,14 @@ class _SparkJoyCreateReportScreenState
             prefix: prefix,
           );
         }
-        if ((storedSource ?? '').isEmpty) {
+        if (kIsWeb && (storedSource ?? '').isEmpty) {
           final data = base64Encode(bytes);
           storedSource = 'data:$mimeType;base64,$data';
         }
+      }
+      if ((storedSource ?? '').trim().isEmpty) {
+        skippedBecauseNotPersisted = true;
+        continue;
       }
       items.add(
         _UploadedItem(
@@ -2309,6 +2511,9 @@ class _SparkJoyCreateReportScreenState
           dataUrl: storedSource!,
         ),
       );
+    }
+    if (skippedBecauseNotPersisted) {
+      _showErrorSnack('Часть файлов не удалось сохранить локально');
     }
     return items;
   }
@@ -2378,22 +2583,391 @@ class _SparkJoyCreateReportScreenState
   Future<void> _pickLegalFiles() async {
     final items = await _pickFiles(
       type: FileType.custom,
-      allowedExtensions: const ['pdf', 'doc', 'docx'],
+      allowedExtensions: const [
+        'pdf',
+        'doc',
+        'docx',
+        'xls',
+        'xlsx',
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'heic',
+        'heif',
+      ],
     );
     if (items.isEmpty || !mounted) return;
     setState(() {
       _legalFiles = [..._legalFiles, ...items];
     });
+    _markDraftDirty();
   }
 
-  void _scheduleLegalTimeout(int token) {
-    Future<void>.delayed(const Duration(seconds: 5), () {
+  Future<List<_UploadedItem>> _pickCommentAudioFiles() async {
+    try {
+      final isMobileNative =
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.android);
+      final picked = await _commentAudioPickerPort.pickCommentAudioFiles(
+        isMobileNative: isMobileNative,
+      );
+      if (picked.isEmpty) return const [];
+
+      final items = <_UploadedItem>[];
+      var skippedBecauseNotPersisted = false;
+      for (final file in picked) {
+        final fileName = file.name.trim().isEmpty ? 'audio_file' : file.name.trim();
+        final mimeType = (file.mimeType ?? '').trim().isEmpty
+            ? _guessMimeType(fileName)
+            : file.mimeType!.trim();
+        String? storedSource;
+
+        final path = (file.path ?? '').trim();
+        if (!kIsWeb && path.isNotEmpty) {
+          storedSource = await _persistXFileToAppStorage(
+            XFile(path),
+            fileName: fileName,
+            mimeType: mimeType,
+            prefix: 'comment_audio',
+          );
+        }
+        if ((storedSource ?? '').isEmpty) {
+          final bytes = file.bytes;
+          if (bytes != null && bytes.isNotEmpty) {
+            if (!kIsWeb) {
+              storedSource = await _persistBytesToAppStorage(
+                bytes: bytes,
+                mimeType: mimeType,
+                prefix: 'comment_audio',
+              );
+            }
+            if (kIsWeb && (storedSource ?? '').isEmpty) {
+              storedSource = 'data:$mimeType;base64,${base64Encode(bytes)}';
+            }
+          }
+        }
+        if ((storedSource ?? '').trim().isEmpty) {
+          skippedBecauseNotPersisted = true;
+          continue;
+        }
+        items.add(
+          _UploadedItem(
+            id: _nextUploadedItemId(prefix: 'comment_audio'),
+            name: fileName,
+            mimeType: mimeType,
+            dataUrl: storedSource!.trim(),
+          ),
+        );
+      }
+      if (skippedBecauseNotPersisted) {
+        _showErrorSnack('Часть аудиофайлов не удалось сохранить локально');
+      }
+      if (items.isEmpty) return const [];
+
+      final audioItems = items.where((item) {
+        if (item.isAudio) return true;
+        return SparkJoyCommentUtils.isLikelyAudioFileName(item.name);
+      }).toList();
+
+      if (audioItems.isEmpty) {
+        _showErrorSnack('Выберите аудиофайл');
+      }
+      return audioItems;
+    } catch (_) {
+      _showErrorSnack('Не удалось выбрать аудиофайл');
+      return const [];
+    }
+  }
+
+  Future<void> _pickDocsCommentAudioFiles() async {
+    final items = await _pickCommentAudioFiles();
+    if (items.isEmpty || !mounted) return;
+    setState(() {
+      _docsCommentAudioFiles = [..._docsCommentAudioFiles, ...items];
+    });
+    _markDraftDirty();
+  }
+
+  Future<void> _pickLegalCommentAudioFiles() async {
+    final items = await _pickCommentAudioFiles();
+    if (items.isEmpty || !mounted) return;
+    setState(() {
+      _legalCommentAudioFiles = [..._legalCommentAudioFiles, ...items];
+    });
+    _markDraftDirty();
+  }
+
+  Future<void> _pickTdCommentAudioFiles() async {
+    final items = await _pickCommentAudioFiles();
+    if (items.isEmpty || !mounted) return;
+    setState(() {
+      _tdCommentAudioFiles = [..._tdCommentAudioFiles, ...items];
+    });
+    _markDraftDirty();
+  }
+
+  Future<void> _pickExpertCommentAudioFiles() async {
+    final items = await _pickCommentAudioFiles();
+    if (items.isEmpty || !mounted) return;
+    setState(() {
+      _expertAudioFiles = [..._expertAudioFiles, ...items];
+    });
+    _markDraftDirty();
+  }
+
+  bool _isCommentRecording(String key) {
+    return _activeSectionCommentRecordingKey == key;
+  }
+
+  int _commentRecordingSeconds(String key) {
+    return _sectionCommentRecordingSeconds[key] ?? 0;
+  }
+
+  String _commentRecordingLabel(String key) {
+    return SparkJoyCommentUtils.recordingDurationLabel(
+      _commentRecordingSeconds(key),
+    );
+  }
+
+  Future<void> _startSectionCommentRecording(String key) async {
+    if (_isCommentRecording(key)) return;
+    if (_activeSectionCommentRecordingKey != null &&
+        _activeSectionCommentRecordingKey != key) {
+      _showErrorSnack('Сначала остановите текущую запись');
+      return;
+    }
+
+    final hasPermission =
+        _microphonePermissionGranted || await _sectionCommentRecorder.hasPermission();
+    if (!hasPermission) {
+      _showErrorSnack('Нет доступа к микрофону');
+      return;
+    }
+    _microphonePermissionGranted = true;
+
+    try {
+      _sectionCommentRecordBuffer = BytesBuilder(copy: false);
+      await _sectionCommentRecordSub?.cancel();
+      _sectionCommentRecordSub =
+          (await _sectionCommentRecorder.startStream(
+            const RecordConfig(
+              encoder: AudioEncoder.pcm16bits,
+              sampleRate: 16000,
+              numChannels: 1,
+            ),
+          )).listen((chunk) {
+            _sectionCommentRecordBuffer?.add(chunk);
+          });
+      _sectionCommentRecordTimer?.cancel();
+      _sectionCommentRecordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted || _activeSectionCommentRecordingKey != key) return;
+        setState(() {
+          final next = (_sectionCommentRecordingSeconds[key] ?? 0) + 1;
+          _sectionCommentRecordingSeconds[key] = next;
+        });
+      });
+      if (!mounted) return;
+      setState(() {
+        _activeSectionCommentRecordingKey = key;
+        _sectionCommentRecordingSeconds[key] = 0;
+      });
+    } catch (_) {
+      _showErrorSnack('Не удалось начать запись');
+    }
+  }
+
+  Future<void> _stopSectionCommentRecording({
+    required String key,
+    required List<_UploadedItem> files,
+    required ValueSetter<List<_UploadedItem>> setFiles,
+    bool keepResult = true,
+  }) async {
+    if (!_isCommentRecording(key)) return;
+
+    try {
+      await _sectionCommentRecorder.stop();
+    } catch (_) {}
+
+    _sectionCommentRecordTimer?.cancel();
+    _sectionCommentRecordTimer = null;
+    await _sectionCommentRecordSub?.cancel();
+    _sectionCommentRecordSub = null;
+
+    final pcmBytes = _sectionCommentRecordBuffer?.takeBytes() ?? Uint8List(0);
+    _sectionCommentRecordBuffer = null;
+
+    var nextFiles = files;
+    if (keepResult && pcmBytes.isNotEmpty) {
+      final wavBytes = _pcm16ToWav(pcmBytes, sampleRate: 16000);
+      String? stored;
+      if (kIsWeb) {
+        stored = 'data:audio/wav;base64,${base64Encode(wavBytes)}';
+      } else {
+        stored = await _persistBytesToAppStorage(
+          bytes: wavBytes,
+          mimeType: 'audio/wav',
+          prefix: '${key}_comment_audio',
+        );
+      }
+      if ((stored ?? '').trim().isNotEmpty) {
+        nextFiles = [
+          ...files,
+          _UploadedItem(
+            id: _nextUploadedItemId(prefix: '${key}_comment_audio'),
+            name: 'Голосовое сообщение ${files.length + 1}',
+            mimeType: 'audio/wav',
+            dataUrl: stored!.trim(),
+          ),
+        ];
+      } else {
+        _showErrorSnack('Не удалось сохранить аудио локально');
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      setFiles(nextFiles);
+      _sectionCommentRecordingSeconds[key] = 0;
+      if (_activeSectionCommentRecordingKey == key) {
+        _activeSectionCommentRecordingKey = null;
+      }
+    });
+    _markDraftDirty();
+  }
+
+  Future<void> _toggleDocsCommentRecording() async {
+    if (_isCommentRecording('docs_comment')) {
+      await _stopSectionCommentRecording(
+        key: 'docs_comment',
+        files: _docsCommentAudioFiles,
+        setFiles: (next) => _docsCommentAudioFiles = next,
+      );
+      return;
+    }
+    await _startSectionCommentRecording('docs_comment');
+  }
+
+  Future<void> _toggleLegalCommentRecording() async {
+    if (_isCommentRecording('legal_comment')) {
+      await _stopSectionCommentRecording(
+        key: 'legal_comment',
+        files: _legalCommentAudioFiles,
+        setFiles: (next) => _legalCommentAudioFiles = next,
+      );
+      return;
+    }
+    await _startSectionCommentRecording('legal_comment');
+  }
+
+  Future<void> _toggleTdCommentRecording() async {
+    if (_isCommentRecording('td_comment')) {
+      await _stopSectionCommentRecording(
+        key: 'td_comment',
+        files: _tdCommentAudioFiles,
+        setFiles: (next) => _tdCommentAudioFiles = next,
+      );
+      return;
+    }
+    await _startSectionCommentRecording('td_comment');
+  }
+
+  Future<void> _toggleExpertCommentRecording() async {
+    if (_isCommentRecording('expert_comment')) {
+      await _stopSectionCommentRecording(
+        key: 'expert_comment',
+        files: _expertAudioFiles,
+        setFiles: (next) => _expertAudioFiles = next,
+      );
+      return;
+    }
+    await _startSectionCommentRecording('expert_comment');
+  }
+
+  void _resetCommentAudioPlayingIndexes() {
+    _docsCommentPlayingAudioIndex = -1;
+    _legalCommentPlayingAudioIndex = -1;
+    _tdCommentPlayingAudioIndex = -1;
+    _expertCommentPlayingAudioIndex = -1;
+  }
+
+  Future<void> _toggleSharedCommentAudioPlayback({
+    required List<_UploadedItem> files,
+    required int index,
+    required bool currentlyPlaying,
+    required VoidCallback activateIndex,
+  }) async {
+    if (index < 0 || index >= files.length) return;
+    try {
+      if (currentlyPlaying) {
+        await _sectionCommentAudioPlayer.stop();
+        if (!mounted) return;
+        setState(_resetCommentAudioPlayingIndexes);
+        return;
+      }
+      await _sectionCommentAudioPlayer.stop();
+      await _playAudioSource(_sectionCommentAudioPlayer, files[index].dataUrl);
+      if (!mounted) return;
+      setState(() {
+        _resetCommentAudioPlayingIndexes();
+        activateIndex();
+      });
+    } catch (_) {
+      _showErrorSnack('Не удалось воспроизвести аудио');
+    }
+  }
+
+  Future<void> _toggleCommentAudioPlayback({
+    required bool docsComment,
+    required int index,
+  }) async {
+    final list = docsComment ? _docsCommentAudioFiles : _legalCommentAudioFiles;
+    await _toggleSharedCommentAudioPlayback(
+      files: list,
+      index: index,
+      currentlyPlaying: docsComment
+        ? _docsCommentPlayingAudioIndex == index
+        : _legalCommentPlayingAudioIndex == index,
+      activateIndex: () {
+        if (docsComment) {
+          _docsCommentPlayingAudioIndex = index;
+        } else {
+          _legalCommentPlayingAudioIndex = index;
+        }
+      },
+    );
+  }
+
+  Future<void> _toggleTdCommentAudioPlayback(int index) async {
+    await _toggleSharedCommentAudioPlayback(
+      files: _tdCommentAudioFiles,
+      index: index,
+      currentlyPlaying: _tdCommentPlayingAudioIndex == index,
+      activateIndex: () => _tdCommentPlayingAudioIndex = index,
+    );
+  }
+
+  Future<void> _toggleExpertCommentAudioPlayback(int index) async {
+    await _toggleSharedCommentAudioPlayback(
+      files: _expertAudioFiles,
+      index: index,
+      currentlyPlaying: _expertCommentPlayingAudioIndex == index,
+      activateIndex: () => _expertCommentPlayingAudioIndex = index,
+    );
+  }
+
+  void _scheduleLegalResult(int token) {
+    Future<void>.delayed(const Duration(seconds: 2), () {
       if (!mounted) return;
       if (!_legalLoading || token != _legalLoadToken) return;
       setState(() {
-        _legalTimedOut = true;
+        _legalTimedOut = false;
+        _legalLoaded = true;
+        _legalSkipped = false;
         _legalLoading = false;
       });
+      _markDraftDirty();
     });
   }
 
@@ -2408,7 +2982,8 @@ class _SparkJoyCreateReportScreenState
       _legalLoading = true;
       _legalLoaded = false;
     });
-    _scheduleLegalTimeout(token);
+    _markDraftDirty();
+    _scheduleLegalResult(token);
   }
 
   String _dateLabel(DateTime value) {
@@ -2897,136 +3472,12 @@ class _SparkJoyCreateReportScreenState
     return state.hasIssue;
   }
 
-  List<_MediaElementSummary> _groupElementSummaries(
-    String groupKey,
-    _MediaGroupState state,
-  ) {
-    final byElement = <String, _MediaElementSummary>{};
-    for (final file in state.files) {
-      final inspection = file.inspection;
-      if (inspection.isDraft) continue;
-      final elementType = (inspection.elementType ?? '').trim();
-      if (elementType.isEmpty) continue;
-      final hasData =
-          inspection.noDamage ||
-          inspection.tags.isNotEmpty ||
-          inspection.note.trim().isNotEmpty ||
-          inspection.audioRecordings.isNotEmpty;
-      if (!hasData) continue;
-
-      final current =
-          byElement[elementType] ??
-          _MediaElementSummary(
-            elementType: elementType,
-            label: _mediaElementLabel(groupKey, elementType),
-            noDamage: false,
-            tags: const [],
-            hasComment: false,
-          );
-      final tags = <String>{...current.tags};
-      tags.addAll(inspection.tags);
-      byElement[elementType] = _MediaElementSummary(
-        elementType: elementType,
-        label: current.label,
-        noDamage: current.noDamage || inspection.noDamage,
-        tags: tags.toList(),
-        hasComment:
-            current.hasComment ||
-            inspection.note.trim().isNotEmpty ||
-            inspection.audioRecordings.isNotEmpty,
-      );
-    }
-
-    final order = _mediaElementOptions(
-      groupKey,
-    ).map((option) => option.id).toList();
-    final summaries = byElement.values.toList();
-    summaries.sort((a, b) {
-      final ai = order.indexOf(a.elementType);
-      final bi = order.indexOf(b.elementType);
-      if (ai == -1 && bi == -1) return a.label.compareTo(b.label);
-      if (ai == -1) return 1;
-      if (bi == -1) return -1;
-      return ai.compareTo(bi);
-    });
-    return summaries;
-  }
-
-  List<String> _mediaTagLabelsForSummary(
-    String groupKey,
-    _MediaElementSummary summary,
-  ) {
-    final options = _mediaTagOptions(
-      groupKey,
-      elementType: summary.elementType,
-    ).map((e) => e.label);
-    final order = options.toList();
-    final tags = summary.tags.toSet();
-    final sorted = <String>[];
-    for (final label in order) {
-      if (tags.remove(label)) sorted.add(label);
-    }
-    if (tags.isNotEmpty) {
-      final tail = tags.toList()..sort();
-      sorted.addAll(tail);
-    }
-    return sorted;
-  }
-
-  int _groupNoDamageElementsCount(String groupKey, _MediaGroupState state) {
-    var count = 0;
-    for (final summary in _groupElementSummaries(groupKey, state)) {
-      final tags = _mediaTagLabelsForSummary(groupKey, summary);
-      if (summary.noDamage && tags.isEmpty) count++;
-    }
-    return count;
-  }
-
-  int _groupSeriousTagCount(String groupKey, _MediaGroupState state) {
-    var count = 0;
-    for (final summary in _groupElementSummaries(groupKey, state)) {
-      final tags = _mediaTagLabelsForSummary(groupKey, summary);
-      for (final tag in tags) {
-        if (_mediaTagSeverity(
-              groupKey,
-              tag,
-              elementType: summary.elementType,
-            ) ==
-            'serious') {
-          count++;
-        }
-      }
-    }
-    return count;
-  }
-
-  int _groupMinorTagCount(String groupKey, _MediaGroupState state) {
-    var count = 0;
-    for (final summary in _groupElementSummaries(groupKey, state)) {
-      final tags = _mediaTagLabelsForSummary(groupKey, summary);
-      for (final tag in tags) {
-        if (_mediaTagSeverity(
-              groupKey,
-              tag,
-              elementType: summary.elementType,
-            ) !=
-            'serious') {
-          count++;
-        }
-      }
-    }
-    return count;
-  }
-
   bool _groupHasCoverage(_MediaGroupState state) {
     return _parseUrls(state.rawUrls).isNotEmpty || state.files.isNotEmpty;
   }
 
   List<_MediaGroupConfig> _requiredMediaGroups() {
-    const requiredKeys = {'body', 'glass', 'underhood', 'interior'};
-    return _mediaGroupsConfig
-        .where((config) => requiredKeys.contains(config.key))
-        .toList();
+    return _mediaGroupsConfig.where((config) => config.required).toList();
   }
 
   List<_MediaGroupConfig> _missingRequiredMediaGroups() {
@@ -3184,6 +3635,11 @@ class _SparkJoyCreateReportScreenState
         _docsOwnerMatch == true &&
         _docsVinMatch == true &&
         _docsEngineMatch == true;
+    final docsMismatchComment = _docsMismatchCommentController.text.trim();
+    final docsNeedsComment =
+        (_docsOwnerMatch == false ||
+        _docsVinMatch == false ||
+        _docsEngineMatch == false);
 
     if (!docsAllAnswered) {
       penalty += 5;
@@ -3200,6 +3656,10 @@ class _SparkJoyCreateReportScreenState
       if (_docsEngineMatch == false) {
         penalty += 10;
         checklist.add('Модель двигателя в документах не совпадает.');
+      }
+      if (docsNeedsComment && docsMismatchComment.isEmpty) {
+        penalty += 4;
+        checklist.add('По расхождениям в документах не добавлен комментарий.');
       }
     }
 
@@ -3229,10 +3689,19 @@ class _SparkJoyCreateReportScreenState
               ? 'serious'
               : (_docsEngineMatch == true ? 'ok' : 'minor'),
         },
+        if (docsMismatchComment.isNotEmpty)
+          {
+            'label': 'Комментарий',
+            'value': docsMismatchComment,
+            'severity': docsNeedsComment ? 'minor' : 'ok',
+          },
       ],
     });
 
-    if (!_legalLoaded && !_legalSkipped) {
+    final legalHasManualData =
+        _legalFiles.isNotEmpty || _legalNoteController.text.trim().isNotEmpty;
+
+    if (!_legalLoaded && !_legalSkipped && !legalHasManualData) {
       penalty += _legalSkipped ? 5 : 3;
       checklist.add(
         _legalSkipped
@@ -3243,7 +3712,7 @@ class _SparkJoyCreateReportScreenState
 
     sections.add({
       'title': 'Юр. проверка',
-      'status': _legalLoaded
+      'status': _legalLoaded || legalHasManualData
           ? 'ok'
           : (_legalSkipped || _legalLoading ? 'warn' : 'warn'),
       'required': false,
@@ -3251,11 +3720,15 @@ class _SparkJoyCreateReportScreenState
         {
           'label': 'Статус',
           'value': _legalLoaded
-              ? 'Проверка выполнена'
+              ? 'Юридический отчёт сформирован'
               : (_legalLoading
-                    ? 'Идет загрузка'
-                    : (_legalSkipped ? 'Пропущена' : 'Не заполнено')),
-          'severity': _legalLoaded ? 'ok' : 'minor',
+                    ? 'Юридический отчёт формируется'
+                    : (_legalSkipped
+                          ? 'Формирование отложено'
+                          : (legalHasManualData
+                                ? 'Загружены файлы специалиста'
+                                : 'Не заполнено'))),
+          'severity': _legalLoaded || legalHasManualData ? 'ok' : 'minor',
         },
         if (_legalFiles.isNotEmpty)
           {
@@ -3434,9 +3907,21 @@ class _SparkJoyCreateReportScreenState
   }
 
   String _triStateLabel(bool? value) {
-    if (value == true) return 'Совпадает';
-    if (value == false) return 'Не совпадает';
+    if (value == true) return 'Соответствует';
+    if (value == false) return 'Не соответствует';
     return 'Не проверено';
+  }
+
+  String _docsStateLabel(bool? value) {
+    if (value == true) return 'Соответствует';
+    if (value == false) return 'Не соответствует';
+    return '';
+  }
+
+  Color _docsStateColor(bool? value) {
+    if (value == true) return kGreenColor;
+    if (value == false) return kRedColor;
+    return kGreyColor;
   }
 
   String _summaryTemplate(_CalculatedSummary summary) {
@@ -3542,6 +4027,8 @@ class _SparkJoyCreateReportScreenState
       'docsOwnerMatch': _docsOwnerMatch,
       'docsVinMatch': _docsVinMatch,
       'docsEngineMatch': _docsEngineMatch,
+      'docsMismatchComment': _docsMismatchCommentController.text.trim(),
+      'docsCommentAudioFiles': _uploadedToJson(_docsCommentAudioFiles),
       'legalLoading': _legalLoading,
       'legalLoaded': _legalLoaded,
       'legalSkipped': _legalSkipped,
@@ -3549,6 +4036,7 @@ class _SparkJoyCreateReportScreenState
       'legalPurchased': _legalPurchased,
       'legalFiles': _uploadedToJson(_legalFiles),
       'legalNote': _legalNoteController.text.trim(),
+      'legalCommentAudioFiles': _uploadedToJson(_legalCommentAudioFiles),
       'bodyPaintFrom': _bodyPaintFrom,
       'bodyPaintTo': _bodyPaintTo,
       'structPaintFrom': _structPaintFrom,
@@ -3571,6 +4059,7 @@ class _SparkJoyCreateReportScreenState
       'tdRideTags': _tdRideTags,
       'tdBrakeTags': _tdBrakeTags,
       'tdNote': _tdNoteController.text.trim(),
+      'tdCommentAudioFiles': _uploadedToJson(_tdCommentAudioFiles),
       'summaryNote': _summaryController.text.trim(),
       'expertConclusion': _expertController.text.trim(),
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
@@ -3583,12 +4072,116 @@ class _SparkJoyCreateReportScreenState
     };
   }
 
-  Future<void> _saveDraft({bool showToast = true}) async {
-    await SparkJoyStorage.upsertDraft(_buildDraftPayload());
-    if (!mounted || !showToast) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Черновик сохранен')));
+  void _markDraftDirty({bool scheduleAutosave = true}) {
+    if (_hasUnsavedDraftChanges && !_draftSaveFailed) {
+      if (scheduleAutosave) {
+        _scheduleDraftAutosave();
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        _hasUnsavedDraftChanges = true;
+        _draftSaveFailed = false;
+      });
+    } else {
+      _hasUnsavedDraftChanges = true;
+      _draftSaveFailed = false;
+    }
+    if (scheduleAutosave) {
+      _scheduleDraftAutosave();
+    }
+  }
+
+  void _scheduleDraftAutosave() {
+    _draftAutosaveDebounce?.cancel();
+    _draftAutosaveDebounce = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      unawaited(_saveDraft(showToast: false, fromAutosave: true));
+    });
+  }
+
+  String _draftSaveStatusText() {
+    if (_draftSaveInProgress) return 'Сохраняется локально...';
+    if (_draftSaveFailed) return 'Ошибка локального сохранения';
+    if (_hasUnsavedDraftChanges) return 'Есть несохранённые изменения';
+    final lastSavedAt = _lastDraftSavedAt;
+    if (lastSavedAt == null) return 'Локальный черновик';
+    final hours = lastSavedAt.hour.toString().padLeft(2, '0');
+    final minutes = lastSavedAt.minute.toString().padLeft(2, '0');
+    return 'Сохранено локально в $hours:$minutes';
+  }
+
+  Color _draftSaveStatusColor() {
+    if (_draftSaveInProgress) return kSecondaryColor;
+    if (_draftSaveFailed) return kRedColor;
+    if (_hasUnsavedDraftChanges) return kYellowColor;
+    return kGreenColor;
+  }
+
+  Future<void> _saveDraft({
+    bool showToast = true,
+    bool fromAutosave = false,
+  }) async {
+    if (_draftSaveInProgress) {
+      if (fromAutosave) {
+        _autosaveRequestedWhileSaving = true;
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _draftSaveInProgress = true;
+        _draftSaveFailed = false;
+      });
+    } else {
+      _draftSaveInProgress = true;
+      _draftSaveFailed = false;
+    }
+
+    try {
+      await SparkJoyStorage.upsertDraft(_buildDraftPayload());
+      _draftAutosaveDebounce?.cancel();
+      if (mounted) {
+        setState(() {
+          _draftSaveInProgress = false;
+          _hasUnsavedDraftChanges = false;
+          _draftSaveFailed = false;
+          _lastDraftSavedAt = DateTime.now();
+        });
+      } else {
+        _draftSaveInProgress = false;
+        _hasUnsavedDraftChanges = false;
+        _draftSaveFailed = false;
+        _lastDraftSavedAt = DateTime.now();
+      }
+
+      if (!mounted || !showToast) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Черновик сохранен')));
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _draftSaveInProgress = false;
+          _draftSaveFailed = true;
+        });
+      } else {
+        _draftSaveInProgress = false;
+        _draftSaveFailed = true;
+      }
+      if (showToast && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Не удалось сохранить черновик')),
+        );
+      }
+    } finally {
+      if (_autosaveRequestedWhileSaving) {
+        _autosaveRequestedWhileSaving = false;
+        _scheduleDraftAutosave();
+      }
+    }
   }
 
   Map<String, dynamic> _buildCompletedReport() {
@@ -3707,6 +4300,8 @@ class _SparkJoyCreateReportScreenState
       'plate': _sanitizePlate(_plateController.text.trim()),
       'mileage': _mileageController.text.trim(),
       'owners': _ownersCountController.text.trim(),
+      'docsMismatchComment': _docsMismatchCommentController.text.trim(),
+      'docsCommentAudioFiles': _uploadedToJson(_docsCommentAudioFiles),
       'engine': [
         _engineVolumeController.text.trim(),
         _engineTypeController.text.trim(),
@@ -3719,6 +4314,8 @@ class _SparkJoyCreateReportScreenState
       'checklist': checklist,
       'mediaGroups': mediaGroups,
       'legalFiles': _uploadedToJson(_legalFiles),
+      'legalCommentAudioFiles': _uploadedToJson(_legalCommentAudioFiles),
+      'tdCommentAudioFiles': _uploadedToJson(_tdCommentAudioFiles),
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
       'summaryNote': _summaryController.text.trim(),
       'expertConclusion': _expertController.text.trim(),
@@ -4029,9 +4626,11 @@ class _SparkJoyCreateReportScreenState
     }
 
     final resultVin =
-        await showDialog<String>(
+        await showModalBottomSheet<String>(
           context: context,
-          useSafeArea: false,
+          isScrollControlled: true,
+          useSafeArea: true,
+          backgroundColor: Colors.transparent,
           builder: (context) {
             return StatefulBuilder(
               builder: (context, setLocalState) {
@@ -4044,118 +4643,148 @@ class _SparkJoyCreateReportScreenState
                     liveCameraController!.value.isInitialized &&
                     !processing;
 
-                return AlertDialog(
-                  insetPadding: EdgeInsets.zero,
-                  clipBehavior: Clip.antiAlias,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero,
-                  ),
-                  titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                  contentPadding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                  actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                  title: const Text('Сканирование VIN'),
-                  content: SizedBox(
-                    width: MediaQuery.of(context).size.width,
-                    height: MediaQuery.of(context).size.height - 140,
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const MyText(
-                            text: 'Выберите источник для сканирования VIN',
-                            size: 11,
-                            color: kGreyColor,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
+                return FractionallySizedBox(
+                  heightFactor: 0.95,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      color: kWhiteColor,
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(20),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
+                          child: Row(
                             children: [
                               Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: processing
-                                      ? null
-                                      : () {
-                                          if (supportsLiveCameraPreview) {
-                                            startLiveCamera(setLocalState);
-                                          } else {
-                                            pickAndRecognize(
-                                              ImageSource.camera,
-                                              setLocalState,
-                                            );
-                                          }
-                                        },
-                                  icon: const Icon(Icons.camera_alt_outlined),
-                                  label: const Text('Открыть камеру'),
+                                child: Text(
+                                  'Сканирование VIN',
+                                  style: Theme.of(context).textTheme.titleLarge
+                                      ?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                      ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: processing
-                                      ? null
-                                      : () => pickAndRecognize(
-                                          ImageSource.gallery,
-                                          setLocalState,
-                                        ),
-                                  icon: const Icon(
-                                    Icons.photo_library_outlined,
-                                  ),
-                                  label: const Text('Из галереи'),
-                                ),
+                              IconButton(
+                                tooltip: 'Закрыть',
+                                onPressed: () => Navigator.of(context).pop(),
+                                icon: const Icon(Icons.close_rounded),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 10),
-                          if (isCameraMode &&
-                              supportsLiveCameraPreview &&
-                              previewBytes == null &&
-                              !processing) ...[
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.black,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: AspectRatio(
-                                aspectRatio: 3 / 4,
-                                child: Stack(
-                                  fit: StackFit.expand,
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                            keyboardDismissBehavior:
+                                ScrollViewKeyboardDismissBehavior.onDrag,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
                                   children: [
-                                    if (cameraInitialized &&
-                                        liveCameraController != null &&
-                                        liveCameraController!
-                                            .value
-                                            .isInitialized)
-                                      CameraPreview(liveCameraController!),
-                                    IgnorePointer(
-                                      child: Column(
+                                    Expanded(
+                                      child: FilledButton.icon(
+                                        onPressed: processing
+                                            ? null
+                                            : () {
+                                                if (supportsLiveCameraPreview) {
+                                                  startLiveCamera(setLocalState);
+                                                } else {
+                                                  pickAndRecognize(
+                                                    ImageSource.camera,
+                                                    setLocalState,
+                                                  );
+                                                }
+                                              },
+                                        icon: const Icon(
+                                          Icons.camera_alt_outlined,
+                                        ),
+                                        label: const Text('Открыть камеру'),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        onPressed: processing
+                                            ? null
+                                            : () => pickAndRecognize(
+                                                ImageSource.gallery,
+                                                setLocalState,
+                                              ),
+                                        icon: const Icon(
+                                          Icons.photo_library_outlined,
+                                        ),
+                                        label: const Text('Из галереи'),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                if (isCameraMode &&
+                                    supportsLiveCameraPreview &&
+                                    previewBytes == null &&
+                                    !processing) ...[
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                    clipBehavior: Clip.antiAlias,
+                                    child: AspectRatio(
+                                      aspectRatio: 3 / 4,
+                                      child: Stack(
+                                        fit: StackFit.expand,
                                         children: [
-                                          Expanded(
-                                            flex: 39,
-                                            child: Container(
-                                              color: Colors.black54,
-                                            ),
-                                          ),
-                                          Expanded(
-                                            flex: 22,
-                                            child: Row(
+                                          if (cameraInitialized &&
+                                              liveCameraController != null &&
+                                              liveCameraController!
+                                                  .value
+                                                  .isInitialized)
+                                            CameraPreview(liveCameraController!),
+                                          IgnorePointer(
+                                            child: Column(
                                               children: [
                                                 Expanded(
-                                                  flex: 7,
+                                                  flex: 39,
                                                   child: Container(
                                                     color: Colors.black54,
                                                   ),
                                                 ),
                                                 Expanded(
-                                                  flex: 86,
-                                                  child: _VinGuideFrame(
-                                                    animate:
-                                                        cameraLive &&
-                                                        !cameraLoading &&
-                                                        cameraError.isEmpty,
+                                                  flex: 22,
+                                                  child: Row(
+                                                    children: [
+                                                      Expanded(
+                                                        flex: 7,
+                                                        child: Container(
+                                                          color: Colors.black54,
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 86,
+                                                        child: _VinGuideFrame(
+                                                          animate:
+                                                              cameraLive &&
+                                                              !cameraLoading &&
+                                                              cameraError
+                                                                  .isEmpty,
+                                                        ),
+                                                      ),
+                                                      Expanded(
+                                                        flex: 7,
+                                                        child: Container(
+                                                          color: Colors.black54,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                 ),
                                                 Expanded(
-                                                  flex: 7,
+                                                  flex: 39,
                                                   child: Container(
                                                     color: Colors.black54,
                                                   ),
@@ -4163,213 +4792,233 @@ class _SparkJoyCreateReportScreenState
                                               ],
                                             ),
                                           ),
-                                          Expanded(
-                                            flex: 39,
-                                            child: Container(
-                                              color: Colors.black54,
+                                          if (cameraLoading)
+                                            const Center(
+                                              child:
+                                                  CircularProgressIndicator(),
                                             ),
-                                          ),
+                                          if (cameraError.isNotEmpty &&
+                                              !cameraLoading)
+                                            Center(
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.all(24),
+                                                child: MyText(
+                                                  text: cameraError,
+                                                  size: 12,
+                                                  color: kWhiteColor,
+                                                  textAlign: TextAlign.center,
+                                                ),
+                                              ),
+                                            ),
+                                          if (cameraLive &&
+                                              cameraError.isEmpty &&
+                                              !cameraLoading)
+                                            const Align(
+                                              alignment: Alignment(0, -0.34),
+                                              child: _VinGuideBadge(),
+                                            ),
                                         ],
                                       ),
                                     ),
-                                    if (cameraLoading)
-                                      const Center(
-                                        child: CircularProgressIndicator(),
-                                      ),
-                                    if (cameraError.isNotEmpty &&
-                                        !cameraLoading)
-                                      Center(
-                                        child: Padding(
-                                          padding: const EdgeInsets.all(24),
-                                          child: MyText(
-                                            text: cameraError,
-                                            size: 12,
-                                            color: kWhiteColor,
-                                            textAlign: TextAlign.center,
-                                          ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  FilledButton.icon(
+                                    onPressed: canCapture
+                                        ? () => captureFromLiveCamera(
+                                            setLocalState,
+                                          )
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.document_scanner_outlined,
+                                    ),
+                                    label: const Text('Распознать'),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                if (previewBytes != null) ...[
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.memory(
+                                      previewBytes!,
+                                      height: 160,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                if (isCameraMode &&
+                                    supportsLiveCameraPreview &&
+                                    cameraError.isNotEmpty &&
+                                    !processing) ...[
+                                  MyText(
+                                    text: cameraError,
+                                    size: 11,
+                                    color: kRedColor,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () => pickAndRecognize(
+                                      ImageSource.camera,
+                                      setLocalState,
+                                    ),
+                                    icon: const Icon(Icons.photo_camera_outlined),
+                                    label: const Text('Системная камера'),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () =>
+                                        startLiveCamera(setLocalState),
+                                    icon: const Icon(Icons.replay),
+                                    label: const Text(
+                                      'Повторить запуск камеры',
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                ],
+                                if (processing) ...[
+                                  const Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
                                         ),
                                       ),
-                                    if (cameraLive &&
-                                        cameraError.isEmpty &&
-                                        !cameraLoading)
-                                      const Align(
-                                        alignment: Alignment(0, -0.34),
-                                        child: _VinGuideBadge(),
+                                      SizedBox(width: 8),
+                                      Expanded(
+                                        child: MyText(
+                                          text: 'Распознаю VIN...',
+                                          size: 11,
+                                          color: kGreyColor,
+                                        ),
                                       ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            FilledButton.icon(
-                              onPressed: canCapture
-                                  ? () => captureFromLiveCamera(setLocalState)
-                                  : null,
-                              icon: const Icon(Icons.document_scanner_outlined),
-                              label: const Text('Распознать'),
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          if (previewBytes != null) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.memory(
-                                previewBytes!,
-                                height: 160,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          if (isCameraMode &&
-                              supportsLiveCameraPreview &&
-                              cameraError.isNotEmpty &&
-                              !processing) ...[
-                            MyText(
-                              text: cameraError,
-                              size: 11,
-                              color: kRedColor,
-                            ),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: () => pickAndRecognize(
-                                ImageSource.camera,
-                                setLocalState,
-                              ),
-                              icon: const Icon(Icons.photo_camera_outlined),
-                              label: const Text('Системная камера'),
-                            ),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: () => startLiveCamera(setLocalState),
-                              icon: const Icon(Icons.replay),
-                              label: const Text('Повторить запуск камеры'),
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          if (processing) ...[
-                            const Row(
-                              children: [
-                                SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                                    ],
                                   ),
-                                ),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: MyText(
-                                    text: 'Распознаю VIN...',
+                                  const SizedBox(height: 10),
+                                ],
+                                if (!vinOcrSupported) ...[
+                                  const MyText(
+                                    text:
+                                        'OCR недоступен. Можно вставить VIN вручную.',
                                     size: 11,
                                     color: kGreyColor,
                                   ),
+                                  const SizedBox(height: 8),
+                                ],
+                                TextField(
+                                  controller: controller,
+                                  maxLength: 17,
+                                  onTapOutside: (_) => _dismissKeyboard(),
+                                  onChanged: (value) {
+                                    final sanitizedValue = _sanitizeVin(value);
+                                    if (sanitizedValue != value) {
+                                      controller.value = TextEditingValue(
+                                        text: sanitizedValue,
+                                        selection: TextSelection.collapsed(
+                                          offset: sanitizedValue.length,
+                                        ),
+                                      );
+                                    }
+                                    setLocalState(() {
+                                      currentVin = sanitizedValue;
+                                    });
+                                  },
+                                  decoration: _fieldDecoration(
+                                    'Распознанный VIN (можно исправить)',
+                                  ).copyWith(counterText: ''),
                                 ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                          ],
-                          if (!vinOcrSupported) ...[
-                            const MyText(
-                              text:
-                                  'OCR недоступен. Можно вставить VIN вручную.',
-                              size: 11,
-                              color: kGreyColor,
-                            ),
-                            const SizedBox(height: 8),
-                          ],
-                          TextField(
-                            controller: controller,
-                            maxLength: 17,
-                            onChanged: (value) {
-                              final sanitizedValue = _sanitizeVin(value);
-                              if (sanitizedValue != value) {
-                                controller.value = TextEditingValue(
-                                  text: sanitizedValue,
-                                  selection: TextSelection.collapsed(
-                                    offset: sanitizedValue.length,
+                                if (sanitized.isNotEmpty && !valid)
+                                  MyText(
+                                    text: '${sanitized.length} из 17 символов',
+                                    size: 11,
+                                    color: kYellowColor,
                                   ),
-                                );
-                              }
-                              setLocalState(() {
-                                currentVin = sanitizedValue;
-                              });
-                            },
-                            decoration: _fieldDecoration(
-                              'Распознанный VIN (можно исправить)',
-                            ).copyWith(counterText: ''),
-                          ),
-                          if (sanitized.isNotEmpty && !valid)
-                            MyText(
-                              text: '${sanitized.length} из 17 символов',
-                              size: 11,
-                              color: kYellowColor,
-                            ),
-                          if (rawText.trim().isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            ExpansionTile(
-                              tilePadding: EdgeInsets.zero,
-                              title: const MyText(
-                                text: 'Сырой текст OCR',
-                                size: 11,
-                                color: kGreyColor,
-                              ),
-                              children: [
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: kBorderColor),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: SelectableText(
-                                    rawText,
-                                    style: const TextStyle(
-                                      fontSize: 11,
+                                if (rawText.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  ExpansionTile(
+                                    tilePadding: EdgeInsets.zero,
+                                    title: const MyText(
+                                      text: 'Сырой текст OCR',
+                                      size: 11,
                                       color: kGreyColor,
                                     ),
+                                    children: [
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: kBorderColor),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: SelectableText(
+                                          rawText,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            color: kGreyColor,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                if (error != null && error!.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  MyText(text: error!, size: 11, color: kRedColor),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      if (isCameraMode &&
+                                          supportsLiveCameraPreview) {
+                                        startLiveCamera(setLocalState);
+                                      } else {
+                                        pickAndRecognize(
+                                          isCameraMode
+                                              ? ImageSource.camera
+                                              : ImageSource.gallery,
+                                          setLocalState,
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(Icons.replay),
+                                    label: const Text('Заново'),
+                                  ),
+                                ],
+                                const SizedBox(height: 10),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SafeArea(
+                          top: false,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () => Navigator.of(context).pop(),
+                                    child: const Text('Отмена'),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: FilledButton(
+                                    onPressed: !valid
+                                        ? null
+                                        : () =>
+                                            Navigator.of(context).pop(sanitized),
+                                    child: const Text('Применить'),
                                   ),
                                 ),
                               ],
                             ),
-                          ],
-                          if (error != null && error!.trim().isNotEmpty) ...[
-                            const SizedBox(height: 8),
-                            MyText(text: error!, size: 11, color: kRedColor),
-                            const SizedBox(height: 8),
-                            OutlinedButton.icon(
-                              onPressed: () {
-                                if (isCameraMode && supportsLiveCameraPreview) {
-                                  startLiveCamera(setLocalState);
-                                } else {
-                                  pickAndRecognize(
-                                    isCameraMode
-                                        ? ImageSource.camera
-                                        : ImageSource.gallery,
-                                    setLocalState,
-                                  );
-                                }
-                              },
-                              icon: const Icon(Icons.replay),
-                              label: const Text('Заново'),
-                            ),
-                          ],
-                        ],
-                      ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Отмена'),
-                    ),
-                    TextButton(
-                      onPressed: !valid
-                          ? null
-                          : () => Navigator.of(context).pop(sanitized),
-                      child: const Text('Применить'),
-                    ),
-                  ],
                 );
               },
             );
@@ -4524,6 +5173,8 @@ class _SparkJoyCreateReportScreenState
                   return const Center(child: Text('Ничего не найдено'));
                 }
                 return ListView.separated(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: brands.length,
                   separatorBuilder: (context, index) =>
                       const Divider(height: 1),
@@ -4561,6 +5212,8 @@ class _SparkJoyCreateReportScreenState
                   return const Center(child: Text('Нет моделей'));
                 }
                 return ListView.separated(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: models.length,
                   separatorBuilder: (context, index) =>
                       const Divider(height: 1),
@@ -4590,6 +5243,8 @@ class _SparkJoyCreateReportScreenState
                   return const Center(child: Text('Нет поколений'));
                 }
                 return ListView.separated(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   itemCount: generations.length,
                   separatorBuilder: (context, index) =>
                       const Divider(height: 1),
@@ -4617,6 +5272,8 @@ class _SparkJoyCreateReportScreenState
                 return const Center(child: Text('Нет рестайлингов'));
               }
               return ListView.separated(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 itemCount: restylings.length,
                 separatorBuilder: (context, index) => const Divider(height: 1),
                 itemBuilder: (context, index) {
@@ -4686,6 +5343,7 @@ class _SparkJoyCreateReportScreenState
                   children: [
                     if (showSearch) ...[
                       TextField(
+                        onTapOutside: (_) => _dismissKeyboard(),
                         onChanged: (value) {
                           setLocalState(() {
                             search = value;
@@ -4740,6 +5398,7 @@ class _SparkJoyCreateReportScreenState
           content: TextField(
             controller: controller,
             autofocus: true,
+            onTapOutside: (_) => _dismissKeyboard(),
             decoration: _fieldDecoration('Например: Тойота для Михаила'),
           ),
           actions: [
@@ -4848,6 +5507,33 @@ class _SparkJoyCreateReportScreenState
     }
   }
 
+  String? _nextMediaGroupKey(String currentGroupKey) {
+    final currentIndex = _mediaGroupsConfig.indexWhere(
+      (config) => config.key == currentGroupKey,
+    );
+    if (currentIndex < 0 || currentIndex >= _mediaGroupsConfig.length - 1) {
+      return null;
+    }
+    return _mediaGroupsConfig[currentIndex + 1].key;
+  }
+
+  Future<void> _openNextMediaGroupFromEditor() async {
+    final currentGroupKey = _activeMediaGroupKey;
+    if (currentGroupKey == null) return;
+    final nextGroupKey = _nextMediaGroupKey(currentGroupKey);
+    if (nextGroupKey == null) return;
+
+    _openMediaGroupEditor(nextGroupKey);
+    final nextState = _mediaState[nextGroupKey];
+    if (nextState == null || nextState.files.isNotEmpty) return;
+
+    try {
+      await _pickMediaFiles(nextGroupKey);
+    } catch (error) {
+      _showErrorSnack('Не удалось открыть галерею: $error');
+    }
+  }
+
   void _closeMediaGroupEditor() {
     setState(() {
       _activeMediaGroupKey = null;
@@ -4926,10 +5612,36 @@ class _SparkJoyCreateReportScreenState
         _applyTdProblemsPreset();
       }
     });
+    _markDraftDirty();
   }
 
   bool _testDriveSectionHasData(bool ok, List<String> tags) {
     return ok || tags.isNotEmpty;
+  }
+
+  bool _docsAllAnswered() {
+    return _docsOwnerMatch != null &&
+        _docsVinMatch != null &&
+        _docsEngineMatch != null;
+  }
+
+  bool _docsAnyMismatch() {
+    return _docsOwnerMatch == false ||
+        _docsVinMatch == false ||
+        _docsEngineMatch == false;
+  }
+
+  List<String> _docsCheckMissingReasons() {
+    final reasons = <String>[];
+    if (!_docsAllAnswered()) {
+      reasons.add('Заполните все пункты сверки документов');
+      return reasons;
+    }
+    if (_docsAnyMismatch() &&
+        _docsMismatchCommentController.text.trim().isEmpty) {
+      reasons.add('Добавьте комментарий по расхождениям');
+    }
+    return reasons;
   }
 
   List<String> _testDriveMissingReasons() {
@@ -4970,6 +5682,9 @@ class _SparkJoyCreateReportScreenState
         _docsOwnerMatch != null &&
         _docsVinMatch != null &&
         _docsEngineMatch != null;
+    final hasDocsMismatchComment =
+        !_docsAnyMismatch() ||
+        _docsMismatchCommentController.text.trim().isNotEmpty;
     final requiredMediaKeys = {'body', 'glass', 'underhood', 'interior'};
     final missingMedia = <String>[];
     for (final key in requiredMediaKeys) {
@@ -4980,6 +5695,7 @@ class _SparkJoyCreateReportScreenState
     }
     final hasTestDrive = _tdMode != null;
     final hasExpertConclusion = _expertController.text.trim().isNotEmpty;
+    final attachmentStats = _summaryAttachmentStats();
 
     if (!hasVehicle) {
       reasons.add('Автомобиль — укажите VIN или марку/модель');
@@ -4990,6 +5706,9 @@ class _SparkJoyCreateReportScreenState
     if (!hasDocs) {
       reasons.add('Сверка документов — ответьте на все вопросы');
     }
+    if (!hasDocsMismatchComment) {
+      reasons.add('Сверка документов — добавьте комментарий по расхождениям');
+    }
     if (!hasTestDrive) {
       reasons.add('Тест-драйв — отметьте проведение');
     }
@@ -4998,6 +5717,11 @@ class _SparkJoyCreateReportScreenState
     }
     if (!hasExpertConclusion) {
       reasons.add('Итог специалиста — заполните заключение');
+    }
+    if (attachmentStats.brokenCount > 0) {
+      reasons.add(
+        'Вложения — исправьте ${attachmentStats.brokenCount} некорректных файл(ов)',
+      );
     }
     return reasons;
   }
@@ -5086,6 +5810,10 @@ class _SparkJoyCreateReportScreenState
   }
 
   Future<void> _saveAndOpenNextSection() async {
+    await _stopTdDictation();
+    await _stopDocsDictation();
+    await _stopLegalDictation();
+    await _stopExpertDictation();
     _dismissKeyboard();
     await _saveDraft(showToast: false);
     if (!mounted) return;
@@ -5104,6 +5832,10 @@ class _SparkJoyCreateReportScreenState
   }
 
   Future<void> _closeSection({bool save = false}) async {
+    await _stopTdDictation();
+    await _stopDocsDictation();
+    await _stopLegalDictation();
+    await _stopExpertDictation();
     _dismissKeyboard();
     if (save) {
       await _saveDraft(showToast: false);
@@ -5154,21 +5886,23 @@ class _SparkJoyCreateReportScreenState
         }
         return chunks.join(' · ');
       case 'docs_check':
-        if (_docsOwnerMatch == null ||
-            _docsVinMatch == null ||
-            _docsEngineMatch == null) {
+        if (!_docsAllAnswered()) {
           return '';
         }
-        final count = [
-          _docsOwnerMatch == true,
-          _docsVinMatch == true,
-          _docsEngineMatch == true,
-        ].where((v) => v).length;
-        return '$count из 3';
+        if (_docsAnyMismatch()) {
+          return _docsMismatchCommentController.text.trim().isNotEmpty
+              ? 'Есть расхождения'
+              : 'Есть расхождения (без комментария)';
+        }
+        return 'Все соответствует';
       case 'legal':
-        if (_legalLoaded) return 'Проверено';
+        if (_legalLoaded) return 'Юридический отчёт готов';
         if (_legalSkipped) return 'Пропущено';
-        if (_legalLoading) return 'Загрузка...';
+        if (_legalLoading) return 'Формирование отчёта...';
+        if (_legalFiles.isNotEmpty) return 'Файлов: ${_legalFiles.length}';
+        if (_legalNoteController.text.trim().isNotEmpty) {
+          return 'Есть комментарий';
+        }
         return '';
       case 'media':
         final covered = _mediaState.values.where(_groupHasCoverage).length;
@@ -5184,6 +5918,16 @@ class _SparkJoyCreateReportScreenState
       default:
         return '';
     }
+  }
+
+  int _completedSectionsCount() {
+    var done = 0;
+    for (final step in _steps) {
+      if (_sectionValue(step.id).isNotEmpty) {
+        done++;
+      }
+    }
+    return done;
   }
 
   Widget _sectionCard(int index) {
@@ -5247,11 +5991,51 @@ class _SparkJoyCreateReportScreenState
   }
 
   Widget _sectionsOverview() {
+    final completed = _completedSectionsCount();
+    final total = _steps.length;
+    final progress = total == 0 ? 0.0 : (completed / total).clamp(0.0, 1.0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Divider(color: kBorderColor, height: 1),
         const SizedBox(height: 16),
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.checklist_rounded,
+                    size: 16,
+                    color: kSecondaryColor,
+                  ),
+                  const SizedBox(width: 6),
+                  MyText(
+                    text: 'Заполнено разделов: $completed из $total',
+                    size: 12,
+                    color: kTertiaryColor,
+                    weight: FontWeight.w700,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  backgroundColor: kLightGreyColor,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    kSecondaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         ...List.generate(_steps.length, (index) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -5280,7 +6064,10 @@ class _SparkJoyCreateReportScreenState
     int minLines = 1,
     int maxLines = 1,
     TextInputType? keyboardType,
+    TextInputAction? textInputAction,
+    FocusNode? focusNode,
     bool readOnly = false,
+    ValueChanged<String>? onSubmitted,
     VoidCallback? onTap,
   }) {
     return TextField(
@@ -5288,8 +6075,12 @@ class _SparkJoyCreateReportScreenState
       minLines: minLines,
       maxLines: maxLines,
       keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      focusNode: focusNode,
       readOnly: readOnly,
       onTap: onTap,
+      onSubmitted: onSubmitted,
+      onTapOutside: (_) => _dismissKeyboard(),
       decoration: _fieldDecoration(hint),
     );
   }
@@ -5297,14 +6088,32 @@ class _SparkJoyCreateReportScreenState
   Widget _dropdownField(
     TextEditingController controller,
     String hint,
-    List<String> options,
-  ) {
+    List<String> options, {
+    bool clearable = false,
+  }) {
     final selected = options.contains(controller.text.trim())
         ? controller.text.trim()
         : null;
     return DropdownButtonFormField<String>(
       initialValue: selected,
-      decoration: _fieldDecoration(hint),
+      decoration: _fieldDecoration(hint).copyWith(
+        suffixIcon: clearable && selected != null
+            ? IconButton(
+                onPressed: () {
+                  setState(() {
+                    controller.text = '';
+                  });
+                  _markDraftDirty();
+                },
+                icon: const Icon(
+                  Icons.close_rounded,
+                  size: 18,
+                  color: kGreyColor,
+                ),
+                tooltip: 'Очистить',
+              )
+            : null,
+      ),
       items: options
           .map((option) => DropdownMenuItem(value: option, child: Text(option)))
           .toList(),
@@ -5312,6 +6121,7 @@ class _SparkJoyCreateReportScreenState
         setState(() {
           controller.text = value ?? '';
         });
+        _markDraftDirty();
       },
     );
   }
@@ -5321,8 +6131,16 @@ class _SparkJoyCreateReportScreenState
     required bool? value,
     required ValueChanged<bool?> onChanged,
     String? subtitle,
+    Color subtitleColor = kGreyColor,
+    String positiveLabel = 'Да',
+    String negativeLabel = 'Нет',
     bool allowClear = false,
+    String clearLabel = 'Сбросить выбор',
   }) {
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+    );
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5330,15 +6148,17 @@ class _SparkJoyCreateReportScreenState
           MyText(text: title, size: 13, weight: FontWeight.w700),
           if (subtitle != null) ...[
             const SizedBox(height: 3),
-            MyText(text: subtitle, size: 11, color: kGreyColor),
+            MyText(text: subtitle, size: 11, color: subtitleColor),
           ],
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () =>
-                      onChanged(allowClear && value == true ? null : true),
+                  onPressed: () {
+                    onChanged(allowClear && value == true ? null : true);
+                    _markDraftDirty();
+                  },
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
                       color: value == true ? kGreenColor : kBorderColor,
@@ -5346,9 +6166,17 @@ class _SparkJoyCreateReportScreenState
                     backgroundColor: value == true
                         ? kGreenColor.withValues(alpha: 0.1)
                         : kWhiteColor,
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    shape: buttonShape,
                   ),
                   child: Text(
-                    'Да',
+                    positiveLabel,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
                     style: TextStyle(
                       color: value == true ? kGreenColor : kGreyColor,
                       fontWeight: FontWeight.w700,
@@ -5359,8 +6187,10 @@ class _SparkJoyCreateReportScreenState
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () =>
-                      onChanged(allowClear && value == false ? null : false),
+                  onPressed: () {
+                    onChanged(allowClear && value == false ? null : false);
+                    _markDraftDirty();
+                  },
                   style: OutlinedButton.styleFrom(
                     side: BorderSide(
                       color: value == false ? kRedColor : kBorderColor,
@@ -5368,9 +6198,17 @@ class _SparkJoyCreateReportScreenState
                     backgroundColor: value == false
                         ? kRedColor.withValues(alpha: 0.1)
                         : kWhiteColor,
+                    minimumSize: const Size(0, 48),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 10,
+                    ),
+                    shape: buttonShape,
                   ),
                   child: Text(
-                    'Нет',
+                    negativeLabel,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
                     style: TextStyle(
                       color: value == false ? kRedColor : kGreyColor,
                       fontWeight: FontWeight.w700,
@@ -5385,8 +6223,13 @@ class _SparkJoyCreateReportScreenState
             Align(
               alignment: Alignment.centerRight,
               child: TextButton(
-                onPressed: value == null ? null : () => onChanged(null),
-                child: const Text('Сбросить выбор'),
+                onPressed: value == null
+                    ? null
+                    : () {
+                        onChanged(null);
+                        _markDraftDirty();
+                      },
+                child: Text(clearLabel),
               ),
             ),
           ],
@@ -5404,14 +6247,42 @@ class _SparkJoyCreateReportScreenState
     required List<String> selected,
     required ValueChanged<List<String>> onTagsChanged,
   }) {
+    final selectedTagsCount = selected.length;
+    final statusLabel = ok
+        ? 'Без замечаний'
+        : selectedTagsCount == 0
+        ? 'Добавьте теги замечаний'
+        : 'Замечания: $selectedTagsCount';
+    final statusColor = ok
+        ? kGreenColor
+        : selectedTagsCount == 0
+        ? kGreyColor
+        : kYellowColor;
+
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MyText(text: sectionLabel, size: 11, color: kGreyColor),
+          Row(
+            children: [
+              Expanded(
+                child: MyText(text: sectionLabel, size: 11, color: kGreyColor),
+              ),
+              _mediaMetaPill(
+                icon: ok
+                    ? Icons.check_circle_outline_rounded
+                    : Icons.report_gmailerrorred_rounded,
+                text: statusLabel,
+                color: statusColor,
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           InkWell(
-            onTap: () => onOkChanged(!ok),
+            onTap: () {
+              onOkChanged(!ok);
+              _markDraftDirty();
+            },
             borderRadius: BorderRadius.circular(12),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
@@ -5534,7 +6405,7 @@ class _SparkJoyCreateReportScreenState
           ),
           const SizedBox(height: 8),
           optionButton(
-            title: 'Да, все работает исправно',
+            title: 'Да, всё работает исправно',
             mode: _tdModeAllGood,
             activeColor: kGreenColor,
           ),
@@ -5555,17 +6426,329 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
+  Future<void> _ensureTdSpeech() async {
+    if (_tdSpeechAvailable) return;
+    if (_tdSpeechInitializing) return;
+    _tdSpeechInitializing = true;
+
+    try {
+      _tdSpeechAvailable = await _tdSpeechToText.initialize(
+        onStatus: (status) {
+          if (!mounted) return;
+          if (status == 'done' || status == 'notListening') {
+            _resetDictationFlags();
+          }
+        },
+        onError: (_) {
+          if (!mounted) return;
+          _resetDictationFlags();
+        },
+      );
+      if (_tdSpeechAvailable) {
+        _speechPermissionGranted = true;
+      } else {
+        _showErrorSnack(
+          'Надиктовка недоступна. Проверьте доступ к микрофону и распознаванию речи.',
+        );
+      }
+    } catch (_) {
+      _tdSpeechAvailable = false;
+      _showErrorSnack('Не удалось инициализировать распознавание речи');
+    } finally {
+      _tdSpeechInitializing = false;
+    }
+  }
+
+  void _resetDictationFlags() {
+    if (!mounted) return;
+    setState(() {
+      _tdIsDictating = false;
+      _docsIsDictating = false;
+      _legalIsDictating = false;
+      _expertIsDictating = false;
+    });
+  }
+
+  void _appendRecognizedText(
+    TextEditingController controller,
+    String transcript,
+  ) {
+    final next = SparkJoyCommentUtils.appendRecognizedTranscript(
+      previous: controller.text,
+      transcript: transcript,
+    );
+    if (next == controller.text) return;
+    controller
+      ..text = next
+      ..selection = TextSelection.collapsed(offset: next.length);
+    _markDraftDirty();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _startDocsDictation() async {
+    _docsShouldDictate = true;
+    if (_docsIsDictating) return;
+    if (_tdIsDictating) await _stopTdDictation();
+    if (_legalIsDictating) await _stopLegalDictation();
+    if (_expertIsDictating) await _stopExpertDictation();
+    await _ensureTdSpeech();
+    if (!_tdSpeechAvailable || !_docsShouldDictate) return;
+
+    try {
+      await _tdSpeechToText.listen(
+        localeId: 'ru_RU',
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: false,
+          cancelOnError: true,
+        ),
+        onResult: (result) {
+          if (!result.finalResult) return;
+          _appendRecognizedText(
+            _docsMismatchCommentController,
+            result.recognizedWords,
+          );
+        },
+      );
+      if (!mounted) return;
+      setState(() => _docsIsDictating = true);
+    } catch (_) {
+      _docsShouldDictate = false;
+      _showErrorSnack('Не удалось запустить надиктовку');
+    }
+  }
+
+  Future<void> _stopDocsDictation() async {
+    _docsShouldDictate = false;
+    if (!_docsIsDictating) return;
+    try {
+      await _tdSpeechToText.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _docsIsDictating = false);
+  }
+
+  Future<void> _startLegalDictation() async {
+    _legalShouldDictate = true;
+    if (_legalIsDictating) return;
+    if (_tdIsDictating) await _stopTdDictation();
+    if (_docsIsDictating) await _stopDocsDictation();
+    if (_expertIsDictating) await _stopExpertDictation();
+    await _ensureTdSpeech();
+    if (!_tdSpeechAvailable || !_legalShouldDictate) return;
+
+    try {
+      await _tdSpeechToText.listen(
+        localeId: 'ru_RU',
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: false,
+          cancelOnError: true,
+        ),
+        onResult: (result) {
+          if (!result.finalResult) return;
+          _appendRecognizedText(_legalNoteController, result.recognizedWords);
+        },
+      );
+      if (!mounted) return;
+      setState(() => _legalIsDictating = true);
+    } catch (_) {
+      _legalShouldDictate = false;
+      _showErrorSnack('Не удалось запустить надиктовку');
+    }
+  }
+
+  Future<void> _stopLegalDictation() async {
+    _legalShouldDictate = false;
+    if (!_legalIsDictating) return;
+    try {
+      await _tdSpeechToText.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _legalIsDictating = false);
+  }
+
+  Future<void> _startTdDictation() async {
+    _tdShouldDictate = true;
+    if (_tdIsDictating) return;
+    if (_docsIsDictating) await _stopDocsDictation();
+    if (_legalIsDictating) await _stopLegalDictation();
+    if (_expertIsDictating) await _stopExpertDictation();
+    await _ensureTdSpeech();
+    if (!_tdSpeechAvailable || !_tdShouldDictate) return;
+
+    try {
+      await _tdSpeechToText.listen(
+        localeId: 'ru_RU',
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: false,
+          cancelOnError: true,
+        ),
+        onResult: (result) {
+          if (!result.finalResult) return;
+          _appendRecognizedText(_tdNoteController, result.recognizedWords);
+        },
+      );
+      if (!mounted) return;
+      setState(() => _tdIsDictating = true);
+    } catch (_) {
+      _tdShouldDictate = false;
+      _showErrorSnack('Не удалось запустить надиктовку');
+    }
+  }
+
+  Future<void> _stopTdDictation() async {
+    _tdShouldDictate = false;
+    if (!_tdIsDictating) return;
+    try {
+      await _tdSpeechToText.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _tdIsDictating = false);
+  }
+
+  Future<void> _startExpertDictation() async {
+    _expertShouldDictate = true;
+    if (_expertIsDictating) return;
+    if (_tdIsDictating) await _stopTdDictation();
+    if (_docsIsDictating) await _stopDocsDictation();
+    if (_legalIsDictating) await _stopLegalDictation();
+    await _ensureTdSpeech();
+    if (!_tdSpeechAvailable || !_expertShouldDictate) return;
+
+    try {
+      await _tdSpeechToText.listen(
+        localeId: 'ru_RU',
+        listenOptions: SpeechListenOptions(
+          listenMode: ListenMode.dictation,
+          partialResults: false,
+          cancelOnError: true,
+        ),
+        onResult: (result) {
+          if (!result.finalResult) return;
+          _appendRecognizedText(_expertController, result.recognizedWords);
+        },
+      );
+      if (!mounted) return;
+      setState(() => _expertIsDictating = true);
+    } catch (_) {
+      _expertShouldDictate = false;
+      _showErrorSnack('Не удалось запустить надиктовку');
+    }
+  }
+
+  Future<void> _stopExpertDictation() async {
+    _expertShouldDictate = false;
+    if (!_expertIsDictating) return;
+    try {
+      await _tdSpeechToText.stop();
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() => _expertIsDictating = false);
+  }
+
+  void _formatCommentWithAi(TextEditingController controller) {
+    final text = controller.text.trim();
+    if (text.isEmpty) return;
+
+    final sentences = text
+        .replaceAll(RegExp(r'([.!?])\s+'), r'$1\n')
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList();
+    if (sentences.isEmpty) return;
+
+    final paragraphs = <String>[];
+    final current = <String>[];
+    for (var i = 0; i < sentences.length; i++) {
+      current.add(sentences[i]);
+      if (current.length >= 2 || i == sentences.length - 1) {
+        paragraphs.add(current.join(' '));
+        current.clear();
+      }
+    }
+    final formatted = paragraphs.join('\n\n');
+    controller
+      ..text = formatted
+      ..selection = TextSelection.collapsed(offset: formatted.length);
+  }
+
+  Widget _commentInputPanel({
+    required TextEditingController controller,
+    required bool isDictating,
+    required VoidCallback onToggleDictation,
+    required VoidCallback onAiFormat,
+    String hint = 'Добавьте комментарий',
+  }) {
+    return SparkJoyCommentInputPanel(
+      controller: controller,
+      isDictating: isDictating,
+      onToggleDictation: onToggleDictation,
+      onAiFormat: onAiFormat,
+      onDismissKeyboard: _dismissKeyboard,
+      hint: hint,
+    );
+  }
+
+  Widget _commentAudioFilesBlock({
+    required List<_UploadedItem> files,
+    required int playingIndex,
+    required bool isRecording,
+    required String recordingLabel,
+    required Future<void> Function() onToggleRecording,
+    required Future<void> Function() onAddAudio,
+    required Future<void> Function(int index) onTogglePlay,
+    required ValueChanged<int> onRemoveAt,
+  }) {
+    return SparkJoyCommentAudioBlock(
+      items: List.generate(files.length, (index) {
+        final file = files[index];
+        return SparkJoyCommentAudioItemView(
+          name: file.name,
+          isPlaying: playingIndex == index,
+        );
+      }),
+      isRecording: isRecording,
+      recordingLabel: recordingLabel,
+      onToggleRecording: () async {
+        try {
+          await onToggleRecording();
+        } catch (_) {
+          _showErrorSnack('Не удалось запустить запись');
+        }
+      },
+      onAddAudio: () async {
+        try {
+          await onAddAudio();
+        } catch (_) {
+          _showErrorSnack('Не удалось добавить аудиофайл');
+        }
+      },
+      onTogglePlay: (index) async {
+        try {
+          await onTogglePlay(index);
+        } catch (_) {
+          _showErrorSnack('Не удалось воспроизвести аудио');
+        }
+      },
+      onRemoveAt: onRemoveAt,
+    );
+  }
+
   Widget _testDriveNoteBlock(String placeholder) {
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.description_outlined, size: 14, color: kGreyColor),
               SizedBox(width: 5),
               MyText(
-                text: 'Заметка',
+                text: 'Комментарий',
                 size: 11,
                 color: kGreyColor,
                 weight: FontWeight.w700,
@@ -5573,7 +6756,46 @@ class _SparkJoyCreateReportScreenState
             ],
           ),
           const SizedBox(height: 8),
-          _input(_tdNoteController, placeholder, minLines: 3, maxLines: 5),
+          _commentInputPanel(
+            controller: _tdNoteController,
+            hint: placeholder,
+            isDictating: _tdIsDictating,
+            onToggleDictation: () async {
+              if (_tdIsDictating) {
+                await _stopTdDictation();
+              } else {
+                await _startTdDictation();
+              }
+            },
+            onAiFormat: () {
+              _formatCommentWithAi(_tdNoteController);
+              _markDraftDirty();
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 8),
+          _commentAudioFilesBlock(
+            files: _tdCommentAudioFiles,
+            playingIndex: _tdCommentPlayingAudioIndex,
+            isRecording: _isCommentRecording('td_comment'),
+            recordingLabel: _commentRecordingLabel('td_comment'),
+            onToggleRecording: _toggleTdCommentRecording,
+            onAddAudio: _pickTdCommentAudioFiles,
+            onTogglePlay: _toggleTdCommentAudioPlayback,
+            onRemoveAt: (index) {
+              setState(() {
+                final next = [..._tdCommentAudioFiles]..removeAt(index);
+                _tdCommentAudioFiles = next;
+                if (_tdCommentPlayingAudioIndex == index) {
+                  _tdCommentPlayingAudioIndex = -1;
+                  unawaited(_sectionCommentAudioPlayer.stop());
+                } else if (_tdCommentPlayingAudioIndex > index) {
+                  _tdCommentPlayingAudioIndex -= 1;
+                }
+              });
+              _markDraftDirty();
+            },
+          ),
         ],
       ),
     );
@@ -5586,7 +6808,10 @@ class _SparkJoyCreateReportScreenState
     required Color selectedColor,
   }) {
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        onTap();
+        _markDraftDirty();
+      },
       borderRadius: BorderRadius.circular(999),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -5614,18 +6839,22 @@ class _SparkJoyCreateReportScreenState
   Widget _stepVehicle() {
     final vinError = _vinError();
     final plateError = _plateError();
-    final vinValid =
-        !_vinUnreadable &&
-        _vinController.text.trim().isNotEmpty &&
-        vinError == null;
-    final plateValid =
-        _plateController.text.trim().isNotEmpty && plateError == null;
     final carButtonTitle = _carButtonName();
     final carTitle = _carName();
     final carMeta = _carMetaLabel();
 
     return Column(
       children: [
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: MyText(
+            text: 'ОБЯЗАТЕЛЬНОЕ',
+            size: 12,
+            color: kGreyColor,
+            weight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
         _card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -5641,8 +6870,14 @@ class _SparkJoyCreateReportScreenState
                   Expanded(
                     child: TextField(
                       controller: _vinController,
+                      focusNode: _vinFocusNode,
                       enabled: !_vinUnreadable,
                       maxLength: 17,
+                      textInputAction: TextInputAction.next,
+                      onSubmitted: (_) {
+                        FocusScope.of(context).requestFocus(_plateFocusNode);
+                      },
+                      onTapOutside: (_) => _dismissKeyboard(),
                       onChanged: (value) {
                         final sanitized = _sanitizeVin(value);
                         if (sanitized == value) {
@@ -5684,10 +6919,8 @@ class _SparkJoyCreateReportScreenState
                 onTap: () {
                   setState(() {
                     _vinUnreadable = !_vinUnreadable;
-                    if (_vinUnreadable) {
-                      _vinController.clear();
-                    }
                   });
+                  _markDraftDirty();
                 },
                 borderRadius: BorderRadius.circular(10),
                 child: Row(
@@ -5697,10 +6930,8 @@ class _SparkJoyCreateReportScreenState
                       onChanged: (value) {
                         setState(() {
                           _vinUnreadable = value ?? false;
-                          if (_vinUnreadable) {
-                            _vinController.clear();
-                          }
                         });
+                        _markDraftDirty();
                       },
                       activeColor: kSecondaryColor,
                     ),
@@ -5713,12 +6944,6 @@ class _SparkJoyCreateReportScreenState
                             size: 12,
                             color: kTertiaryColor,
                           ),
-                          SizedBox(height: 2),
-                          MyText(
-                            text: 'VIN-номер повреждён или не читается',
-                            size: 10,
-                            color: kGreyColor,
-                          ),
                         ],
                       ),
                     ),
@@ -5727,13 +6952,17 @@ class _SparkJoyCreateReportScreenState
               ),
               if (vinError != null)
                 MyText(text: vinError, size: 11, color: kRedColor),
-              if (vinValid)
-                const MyText(
-                  text: 'VIN корректен',
-                  size: 11,
-                  color: kGreenColor,
-                ),
             ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: MyText(
+            text: 'ДОПОЛНИТЕЛЬНО',
+            size: 12,
+            color: kGreyColor,
+            weight: FontWeight.w700,
           ),
         ),
         const SizedBox(height: 10),
@@ -5741,15 +6970,17 @@ class _SparkJoyCreateReportScreenState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const MyText(
-                text: 'Госномер (необяз.)',
-                size: 12,
-                weight: FontWeight.w700,
-              ),
+              const MyText(text: 'Госномер', size: 12, weight: FontWeight.w700),
               const SizedBox(height: 8),
               TextField(
                 controller: _plateController,
+                focusNode: _plateFocusNode,
                 maxLength: 12,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) {
+                  FocusScope.of(context).requestFocus(_adLinkFocusNode);
+                },
+                onTapOutside: (_) => _dismissKeyboard(),
                 onChanged: (value) {
                   final sanitized = _sanitizePlate(value);
                   final formatted = _formatPlate(sanitized);
@@ -5776,14 +7007,6 @@ class _SparkJoyCreateReportScreenState
                 const SizedBox(height: 6),
                 MyText(text: plateError, size: 11, color: kRedColor),
               ],
-              if (plateValid) ...[
-                const SizedBox(height: 6),
-                const MyText(
-                  text: '✓ Госномер корректен',
-                  size: 11,
-                  color: kGreenColor,
-                ),
-              ],
             ],
           ),
         ),
@@ -5793,7 +7016,7 @@ class _SparkJoyCreateReportScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const MyText(
-                text: 'Марка и модель (необяз.)',
+                text: 'Марка и модель',
                 size: 12,
                 weight: FontWeight.w700,
               ),
@@ -5813,7 +7036,7 @@ class _SparkJoyCreateReportScreenState
                       Expanded(
                         child: MyText(
                           text: carButtonTitle.isEmpty
-                              ? 'Нажмите для выбора автомобиля'
+                              ? 'Выбрать автомобиль'
                               : carButtonTitle,
                           size: 13,
                           color: carButtonTitle.isEmpty
@@ -5895,11 +7118,22 @@ class _SparkJoyCreateReportScreenState
           _adLinkController,
           'https://auto.ru/...',
           keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.next,
+          focusNode: _adLinkFocusNode,
+          onSubmitted: (_) {
+            FocusScope.of(context).requestFocus(_mileageFocusNode);
+          },
         ),
         const SizedBox(height: 10),
         TextField(
           controller: _mileageController,
+          focusNode: _mileageFocusNode,
           keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.next,
+          onSubmitted: (_) {
+            FocusScope.of(context).requestFocus(_inspectionCityFocusNode);
+          },
+          onTapOutside: (_) => _dismissKeyboard(),
           onChanged: (value) {
             final cleaned = value.replaceAll(RegExp(r'[^0-9]'), '');
             if (cleaned == value) return;
@@ -5912,10 +7146,14 @@ class _SparkJoyCreateReportScreenState
         ),
         const SizedBox(height: 10),
         _yesNoSelector(
-          title: 'По внешнему состоянию пробег не соответствует заявленному',
-          value: _mileageMismatch,
+          title: 'Пробег соответствует состоянию?',
+          value: _mileageMismatch == null ? null : !_mileageMismatch!,
           allowClear: true,
-          onChanged: (v) => setState(() => _mileageMismatch = v),
+          positiveLabel: 'Да',
+          negativeLabel: 'Нет',
+          clearLabel: 'Не оценивал',
+          onChanged: (v) =>
+              setState(() => _mileageMismatch = v == null ? null : !v),
         ),
         const SizedBox(height: 10),
         _dropdownField(
@@ -5924,7 +7162,13 @@ class _SparkJoyCreateReportScreenState
           _ownersCounts,
         ),
         const SizedBox(height: 10),
-        _input(_inspectionCityController, 'Город осмотра'),
+        _input(
+          _inspectionCityController,
+          'Город осмотра',
+          textInputAction: TextInputAction.done,
+          focusNode: _inspectionCityFocusNode,
+          onSubmitted: (_) => _dismissKeyboard(),
+        ),
       ],
     );
   }
@@ -5936,52 +7180,177 @@ class _SparkJoyCreateReportScreenState
 
     return Column(
       children: [
-        _dropdownField(
-          _engineVolumeController,
-          'Объём двигателя (л)',
-          engineVolumes,
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MyText(
+                text: 'Силовой агрегат',
+                size: 12,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: 8),
+              _dropdownField(
+                _engineVolumeController,
+                'Объём двигателя (л)',
+                engineVolumes,
+                clearable: true,
+              ),
+              const SizedBox(height: 10),
+              _dropdownField(
+                _engineTypeController,
+                'Тип двигателя',
+                _engineTypes,
+                clearable: true,
+              ),
+              const SizedBox(height: 10),
+              _dropdownField(
+                _gearboxTypeController,
+                'Коробка передач',
+                _gearboxTypes,
+                clearable: true,
+              ),
+              const SizedBox(height: 10),
+              _dropdownField(
+                _driveTypeController,
+                'Привод',
+                _driveTypes,
+                clearable: true,
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
-        _dropdownField(_engineTypeController, 'Тип двигателя', _engineTypes),
-        const SizedBox(height: 10),
-        _dropdownField(
-          _gearboxTypeController,
-          'Коробка передач',
-          _gearboxTypes,
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MyText(
+                text: 'Исполнение',
+                size: 12,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: 8),
+              _dropdownField(
+                _colorController,
+                'Цвет',
+                _colors,
+                clearable: true,
+              ),
+              const SizedBox(height: 10),
+              _input(
+                _trimController,
+                'Комплектация',
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _dismissKeyboard(),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
-        _dropdownField(_driveTypeController, 'Привод', _driveTypes),
-        const SizedBox(height: 10),
-        _dropdownField(_colorController, 'Цвет', _colors),
-        const SizedBox(height: 10),
-        _input(_trimController, 'Комплектация'),
       ],
     );
   }
 
   Widget _stepDocsCheck() {
+    final hasMismatch = _docsAnyMismatch();
+
     return Column(
       children: [
         _yesNoSelector(
           title: 'Данные владельца',
-          subtitle: 'ФИО владельца совпадает с ПТС / СТС',
           value: _docsOwnerMatch,
+          subtitle: _docsOwnerMatch == null
+              ? null
+              : _docsStateLabel(_docsOwnerMatch),
+          subtitleColor: _docsStateColor(_docsOwnerMatch),
+          positiveLabel: 'Соответствует',
+          negativeLabel: 'Не соответствует',
           onChanged: (v) => setState(() => _docsOwnerMatch = v),
         ),
         const SizedBox(height: 10),
         _yesNoSelector(
           title: 'Идентификационные номера',
-          subtitle: 'VIN-номер на кузове совпадает с ПТС / СТС',
           value: _docsVinMatch,
+          subtitle: _docsVinMatch == null
+              ? null
+              : _docsStateLabel(_docsVinMatch),
+          subtitleColor: _docsStateColor(_docsVinMatch),
+          positiveLabel: 'Соответствует',
+          negativeLabel: 'Не соответствует',
           onChanged: (v) => setState(() => _docsVinMatch = v),
         ),
         const SizedBox(height: 10),
         _yesNoSelector(
           title: 'Модель двигателя',
-          subtitle: 'Модель ДВС совпадает с ПТС / СТС',
           value: _docsEngineMatch,
+          subtitle: _docsEngineMatch == null
+              ? null
+              : _docsStateLabel(_docsEngineMatch),
+          subtitleColor: _docsStateColor(_docsEngineMatch),
+          positiveLabel: 'Соответствует',
+          negativeLabel: 'Не соответствует',
           onChanged: (v) => setState(() => _docsEngineMatch = v),
         ),
+        if (hasMismatch) ...[
+          const SizedBox(height: 10),
+          _card(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const MyText(
+                  text: 'Комментарий',
+                  size: 11,
+                  color: kGreyColor,
+                  weight: FontWeight.w700,
+                ),
+                const SizedBox(height: 8),
+                _commentInputPanel(
+                  controller: _docsMismatchCommentController,
+                  hint: 'Опишите, что не совпадает',
+                  isDictating: _docsIsDictating,
+                  onToggleDictation: () async {
+                    if (_docsIsDictating) {
+                      await _stopDocsDictation();
+                    } else {
+                      await _startDocsDictation();
+                    }
+                  },
+                  onAiFormat: () {
+                    _formatCommentWithAi(_docsMismatchCommentController);
+                    _markDraftDirty();
+                    setState(() {});
+                  },
+                ),
+                const SizedBox(height: 8),
+                _commentAudioFilesBlock(
+                  files: _docsCommentAudioFiles,
+                  playingIndex: _docsCommentPlayingAudioIndex,
+                  isRecording: _isCommentRecording('docs_comment'),
+                  recordingLabel: _commentRecordingLabel('docs_comment'),
+                  onToggleRecording: _toggleDocsCommentRecording,
+                  onAddAudio: _pickDocsCommentAudioFiles,
+                  onTogglePlay: (index) => _toggleCommentAudioPlayback(
+                    docsComment: true,
+                    index: index,
+                  ),
+                  onRemoveAt: (index) {
+                    setState(() {
+                      final next = [..._docsCommentAudioFiles]..removeAt(index);
+                      _docsCommentAudioFiles = next;
+                      if (_docsCommentPlayingAudioIndex == index) {
+                        _docsCommentPlayingAudioIndex = -1;
+                        unawaited(_sectionCommentAudioPlayer.stop());
+                      } else if (_docsCommentPlayingAudioIndex > index) {
+                        _docsCommentPlayingAudioIndex -= 1;
+                      }
+                    });
+                    _markDraftDirty();
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -5991,32 +7360,31 @@ class _SparkJoyCreateReportScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
-              Icon(Icons.description_outlined, size: 16, color: kGreyColor),
+          const Row(
+            children: [
+              Icon(Icons.attach_file_rounded, size: 16, color: kGreyColor),
               SizedBox(width: 6),
               MyText(
-                text: 'Документы проверки',
+                text: 'Файлы специалиста',
                 size: 12,
                 weight: FontWeight.w700,
               ),
-              Spacer(),
-              MyText(text: 'PDF, Word', size: 10, color: kGreyColor),
             ],
-          ),
-          const SizedBox(height: 6),
-          const MyText(
-            text:
-                'Загрузите файлы юридической проверки (отчёты, выписки, заключения)',
-            size: 11,
-            color: kGreyColor,
           ),
           const SizedBox(height: 8),
           OutlinedButton.icon(
             onPressed: _pickLegalFiles,
             icon: const Icon(Icons.upload_file_rounded),
-            label: const Text('Загрузить файл'),
+            label: const Text('Добавить файл'),
           ),
+          if (_legalFiles.isEmpty) ...[
+            const SizedBox(height: 8),
+            const MyText(
+              text: 'Файлы пока не добавлены',
+              size: 11,
+              color: kGreyColor,
+            ),
+          ],
           if (_legalFiles.isNotEmpty) ...[
             const SizedBox(height: 8),
             ...List.generate(_legalFiles.length, (index) {
@@ -6055,6 +7423,7 @@ class _SparkJoyCreateReportScreenState
                             final next = [..._legalFiles]..removeAt(index);
                             _legalFiles = next;
                           });
+                          _markDraftDirty();
                         },
                         borderRadius: BorderRadius.circular(999),
                         child: const Padding(
@@ -6078,288 +7447,147 @@ class _SparkJoyCreateReportScreenState
   }
 
   Widget _stepLegal() {
-    Future<void> continueFromLegal() async {
-      await _saveAndOpenNextSection();
-    }
-
-    if (_legalLoaded) {
-      return Column(
-        children: [
-          _card(
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.check_circle_outline,
-                  color: kGreenColor,
-                  size: 34,
-                ),
-                const SizedBox(height: 8),
-                const MyText(
-                  text: 'Проверка завершена',
-                  size: 14,
-                  weight: FontWeight.w700,
-                ),
-                const SizedBox(height: 4),
-                const MyText(
-                  text: 'Юридическая информация загружена',
-                  size: 11,
-                  color: kGreyColor,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          MyButton(buttonText: 'Продолжить', onTap: continueFromLegal),
-        ],
-      );
-    }
-
-    if (_legalLoading) {
-      const labels = ['Владельцы', 'ДТП', 'Залоги', 'Ограничения'];
-      return Column(
-        children: [
-          _card(
-            child: Column(
-              children: const [
-                SizedBox(height: 8),
-                CircularProgressIndicator(color: kSecondaryColor),
-                SizedBox(height: 12),
-                MyText(
-                  text: 'Загрузка данных…',
-                  size: 13,
-                  weight: FontWeight.w700,
-                ),
-                SizedBox(height: 4),
-                MyText(
-                  text: 'Проверяем юридическую историю автомобиля',
-                  size: 11,
-                  color: kGreyColor,
-                ),
-                SizedBox(height: 8),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          ...labels.map((label) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _card(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: kLightGreyColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          MyText(text: label, size: 11, color: kGreyColor),
-                          const SizedBox(height: 6),
-                          Container(
-                            height: 8,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: kLightGreyColor,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-        ],
-      );
-    }
-
-    if (!_legalPurchased && !_legalTimedOut) {
-      return Column(
-        children: [
-          _card(
-            child: Column(
-              children: [
-                const Icon(
-                  Icons.find_in_page_outlined,
-                  color: kSecondaryColor,
-                  size: 34,
-                ),
-                const SizedBox(height: 8),
-                const MyText(
-                  text: 'Юридическая проверка',
-                  size: 14,
-                  weight: FontWeight.w700,
-                ),
-                const SizedBox(height: 4),
-                const MyText(
-                  text:
-                      'Проверка владельцев, ДТП, залогов, ограничений и розыска',
-                  size: 11,
-                  color: kGreyColor,
-                ),
-                const SizedBox(height: 10),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: kSecondaryColor.withValues(alpha: 0.06),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: kSecondaryColor.withValues(alpha: 0.2),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const MyText(
-                        text: 'Купить полный отчёт',
-                        size: 13,
-                        weight: FontWeight.w700,
-                      ),
-                      const SizedBox(height: 6),
-                      const MyText(
-                        text:
-                            'Получите полную юридическую проверку: владельцы, ДТП, залоги, ограничения, розыск и история обслуживания.',
-                        size: 11,
-                        color: kGreyColor,
-                      ),
-                      const SizedBox(height: 10),
-                      MyButton(
-                        buttonText: 'Купить отчёт — 50 ₽',
-                        onTap: _startLegalLoading,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          _legalFilesCard(),
-          const SizedBox(height: 10),
-          OutlinedButton(
-            onPressed: () async {
-              setState(() => _legalSkipped = true);
-              await continueFromLegal();
-            },
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(44),
-              side: const BorderSide(color: kBorderColor),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text('Пропустить'),
-          ),
-        ],
-      );
-    }
-
-    if (_legalTimedOut && !_legalSkipped) {
-      return Column(
-        children: [
-          _card(
-            child: Column(
-              children: const [
-                Icon(Icons.error_outline, color: kRedColor, size: 30),
-                SizedBox(height: 8),
-                MyText(
-                  text: 'Не удалось подгрузить данные',
-                  size: 13,
-                  weight: FontWeight.w700,
-                ),
-                SizedBox(height: 4),
-                MyText(
-                  text: 'Сервер не ответил. Вы можете загрузить данные позже.',
-                  size: 11,
-                  color: kGreyColor,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () async {
-              setState(() => _legalSkipped = true);
-              await continueFromLegal();
-            },
-            icon: const Icon(Icons.schedule_outlined),
-            label: const Text('Подгрузить позже'),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(44),
-              side: const BorderSide(color: kYellowColor),
-              foregroundColor: kYellowColor,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
+    final statusLabel = _legalLoading
+        ? 'В процессе'
+        : (_legalLoaded
+              ? 'Готов'
+              : (_legalTimedOut
+                    ? 'Ошибка'
+                    : (_legalSkipped ? 'Отложено' : 'Не готов')));
+    final statusColor = _legalLoading
+        ? kSecondaryColor
+        : (_legalLoaded
+              ? kGreenColor
+              : (_legalTimedOut
+                    ? kRedColor
+                    : (_legalSkipped ? kYellowColor : kGreyColor)));
 
     return Column(
       children: [
         _card(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (_legalPurchased) ...[
-                const Icon(
-                  Icons.check_circle_outline,
-                  color: kSecondaryColor,
-                  size: 34,
+              const Row(
+                children: [
+                  Icon(Icons.gavel_rounded, size: 16, color: kSecondaryColor),
+                  SizedBox(width: 6),
+                  MyText(
+                    text: 'Юридическая помощь',
+                    size: 13,
+                    weight: FontWeight.w700,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
                 ),
-                const SizedBox(height: 8),
-                const MyText(
-                  text: 'Отчёт уже куплен',
-                  size: 14,
-                  weight: FontWeight.w700,
-                ),
-                const SizedBox(height: 4),
-                const MyText(
-                  text:
-                      'Данные будут загружены автоматически, когда сервер ответит',
-                  size: 11,
-                  color: kGreyColor,
-                ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: _startLegalLoading,
-                  icon: const Icon(Icons.find_in_page_outlined),
-                  label: const Text('Повторить загрузку'),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(44),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: statusColor.withValues(alpha: 0.28),
                   ),
                 ),
-              ] else ...[
-                const MyText(
-                  text: 'Проверка пропущена',
-                  size: 13,
-                  color: kGreyColor,
+                child: MyText(
+                  text: statusLabel,
+                  size: 11,
+                  color: statusColor,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              if (_legalLoading) ...[
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: const LinearProgressIndicator(
+                    minHeight: 6,
+                    backgroundColor: kLightGreyColor,
+                    valueColor: AlwaysStoppedAnimation<Color>(kSecondaryColor),
+                  ),
                 ),
               ],
+              const SizedBox(height: 10),
+              IgnorePointer(
+                ignoring: _legalLoading,
+                child: MyButton(
+                  buttonText: _legalLoaded
+                      ? 'Обновить отчет'
+                      : (_legalLoading
+                            ? 'Формирование...'
+                            : 'Сформировать отчет'),
+                  onTap: _startLegalLoading,
+                  bgColor: _legalLoading
+                      ? kGreyColor.withValues(alpha: 0.5)
+                      : null,
+                ),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 10),
         _legalFilesCard(),
         const SizedBox(height: 10),
-        MyButton(buttonText: 'Продолжить', onTap: continueFromLegal),
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MyText(
+                text: 'Комментарий',
+                size: 11,
+                color: kGreyColor,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: 8),
+              _commentInputPanel(
+                controller: _legalNoteController,
+                isDictating: _legalIsDictating,
+                onToggleDictation: () async {
+                  if (_legalIsDictating) {
+                    await _stopLegalDictation();
+                  } else {
+                    await _startLegalDictation();
+                  }
+                },
+                onAiFormat: () {
+                  _formatCommentWithAi(_legalNoteController);
+                  _markDraftDirty();
+                  setState(() {});
+                },
+              ),
+              const SizedBox(height: 8),
+              _commentAudioFilesBlock(
+                files: _legalCommentAudioFiles,
+                playingIndex: _legalCommentPlayingAudioIndex,
+                isRecording: _isCommentRecording('legal_comment'),
+                recordingLabel: _commentRecordingLabel('legal_comment'),
+                onToggleRecording: _toggleLegalCommentRecording,
+                onAddAudio: _pickLegalCommentAudioFiles,
+                onTogglePlay: (index) => _toggleCommentAudioPlayback(
+                  docsComment: false,
+                  index: index,
+                ),
+                onRemoveAt: (index) {
+                  setState(() {
+                    final next = [..._legalCommentAudioFiles]..removeAt(index);
+                    _legalCommentAudioFiles = next;
+                    if (_legalCommentPlayingAudioIndex == index) {
+                      _legalCommentPlayingAudioIndex = -1;
+                      unawaited(_sectionCommentAudioPlayer.stop());
+                    } else if (_legalCommentPlayingAudioIndex > index) {
+                      _legalCommentPlayingAudioIndex -= 1;
+                    }
+                  });
+                  _markDraftDirty();
+                },
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -6412,12 +7640,10 @@ class _SparkJoyCreateReportScreenState
             const MyText(text: 'мкм', size: 11, color: kGreyColor),
           ],
         ),
-        const SizedBox(height: 2),
-        MyText(
-          text: manuallySet ? 'Задано вручную' : 'Нет данных — задайте вручную',
-          size: 11,
-          color: kGreyColor,
-        ),
+        if (manuallySet) ...[
+          const SizedBox(height: 2),
+          const MyText(text: 'Задано вручную', size: 11, color: kGreyColor),
+        ],
         if (editing) ...[
           RangeSlider(
             values: RangeValues(safeFrom, safeTo),
@@ -6433,7 +7659,82 @@ class _SparkJoyCreateReportScreenState
               MyText(text: '1500 мкм', size: 10, color: kGreyColor),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _paintManualValueField(
+                  label: 'От',
+                  value: safeFrom,
+                  onSubmitted: (manualFrom) {
+                    final fromValue = manualFrom.toDouble();
+                    final toValue = math.max(fromValue, safeTo);
+                    onChanged(RangeValues(fromValue, toValue));
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _paintManualValueField(
+                  label: 'До',
+                  value: safeTo,
+                  onSubmitted: (manualTo) {
+                    final toValue = manualTo.toDouble();
+                    final fromValue = math.min(safeFrom, toValue);
+                    onChanged(RangeValues(fromValue, toValue));
+                  },
+                ),
+              ),
+            ],
+          ),
         ],
+      ],
+    );
+  }
+
+  Widget _paintManualValueField({
+    required String label,
+    required double value,
+    required ValueChanged<int> onSubmitted,
+  }) {
+    var rawValue = value.round().toString();
+    void submitRawValue() {
+      final parsed = int.tryParse(rawValue.trim());
+      if (parsed == null) return;
+      onSubmitted(parsed.clamp(50, 1500));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MyText(text: label, size: 10, color: kGreyColor),
+        const SizedBox(height: 4),
+        TextFormField(
+          key: ValueKey('$label-${value.round()}'),
+          initialValue: value.round().toString(),
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (value) {
+            rawValue = value;
+            final parsed = int.tryParse(value.trim());
+            if (parsed == null) return;
+            if (parsed < 50) return;
+            onSubmitted(parsed.clamp(50, 1500));
+          },
+          onEditingComplete: submitRawValue,
+          onTapOutside: (_) {
+            _dismissKeyboard();
+          },
+          decoration: _fieldDecoration('мкм').copyWith(
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 10,
+              vertical: 8,
+            ),
+          ),
+          onFieldSubmitted: (_) => submitRawValue(),
+        ),
       ],
     );
   }
@@ -6450,12 +7751,27 @@ class _SparkJoyCreateReportScreenState
   Future<bool> _openMediaInspectionEditor({
     required String groupKey,
     required int index,
+    List<int>? applyToIndexes,
     bool saveDraftOnClose = true,
   }) async {
     final group = _mediaState[groupKey];
     if (group == null || index < 0 || index >= group.files.length) return false;
 
+    final targetIndexes =
+        (applyToIndexes ?? const <int>[])
+            .where((value) => value >= 0 && value < group.files.length)
+            .toSet()
+            .toList()
+          ..sort();
+    if (targetIndexes.isEmpty) {
+      targetIndexes.add(index);
+    }
+
     final item = group.files[index];
+    final targetUrls = targetIndexes
+        .map((itemIndex) => group.files[itemIndex].dataUrl)
+        .where((url) => url.trim().isNotEmpty)
+        .toSet();
     final basePartInspection = _mediaPartInspectionIsEmpty(group.partInspection)
         ? _deriveGroupPartInspection(
             files: group.files,
@@ -6514,6 +7830,7 @@ class _SparkJoyCreateReportScreenState
           : basePartInspection.note,
     );
     final customTagController = TextEditingController();
+    final customTagFocusNode = FocusNode();
     var customTagSeverity = 'minor';
     var paintToolsExpanded = false;
     final recorder = AudioRecorder();
@@ -6601,10 +7918,21 @@ class _SparkJoyCreateReportScreenState
 
       if (keepResult && pcmBytes.isNotEmpty) {
         final wavBytes = _pcm16ToWav(pcmBytes, sampleRate: 16000);
-        audioRecordings = [
-          ...audioRecordings,
-          'data:audio/wav;base64,${base64Encode(wavBytes)}',
-        ];
+        String? stored;
+        if (kIsWeb) {
+          stored = 'data:audio/wav;base64,${base64Encode(wavBytes)}';
+        } else {
+          stored = await _persistBytesToAppStorage(
+            bytes: wavBytes,
+            mimeType: 'audio/wav',
+            prefix: '${groupKey}_part_audio',
+          );
+        }
+        if ((stored ?? '').trim().isNotEmpty) {
+          audioRecordings = [...audioRecordings, stored!.trim()];
+        } else {
+          await showMessage('Не удалось сохранить аудио локально');
+        }
       }
 
       if (!dialogActive) return;
@@ -6777,8 +8105,6 @@ class _SparkJoyCreateReportScreenState
                 tagOrderByScope: tagOrderByScope,
                 includeDisabledDefaults: true,
               );
-              final customTagsInScope =
-                  customTagsByScope[scopeKey] ?? const <String>[];
               final disabledDefaultsInScope =
                   disabledDefaultTagsByScope[scopeKey] ?? const <String>[];
               final viewportWidth = MediaQuery.of(context).size.width;
@@ -6789,6 +8115,83 @@ class _SparkJoyCreateReportScreenState
               final dialogShellWidth = viewportWidth > 560
                   ? 460.0
                   : viewportWidth;
+              void addCustomTag() {
+                final input = customTagController.text.trim();
+                if (input.isEmpty) return;
+
+                final next = customTagsByScope[scopeKey] != null
+                    ? [...customTagsByScope[scopeKey]!]
+                    : <String>[];
+
+                String selectedValue = input;
+                final lower = input.toLowerCase();
+                for (final tag in next) {
+                  if (tag.toLowerCase() == lower) {
+                    selectedValue = tag;
+                    break;
+                  }
+                }
+                if (!next.any((tag) => tag.toLowerCase() == lower)) {
+                  next.add(input);
+                  selectedValue = input;
+                }
+                customTagsByScope[scopeKey] = next;
+                final customSerious = customSeriousTagsByScope[scopeKey] != null
+                    ? [...customSeriousTagsByScope[scopeKey]!]
+                    : <String>[];
+                customSerious.removeWhere(
+                  (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                );
+                if (customTagSeverity == 'serious') {
+                  customSerious.add(selectedValue);
+                }
+                if (customSerious.isEmpty) {
+                  customSeriousTagsByScope.remove(scopeKey);
+                } else {
+                  customSeriousTagsByScope[scopeKey] = customSerious;
+                }
+                disabledDefaultTagsByScope[scopeKey] =
+                    (disabledDefaultTagsByScope[scopeKey] ?? const <String>[])
+                        .where((tag) => tag.toLowerCase() != lower)
+                        .toList();
+                final baselineOrder = [
+                  ...(tagOrderByScope[scopeKey] ??
+                      tagGroupsAll
+                          .expand(
+                            (entry) => entry.options.map((tag) => tag.label),
+                          )
+                          .toList()),
+                ];
+                final order = <String>[];
+                for (final value in baselineOrder) {
+                  if (order.any(
+                    (item) => item.toLowerCase() == value.toLowerCase(),
+                  )) {
+                    continue;
+                  }
+                  order.add(value);
+                }
+                order.removeWhere(
+                  (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                );
+                order.add(selectedValue);
+                tagOrderByScope[scopeKey] = order;
+                if (!selectedTags.any(
+                  (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                )) {
+                  selectedTags.add(selectedValue);
+                }
+                customTagSeverity = 'minor';
+                manageTagsMode = true;
+                customTagController.clear();
+                setLocalState(() {});
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!dialogActive || !customTagFocusNode.canRequestFocus) {
+                    return;
+                  }
+                  customTagFocusNode.requestFocus();
+                });
+              }
 
               return Dialog(
                 insetPadding: EdgeInsets.zero,
@@ -6838,6 +8241,8 @@ class _SparkJoyCreateReportScreenState
                             child: Padding(
                               padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
                               child: SingleChildScrollView(
+                                keyboardDismissBehavior:
+                                    ScrollViewKeyboardDismissBehavior.onDrag,
                                 child: SizedBox(
                                   width: dialogContentWidth,
                                   child: Column(
@@ -6889,32 +8294,6 @@ class _SparkJoyCreateReportScreenState
                                           });
                                         },
                                       ),
-                                      if (requiresElementType &&
-                                          !canEditDetails) ...[
-                                        const SizedBox(height: 10),
-                                        Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            border: Border.all(
-                                              color: kBorderColor,
-                                            ),
-                                            color: kInputBgColor,
-                                          ),
-                                          child: const MyText(
-                                            text:
-                                                'Сначала выберите тип элемента, затем отметьте состояние и теги.',
-                                            size: 11,
-                                            color: kGreyColor,
-                                          ),
-                                        ),
-                                      ],
                                       if (canEditDetails && supportsPaint) ...[
                                         const SizedBox(height: 10),
                                         Container(
@@ -6962,6 +8341,7 @@ class _SparkJoyCreateReportScreenState
                                                 to: paintTo,
                                                 editing: paintEditing,
                                                 onToggle: () {
+                                                  _dismissKeyboard();
                                                   setLocalState(
                                                     () => paintEditing =
                                                         !paintEditing,
@@ -7078,28 +8458,6 @@ class _SparkJoyCreateReportScreenState
                                           ],
                                         ),
                                         if (manageTagsMode) ...[
-                                          Container(
-                                            width: double.infinity,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 8,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              border: Border.all(
-                                                color: kBorderColor,
-                                              ),
-                                              color: kInputBgColor,
-                                            ),
-                                            child: const MyText(
-                                              text:
-                                                  'Можно скрыть дефолтные теги и удалить кастомные.',
-                                              size: 11,
-                                              color: kGreyColor,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 8),
                                           if (tagGroupsAll.isEmpty)
                                             const MyText(
                                               text:
@@ -7467,15 +8825,6 @@ class _SparkJoyCreateReportScreenState
                                               ),
                                             );
                                           }),
-                                          if (customTagsInScope.isNotEmpty) ...[
-                                            const SizedBox(height: 2),
-                                            MyText(
-                                              text:
-                                                  'Кастомных тегов: ${customTagsInScope.length}',
-                                              size: 11,
-                                              color: kGreyColor,
-                                            ),
-                                          ],
                                           const SizedBox(height: 8),
                                           Container(
                                             width: double.infinity,
@@ -7544,8 +8893,17 @@ class _SparkJoyCreateReportScreenState
                                                   children: [
                                                     Expanded(
                                                       child: TextField(
+                                                        focusNode:
+                                                            customTagFocusNode,
                                                         controller:
                                                             customTagController,
+                                                        textInputAction:
+                                                            TextInputAction
+                                                                .done,
+                                                        onSubmitted: (_) =>
+                                                            addCustomTag(),
+                                                        onTapOutside: (_) =>
+                                                            _dismissKeyboard(),
                                                         decoration:
                                                             _fieldDecoration(
                                                               'Свой тег',
@@ -7561,118 +8919,7 @@ class _SparkJoyCreateReportScreenState
                                                     ),
                                                     const SizedBox(width: 8),
                                                     OutlinedButton(
-                                                      onPressed: () {
-                                                        final input =
-                                                            customTagController
-                                                                .text
-                                                                .trim();
-                                                        if (input.isEmpty) {
-                                                          return;
-                                                        }
-
-                                                        final next =
-                                                            customTagsByScope[scopeKey] !=
-                                                                null
-                                                            ? [
-                                                                ...customTagsByScope[scopeKey]!,
-                                                              ]
-                                                            : <String>[];
-
-                                                        String selectedValue =
-                                                            input;
-                                                        final lower = input
-                                                            .toLowerCase();
-                                                        for (final tag
-                                                            in next) {
-                                                          if (tag.toLowerCase() ==
-                                                              lower) {
-                                                            selectedValue = tag;
-                                                            break;
-                                                          }
-                                                        }
-                                                        if (!next.any(
-                                                          (tag) =>
-                                                              tag.toLowerCase() ==
-                                                              lower,
-                                                        )) {
-                                                          next.add(input);
-                                                          selectedValue = input;
-                                                        }
-                                                        customTagsByScope[scopeKey] =
-                                                            next;
-                                                        final customSerious =
-                                                            customSeriousTagsByScope[scopeKey] !=
-                                                                null
-                                                            ? [
-                                                                ...customSeriousTagsByScope[scopeKey]!,
-                                                              ]
-                                                            : <String>[];
-                                                        customSerious.removeWhere(
-                                                          (tag) =>
-                                                              tag
-                                                                  .toLowerCase() ==
-                                                              selectedValue
-                                                                  .toLowerCase(),
-                                                        );
-                                                        if (customTagSeverity ==
-                                                            'serious') {
-                                                          customSerious.add(
-                                                            selectedValue,
-                                                          );
-                                                        }
-                                                        if (customSerious
-                                                            .isEmpty) {
-                                                          customSeriousTagsByScope
-                                                              .remove(scopeKey);
-                                                        } else {
-                                                          customSeriousTagsByScope[scopeKey] =
-                                                              customSerious;
-                                                        }
-                                                        disabledDefaultTagsByScope[scopeKey] =
-                                                            (disabledDefaultTagsByScope[scopeKey] ??
-                                                                    const <
-                                                                      String
-                                                                    >[])
-                                                                .where(
-                                                                  (tag) =>
-                                                                      tag.toLowerCase() !=
-                                                                      lower,
-                                                                )
-                                                                .toList();
-                                                        final order = [
-                                                          ...(tagOrderByScope[scopeKey] ??
-                                                              const <String>[]),
-                                                        ];
-                                                        if (!order.any(
-                                                          (tag) =>
-                                                              tag
-                                                                  .toLowerCase() ==
-                                                              selectedValue
-                                                                  .toLowerCase(),
-                                                        )) {
-                                                          order.add(
-                                                            selectedValue,
-                                                          );
-                                                        }
-                                                        tagOrderByScope[scopeKey] =
-                                                            order;
-                                                        if (!selectedTags.any(
-                                                          (tag) =>
-                                                              tag
-                                                                  .toLowerCase() ==
-                                                              selectedValue
-                                                                  .toLowerCase(),
-                                                        )) {
-                                                          selectedTags.add(
-                                                            selectedValue,
-                                                          );
-                                                        }
-                                                        customTagSeverity =
-                                                            'minor';
-                                                        customTagController
-                                                            .clear();
-                                                        setLocalState(() {});
-                                                      },
+                                                      onPressed: addCustomTag,
                                                       child: const Text(
                                                         'Добавить',
                                                       ),
@@ -7761,7 +9008,7 @@ class _SparkJoyCreateReportScreenState
                                       if (canEditDetails) ...[
                                         const SizedBox(height: 10),
                                         const MyText(
-                                          text: 'Комментарий по элементу',
+                                          text: 'Комментарий',
                                           size: 11,
                                           color: kGreyColor,
                                           weight: FontWeight.w700,
@@ -7790,8 +9037,10 @@ class _SparkJoyCreateReportScreenState
                                             children: [
                                               TextField(
                                                 controller: noteController,
-                                                minLines: 5,
-                                                maxLines: 7,
+                                                minLines: 7,
+                                                maxLines: 10,
+                                                onTapOutside: (_) =>
+                                                    _dismissKeyboard(),
                                                 style: const TextStyle(
                                                   fontSize: 14,
                                                 ),
@@ -7894,8 +9143,8 @@ class _SparkJoyCreateReportScreenState
                                                             MyText(
                                                               text: isDictating
                                                                   ? 'Стоп'
-                                                                  : 'Голос в текст',
-                                                              size: 10,
+                                                                  : 'Голос',
+                                                              size: 9,
                                                               weight: FontWeight
                                                                   .w700,
                                                               color: isDictating
@@ -7952,9 +9201,8 @@ class _SparkJoyCreateReportScreenState
                                                             ),
                                                             SizedBox(width: 5),
                                                             MyText(
-                                                              text:
-                                                                  'ИИ для комментария',
-                                                              size: 10,
+                                                              text: 'ИИ',
+                                                              size: 9,
                                                               weight: FontWeight
                                                                   .w700,
                                                               color:
@@ -7971,74 +9219,55 @@ class _SparkJoyCreateReportScreenState
                                           ),
                                         ),
                                         const SizedBox(height: 8),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: OutlinedButton.icon(
-                                                onPressed: () async {
-                                                  if (isRecording) {
-                                                    await stopRecording(
-                                                      setLocalState,
-                                                    );
-                                                  } else {
-                                                    await startRecording(
-                                                      setLocalState,
-                                                    );
-                                                  }
-                                                },
-                                                icon: const Icon(
-                                                  Icons.graphic_eq_rounded,
-                                                  size: 16,
-                                                ),
-                                                label: Text(
-                                                  isRecording
-                                                      ? 'Стоп (${recordingLabel()})'
-                                                      : 'Аудиозапись',
-                                                ),
-                                              ),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: OutlinedButton.icon(
+                                            onPressed: () async {
+                                              if (isRecording) {
+                                                await stopRecording(
+                                                  setLocalState,
+                                                );
+                                              } else {
+                                                await startRecording(
+                                                  setLocalState,
+                                                );
+                                              }
+                                            },
+                                            icon: const Icon(
+                                              Icons.graphic_eq_rounded,
+                                              size: 16,
                                             ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: OutlinedButton.icon(
-                                                onPressed: () async {
-                                                  final picked =
-                                                      await _pickFiles(
-                                                        type: FileType.custom,
-                                                        allowedExtensions:
-                                                            const [
-                                                              'mp3',
-                                                              'm4a',
-                                                              'wav',
-                                                              'aac',
-                                                              'ogg',
-                                                              'oga',
-                                                            ],
-                                                      );
-                                                  if (picked.isEmpty) return;
-                                                  setLocalState(() {
-                                                    final next = <String>[
-                                                      ...audioRecordings,
-                                                      ...picked
-                                                          .where(
-                                                            (file) =>
-                                                                file.isAudio,
-                                                          )
-                                                          .map(
-                                                            (file) =>
-                                                                file.dataUrl,
-                                                          ),
-                                                    ];
-                                                    audioRecordings = next;
-                                                  });
-                                                },
-                                                icon: const Icon(
-                                                  Icons.upload_file_rounded,
-                                                  size: 16,
-                                                ),
-                                                label: const Text('Аудиофайл'),
-                                              ),
+                                            label: Text(
+                                              isRecording
+                                                  ? 'Стоп (${recordingLabel()})'
+                                                  : 'Записать голосовое',
                                             ),
-                                          ],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        SizedBox(
+                                          width: double.infinity,
+                                          child: OutlinedButton.icon(
+                                            onPressed: () async {
+                                              final picked =
+                                                  await _pickCommentAudioFiles();
+                                              if (picked.isEmpty) return;
+                                              setLocalState(() {
+                                                audioRecordings = <String>[
+                                                  ...audioRecordings,
+                                                  ...picked
+                                                      .map((file) => file.dataUrl),
+                                                ];
+                                              });
+                                            },
+                                            icon: const Icon(
+                                              Icons.upload_file_rounded,
+                                              size: 16,
+                                            ),
+                                            label: const Text(
+                                              'Приложить аудиофайл',
+                                            ),
+                                          ),
                                         ),
                                         if (audioRecordings.isNotEmpty) ...[
                                           const SizedBox(height: 8),
@@ -8256,6 +9485,7 @@ class _SparkJoyCreateReportScreenState
     final noteValue = noteController.text.trim();
     noteController.dispose();
     customTagController.dispose();
+    customTagFocusNode.dispose();
     if (!mounted) return false;
 
     final selectedByLower = <String, String>{};
@@ -8289,11 +9519,11 @@ class _SparkJoyCreateReportScreenState
         entry.key,
         () => <String>{},
       );
-      urls.add(item.dataUrl);
+      urls.addAll(targetUrls);
     }
     for (final entry in normalizedTagPhotosByLower.entries) {
       if (selectedByLower.containsKey(entry.key)) continue;
-      entry.value.remove(item.dataUrl);
+      entry.value.removeWhere(targetUrls.contains);
     }
 
     final nextTagPhotos = <String, List<String>>{};
@@ -8347,6 +9577,7 @@ class _SparkJoyCreateReportScreenState
       final nextFiles = _applyPartInspectionToFiles(
         files: current.files,
         partInspection: nextPartInspection,
+        applyToFileUrls: targetUrls,
       );
       final hasIssue = nextFiles.any(_mediaItemHasIssue);
       _mediaState[groupKey] = current.copyWith(
@@ -8435,6 +9666,7 @@ class _SparkJoyCreateReportScreenState
     final saved = await _openMediaInspectionEditor(
       groupKey: groupKey,
       index: templateIndex,
+      applyToIndexes: validSelected,
       saveDraftOnClose: false,
     );
     if (!saved || !mounted) return;
@@ -9027,21 +10259,6 @@ class _SparkJoyCreateReportScreenState
     });
   }
 
-  String _mediaGroupShortStats(String groupKey, _MediaGroupState state) {
-    final fileCount = state.files.length;
-    if (fileCount == 0) return 'Нажмите, чтобы добавить';
-
-    final parts = <String>['$fileCount фото'];
-    final ok = _groupNoDamageElementsCount(groupKey, state);
-    final serious = _groupSeriousTagCount(groupKey, state);
-    final minor = _groupMinorTagCount(groupKey, state);
-
-    if (ok > 0) parts.add('$ok ок');
-    if (serious > 0) parts.add('$serious серьёзн.');
-    if (minor > 0) parts.add('$minor незначит.');
-    return parts.join(' · ');
-  }
-
   Widget _mediaPaintSummaryBlock({
     required String title,
     required double from,
@@ -9050,6 +10267,8 @@ class _SparkJoyCreateReportScreenState
     required VoidCallback onToggle,
     required ValueChanged<RangeValues> onChanged,
   }) {
+    final safeFrom = from.clamp(50, 1500).toDouble();
+    final safeTo = to.clamp(safeFrom, 1500).toDouble();
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Column(
@@ -9081,7 +10300,7 @@ class _SparkJoyCreateReportScreenState
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               MyText(
-                text: '${from.round()}–${to.round()}',
+                text: '${safeFrom.round()}–${safeTo.round()}',
                 size: 24,
                 weight: FontWeight.w800,
               ),
@@ -9093,15 +10312,9 @@ class _SparkJoyCreateReportScreenState
             ],
           ),
           const SizedBox(height: 8),
-          if (!editing)
-            const MyText(
-              text: 'Нет данных — задайте вручную',
-              size: 11,
-              color: kGreyColor,
-            )
-          else ...[
+          if (editing) ...[
             RangeSlider(
-              values: RangeValues(from, to),
+              values: RangeValues(safeFrom, safeTo),
               min: 50,
               max: 1500,
               divisions: 145,
@@ -9112,6 +10325,34 @@ class _SparkJoyCreateReportScreenState
                 MyText(text: '50 мкм', size: 10, color: kGreyColor),
                 Spacer(),
                 MyText(text: '1500 мкм', size: 10, color: kGreyColor),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: _paintManualValueField(
+                    label: 'От',
+                    value: safeFrom,
+                    onSubmitted: (manualFrom) {
+                      final fromValue = manualFrom.toDouble();
+                      final toValue = math.max(fromValue, safeTo);
+                      onChanged(RangeValues(fromValue, toValue));
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _paintManualValueField(
+                    label: 'До',
+                    value: safeTo,
+                    onSubmitted: (manualTo) {
+                      final toValue = manualTo.toDouble();
+                      final fromValue = math.min(safeFrom, toValue);
+                      onChanged(RangeValues(fromValue, toValue));
+                    },
+                  ),
+                ),
               ],
             ),
           ],
@@ -9126,9 +10367,19 @@ class _SparkJoyCreateReportScreenState
     final hasFiles = fileCount > 0;
     final hasIssue = _groupHasIssue(state);
     final fullyMarked = _groupFullyMarked(state);
-    final subtitle = hasFiles
-        ? _mediaGroupShortStats(groupKey, state)
-        : 'Нажмите, чтобы добавить';
+    final notesCount = state.files
+        .where((file) => _mediaInspectionHasData(file.inspection))
+        .length;
+    final statusLabel = !hasFiles
+        ? 'Пусто'
+        : (hasIssue
+              ? 'Замечания'
+              : (notesCount > 0 ? 'Есть заметки' : 'Готово'));
+    final statusColor = !hasFiles
+        ? kGreyColor
+        : (hasIssue
+              ? kRedColor
+              : (notesCount > 0 ? kGreenColor : kSecondaryColor));
     final leadBg = hasFiles
         ? (hasIssue
               ? kRedColor.withValues(alpha: 0.1)
@@ -9145,7 +10396,10 @@ class _SparkJoyCreateReportScreenState
         from: _bodyPaintFrom,
         to: _bodyPaintTo,
         editing: _bodyPaintEditing,
-        onToggle: () => setState(() => _bodyPaintEditing = !_bodyPaintEditing),
+        onToggle: () {
+          _dismissKeyboard();
+          setState(() => _bodyPaintEditing = !_bodyPaintEditing);
+        },
         onChanged: (values) {
           setState(() {
             _bodyPaintFrom = values.start.roundToDouble();
@@ -9159,8 +10413,10 @@ class _SparkJoyCreateReportScreenState
         from: _structPaintFrom,
         to: _structPaintTo,
         editing: _structPaintEditing,
-        onToggle: () =>
-            setState(() => _structPaintEditing = !_structPaintEditing),
+        onToggle: () {
+          _dismissKeyboard();
+          setState(() => _structPaintEditing = !_structPaintEditing);
+        },
         onChanged: (values) {
           setState(() {
             _structPaintFrom = values.start.roundToDouble();
@@ -9228,8 +10484,24 @@ class _SparkJoyCreateReportScreenState
                             size: 16,
                             weight: FontWeight.w700,
                           ),
-                          const SizedBox(height: 4),
-                          MyText(text: subtitle, size: 11, color: kGreyColor),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              _mediaMetaPill(
+                                icon: Icons.radio_button_checked_rounded,
+                                text: statusLabel,
+                                color: statusColor,
+                              ),
+                              if (notesCount > 0)
+                                _mediaMetaPill(
+                                  icon: Icons.edit_note_rounded,
+                                  text: 'С заметкой $notesCount',
+                                  color: kGreenColor,
+                                ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
@@ -9238,9 +10510,41 @@ class _SparkJoyCreateReportScreenState
                 ),
               ),
             ),
-            if (footer != null) ...[const Divider(height: 1), footer],
+            if (footer != null) ...[
+              const Divider(height: 1),
+              // Изолируем область ЛКП от onTap карточки группы,
+              // чтобы ввод ручных значений не открывал галерею.
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {},
+                child: footer,
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _mediaMetaPill({
+    required IconData icon,
+    required String text,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: color.withValues(alpha: 0.1),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          MyText(text: text, size: 10, color: color, weight: FontWeight.w700),
+        ],
       ),
     );
   }
@@ -9262,6 +10566,10 @@ class _SparkJoyCreateReportScreenState
 
     final files = state.files;
     final selectedCount = _mediaGroupSelectedIndexes.length;
+    final nextGroupKey = _nextMediaGroupKey(groupKey);
+    final nextGroupTitle = nextGroupKey == null
+        ? null
+        : _mediaState[nextGroupKey]?.config.title;
 
     return Column(
       children: [
@@ -9299,6 +10607,15 @@ class _SparkJoyCreateReportScreenState
                 TextButton(
                   onPressed: _toggleMediaSelectMode,
                   child: Text(_mediaGroupSelectMode ? 'Отмена' : 'Выбрать'),
+                ),
+              if (nextGroupKey != null)
+                IconButton(
+                  onPressed: _openNextMediaGroupFromEditor,
+                  icon: const Icon(Icons.arrow_forward_rounded, size: 20),
+                  tooltip:
+                      nextGroupTitle == null || nextGroupTitle.trim().isEmpty
+                      ? 'Далее'
+                      : 'Далее: $nextGroupTitle',
                 ),
               const SizedBox(width: 6),
             ],
@@ -9548,6 +10865,38 @@ class _SparkJoyCreateReportScreenState
                           ),
                         ),
                       ),
+                    if (hasInspection)
+                      Positioned(
+                        left: 10,
+                        bottom: 10,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: kGreenColor.withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline_rounded,
+                                size: 14,
+                                color: kWhiteColor,
+                              ),
+                              SizedBox(width: 4),
+                              MyText(
+                                text: 'ЕСТЬ ЗАМЕТКА',
+                                size: 10,
+                                color: kWhiteColor,
+                                weight: FontWeight.w700,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -9569,6 +10918,7 @@ class _SparkJoyCreateReportScreenState
       final state = _mediaState[config.key];
       return state != null && _groupHasCoverage(state);
     }).length;
+    final hasRequiredGroups = requiredGroups.isNotEmpty;
 
     if (_activeMediaGroupKey != null) {
       return _mediaGroupEditor();
@@ -9577,24 +10927,26 @@ class _SparkJoyCreateReportScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (hasRequiredGroups)
+          Padding(
+            padding: const EdgeInsets.only(left: 10, bottom: 8),
+            child: MyText(
+              text: 'ОБЯЗАТЕЛЬНЫЕ · $requiredFilled/${requiredGroups.length}',
+              size: 13,
+              color: kGreyColor,
+              weight: FontWeight.w700,
+            ),
+          ),
+        if (hasRequiredGroups)
+          ...requiredGroups.map((config) {
+            final state = _mediaState[config.key]!;
+            return _mediaGroupListRow(state);
+          }),
+        if (hasRequiredGroups) const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.only(left: 10, bottom: 8),
           child: MyText(
-            text: 'ОБЯЗАТЕЛЬНЫЕ · $requiredFilled/${requiredGroups.length}',
-            size: 13,
-            color: kGreyColor,
-            weight: FontWeight.w700,
-          ),
-        ),
-        ...requiredGroups.map((config) {
-          final state = _mediaState[config.key]!;
-          return _mediaGroupListRow(state);
-        }),
-        const SizedBox(height: 8),
-        const Padding(
-          padding: EdgeInsets.only(left: 10, bottom: 8),
-          child: MyText(
-            text: 'ДОПОЛНИТЕЛЬНЫЕ',
+            text: hasRequiredGroups ? 'ДОПОЛНИТЕЛЬНЫЕ' : 'РАЗДЕЛЫ ОСМОТРА',
             size: 13,
             color: kGreyColor,
             weight: FontWeight.w700,
@@ -9610,11 +10962,12 @@ class _SparkJoyCreateReportScreenState
 
   Widget _stepTestDrive() {
     final tdConducted = _tdConductedValue();
+    final showSubsystemCards = tdConducted == true && _tdMode != _tdModeAllGood;
 
     return Column(
       children: [
         _testDriveConductedSelector(),
-        if (tdConducted == true) ...[
+        if (showSubsystemCards) ...[
           const SizedBox(height: 10),
           _testDriveSubsystemCard(
             sectionLabel: '🔧 Двигатель',
@@ -9635,6 +10988,7 @@ class _SparkJoyCreateReportScreenState
               setState(() {
                 _tdEngineTags = value;
               });
+              _markDraftDirty();
             },
           ),
           const SizedBox(height: 10),
@@ -9657,6 +11011,7 @@ class _SparkJoyCreateReportScreenState
               setState(() {
                 _tdGearboxTags = value;
               });
+              _markDraftDirty();
             },
           ),
           const SizedBox(height: 10),
@@ -9679,6 +11034,7 @@ class _SparkJoyCreateReportScreenState
               setState(() {
                 _tdSteeringTags = value;
               });
+              _markDraftDirty();
             },
           ),
           const SizedBox(height: 10),
@@ -9701,6 +11057,7 @@ class _SparkJoyCreateReportScreenState
               setState(() {
                 _tdRideTags = value;
               });
+              _markDraftDirty();
             },
           ),
           const SizedBox(height: 10),
@@ -9723,6 +11080,7 @@ class _SparkJoyCreateReportScreenState
               setState(() {
                 _tdBrakeTags = value;
               });
+              _markDraftDirty();
             },
           ),
           const SizedBox(height: 10),
@@ -9760,6 +11118,440 @@ class _SparkJoyCreateReportScreenState
       default:
         return kYellowColor;
     }
+  }
+
+  Color _summaryVerdictColor(String verdict) {
+    switch (verdict) {
+      case 'recommended':
+        return kGreenColor;
+      case 'with_reservations':
+        return kYellowColor;
+      default:
+        return kRedColor;
+    }
+  }
+
+  String? _summaryReasonStepId(String reason) {
+    final value = reason.trim();
+    if (value.startsWith('Автомобиль —')) return 'vehicle';
+    if (value.startsWith('Сверка документов —')) return 'docs_check';
+    if (value.startsWith('Тест-драйв —')) return 'test_drive';
+    if (value.startsWith('Осмотр —')) return 'media';
+    if (value.startsWith('Итог специалиста —')) return 'summary';
+    return null;
+  }
+
+  String? _summaryReasonMediaGroupKey(String reason) {
+    if (!reason.startsWith('Осмотр —')) return null;
+    final parts = reason.split(':');
+    if (parts.length < 2) return null;
+    final label = parts.last.trim().toLowerCase();
+    for (final entry in _mediaGroupLabelByKey.entries) {
+      if (entry.value.toLowerCase() == label) {
+        return entry.key;
+      }
+    }
+    return null;
+  }
+
+  double _summaryReadyProgress(
+    _CalculatedSummary summary,
+    List<String> missingReasons,
+  ) {
+    final requiredCount = summary.sections
+        .where((s) => s['required'] == true)
+        .length;
+    if (requiredCount <= 0) return missingReasons.isEmpty ? 1.0 : 0.0;
+    final missingSteps = <String>{};
+    for (final reason in missingReasons) {
+      final stepId = _summaryReasonStepId(reason);
+      if (stepId == null || stepId == 'summary') continue;
+      missingSteps.add(stepId);
+    }
+    final missing = math.min(requiredCount, missingSteps.length);
+    final ready = math.max(0, requiredCount - missing);
+    return (ready / requiredCount).clamp(0.0, 1.0);
+  }
+
+  void _openSummaryMissingReason(String reason) {
+    final stepId = _summaryReasonStepId(reason);
+    if (stepId == null || stepId == 'summary') return;
+    final mediaGroupKey = stepId == 'media'
+        ? _summaryReasonMediaGroupKey(reason)
+        : null;
+    _navigateToStepFromSummary(stepId, mediaGroupKey: mediaGroupKey);
+  }
+
+  bool _isAttachmentSourceLikelyValid(String source) {
+    final value = source.trim().toLowerCase();
+    if (value.isEmpty) return false;
+    return value.startsWith('data:') ||
+        value.startsWith('blob:') ||
+        value.startsWith('http://') ||
+        value.startsWith('https://') ||
+        value.startsWith('file://') ||
+        value.startsWith('/');
+  }
+
+  _SummaryAttachmentStats _summaryAttachmentStats() {
+    var images = 0;
+    var videos = 0;
+    var audios = 0;
+    var files = 0;
+    var broken = 0;
+    var total = 0;
+
+    void consume(_UploadedItem item) {
+      total += 1;
+      if (item.isImage) {
+        images += 1;
+      } else if (item.isVideo) {
+        videos += 1;
+      } else if (item.isAudio) {
+        audios += 1;
+      } else {
+        files += 1;
+      }
+      if (!_isAttachmentSourceLikelyValid(item.dataUrl)) {
+        broken += 1;
+      }
+    }
+
+    for (final group in _mediaState.values) {
+      for (final item in group.files) {
+        consume(item);
+      }
+    }
+    for (final item in _legalFiles) {
+      consume(item);
+    }
+    for (final item in _docsCommentAudioFiles) {
+      consume(item);
+    }
+    for (final item in _legalCommentAudioFiles) {
+      consume(item);
+    }
+    for (final item in _tdCommentAudioFiles) {
+      consume(item);
+    }
+    for (final item in _expertAudioFiles) {
+      consume(item);
+    }
+
+    return _SummaryAttachmentStats(
+      total: total,
+      imageCount: images,
+      videoCount: videos,
+      audioCount: audios,
+      fileCount: files,
+      brokenCount: broken,
+    );
+  }
+
+  List<String> _summaryWarningItems(_CalculatedSummary summary) {
+    final warnings = <String>[];
+    for (final section in summary.sections) {
+      final status = (section['status'] ?? '').toString().trim();
+      if (status.isEmpty || status == 'ok') continue;
+      final title = (section['title'] ?? 'Раздел').toString().trim();
+      warnings.add(
+        status == 'danger' || status == 'bad' || status == 'error'
+            ? '$title: есть критичные замечания.'
+            : '$title: есть замечания, проверьте перед загрузкой.',
+      );
+    }
+    final mediaStats = _summaryAttachmentStats();
+    if (mediaStats.total == 0) {
+      warnings.add(
+        'Вложения не добавлены. Проверьте, нужен ли фото/видео материал.',
+      );
+    } else if (mediaStats.brokenCount > 0) {
+      warnings.add(
+        'Проверка вложений: ${mediaStats.brokenCount} файл(ов) с некорректной ссылкой.',
+      );
+    }
+    return warnings;
+  }
+
+  Widget _summaryWarningsCard(List<String> warnings) {
+    if (warnings.isEmpty) return const SizedBox.shrink();
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'Предупреждения перед загрузкой',
+            size: 13,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: 8),
+          ...warnings.map(
+            (line) => Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(
+                      Icons.warning_amber_rounded,
+                      size: 15,
+                      color: kYellowColor,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: MyText(text: line, size: 11, color: kTertiaryColor),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryHeaderCard(
+    _CalculatedSummary summary,
+    List<String> missingReasons,
+  ) {
+    final verdictColor = _summaryVerdictColor(summary.verdict);
+    final isReady = missingReasons.isEmpty;
+    final progress = _summaryReadyProgress(summary, missingReasons);
+    final reportName = _reportNameController.text.trim();
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: verdictColor.withValues(alpha: 0.1),
+                  border: Border.all(
+                    color: verdictColor.withValues(alpha: 0.35),
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    MyText(
+                      text: '${summary.score}',
+                      size: 21,
+                      weight: FontWeight.w800,
+                      color: verdictColor,
+                    ),
+                    MyText(
+                      text: '/100',
+                      size: 10,
+                      weight: FontWeight.w700,
+                      color: verdictColor,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MyText(
+                      text: 'Готовность отчёта',
+                      size: 11,
+                      color: kGreyColor,
+                    ),
+                    const SizedBox(height: 2),
+                    MyText(
+                      text: summary.verdictLabel,
+                      size: 14,
+                      weight: FontWeight.w700,
+                      color: verdictColor,
+                    ),
+                    const SizedBox(height: 5),
+                    MyText(
+                      text: isReady
+                          ? 'Все обязательные разделы заполнены.'
+                          : 'Осталось заполнить: ${missingReasons.length}',
+                      size: 11,
+                      color: isReady ? kGreenColor : kYellowColor,
+                      weight: FontWeight.w700,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (reportName.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                color: kInputBgColor,
+                border: Border.all(color: kBorderColor),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.description_outlined,
+                    size: 16,
+                    color: kGreyColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const MyText(
+                          text: 'Название отчёта',
+                          size: 10,
+                          color: kGreyColor,
+                        ),
+                        const SizedBox(height: 2),
+                        MyText(
+                          text: reportName,
+                          size: 13,
+                          weight: FontWeight.w700,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 7,
+              backgroundColor: kLightGreyColor,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                isReady ? kGreenColor : kSecondaryColor,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _mediaMetaPill(
+                icon: Icons.assignment_turned_in_outlined,
+                text: isReady ? 'Можно завершать' : 'Нужны доработки',
+                color: isReady ? kGreenColor : kYellowColor,
+              ),
+              _mediaMetaPill(
+                icon: Icons.rule_rounded,
+                text: 'Пункты чеклиста: ${summary.checklist.length}',
+                color: kSecondaryColor,
+              ),
+              _mediaMetaPill(
+                icon: Icons.list_alt_rounded,
+                text: 'Разделов: ${summary.sections.length}',
+                color: kGreyColor,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryMissingReasonsCard(List<String> missingReasons) {
+    if (missingReasons.isEmpty) return const SizedBox.shrink();
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'Что нужно заполнить перед завершением',
+            size: 13,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: 8),
+          ...missingReasons.map((reason) {
+            final stepId = _summaryReasonStepId(reason);
+            final actionable = stepId != null && stepId != 'summary';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: InkWell(
+                onTap: actionable
+                    ? () => _openSummaryMissingReason(reason)
+                    : null,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 9,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    color: kRedColor.withValues(alpha: 0.07),
+                    border: Border.all(color: kRedColor.withValues(alpha: 0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.error_outline_rounded,
+                        size: 16,
+                        color: kRedColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: MyText(
+                          text: reason,
+                          size: 11,
+                          color: kTertiaryColor,
+                        ),
+                      ),
+                      if (actionable)
+                        const Icon(
+                          Icons.chevron_right_rounded,
+                          size: 18,
+                          color: kGreyColor,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryChecklistCard(_CalculatedSummary summary) {
+    final topChecklist = summary.checklist.take(6).toList();
+    if (topChecklist.isEmpty) return const SizedBox.shrink();
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'Ключевые выводы',
+            size: 13,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: 8),
+          ...topChecklist.map(
+            (line) => Padding(
+              padding: const EdgeInsets.only(bottom: 5),
+              child: MyText(text: '• $line', size: 11, color: kGreyColor),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Color _summaryDetailSeverityColor(String severity) {
@@ -9915,7 +11707,10 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  Widget _summarySectionCard(Map<String, dynamic> section) {
+  Widget _summarySectionCard(
+    Map<String, dynamic> section, {
+    bool clientPreview = false,
+  }) {
     final title = (section['title'] ?? '').toString().trim();
     final status = (section['status'] ?? '').toString().trim();
     final required = section['required'] == true;
@@ -9952,7 +11747,7 @@ class _SparkJoyCreateReportScreenState
                   weight: FontWeight.w700,
                 ),
               ),
-              if (editable)
+              if (editable && !clientPreview)
                 TextButton(
                   onPressed: () => _openSummarySectionEditor(title),
                   style: TextButton.styleFrom(
@@ -9963,34 +11758,50 @@ class _SparkJoyCreateReportScreenState
                     ),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text(
-                    'ред.',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: kSecondaryColor,
-                    ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.open_in_new_rounded,
+                        size: 12,
+                        color: kSecondaryColor,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'Открыть',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: kSecondaryColor,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              if (editable) const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: required
-                      ? kSecondaryColor.withValues(alpha: 0.08)
-                      : kLightGreyColor,
-                  borderRadius: BorderRadius.circular(8),
+              if (!clientPreview) ...[
+                if (editable) const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: required
+                        ? kSecondaryColor.withValues(alpha: 0.08)
+                        : kLightGreyColor,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: MyText(
+                    text: required ? 'обяз.' : 'доп.',
+                    size: 10,
+                    color: required ? kSecondaryColor : kGreyColor,
+                    weight: FontWeight.w700,
+                  ),
                 ),
-                child: MyText(
-                  text: required ? 'обяз.' : 'доп.',
-                  size: 10,
-                  color: required ? kSecondaryColor : kGreyColor,
-                  weight: FontWeight.w700,
-                ),
-              ),
+              ],
             ],
           ),
-          if (status.isNotEmpty) ...[
+          if (status.isNotEmpty && !clientPreview) ...[
             const SizedBox(height: 6),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -10031,7 +11842,7 @@ class _SparkJoyCreateReportScreenState
                   style: const TextStyle(fontSize: 11),
                   children: [
                     TextSpan(
-                      text: '• ${label.isEmpty ? 'Проверка' : label}: ',
+                      text: '• ${label.isEmpty ? 'Пункт' : label}: ',
                       style: const TextStyle(color: kGreyColor),
                     ),
                     TextSpan(
@@ -10054,27 +11865,12 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  Widget _summaryReportNameCard() {
-    final name = _reportNameController.text.trim();
-    if (name.isEmpty) return const SizedBox.shrink();
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const MyText(text: 'Название отчёта', size: 11, color: kGreyColor),
-          const SizedBox(height: 4),
-          MyText(text: name, size: 13, weight: FontWeight.w700),
-        ],
-      ),
-    );
-  }
-
   Widget _summarySectionsList(_CalculatedSummary summary) {
     return Column(
       children: summary.sections.map((section) {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: _summarySectionCard(section),
+          child: _summarySectionCard(section, clientPreview: false),
         );
       }).toList(),
     );
@@ -10114,33 +11910,6 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  void _formatExpertConclusionText() {
-    final text = _expertController.text.trim();
-    if (text.isEmpty) return;
-
-    final sentences = text
-        .replaceAll(RegExp(r'([.!?])\s+'), r'$1\n')
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
-    if (sentences.isEmpty) return;
-
-    final paragraphs = <String>[];
-    final current = <String>[];
-    for (var i = 0; i < sentences.length; i++) {
-      current.add(sentences[i]);
-      if (current.length >= 3 || i == sentences.length - 1) {
-        paragraphs.add(current.join(' '));
-        current.clear();
-      }
-    }
-
-    setState(() {
-      _expertController.text = paragraphs.join('\n\n');
-    });
-  }
-
   Widget _summaryExpertConclusionCard() {
     return _card(
       child: Column(
@@ -10164,28 +11933,46 @@ class _SparkJoyCreateReportScreenState
             color: kGreyColor,
           ),
           const SizedBox(height: 8),
-          _input(
-            _expertController,
-            'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
-            minLines: 4,
-            maxLines: 8,
+          _commentInputPanel(
+            controller: _expertController,
+            hint: 'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
+            isDictating: _expertIsDictating,
+            onToggleDictation: () async {
+              if (_expertIsDictating) {
+                await _stopExpertDictation();
+              } else {
+                await _startExpertDictation();
+              }
+            },
+            onAiFormat: () {
+              _formatCommentWithAi(_expertController);
+              _markDraftDirty();
+              setState(() {});
+            },
           ),
-          if (_expertController.text.trim().length > 10) ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _formatExpertConclusionText,
-              icon: const Icon(Icons.auto_fix_high, size: 16),
-              label: const Text('Отформатировать с ИИ'),
-              style: OutlinedButton.styleFrom(
-                side: BorderSide(
-                  color: kSecondaryColor.withValues(alpha: 0.22),
-                ),
-                foregroundColor: kSecondaryColor,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                minimumSize: const Size(0, 34),
-              ),
-            ),
-          ],
+          const SizedBox(height: 8),
+          _commentAudioFilesBlock(
+            files: _expertAudioFiles,
+            playingIndex: _expertCommentPlayingAudioIndex,
+            isRecording: _isCommentRecording('expert_comment'),
+            recordingLabel: _commentRecordingLabel('expert_comment'),
+            onToggleRecording: _toggleExpertCommentRecording,
+            onAddAudio: _pickExpertCommentAudioFiles,
+            onTogglePlay: _toggleExpertCommentAudioPlayback,
+            onRemoveAt: (index) {
+              setState(() {
+                final next = [..._expertAudioFiles]..removeAt(index);
+                _expertAudioFiles = next;
+                if (_expertCommentPlayingAudioIndex == index) {
+                  _expertCommentPlayingAudioIndex = -1;
+                  unawaited(_sectionCommentAudioPlayer.stop());
+                } else if (_expertCommentPlayingAudioIndex > index) {
+                  _expertCommentPlayingAudioIndex -= 1;
+                }
+              });
+              _markDraftDirty();
+            },
+          ),
         ],
       ),
     );
@@ -10193,12 +11980,22 @@ class _SparkJoyCreateReportScreenState
 
   Widget _stepSummary() {
     final summary = _calculateSummary();
+    final missingReasons = _summaryMissingReasons();
+    final warnings = _summaryWarningItems(summary);
     return Column(
       children: [
-        if (_reportNameController.text.trim().isNotEmpty) ...[
-          _summaryReportNameCard(),
+        _summaryHeaderCard(summary, missingReasons),
+        if (missingReasons.isNotEmpty) ...[
           const SizedBox(height: 10),
+          _summaryMissingReasonsCard(missingReasons),
         ],
+        if (warnings.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _summaryWarningsCard(warnings),
+        ],
+        const SizedBox(height: 10),
+        _summaryChecklistCard(summary),
+        const SizedBox(height: 10),
         _summaryNoDamageMediaCard(),
         if (_mediaState.values.any(
           (state) => state.files.any((file) => !_mediaItemHasIssue(file)),
@@ -10234,8 +12031,14 @@ class _SparkJoyCreateReportScreenState
 
   Widget _sectionEditor() {
     final step = _steps[_stepIndex];
+    final totalSteps = _steps.length;
+    final currentStep = _stepIndex + 1;
+    final stepProgress = totalSteps == 0
+        ? 0.0
+        : (currentStep / totalSteps).clamp(0.0, 1.0);
     final isLast = _stepIndex == _steps.length - 1;
     final isVehicleStep = step.id == 'vehicle';
+    final isDocsCheckStep = step.id == 'docs_check';
     final isMediaStep = step.id == 'media';
     final inMediaGroupEditor = isMediaStep && _activeMediaGroupKey != null;
     final isTestDriveStep = step.id == 'test_drive';
@@ -10245,6 +12048,10 @@ class _SparkJoyCreateReportScreenState
         ? _missingRequiredMediaGroups().map((e) => e.title).toList()
         : const <String>[];
     final canMediaContinue = missingMediaGroups.isEmpty;
+    final docsCheckReasons = isDocsCheckStep
+        ? _docsCheckMissingReasons()
+        : const <String>[];
+    final canDocsCheckContinue = docsCheckReasons.isEmpty;
     final testDriveReasons = isTestDriveStep
         ? _testDriveMissingReasons()
         : const <String>[];
@@ -10253,45 +12060,75 @@ class _SparkJoyCreateReportScreenState
         ? _summaryMissingReasons()
         : const <String>[];
     final canSummaryFinish = summaryReasons.isEmpty;
+    final canContinueCurrentStep =
+        (!isVehicleStep || canVehicleContinue) &&
+        (!isDocsCheckStep || canDocsCheckContinue) &&
+        (!isMediaStep || canMediaContinue) &&
+        (!isTestDriveStep || canTestDriveContinue);
+    final continueButtonDisabled = isLast
+        ? !canSummaryFinish
+        : !canContinueCurrentStep;
 
     return Column(
       children: [
         if (!inMediaGroupEditor)
           _card(
-            child: Row(
+            child: Column(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: kLightGreyColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: MyText(
-                    text: '${_stepIndex + 1}',
-                    size: 11,
-                    color: kGreyColor,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      MyText(
-                        text: step.title,
-                        size: 15,
-                        weight: FontWeight.w700,
+                Row(
+                  children: [
+                    Container(
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: kLightGreyColor,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      const SizedBox(height: 2),
-                      MyText(
-                        text: step.description,
+                      child: MyText(
+                        text: '$currentStep',
                         size: 11,
                         color: kGreyColor,
+                        weight: FontWeight.w700,
                       ),
-                    ],
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MyText(
+                            text: step.title,
+                            size: 15,
+                            weight: FontWeight.w700,
+                          ),
+                          const SizedBox(height: 2),
+                          MyText(
+                            text: step.description,
+                            size: 11,
+                            color: kGreyColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                    MyText(
+                      text: '$currentStep/$totalSteps',
+                      size: 11,
+                      color: kGreyColor,
+                      weight: FontWeight.w700,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: stepProgress,
+                    minHeight: 6,
+                    backgroundColor: kLightGreyColor,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      kSecondaryColor,
+                    ),
                   ),
                 ),
               ],
@@ -10299,12 +12136,14 @@ class _SparkJoyCreateReportScreenState
           ),
         if (!inMediaGroupEditor) const SizedBox(height: 12),
         _stepContent(),
-        if (!inMediaGroupEditor && isVehicleStep && !canVehicleContinue) ...[
+        if (!inMediaGroupEditor &&
+            isDocsCheckStep &&
+            !canDocsCheckContinue) ...[
           const SizedBox(height: 8),
-          const Align(
+          Align(
             alignment: Alignment.centerLeft,
             child: MyText(
-              text: 'Укажите VIN-номер или отметьте VIN как нечитаемый',
+              text: docsCheckReasons.join(' · '),
               size: 11,
               color: kRedColor,
             ),
@@ -10367,64 +12206,74 @@ class _SparkJoyCreateReportScreenState
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: MyButton(
-                  buttonText: isLast
-                      ? (canSummaryFinish
-                            ? 'Завершить отчет'
-                            : 'Заполните обязательные разделы')
-                      : (isVehicleStep || isMediaStep || isTestDriveStep
-                            ? 'Продолжить'
-                            : 'Сохранить'),
-                  bgColor:
-                      (isLast && !canSummaryFinish) ||
-                          (!isLast &&
-                              ((isVehicleStep && !canVehicleContinue) ||
-                                  (isMediaStep && !canMediaContinue) ||
-                                  (isTestDriveStep && !canTestDriveContinue)))
-                      ? kGreyColor.withValues(alpha: 0.5)
-                      : null,
-                  onTap: () async {
-                    if (isLast) {
-                      if (!canSummaryFinish) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(summaryReasons.join('\n'))),
-                        );
+                child: IgnorePointer(
+                  ignoring: continueButtonDisabled,
+                  child: MyButton(
+                    buttonText: isLast
+                        ? (canSummaryFinish
+                              ? 'Завершить отчет'
+                              : 'Заполните обязательные разделы')
+                        : 'Продолжить',
+                    bgColor: continueButtonDisabled
+                        ? kGreyColor.withValues(alpha: 0.5)
+                        : null,
+                    onTap: () async {
+                      if (isLast) {
+                        if (!canSummaryFinish) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(summaryReasons.join('\n'))),
+                          );
+                          return;
+                        }
+                        await _finishReport();
                         return;
                       }
-                      await _finishReport();
-                      return;
-                    }
 
-                    if (isVehicleStep) {
-                      await _handleVehicleContinue();
-                      return;
-                    }
-                    if (isMediaStep) {
-                      if (!canMediaContinue) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Добавьте фото в обязательные группы: ${missingMediaGroups.join(', ')}',
+                      if (isVehicleStep) {
+                        await _handleVehicleContinue();
+                        return;
+                      }
+                      if (isMediaStep) {
+                        if (!canMediaContinue) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Добавьте фото в обязательные группы: ${missingMediaGroups.join(', ')}',
+                              ),
                             ),
-                          ),
-                        );
+                          );
+                          return;
+                        }
+                        await _saveAndOpenNextSection();
+                        return;
+                      }
+                      if (isDocsCheckStep) {
+                        if (!canDocsCheckContinue) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(docsCheckReasons.join('\n')),
+                            ),
+                          );
+                          return;
+                        }
+                        await _saveAndOpenNextSection();
+                        return;
+                      }
+                      if (isTestDriveStep) {
+                        if (!canTestDriveContinue) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(testDriveReasons.join('\n')),
+                            ),
+                          );
+                          return;
+                        }
+                        await _saveAndOpenNextSection();
                         return;
                       }
                       await _saveAndOpenNextSection();
-                      return;
-                    }
-                    if (isTestDriveStep) {
-                      if (!canTestDriveContinue) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(testDriveReasons.join('\n'))),
-                        );
-                        return;
-                      }
-                      await _saveAndOpenNextSection();
-                      return;
-                    }
-                    await _saveAndOpenNextSection();
-                  },
+                    },
+                  ),
                 ),
               ),
             ],
@@ -10467,6 +12316,12 @@ class _SparkJoyCreateReportScreenState
                 size: 13,
                 color: kGreyColor,
               ),
+              const SizedBox(height: 2),
+              MyText(
+                text: _draftSaveStatusText(),
+                size: 11,
+                color: _draftSaveStatusColor(),
+              ),
             ],
           ),
           actions: [
@@ -10477,7 +12332,7 @@ class _SparkJoyCreateReportScreenState
                 tooltip: 'Переименовать',
               ),
             TextButton(
-              onPressed: _saveDraft,
+              onPressed: _draftSaveInProgress ? null : _saveDraft,
               child: const Text(
                 'Сохранить',
                 style: TextStyle(
@@ -10488,10 +12343,17 @@ class _SparkJoyCreateReportScreenState
             ),
           ],
         ),
-        body: ListView(
-          controller: _pageScrollController,
-          padding: AppSizes.listPaddingWithBottomBar(),
-          children: [_editingSection ? _sectionEditor() : _sectionsOverview()],
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _dismissKeyboard,
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            controller: _pageScrollController,
+            padding: AppSizes.listPaddingWithBottomBar(),
+            children: [
+              _editingSection ? _sectionEditor() : _sectionsOverview(),
+            ],
+          ),
         ),
       ),
     );
@@ -10814,22 +12676,6 @@ class _MediaTagGroup {
   final List<_MediaTagOption> options;
 }
 
-class _MediaElementSummary {
-  const _MediaElementSummary({
-    required this.elementType,
-    required this.label,
-    required this.noDamage,
-    required this.tags,
-    required this.hasComment,
-  });
-
-  final String elementType;
-  final String label;
-  final bool noDamage;
-  final List<String> tags;
-  final bool hasComment;
-}
-
 class _MediaPartInspection {
   const _MediaPartInspection({
     this.noDamage = false,
@@ -10987,6 +12833,24 @@ class _UploadedItem {
   bool get isImage => mimeType.startsWith('image/');
   bool get isVideo => mimeType.startsWith('video/');
   bool get isAudio => mimeType.startsWith('audio/');
+}
+
+class _SummaryAttachmentStats {
+  const _SummaryAttachmentStats({
+    required this.total,
+    required this.imageCount,
+    required this.videoCount,
+    required this.audioCount,
+    required this.fileCount,
+    required this.brokenCount,
+  });
+
+  final int total;
+  final int imageCount;
+  final int videoCount;
+  final int audioCount;
+  final int fileCount;
+  final int brokenCount;
 }
 
 class _CalculatedSummary {
