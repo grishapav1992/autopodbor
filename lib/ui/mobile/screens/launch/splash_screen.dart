@@ -7,9 +7,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/core/utils/global_instances.dart';
 import 'package:flutter_application_1/ui/mobile/screens/auth/login.dart';
-import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
-import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
 
@@ -47,23 +45,16 @@ class _SplashScreenState extends State<SplashScreen> {
       final hasSession = await StorageApi.hasSavedSession(
         probeWithGetBrand: true,
       );
-      final role = await UserSimplePreferences.getUserRole();
       if (!mounted) return;
       final Widget target;
       if (hasSession) {
-        if (role == 'dealer') {
-          target = const DealerNavBar();
-        } else if (role == 'user') {
-          target = const UserNavBar();
-        } else {
-          target = const ChooseUserType();
-        }
+        target = const DealerNavBar();
       } else {
         target = const Login();
       }
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => target),
-      );
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => target));
     });
   }
 

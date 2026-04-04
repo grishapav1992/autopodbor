@@ -44,7 +44,42 @@ post_install do |installer|
       config.build_settings['CLANG_ENABLE_MODULES'] = 'YES'
       config.build_settings['ENABLE_MODULE_VERIFIER'] = 'NO'
       config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+      config.build_settings['SWIFT_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+      other_cflags = config.build_settings['OTHER_CFLAGS'] || '$(inherited)'
+      unless other_cflags.to_s.include?('-Wno-quoted-include-in-framework-header')
+        other_cflags = "#{other_cflags} -Wno-quoted-include-in-framework-header"
+      end
+      config.build_settings['OTHER_CFLAGS'] = other_cflags
       config.build_settings['BUILD_LIBRARY_FOR_DISTRIBUTION'] = 'NO'
     end
+  end
+
+  # Xcode 16+ may fail on some pod umbrella/public headers that still use
+  # quoted imports inside framework headers. Normalize them to angle brackets.
+  normalize_headers = [
+    'Pods/GoogleDataTransport/GoogleDataTransport/GDTCORLibrary/Public/GoogleDataTransport/GDTCOREndpoints.h',
+    'Pods/GoogleDataTransport/GoogleDataTransport/GDTCORLibrary/Public/GoogleDataTransport/GDTCOREvent.h',
+    'Pods/GoogleDataTransport/GoogleDataTransport/GDTCORLibrary/Public/GoogleDataTransport/GDTCORTransport.h',
+    'Pods/GoogleDataTransport/GoogleDataTransport/GDTCORLibrary/Public/GoogleDataTransport/GoogleDataTransport.h',
+    'Pods/Target Support Files/GoogleDataTransport/GoogleDataTransport-umbrella.h',
+    'Pods/GoogleToolboxForMac/Foundation/GTMLogger.h',
+    'Pods/GoogleToolboxForMac/Foundation/GTMNSData+zlib.h',
+    'Pods/Target Support Files/GoogleToolboxForMac/GoogleToolboxForMac-umbrella.h',
+  ]
+
+  normalize_headers.each do |relative_path|
+    full_path = File.expand_path(relative_path, __dir__)
+    next unless File.exist?(full_path)
+
+    contents = File.read(full_path)
+    normalized = contents.gsub(
+      /^(\s*#\s*import\s+)"([^"]+)"(\s*)$/,
+      '\1<\2>\3'
+    )
+    next if normalized == contents
+
+    File.chmod(0o644, full_path)
+    File.write(full_path, normalized)
   end
 end

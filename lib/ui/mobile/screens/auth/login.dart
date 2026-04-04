@@ -231,10 +231,7 @@ class _LoginState extends State<Login> {
   }
 
   Future<void> _proceedAfterCheck() async {
-    final selectedRole = await UserSimplePreferences.getUserRole();
-    final sparkRole = selectedRole == 'company'
-        ? SparkJoyRole.company
-        : SparkJoyRole.specialist;
+    final sparkRole = await SparkJoyStorage.currentRole();
     await SparkJoyStorage.login(sparkRole);
     await UserSimplePreferences.setUserRole(
       sparkRole == SparkJoyRole.company ? 'company' : 'specialist',

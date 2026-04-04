@@ -6,7 +6,6 @@ import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.da
 import 'package:flutter_application_1/ui/common/widgets/headings_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
 import 'package:get/get.dart';
@@ -54,7 +53,7 @@ class PhoneVerification extends StatelessWidget {
                 } else if (controller.isUser) {
                   Get.offAll(() => const UserNavBar());
                 } else {
-                  Get.offAll(() => ChooseUserType());
+                  Get.offAll(() => const DealerNavBar());
                 }
               },
               buttonText: "continue".tr,

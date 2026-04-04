@@ -20,7 +20,7 @@ class SparkJoyReportsListScreen extends StatefulWidget {
 
 class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   String _search = '';
-  String _tab = 'completed';
+  String _tab = 'drafts';
   bool _loading = true;
 
   List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];

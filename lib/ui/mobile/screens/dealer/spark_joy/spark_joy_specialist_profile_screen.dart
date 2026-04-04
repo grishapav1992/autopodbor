@@ -1,14 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_data.dart';
+import 'spark_joy_storage.dart';
 import 'spark_joy_ui.dart';
 
-class SparkJoySpecialistProfileScreen extends StatelessWidget {
-  const SparkJoySpecialistProfileScreen({super.key});
+class SparkJoySpecialistProfileScreen extends StatefulWidget {
+  const SparkJoySpecialistProfileScreen({
+    super.key,
+    this.onBusinessStatusChanged,
+  });
+
+  final ValueChanged<String?>? onBusinessStatusChanged;
+
+  @override
+  State<SparkJoySpecialistProfileScreen> createState() =>
+      _SparkJoySpecialistProfileScreenState();
+}
+
+class _SparkJoySpecialistProfileScreenState
+    extends State<SparkJoySpecialistProfileScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _innController = TextEditingController();
+
+  bool _isVerifying = false;
+  String? _verifiedInn;
+  String? _businessType;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBusinessStatus();
+  }
+
+  @override
+  void dispose() {
+    _innController.dispose();
+    super.dispose();
+  }
 
   Map<String, dynamic> _specialist() {
     return cloneMap(
@@ -19,20 +52,97 @@ class SparkJoySpecialistProfileScreen extends StatelessWidget {
     );
   }
 
-  Map<String, dynamic>? _company(Map<String, dynamic> specialist) {
-    final companyId = sjRead(specialist, 'companyId');
-    if (companyId.isEmpty) {
-      return null;
+  Future<void> _loadBusinessStatus() async {
+    final inn = await SparkJoyStorage.currentVerifiedInn();
+    final businessType = await SparkJoyStorage.currentBusinessType();
+    if (!mounted) return;
+    setState(() {
+      _verifiedInn = inn;
+      _businessType = businessType;
+      if (inn != null && inn.isNotEmpty) {
+        _innController.text = inn;
+      }
+    });
+  }
+
+  String _businessTypeLabel() {
+    if (_businessType == 'ip') return 'ИП';
+    return 'Компания';
+  }
+
+  String? _innValidator(String? value) {
+    final raw = value?.trim() ?? '';
+    if (raw.isEmpty) return 'Введите ИНН';
+    final normalized = SparkJoyStorage.normalizeInn(raw);
+    if (normalized.length != 10 && normalized.length != 12) {
+      return 'ИНН должен содержать 10 или 12 цифр';
     }
-    final company = sparkCompanies.where((c) => sjRead(c, 'id') == companyId);
-    if (company.isEmpty) return null;
-    return cloneMap(company.first);
+    if (!SparkJoyStorage.isValidInn(normalized, strict: false)) {
+      return 'Введите корректный ИНН';
+    }
+    return null;
+  }
+
+  Future<void> _verifyInn() async {
+    if (_isVerifying) return;
+    final valid = _formKey.currentState?.validate() ?? false;
+    if (!valid) return;
+
+    setState(() => _isVerifying = true);
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final businessType = await SparkJoyStorage.verifyInnAndPromote(
+      _innController.text,
+    );
+
+    if (!mounted) return;
+    setState(() {
+      _isVerifying = false;
+    });
+
+    if (businessType == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось подтвердить ИНН')),
+      );
+      return;
+    }
+
+    final inn = SparkJoyStorage.normalizeInn(_innController.text);
+    setState(() {
+      _businessType = businessType;
+      _verifiedInn = inn;
+      _innController.text = inn;
+    });
+
+    widget.onBusinessStatusChanged?.call(businessType);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          businessType == 'ip'
+              ? 'Тех. проверка пройдена: статус ИП'
+              : 'Тех. проверка пройдена: статус Компания',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _resetBusinessStatus() async {
+    if (_isVerifying) return;
+    await SparkJoyStorage.resetBusinessVerification();
+    if (!mounted) return;
+    setState(() {
+      _verifiedInn = null;
+      _businessType = null;
+    });
+    widget.onBusinessStatusChanged?.call(null);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Статус сброшен: теперь вы специалист')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final specialist = _specialist();
-    final company = _company(specialist);
+    final hasVerifiedBusiness = (_verifiedInn ?? '').isNotEmpty;
 
     return ListView(
       padding: AppSizes.DEFAULT.copyWith(bottom: 110),
@@ -130,6 +240,72 @@ class SparkJoySpecialistProfileScreen extends StatelessWidget {
             ],
           ),
         ),
+        const SparkSectionTitle('Проверка компании', top: 14),
+        SparkCard(
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (hasVerifiedBusiness) ...[
+                  SparkInfoRow(label: 'Статус', value: _businessTypeLabel()),
+                  SparkInfoRow(
+                    label: 'Подтвержденный ИНН',
+                    value: _verifiedInn!,
+                  ),
+                  const SizedBox(height: 8),
+                ] else
+                  const MyText(
+                    text:
+                        'Добавьте ИНН для тех. проверки статуса компании или ИП',
+                    size: 12,
+                    color: kGreyColor,
+                    paddingBottom: 8,
+                  ),
+                TextFormField(
+                  controller: _innController,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(12),
+                  ],
+                  validator: _innValidator,
+                  decoration: const InputDecoration(
+                    labelText: 'ИНН',
+                    hintText: '10 или 12 цифр',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 40,
+                  child: MyButton(
+                    buttonText: _isVerifying
+                        ? 'Проверяем...'
+                        : hasVerifiedBusiness
+                        ? 'Проверить снова'
+                        : 'Проверить ИНН',
+                    onTap: _isVerifying ? () {} : _verifyInn,
+                    bgColor: _isVerifying ? kGreyColor : kSecondaryColor,
+                  ),
+                ),
+                if (hasVerifiedBusiness) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: 40,
+                    child: MyBorderButton(
+                      buttonText: 'Сбросить статус до специалиста',
+                      textSize: 12,
+                      onTap: _resetBusinessStatus,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
         const SparkSectionTitle('Статистика', top: 14),
         Row(
           children: [
@@ -174,47 +350,6 @@ class SparkJoySpecialistProfileScreen extends StatelessWidget {
             ),
           ],
         ),
-        if (company != null) ...[
-          const SparkSectionTitle('Связь с компанией', top: 14),
-          SparkCard(
-            child: Row(
-              children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: kSecondaryColor.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.business_outlined,
-                    color: kSecondaryColor,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      MyText(
-                        text: sjRead(company, 'name'),
-                        size: 13,
-                        weight: FontWeight.w700,
-                      ),
-                      MyText(
-                        text:
-                            '${sparkFormatLabels[sjRead(specialist, 'format')] ?? ''} · ${sjRead(company, 'city')}',
-                        size: 11,
-                        color: kGreyColor,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
         const SizedBox(height: 14),
         SizedBox(
           height: 40,

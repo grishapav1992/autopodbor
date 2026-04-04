@@ -4,7 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
-import 'package:camera/camera.dart';
+import 'package:camerawesome/camerawesome_plugin.dart' as cam;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -13,7 +13,6 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_audio_picker_port.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
@@ -32,21 +31,19 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
     this.initialReportName,
     this.draft,
     this.assignment,
-    this.commentAudioPickerPort,
   });
 
   final String? initialReportName;
   final Map<String, dynamic>? draft;
   final Map<String, dynamic>? assignment;
-  final SparkJoyCommentAudioPickerPort? commentAudioPickerPort;
 
   @override
   State<SparkJoyCreateReportScreen> createState() =>
       _SparkJoyCreateReportScreenState();
 }
 
-class _SparkJoyCreateReportScreenState
-    extends State<SparkJoyCreateReportScreen> {
+class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
+    with WidgetsBindingObserver {
   static const List<String> _engineTypes = [
     'Бензин',
     'Дизель',
@@ -285,6 +282,40 @@ class _SparkJoyCreateReportScreenState
     'Скрип тормозов',
     'Срабатывание ABS на ровной',
   ];
+  static const String _tdScopeEngine = 'test_drive_engine';
+  static const String _tdScopeGearbox = 'test_drive_gearbox';
+  static const String _tdScopeSteering = 'test_drive_steering';
+  static const String _tdScopeRide = 'test_drive_ride';
+  static const String _tdScopeBrake = 'test_drive_brake';
+  static const Map<String, List<String>> _tdTagOptionsByScope = {
+    _tdScopeEngine: _tdEngineTagOptions,
+    _tdScopeGearbox: _tdGearboxTagOptions,
+    _tdScopeSteering: _tdSteeringTagOptions,
+    _tdScopeRide: _tdRideTagOptions,
+    _tdScopeBrake: _tdBrakeTagOptions,
+  };
+  static const Map<String, Set<String>> _tdSeriousTagsByScope = {
+    _tdScopeEngine: {
+      'Посторонний стук',
+      'Потеря мощности',
+      'Пропуски зажигания',
+      'Дым из выхлопной',
+      'Перегрев',
+    },
+    _tdScopeGearbox: {
+      'Задержка переключения',
+      'Толчки / пинки',
+      'Пробуксовка',
+      'Посторонний шум КПП',
+    },
+    _tdScopeSteering: {'Люфт руля', 'Увод в сторону', 'Тяжёлый руль'},
+    _tdScopeRide: {'Стук подвески на ходу', 'Снос оси', 'Пробой подвески'},
+    _tdScopeBrake: {
+      'Увод при торможении',
+      'Вибрация при торможении',
+      'Длинный ход педали',
+    },
+  };
   static const String _tdModeAllGood = 'all_good';
   static const String _tdModeProblems = 'problems';
   static const String _tdModeNotConducted = 'not_conducted';
@@ -957,6 +988,7 @@ class _SparkJoyCreateReportScreenState
   bool _draftSaveFailed = false;
   bool _hasUnsavedDraftChanges = false;
   bool _autosaveRequestedWhileSaving = false;
+  bool _appPauseHandlingInProgress = false;
   DateTime? _lastDraftSavedAt;
   final List<TextEditingController> _autosaveControllers = [];
 
@@ -1009,8 +1041,6 @@ class _SparkJoyCreateReportScreenState
   double _bodyPaintTo = 200;
   double _structPaintFrom = 80;
   double _structPaintTo = 200;
-  bool _bodyPaintEditing = false;
-  bool _structPaintEditing = false;
 
   String? _tdMode;
   bool _tdEngineOk = false;
@@ -1023,16 +1053,23 @@ class _SparkJoyCreateReportScreenState
   List<String> _tdSteeringTags = const [];
   List<String> _tdRideTags = const [];
   List<String> _tdBrakeTags = const [];
+  final Map<String, String?> _tdManagingTagSeverityByScope = {};
+  final Map<String, TextEditingController> _tdCustomTagControllersByScope = {};
+  final Map<String, FocusNode> _tdCustomTagFocusNodesByScope = {};
   List<_UploadedItem> _tdCommentAudioFiles = const [];
 
   List<_UploadedItem> _expertAudioFiles = const [];
+  String? _accountBusinessType;
+  String? _accountVerifiedInn;
+  String _staffInviteLink = '';
+  bool _staffInviteLinkCreating = false;
 
   String? _activeMediaGroupKey;
   bool _mediaGroupSelectMode = false;
   Set<int> _mediaGroupSelectedIndexes = <int>{};
   int _uploadedItemIdCounter = 0;
   int _localMediaFileCounter = 0;
-  late final SparkJoyCommentAudioPickerPort _commentAudioPickerPort;
+  bool _vinScannerRouteOpen = false;
 
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;
@@ -1042,8 +1079,7 @@ class _SparkJoyCreateReportScreenState
   @override
   void initState() {
     super.initState();
-    _commentAudioPickerPort =
-        widget.commentAudioPickerPort ?? const SparkJoyPluginCommentAudioPickerPort();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_prepareStoragePaths());
     final draft = widget.draft ?? <String, dynamic>{};
     final assignment = widget.assignment ?? <String, dynamic>{};
@@ -1064,6 +1100,11 @@ class _SparkJoyCreateReportScreenState
       'assignmentId',
       fallback: _read(assignment, 'id'),
     );
+    final draftBusinessType = _read(draft, 'businessType');
+    _accountBusinessType = draftBusinessType.isEmpty ? null : draftBusinessType;
+    final draftVerifiedInn = _read(draft, 'verifiedInn');
+    _accountVerifiedInn = draftVerifiedInn.isEmpty ? null : draftVerifiedInn;
+    _staffInviteLink = _read(draft, 'staffInviteLink');
 
     _stepIndex = _readInt(draft, 'currentStep', fallback: 1) - 1;
     if (_stepIndex < 0 || _stepIndex >= _steps.length) {
@@ -1250,6 +1291,7 @@ class _SparkJoyCreateReportScreenState
     );
     _mediaTagOrderByScope = _readStringListMap(draft['mediaTagOrder']);
     unawaited(_compactInlineDraftMediaIfNeeded());
+    unawaited(_loadBusinessStatusFromStorage());
 
     if (_stepIndex == _steps.length - 1) {
       _ensureSummaryAutofill();
@@ -1270,6 +1312,7 @@ class _SparkJoyCreateReportScreenState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_tdSpeechToText.stop());
     _draftAutosaveDebounce?.cancel();
     _detachAutosaveListeners();
@@ -1304,6 +1347,12 @@ class _SparkJoyCreateReportScreenState
     _summaryController.dispose();
     _expertController.dispose();
     _inspectorController.dispose();
+    for (final controller in _tdCustomTagControllersByScope.values) {
+      controller.dispose();
+    }
+    for (final focusNode in _tdCustomTagFocusNodesByScope.values) {
+      focusNode.dispose();
+    }
     _sectionCommentAudioCompleteSub?.cancel();
     unawaited(_sectionCommentAudioPlayer.stop());
     unawaited(_sectionCommentAudioPlayer.dispose());
@@ -1316,6 +1365,90 @@ class _SparkJoyCreateReportScreenState
     _resolvedAudioPlaybackSources.clear();
 
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      unawaited(_handleAppPausedOrInactive());
+    }
+  }
+
+  Future<void> _stopActiveCommentRecordingOnPause() async {
+    final activeKey = _activeSectionCommentRecordingKey;
+    if (activeKey == null) return;
+    switch (activeKey) {
+      case 'docs_comment':
+        await _stopSectionCommentRecording(
+          key: 'docs_comment',
+          files: _docsCommentAudioFiles,
+          setFiles: (next) => _docsCommentAudioFiles = next,
+          keepResult: true,
+        );
+        break;
+      case 'legal_comment':
+        await _stopSectionCommentRecording(
+          key: 'legal_comment',
+          files: _legalCommentAudioFiles,
+          setFiles: (next) => _legalCommentAudioFiles = next,
+          keepResult: true,
+        );
+        break;
+      case 'td_comment':
+        await _stopSectionCommentRecording(
+          key: 'td_comment',
+          files: _tdCommentAudioFiles,
+          setFiles: (next) => _tdCommentAudioFiles = next,
+          keepResult: true,
+        );
+        break;
+      case 'expert_comment':
+        await _stopSectionCommentRecording(
+          key: 'expert_comment',
+          files: _expertAudioFiles,
+          setFiles: (next) => _expertAudioFiles = next,
+          keepResult: true,
+        );
+        break;
+      default:
+        break;
+    }
+  }
+
+  Future<void> _handleAppPausedOrInactive() async {
+    if (_appPauseHandlingInProgress) return;
+    _appPauseHandlingInProgress = true;
+
+    try {
+      _draftAutosaveDebounce?.cancel();
+
+      if (_vinScannerRouteOpen && mounted) {
+        final navigator = Navigator.of(context);
+        if (navigator.canPop()) {
+          navigator.pop();
+        }
+      }
+
+      await _stopTdDictation();
+      await _stopDocsDictation();
+      await _stopLegalDictation();
+      await _stopExpertDictation();
+      await _stopActiveCommentRecordingOnPause();
+      try {
+        await _sectionCommentAudioPlayer.stop();
+      } catch (_) {}
+
+      if (_hasUnsavedDraftChanges || _draftSaveFailed) {
+        await _saveDraft(showToast: false, fromAutosave: true);
+      }
+    } catch (e, st) {
+      debugPrint('App lifecycle pause handling failed: $e');
+      debugPrint(st.toString());
+    } finally {
+      _appPauseHandlingInProgress = false;
+    }
   }
 
   void _attachAutosaveListeners() {
@@ -2370,6 +2503,29 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
+  Widget _uploadedMediaThumbWidget(
+    _UploadedItem item, {
+    BoxFit fit = BoxFit.cover,
+    int? cacheWidth,
+    int? cacheHeight,
+  }) {
+    if (item.isImage) {
+      return _uploadedImageWidget(
+        item,
+        fit: fit,
+        cacheWidth: cacheWidth,
+        cacheHeight: cacheHeight,
+      );
+    }
+    if (item.isVideo) {
+      return _SparkJoyVideoThumbnail(
+        uri: _mediaSourceUri(item.dataUrl),
+        fit: fit,
+      );
+    }
+    return const Icon(Icons.insert_drive_file_outlined, color: kGreyColor);
+  }
+
   Uint8List _pcm16ToWav(
     Uint8List pcmBytes, {
     required int sampleRate,
@@ -2604,119 +2760,6 @@ class _SparkJoyCreateReportScreenState
     _markDraftDirty();
   }
 
-  Future<List<_UploadedItem>> _pickCommentAudioFiles() async {
-    try {
-      final isMobileNative =
-          !kIsWeb &&
-          (defaultTargetPlatform == TargetPlatform.iOS ||
-              defaultTargetPlatform == TargetPlatform.android);
-      final picked = await _commentAudioPickerPort.pickCommentAudioFiles(
-        isMobileNative: isMobileNative,
-      );
-      if (picked.isEmpty) return const [];
-
-      final items = <_UploadedItem>[];
-      var skippedBecauseNotPersisted = false;
-      for (final file in picked) {
-        final fileName = file.name.trim().isEmpty ? 'audio_file' : file.name.trim();
-        final mimeType = (file.mimeType ?? '').trim().isEmpty
-            ? _guessMimeType(fileName)
-            : file.mimeType!.trim();
-        String? storedSource;
-
-        final path = (file.path ?? '').trim();
-        if (!kIsWeb && path.isNotEmpty) {
-          storedSource = await _persistXFileToAppStorage(
-            XFile(path),
-            fileName: fileName,
-            mimeType: mimeType,
-            prefix: 'comment_audio',
-          );
-        }
-        if ((storedSource ?? '').isEmpty) {
-          final bytes = file.bytes;
-          if (bytes != null && bytes.isNotEmpty) {
-            if (!kIsWeb) {
-              storedSource = await _persistBytesToAppStorage(
-                bytes: bytes,
-                mimeType: mimeType,
-                prefix: 'comment_audio',
-              );
-            }
-            if (kIsWeb && (storedSource ?? '').isEmpty) {
-              storedSource = 'data:$mimeType;base64,${base64Encode(bytes)}';
-            }
-          }
-        }
-        if ((storedSource ?? '').trim().isEmpty) {
-          skippedBecauseNotPersisted = true;
-          continue;
-        }
-        items.add(
-          _UploadedItem(
-            id: _nextUploadedItemId(prefix: 'comment_audio'),
-            name: fileName,
-            mimeType: mimeType,
-            dataUrl: storedSource!.trim(),
-          ),
-        );
-      }
-      if (skippedBecauseNotPersisted) {
-        _showErrorSnack('Часть аудиофайлов не удалось сохранить локально');
-      }
-      if (items.isEmpty) return const [];
-
-      final audioItems = items.where((item) {
-        if (item.isAudio) return true;
-        return SparkJoyCommentUtils.isLikelyAudioFileName(item.name);
-      }).toList();
-
-      if (audioItems.isEmpty) {
-        _showErrorSnack('Выберите аудиофайл');
-      }
-      return audioItems;
-    } catch (_) {
-      _showErrorSnack('Не удалось выбрать аудиофайл');
-      return const [];
-    }
-  }
-
-  Future<void> _pickDocsCommentAudioFiles() async {
-    final items = await _pickCommentAudioFiles();
-    if (items.isEmpty || !mounted) return;
-    setState(() {
-      _docsCommentAudioFiles = [..._docsCommentAudioFiles, ...items];
-    });
-    _markDraftDirty();
-  }
-
-  Future<void> _pickLegalCommentAudioFiles() async {
-    final items = await _pickCommentAudioFiles();
-    if (items.isEmpty || !mounted) return;
-    setState(() {
-      _legalCommentAudioFiles = [..._legalCommentAudioFiles, ...items];
-    });
-    _markDraftDirty();
-  }
-
-  Future<void> _pickTdCommentAudioFiles() async {
-    final items = await _pickCommentAudioFiles();
-    if (items.isEmpty || !mounted) return;
-    setState(() {
-      _tdCommentAudioFiles = [..._tdCommentAudioFiles, ...items];
-    });
-    _markDraftDirty();
-  }
-
-  Future<void> _pickExpertCommentAudioFiles() async {
-    final items = await _pickCommentAudioFiles();
-    if (items.isEmpty || !mounted) return;
-    setState(() {
-      _expertAudioFiles = [..._expertAudioFiles, ...items];
-    });
-    _markDraftDirty();
-  }
-
   bool _isCommentRecording(String key) {
     return _activeSectionCommentRecordingKey == key;
   }
@@ -2740,7 +2783,8 @@ class _SparkJoyCreateReportScreenState
     }
 
     final hasPermission =
-        _microphonePermissionGranted || await _sectionCommentRecorder.hasPermission();
+        _microphonePermissionGranted ||
+        await _sectionCommentRecorder.hasPermission();
     if (!hasPermission) {
       _showErrorSnack('Нет доступа к микрофону');
       return;
@@ -2761,7 +2805,9 @@ class _SparkJoyCreateReportScreenState
             _sectionCommentRecordBuffer?.add(chunk);
           });
       _sectionCommentRecordTimer?.cancel();
-      _sectionCommentRecordTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _sectionCommentRecordTimer = Timer.periodic(const Duration(seconds: 1), (
+        _,
+      ) {
         if (!mounted || _activeSectionCommentRecordingKey != key) return;
         setState(() {
           final next = (_sectionCommentRecordingSeconds[key] ?? 0) + 1;
@@ -2927,8 +2973,8 @@ class _SparkJoyCreateReportScreenState
       files: list,
       index: index,
       currentlyPlaying: docsComment
-        ? _docsCommentPlayingAudioIndex == index
-        : _legalCommentPlayingAudioIndex == index,
+          ? _docsCommentPlayingAudioIndex == index
+          : _legalCommentPlayingAudioIndex == index,
       activateIndex: () {
         if (docsComment) {
           _docsCommentPlayingAudioIndex = index;
@@ -2995,6 +3041,71 @@ class _SparkJoyCreateReportScreenState
   String _buildReportCode(DateTime now) {
     final random = 100000 + now.millisecondsSinceEpoch % 900000;
     return 'A$random';
+  }
+
+  Future<void> _loadBusinessStatusFromStorage() async {
+    final businessType = await SparkJoyStorage.currentBusinessType();
+    final verifiedInn = await SparkJoyStorage.currentVerifiedInn();
+    if (!mounted) return;
+    setState(() {
+      _accountBusinessType ??= businessType;
+      _accountVerifiedInn ??= verifiedInn;
+    });
+  }
+
+  bool _hasBusinessStatus() {
+    return _accountBusinessType == 'company' || _accountBusinessType == 'ip';
+  }
+
+  String _businessStatusLabel() {
+    if (_accountBusinessType == 'ip') return 'ИП';
+    if (_accountBusinessType == 'company') return 'Компания';
+    return 'Специалист';
+  }
+
+  String _buildStaffInviteToken() {
+    final source = '$_draftId|${DateTime.now().microsecondsSinceEpoch}';
+    final encoded = base64Url.encode(utf8.encode(source)).replaceAll('=', '');
+    if (encoded.length <= 18) return encoded;
+    return encoded.substring(0, 18);
+  }
+
+  Future<void> _generateStaffInviteLink() async {
+    if (_staffInviteLinkCreating || !_hasBusinessStatus()) return;
+    setState(() => _staffInviteLinkCreating = true);
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+
+    final link = Uri.https('invite.autocheck.local', '/staff', {
+      'report': _draftId,
+      'code': _reportCode,
+      'type': _accountBusinessType ?? 'company',
+      'inn': _accountVerifiedInn ?? '',
+      'token': _buildStaffInviteToken(),
+    }).toString();
+
+    if (!mounted) return;
+    setState(() {
+      _staffInviteLink = link;
+      _staffInviteLinkCreating = false;
+    });
+    _markDraftDirty();
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ссылка приглашения сформирована и скопирована'),
+      ),
+    );
+  }
+
+  Future<void> _copyStaffInviteLink() async {
+    final link = _staffInviteLink.trim();
+    if (link.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Ссылка скопирована')));
   }
 
   InputDecoration _fieldDecoration(String hint) {
@@ -3070,7 +3181,6 @@ class _SparkJoyCreateReportScreenState
         .replaceAll('І', '1')
         .replaceAll('|', '1')
         .replaceAll('I', '1')
-        .replaceAll('L', '1')
         .replaceAll('O', '0')
         .replaceAll('Q', '0');
   }
@@ -3082,7 +3192,9 @@ class _SparkJoyCreateReportScreenState
     if (cleaned.length < 17) return '';
     for (var i = 0; i <= cleaned.length - 17; i++) {
       final candidate = cleaned.substring(i, i + 17);
-      if (_isStrictVin(candidate)) return candidate;
+      if (_isStrictVin(candidate)) {
+        return _maybeFixVinOcrAmbiguity(candidate);
+      }
     }
     return '';
   }
@@ -3102,6 +3214,127 @@ class _SparkJoyCreateReportScreenState
       return false;
     }
     return true;
+  }
+
+  static const List<int> _vinWeights = [
+    8,
+    7,
+    6,
+    5,
+    4,
+    3,
+    2,
+    10,
+    0,
+    9,
+    8,
+    7,
+    6,
+    5,
+    4,
+    3,
+    2,
+  ];
+
+  static const Map<String, int> _vinTransliteration = {
+    'A': 1,
+    'B': 2,
+    'C': 3,
+    'D': 4,
+    'E': 5,
+    'F': 6,
+    'G': 7,
+    'H': 8,
+    'J': 1,
+    'K': 2,
+    'L': 3,
+    'M': 4,
+    'N': 5,
+    'P': 7,
+    'R': 9,
+    'S': 2,
+    'T': 3,
+    'U': 4,
+    'V': 5,
+    'W': 6,
+    'X': 7,
+    'Y': 8,
+    'Z': 9,
+    '0': 0,
+    '1': 1,
+    '2': 2,
+    '3': 3,
+    '4': 4,
+    '5': 5,
+    '6': 6,
+    '7': 7,
+    '8': 8,
+    '9': 9,
+  };
+
+  bool _isValidVinChecksum(String vin) {
+    if (!_isStrictVin(vin)) return false;
+    var sum = 0;
+    for (var i = 0; i < vin.length; i++) {
+      final value = _vinTransliteration[vin[i]];
+      if (value == null) return false;
+      sum += value * _vinWeights[i];
+    }
+    final remainder = sum % 11;
+    final expected = remainder == 10 ? 'X' : remainder.toString();
+    return vin[8] == expected;
+  }
+
+  String _toggleVinAmbiguousChar(String vin, int index) {
+    if (index < 0 || index >= vin.length) return vin;
+    final ch = vin[index];
+    if (ch != '1' && ch != 'L') return vin;
+    final replacement = ch == '1' ? 'L' : '1';
+    return vin.substring(0, index) + replacement + vin.substring(index + 1);
+  }
+
+  String _maybeFixVinOcrAmbiguity(String value) {
+    final vin = value.trim().toUpperCase();
+    if (!_isStrictVin(vin)) return vin;
+    if (_isValidVinChecksum(vin)) return vin;
+
+    final ambiguousIndexes = <int>[];
+    for (var i = 0; i < vin.length; i++) {
+      if (i == 8) continue;
+      if (vin[i] == '1' || vin[i] == 'L') {
+        ambiguousIndexes.add(i);
+      }
+    }
+    if (ambiguousIndexes.isEmpty) return vin;
+
+    final validCandidates = <String>{};
+
+    for (final index in ambiguousIndexes) {
+      final candidate = _toggleVinAmbiguousChar(vin, index);
+      if (_isStrictVin(candidate) && _isValidVinChecksum(candidate)) {
+        validCandidates.add(candidate);
+      }
+    }
+
+    const maxPairChecks = 28;
+    var pairChecks = 0;
+    for (var i = 0; i < ambiguousIndexes.length; i++) {
+      for (var j = i + 1; j < ambiguousIndexes.length; j++) {
+        if (pairChecks >= maxPairChecks) break;
+        pairChecks += 1;
+        final first = _toggleVinAmbiguousChar(vin, ambiguousIndexes[i]);
+        final candidate = _toggleVinAmbiguousChar(first, ambiguousIndexes[j]);
+        if (_isStrictVin(candidate) && _isValidVinChecksum(candidate)) {
+          validCandidates.add(candidate);
+        }
+      }
+      if (pairChecks >= maxPairChecks) break;
+    }
+
+    if (validCandidates.length == 1) {
+      return validCandidates.first;
+    }
+    return vin;
   }
 
   static const String _plateCyr = 'АВЕКМНОРСТУХ';
@@ -3383,17 +3616,24 @@ class _SparkJoyCreateReportScreenState
         .where((option) => option.severity != 'serious')
         .toList();
 
-    final seriousTitle = groupKey == 'diagnostics' ? 'Ошибки' : 'Серьёзные';
-    final minorTitle = groupKey == 'diagnostics'
-        ? 'Предупреждения'
-        : 'Незначительные';
-
     final groups = <_MediaTagGroup>[];
     if (serious.isNotEmpty) {
-      groups.add(_MediaTagGroup(title: seriousTitle, options: serious));
+      groups.add(
+        _MediaTagGroup(
+          title: 'Серьёзные',
+          severity: 'serious',
+          options: serious,
+        ),
+      );
     }
     if (minor.isNotEmpty) {
-      groups.add(_MediaTagGroup(title: minorTitle, options: minor));
+      groups.add(
+        _MediaTagGroup(
+          title: 'Незначительные',
+          severity: 'minor',
+          options: minor,
+        ),
+      );
     }
     return groups;
   }
@@ -3506,6 +3746,7 @@ class _SparkJoyCreateReportScreenState
     final plateRaw = _sanitizePlate(_plateController.text.trim());
     final plate = plateRaw.isEmpty ? '' : _formatPlate(plateRaw);
     final adLink = _adLinkController.text.trim();
+    final carName = _carName();
     final hasVinData = vin.isNotEmpty || _vinUnreadable;
 
     if (!hasVinData) {
@@ -3528,11 +3769,6 @@ class _SparkJoyCreateReportScreenState
       'status': hasVinData && mileage.isNotEmpty ? 'ok' : 'warn',
       'required': true,
       'details': [
-        {
-          'label': 'Марка / модель',
-          'value': _carName().isEmpty ? 'Не указано' : _carName(),
-          'severity': _carName().isEmpty ? 'info' : 'ok',
-        },
         {
           'label': 'VIN',
           'value': _vinUnreadable
@@ -3576,6 +3812,7 @@ class _SparkJoyCreateReportScreenState
     });
 
     final hasParamsDetails =
+        carName.trim().isNotEmpty ||
         _engineVolumeController.text.trim().isNotEmpty ||
         _engineTypeController.text.trim().isNotEmpty ||
         _gearboxTypeController.text.trim().isNotEmpty ||
@@ -3588,6 +3825,11 @@ class _SparkJoyCreateReportScreenState
       'status': hasParamsDetails ? 'ok' : 'info',
       'required': false,
       'details': [
+        {
+          'label': 'Марка / модель',
+          'value': carName.isEmpty ? 'Не указано' : carName,
+          'severity': carName.isEmpty ? 'info' : 'ok',
+        },
         if (_engineVolumeController.text.trim().isNotEmpty)
           {
             'label': 'Объём ДВС',
@@ -3636,10 +3878,6 @@ class _SparkJoyCreateReportScreenState
         _docsVinMatch == true &&
         _docsEngineMatch == true;
     final docsMismatchComment = _docsMismatchCommentController.text.trim();
-    final docsNeedsComment =
-        (_docsOwnerMatch == false ||
-        _docsVinMatch == false ||
-        _docsEngineMatch == false);
 
     if (!docsAllAnswered) {
       penalty += 5;
@@ -3656,10 +3894,6 @@ class _SparkJoyCreateReportScreenState
       if (_docsEngineMatch == false) {
         penalty += 10;
         checklist.add('Модель двигателя в документах не совпадает.');
-      }
-      if (docsNeedsComment && docsMismatchComment.isEmpty) {
-        penalty += 4;
-        checklist.add('По расхождениям в документах не добавлен комментарий.');
       }
     }
 
@@ -3693,7 +3927,7 @@ class _SparkJoyCreateReportScreenState
           {
             'label': 'Комментарий',
             'value': docsMismatchComment,
-            'severity': docsNeedsComment ? 'minor' : 'ok',
+            'severity': 'ok',
           },
       ],
     });
@@ -3825,6 +4059,12 @@ class _SparkJoyCreateReportScreenState
       final tags = (state['tags'] as List<String>? ?? const []).length;
       return !ok || tags > 0;
     });
+    if (_isTdCommentRequired() && _tdNoteController.text.trim().isEmpty) {
+      penalty += 4;
+      checklist.add(
+        'Тест-драйв: добавьте комментарий, если выбран режим «Да, есть проблемы».',
+      );
+    }
     sections.add({
       'title': 'Тест-драйв',
       'status': tdConducted == true && !hasTdIssues ? 'ok' : 'warn',
@@ -3935,13 +4175,6 @@ class _SparkJoyCreateReportScreenState
     final summary = _calculateSummary();
     if (!force && _summaryController.text.trim().isNotEmpty) return;
     _summaryController.text = _summaryTemplate(summary);
-    if (_expertController.text.trim().isEmpty || force) {
-      _expertController.text = summary.verdict == 'recommended'
-          ? 'Автомобиль рекомендован к покупке.'
-          : summary.verdict == 'with_reservations'
-          ? 'Покупка возможна после дополнительной проверки и торга.'
-          : 'Покупка не рекомендуется без устранения выявленных рисков.';
-    }
   }
 
   Map<String, dynamic> _buildDraftPayload() {
@@ -4064,6 +4297,9 @@ class _SparkJoyCreateReportScreenState
       'expertConclusion': _expertController.text.trim(),
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
       'inspector': _inspectorController.text.trim(),
+      'businessType': _accountBusinessType ?? '',
+      'verifiedInn': _accountVerifiedInn ?? '',
+      'staffInviteLink': _staffInviteLink.trim(),
       'mediaGroupsState': mediaPayload,
       'mediaCustomTags': customTagsPayload,
       'mediaCustomSeriousTags': customSeriousTagsPayload,
@@ -4320,6 +4556,9 @@ class _SparkJoyCreateReportScreenState
       'summaryNote': _summaryController.text.trim(),
       'expertConclusion': _expertController.text.trim(),
       'fullInspection': summary.fullInspection,
+      'businessType': _accountBusinessType ?? '',
+      'verifiedInn': _accountVerifiedInn ?? '',
+      'staffInviteLink': _staffInviteLink.trim(),
     };
   }
 
@@ -4334,15 +4573,26 @@ class _SparkJoyCreateReportScreenState
 
     _ensureSummaryAutofill();
     final completed = _buildCompletedReport();
-    await SparkJoyStorage.moveDraftToCompleted(
-      draftId: _draftId,
-      completedReport: completed,
-    );
+    final uploaded = await _uploadReportToBackend(completed);
+    if (!uploaded) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось выгрузить отчёт')),
+      );
+      return;
+    }
+    await SparkJoyStorage.purgeDraftAfterUpload(_draftId);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Отчет завершен')));
+    ).showSnackBar(const SnackBar(content: Text('Отчёт выгружен')));
     Navigator.of(context).pop(true);
+  }
+
+  Future<bool> _uploadReportToBackend(Map<String, dynamic> payload) async {
+    // TODO(grigory): replace with real backend API integration.
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    return payload.isNotEmpty;
   }
 
   Uint8List _cropVinGuideArea(Uint8List bytes) {
@@ -4391,67 +4641,173 @@ class _SparkJoyCreateReportScreenState
     return Uint8List.fromList(img.encodeJpg(cropped, quality: 92));
   }
 
-  Future<void> _openVinScannerDialog() async {
+  Future<void> _openVinScannerSourceModal() async {
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Сканирование VIN'),
+          content: SizedBox(
+            width: 320,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                FilledButton.icon(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_outlined),
+                  label: const Text('Открыть камеру'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      Navigator.of(dialogContext).pop(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Из галереи'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Отмена'),
+            ),
+          ],
+        );
+      },
+    );
+    if (source == null || !mounted) return;
+    await _openVinScannerDialog(initialSource: source);
+  }
+
+  Future<void> _openVinScannerDialog({
+    required ImageSource initialSource,
+  }) async {
     final picker = ImagePicker();
     final controller = TextEditingController(text: _vinController.text);
 
     Uint8List? previewBytes;
+    Uint8List? pendingOcrBytes;
+    Uint8List? pendingOcrFallbackBytes;
     var processing = false;
-    var rawText = '';
     String? error;
     var currentVin = _sanitizeVin(controller.text);
-    CameraController? liveCameraController;
-    var cameraLoading = false;
+    cam.CameraState? liveCameraState;
     var cameraLive = false;
     var cameraError = '';
-    var cameraInitialized = false;
-    var cameraStarting = false;
-    var selectedSource = 'none';
+    var cameraReady = false;
+    var cameraWatchdogStarted = false;
+    Timer? cameraWatchdogTimer;
+    var recognitionAttempted = false;
+    var selectedSource = initialSource == ImageSource.gallery
+        ? 'gallery'
+        : 'camera';
     final supportsLiveCameraPreview = !kIsWeb;
     var dialogActive = true;
+    var initialActionLaunched = false;
+    var focusAdjusting = false;
+    Offset? focusPoint;
+    Timer? focusPointTimer;
+    var liveCaptureInFlight = false;
 
     void safeSetLocalState(StateSetter setLocalState, VoidCallback fn) {
       if (!mounted || !dialogActive) return;
       setLocalState(fn);
     }
 
-    Future<void> stopLiveCamera() async {
-      final current = liveCameraController;
-      liveCameraController = null;
-      if (current == null) return;
-      try {
-        await current.dispose();
-      } catch (_) {}
+    void resetCameraWatchdog() {
+      cameraWatchdogTimer?.cancel();
+      cameraWatchdogTimer = null;
+      cameraWatchdogStarted = false;
     }
 
-    Future<void> recognizeBytes(
-      Uint8List bytes,
-      StateSetter setLocalState,
+    void hideFocusPoint(StateSetter setLocalState) {
+      focusPointTimer?.cancel();
+      focusPointTimer = null;
+      safeSetLocalState(setLocalState, () {
+        focusPoint = null;
+      });
+    }
+
+    void showFocusPoint(StateSetter setLocalState, Offset point) {
+      focusPointTimer?.cancel();
+      safeSetLocalState(setLocalState, () {
+        focusPoint = point;
+      });
+      focusPointTimer = Timer(const Duration(milliseconds: 850), () {
+        hideFocusPoint(setLocalState);
+      });
+    }
+
+    void beginCameraWatchdog(StateSetter setLocalState) {
+      if (!supportsLiveCameraPreview ||
+          cameraWatchdogStarted ||
+          previewBytes != null) {
+        return;
+      }
+      cameraWatchdogStarted = true;
+      cameraWatchdogTimer = Timer(const Duration(seconds: 8), () {
+        if (!dialogActive || cameraReady) return;
+        safeSetLocalState(setLocalState, () {
+          cameraError =
+              'Камера не ответила вовремя. Нажмите «Системная камера» или попробуйте снова.';
+          cameraLive = false;
+        });
+      });
+    }
+
+    Future<void> startFocusAssist(StateSetter setLocalState) async {
+      if (!cameraLive || processing) return;
+      final state = liveCameraState;
+      if (state is! cam.PhotoCameraState) return;
+      safeSetLocalState(setLocalState, () {
+        focusAdjusting = true;
+      });
+      try {
+        state.focus();
+      } catch (_) {}
+      if (!dialogActive) return;
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+    }
+
+    Future<void> stopFocusAssist(StateSetter setLocalState) async {
+      safeSetLocalState(setLocalState, () {
+        focusAdjusting = false;
+      });
+    }
+
+    Future<void> stopLiveCamera() async {
+      focusAdjusting = false;
+      liveCameraState = null;
+      cameraReady = false;
+      cameraLive = false;
+      resetCameraWatchdog();
+    }
+
+    Future<void> recognizeBytes({
+      required Uint8List bytes,
+      required StateSetter setLocalState,
       Uint8List? fallbackBytes,
-    ) async {
+      Uint8List? displayPreviewBytes,
+    }) async {
       await stopLiveCamera();
       safeSetLocalState(setLocalState, () {
+        recognitionAttempted = true;
         processing = true;
-        cameraLive = false;
-        previewBytes = bytes;
+        previewBytes = displayPreviewBytes ?? bytes;
         error = null;
-        rawText = '';
       });
 
       final firstResult = await scanVinFromImageBytes(bytes);
       var finalVin = _extractVinFromOcrResult(firstResult);
-      var finalRaw = firstResult.rawText;
       var finalError = firstResult.error;
 
       if (finalVin.isEmpty && fallbackBytes != null) {
         final secondResult = await scanVinFromImageBytes(fallbackBytes);
         final secondVin = _extractVinFromOcrResult(secondResult);
         final secondVinValid = secondVin.isNotEmpty;
-        finalRaw = [
-          if (firstResult.rawText.trim().isNotEmpty) firstResult.rawText.trim(),
-          if (secondResult.rawText.trim().isNotEmpty)
-            secondResult.rawText.trim(),
-        ].join('\n-----\n');
 
         if (secondVinValid) {
           finalVin = secondVin;
@@ -4463,7 +4819,6 @@ class _SparkJoyCreateReportScreenState
 
       safeSetLocalState(setLocalState, () {
         processing = false;
-        rawText = finalRaw;
         error = finalError;
         if (_isStrictVin(finalVin)) {
           controller.text = finalVin;
@@ -4482,9 +4837,7 @@ class _SparkJoyCreateReportScreenState
       await stopLiveCamera();
       safeSetLocalState(setLocalState, () {
         selectedSource = source == ImageSource.gallery ? 'gallery' : 'camera';
-        cameraLive = false;
-        cameraInitialized = false;
-        cameraLoading = false;
+        cameraReady = false;
         cameraError = '';
       });
 
@@ -4516,98 +4869,96 @@ class _SparkJoyCreateReportScreenState
         if (file == null) return;
         bytes = await file.readAsBytes();
       }
-      await recognizeBytes(bytes, setLocalState, null);
+      pendingOcrBytes = null;
+      pendingOcrFallbackBytes = null;
+      await recognizeBytes(
+        bytes: bytes,
+        setLocalState: setLocalState,
+        displayPreviewBytes: bytes,
+      );
     }
 
     String mapLiveCameraError(Object error) {
       if (error is TimeoutException) {
         return 'Камера не ответила вовремя. Нажмите «Системная камера» или попробуйте снова.';
       }
-      if (error is CameraException) {
-        if (error.code == 'CameraAccessDenied' ||
-            error.code == 'CameraAccessDeniedWithoutPrompt') {
-          return 'Нет доступа к камере. Разрешите камеру в браузере и попробуйте снова.';
-        }
-        if (error.code == 'CameraAccessRestricted') {
-          return 'Доступ к камере ограничен системой. Используйте фото.';
-        }
+      if (error is PlatformException &&
+          (error.code.contains('permission') ||
+              error.code.contains('PERMISSION') ||
+              error.code.contains('denied'))) {
+        return 'Нет доступа к камере. Разрешите камеру в настройках устройства.';
       }
       return 'Не удалось открыть камеру. Используйте фото.';
     }
 
-    Future<void> startLiveCamera(StateSetter setLocalState) async {
-      if (cameraStarting) return;
-      cameraStarting = true;
-      const startupTimeout = Duration(seconds: 10);
-
+    Future<void> retryPhoto(StateSetter setLocalState) async {
+      await stopLiveCamera();
       safeSetLocalState(setLocalState, () {
-        selectedSource = 'camera';
-        cameraLoading = true;
-        cameraInitialized = false;
-        cameraError = '';
         previewBytes = null;
-        rawText = '';
+        pendingOcrBytes = null;
+        pendingOcrFallbackBytes = null;
         error = null;
         processing = false;
+        recognitionAttempted = false;
+        cameraReady = false;
+        cameraLive = false;
+        cameraError = '';
+        liveCameraState = null;
+        resetCameraWatchdog();
       });
+      hideFocusPoint(setLocalState);
 
-      try {
-        await stopLiveCamera();
-        final cameras = kIsWeb
-            ? await availableCameras()
-            : await availableCameras().timeout(startupTimeout);
-        if (cameras.isEmpty) {
-          throw Exception('На устройстве не найдена камера.');
-        }
-
-        final selected = cameras.firstWhere(
-          (camera) => camera.lensDirection == CameraLensDirection.back,
-          orElse: () => cameras.first,
-        );
-        final nextController = CameraController(
-          selected,
-          ResolutionPreset.medium,
-          enableAudio: false,
-        );
-        if (kIsWeb) {
-          await nextController.initialize();
-        } else {
-          await nextController.initialize().timeout(startupTimeout);
-        }
-
-        liveCameraController = nextController;
-        safeSetLocalState(setLocalState, () {
-          cameraInitialized = true;
-          cameraLive = true;
-          cameraLoading = false;
-        });
-      } catch (e, st) {
-        debugPrint('VIN live camera error: $e');
-        debugPrint(st.toString());
-        await stopLiveCamera();
-        final errorMessage = mapLiveCameraError(e);
-        safeSetLocalState(setLocalState, () {
-          cameraLive = false;
-          cameraInitialized = false;
-          cameraLoading = false;
-          cameraError = errorMessage;
-        });
-        if (e is TimeoutException) {
-          await pickAndRecognize(ImageSource.camera, setLocalState);
-        }
-      } finally {
-        cameraStarting = false;
+      if (!supportsLiveCameraPreview) {
+        await pickAndRecognize(ImageSource.camera, setLocalState);
       }
     }
 
-    Future<void> captureFromLiveCamera(StateSetter setLocalState) async {
-      final live = liveCameraController;
-      if (live == null || !live.value.isInitialized) return;
+    Future<void> recognizeCapturedPhoto(StateSetter setLocalState) async {
+      final primary = pendingOcrBytes;
+      final fallback = pendingOcrFallbackBytes;
+      final display = previewBytes;
+      if (primary == null || processing) return;
+      await recognizeBytes(
+        bytes: primary,
+        setLocalState: setLocalState,
+        fallbackBytes: fallback,
+        displayPreviewBytes: display,
+      );
+    }
+
+    Future<void> captureFromLiveCamera(
+      StateSetter setLocalState, {
+      bool focusBeforeShot = false,
+    }) async {
+      if (liveCaptureInFlight || processing) return;
+      final live = liveCameraState;
+      if (live is! cam.PhotoCameraState) return;
+      liveCaptureInFlight = true;
       try {
-        final shot = await live.takePicture();
-        final fullFrame = await shot.readAsBytes();
+        if (focusBeforeShot) {
+          try {
+            live.focus();
+          } catch (_) {}
+          await Future<void>.delayed(const Duration(milliseconds: 220));
+        }
+        final shotRequest = await live.takePhoto();
+        final shotPath = shotRequest.path;
+        if (shotPath == null || shotPath.isEmpty) {
+          throw StateError('VIN live capture returned empty image path');
+        }
+        final fullFrame = await XFile(shotPath).readAsBytes();
         final croppedVinArea = _cropVinGuideArea(fullFrame);
-        await recognizeBytes(croppedVinArea, setLocalState, fullFrame);
+        hideFocusPoint(setLocalState);
+        await stopLiveCamera();
+        safeSetLocalState(setLocalState, () {
+          previewBytes = fullFrame;
+          pendingOcrBytes = croppedVinArea;
+          pendingOcrFallbackBytes = fullFrame;
+          recognitionAttempted = false;
+          processing = false;
+          error = null;
+          cameraError = '';
+        });
       } catch (e, st) {
         debugPrint('VIN live capture error: $e');
         debugPrint(st.toString());
@@ -4622,60 +4973,76 @@ class _SparkJoyCreateReportScreenState
                 'Не удалось снять VIN через live-камеру. Попробуйте системную камеру или галерею.';
           });
         }
+      } finally {
+        liveCaptureInFlight = false;
+        if (focusBeforeShot) {
+          await stopFocusAssist(setLocalState);
+        }
       }
     }
 
-    final resultVin =
-        await showModalBottomSheet<String>(
-          context: context,
-          isScrollControlled: true,
-          useSafeArea: true,
-          backgroundColor: Colors.transparent,
-          builder: (context) {
-            return StatefulBuilder(
-              builder: (context, setLocalState) {
-                final sanitized = _sanitizeVin(currentVin);
-                final valid = _isStrictVin(sanitized);
-                final isCameraMode = selectedSource == 'camera';
-                final canCapture =
-                    cameraInitialized &&
-                    liveCameraController != null &&
-                    liveCameraController!.value.isInitialized &&
-                    !processing;
+    _vinScannerRouteOpen = true;
+    final resultVin = await Navigator.of(context)
+        .push<String>(
+          MaterialPageRoute<String>(
+            builder: (context) {
+              return StatefulBuilder(
+                builder: (context, setLocalState) {
+                  final sanitized = _sanitizeVin(currentVin);
+                  final valid = _isStrictVin(sanitized);
+                  final isCameraMode = selectedSource == 'camera';
+                  final hasPendingCapture =
+                      previewBytes != null && pendingOcrBytes != null;
+                  final canCapture =
+                      cameraReady &&
+                      liveCameraState is cam.PhotoCameraState &&
+                      !processing;
+                  final stageHint = processing
+                      ? 'Распознаю VIN...'
+                      : hasPendingCapture && !recognitionAttempted
+                      ? 'Проверьте фото и нажмите «Распознать VIN»'
+                      : (isCameraMode && previewBytes == null)
+                      ? (cameraReady
+                            ? 'Наведите камеру на VIN и сделайте фото'
+                            : 'Запуск камеры...')
+                      : 'Проверьте VIN перед сохранением';
 
-                return FractionallySizedBox(
-                  heightFactor: 0.95,
-                  child: Container(
-                    decoration: const BoxDecoration(
-                      color: kWhiteColor,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(20),
+                  if (!initialActionLaunched) {
+                    initialActionLaunched = true;
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!dialogActive) return;
+                      if (initialSource == ImageSource.camera) {
+                        if (!supportsLiveCameraPreview) {
+                          unawaited(
+                            pickAndRecognize(ImageSource.camera, setLocalState),
+                          );
+                        }
+                      } else {
+                        unawaited(
+                          pickAndRecognize(ImageSource.gallery, setLocalState),
+                        );
+                      }
+                    });
+                  }
+
+                  if (isCameraMode &&
+                      supportsLiveCameraPreview &&
+                      previewBytes == null &&
+                      !processing) {
+                    beginCameraWatchdog(setLocalState);
+                  }
+
+                  return Scaffold(
+                    appBar: AppBar(
+                      title: const Text('Сканирование VIN'),
+                      leading: IconButton(
+                        tooltip: 'Закрыть',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
                       ),
                     ),
-                    child: Column(
+                    body: Column(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 10, 8, 8),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Сканирование VIN',
-                                  style: Theme.of(context).textTheme.titleLarge
-                                      ?.copyWith(
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                ),
-                              ),
-                              IconButton(
-                                tooltip: 'Закрыть',
-                                onPressed: () => Navigator.of(context).pop(),
-                                icon: const Icon(Icons.close_rounded),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Divider(height: 1),
                         Expanded(
                           child: SingleChildScrollView(
                             padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
@@ -4684,46 +5051,12 @@ class _SparkJoyCreateReportScreenState
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: FilledButton.icon(
-                                        onPressed: processing
-                                            ? null
-                                            : () {
-                                                if (supportsLiveCameraPreview) {
-                                                  startLiveCamera(setLocalState);
-                                                } else {
-                                                  pickAndRecognize(
-                                                    ImageSource.camera,
-                                                    setLocalState,
-                                                  );
-                                                }
-                                              },
-                                        icon: const Icon(
-                                          Icons.camera_alt_outlined,
-                                        ),
-                                        label: const Text('Открыть камеру'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: OutlinedButton.icon(
-                                        onPressed: processing
-                                            ? null
-                                            : () => pickAndRecognize(
-                                                ImageSource.gallery,
-                                                setLocalState,
-                                              ),
-                                        icon: const Icon(
-                                          Icons.photo_library_outlined,
-                                        ),
-                                        label: const Text('Из галереи'),
-                                      ),
-                                    ),
-                                  ],
+                                MyText(
+                                  text: stageHint,
+                                  size: 11,
+                                  color: processing ? kBlueColor : kGreyColor,
                                 ),
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 8),
                                 if (isCameraMode &&
                                     supportsLiveCameraPreview &&
                                     previewBytes == null &&
@@ -4739,12 +5072,107 @@ class _SparkJoyCreateReportScreenState
                                       child: Stack(
                                         fit: StackFit.expand,
                                         children: [
-                                          if (cameraInitialized &&
-                                              liveCameraController != null &&
-                                              liveCameraController!
-                                                  .value
-                                                  .isInitialized)
-                                            CameraPreview(liveCameraController!),
+                                          cam.CameraAwesomeBuilder.custom(
+                                            saveConfig: cam.SaveConfig.photo(),
+                                            sensorConfig:
+                                                cam.SensorConfig.single(
+                                                  sensor: cam.Sensor.position(
+                                                    cam.SensorPosition.back,
+                                                  ),
+                                                  flashMode: cam.FlashMode.none,
+                                                  aspectRatio: cam
+                                                      .CameraAspectRatios
+                                                      .ratio_4_3,
+                                                  zoom: 0.0,
+                                                ),
+                                            previewFit:
+                                                cam.CameraPreviewFit.cover,
+                                            progressIndicator: const Center(
+                                              child:
+                                                  CircularProgressIndicator(),
+                                            ),
+                                            onPreviewTapBuilder: (state) => cam.OnPreviewTap(
+                                              onTap:
+                                                  (
+                                                    position,
+                                                    flutterPreviewSize,
+                                                    pixelPreviewSize,
+                                                  ) {
+                                                    if (state
+                                                        is! cam.PhotoCameraState) {
+                                                      return;
+                                                    }
+                                                    showFocusPoint(
+                                                      setLocalState,
+                                                      position,
+                                                    );
+                                                    safeSetLocalState(
+                                                      setLocalState,
+                                                      () {
+                                                        focusAdjusting = true;
+                                                      },
+                                                    );
+                                                    unawaited(() async {
+                                                      try {
+                                                        await state.focusOnPoint(
+                                                          flutterPosition:
+                                                              position,
+                                                          pixelPreviewSize:
+                                                              pixelPreviewSize,
+                                                          flutterPreviewSize:
+                                                              flutterPreviewSize,
+                                                        );
+                                                      } catch (_) {
+                                                      } finally {
+                                                        safeSetLocalState(
+                                                          setLocalState,
+                                                          () {
+                                                            focusAdjusting =
+                                                                false;
+                                                          },
+                                                        );
+                                                      }
+                                                    }());
+                                                  },
+                                            ),
+                                            onMediaCaptureEvent: (event) {
+                                              if (event.status ==
+                                                  cam
+                                                      .MediaCaptureStatus
+                                                      .failure) {
+                                                safeSetLocalState(
+                                                  setLocalState,
+                                                  () {
+                                                    cameraError =
+                                                        mapLiveCameraError(
+                                                          event.exception ??
+                                                              Exception(
+                                                                'VIN live camera failed',
+                                                              ),
+                                                        );
+                                                  },
+                                                );
+                                              }
+                                            },
+                                            builder: (state, preview) {
+                                              liveCameraState = state;
+                                              if (!cameraReady) {
+                                                WidgetsBinding.instance
+                                                    .addPostFrameCallback((_) {
+                                                      safeSetLocalState(
+                                                        setLocalState,
+                                                        () {
+                                                          cameraReady = true;
+                                                          cameraLive = true;
+                                                          cameraError = '';
+                                                          resetCameraWatchdog();
+                                                        },
+                                                      );
+                                                    });
+                                              }
+                                              return const SizedBox.expand();
+                                            },
+                                          ),
                                           IgnorePointer(
                                             child: Column(
                                               children: [
@@ -4769,7 +5197,6 @@ class _SparkJoyCreateReportScreenState
                                                         child: _VinGuideFrame(
                                                           animate:
                                                               cameraLive &&
-                                                              !cameraLoading &&
                                                               cameraError
                                                                   .isEmpty,
                                                         ),
@@ -4792,17 +5219,22 @@ class _SparkJoyCreateReportScreenState
                                               ],
                                             ),
                                           ),
-                                          if (cameraLoading)
-                                            const Center(
-                                              child:
-                                                  CircularProgressIndicator(),
+                                          if (focusPoint != null)
+                                            Positioned(
+                                              left: focusPoint!.dx - 22,
+                                              top: focusPoint!.dy - 22,
+                                              child: IgnorePointer(
+                                                child: _VinFocusIndicator(
+                                                  active: focusAdjusting,
+                                                ),
+                                              ),
                                             ),
-                                          if (cameraError.isNotEmpty &&
-                                              !cameraLoading)
+                                          if (cameraError.isNotEmpty)
                                             Center(
                                               child: Padding(
-                                                padding:
-                                                    const EdgeInsets.all(24),
+                                                padding: const EdgeInsets.all(
+                                                  24,
+                                                ),
                                                 child: MyText(
                                                   text: cameraError,
                                                   size: 12,
@@ -4811,9 +5243,7 @@ class _SparkJoyCreateReportScreenState
                                                 ),
                                               ),
                                             ),
-                                          if (cameraLive &&
-                                              cameraError.isEmpty &&
-                                              !cameraLoading)
+                                          if (cameraLive && cameraError.isEmpty)
                                             const Align(
                                               alignment: Alignment(0, -0.34),
                                               child: _VinGuideBadge(),
@@ -4823,16 +5253,55 @@ class _SparkJoyCreateReportScreenState
                                     ),
                                   ),
                                   const SizedBox(height: 10),
-                                  FilledButton.icon(
-                                    onPressed: canCapture
+                                  GestureDetector(
+                                    onTap: canCapture
                                         ? () => captureFromLiveCamera(
                                             setLocalState,
                                           )
                                         : null,
-                                    icon: const Icon(
-                                      Icons.document_scanner_outlined,
+                                    onLongPressStart: canCapture
+                                        ? (_) {
+                                            unawaited(
+                                              startFocusAssist(setLocalState),
+                                            );
+                                          }
+                                        : null,
+                                    onLongPressEnd: canCapture
+                                        ? (_) {
+                                            unawaited(() async {
+                                              await stopFocusAssist(
+                                                setLocalState,
+                                              );
+                                              await captureFromLiveCamera(
+                                                setLocalState,
+                                                focusBeforeShot: true,
+                                              );
+                                            }());
+                                          }
+                                        : null,
+                                    onLongPressCancel: canCapture
+                                        ? () {
+                                            unawaited(
+                                              stopFocusAssist(setLocalState),
+                                            );
+                                          }
+                                        : null,
+                                    child: AbsorbPointer(
+                                      child: FilledButton.icon(
+                                        onPressed: canCapture ? () {} : null,
+                                        icon: Icon(
+                                          focusAdjusting
+                                              ? Icons
+                                                    .center_focus_strong_rounded
+                                              : Icons.camera_alt_outlined,
+                                        ),
+                                        label: Text(
+                                          focusAdjusting
+                                              ? 'Фокусировка... отпустите'
+                                              : 'Сделать фото',
+                                        ),
+                                      ),
                                     ),
-                                    label: const Text('Распознать'),
                                   ),
                                   const SizedBox(height: 10),
                                 ],
@@ -4841,8 +5310,68 @@ class _SparkJoyCreateReportScreenState
                                     borderRadius: BorderRadius.circular(12),
                                     child: Image.memory(
                                       previewBytes!,
-                                      height: 160,
+                                      height: 220,
                                       fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  if (!processing) ...[
+                                    if (hasPendingCapture) ...[
+                                      FilledButton.icon(
+                                        onPressed: () => recognizeCapturedPhoto(
+                                          setLocalState,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.document_scanner_outlined,
+                                        ),
+                                        label: const Text('Распознать VIN'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      OutlinedButton(
+                                        onPressed: () {
+                                          safeSetLocalState(setLocalState, () {
+                                            recognitionAttempted = true;
+                                            error = null;
+                                          });
+                                        },
+                                        child: const Text('Ввести вручную'),
+                                      ),
+                                      const SizedBox(height: 8),
+                                    ],
+                                    OutlinedButton.icon(
+                                      onPressed: () {
+                                        if (isCameraMode) {
+                                          retryPhoto(setLocalState);
+                                        } else {
+                                          pickAndRecognize(
+                                            ImageSource.gallery,
+                                            setLocalState,
+                                          );
+                                        }
+                                      },
+                                      icon: const Icon(Icons.replay_rounded),
+                                      label: Text(
+                                        isCameraMode
+                                            ? 'Сфотографировать заново'
+                                            : 'Выбрать другое фото',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
+                                ],
+                                if (!isCameraMode &&
+                                    previewBytes == null &&
+                                    !processing) ...[
+                                  OutlinedButton.icon(
+                                    onPressed: () => pickAndRecognize(
+                                      ImageSource.gallery,
+                                      setLocalState,
+                                    ),
+                                    icon: const Icon(
+                                      Icons.photo_library_outlined,
+                                    ),
+                                    label: const Text(
+                                      'Выбрать фото из галереи',
                                     ),
                                   ),
                                   const SizedBox(height: 10),
@@ -4862,13 +5391,14 @@ class _SparkJoyCreateReportScreenState
                                       ImageSource.camera,
                                       setLocalState,
                                     ),
-                                    icon: const Icon(Icons.photo_camera_outlined),
+                                    icon: const Icon(
+                                      Icons.photo_camera_outlined,
+                                    ),
                                     label: const Text('Системная камера'),
                                   ),
                                   const SizedBox(height: 8),
                                   OutlinedButton.icon(
-                                    onPressed: () =>
-                                        startLiveCamera(setLocalState),
+                                    onPressed: () => retryPhoto(setLocalState),
                                     icon: const Icon(Icons.replay),
                                     label: const Text(
                                       'Повторить запуск камеры',
@@ -4907,82 +5437,46 @@ class _SparkJoyCreateReportScreenState
                                   ),
                                   const SizedBox(height: 8),
                                 ],
-                                TextField(
-                                  controller: controller,
-                                  maxLength: 17,
-                                  onTapOutside: (_) => _dismissKeyboard(),
-                                  onChanged: (value) {
-                                    final sanitizedValue = _sanitizeVin(value);
-                                    if (sanitizedValue != value) {
-                                      controller.value = TextEditingValue(
-                                        text: sanitizedValue,
-                                        selection: TextSelection.collapsed(
-                                          offset: sanitizedValue.length,
-                                        ),
+                                if (recognitionAttempted) ...[
+                                  TextField(
+                                    controller: controller,
+                                    maxLength: 17,
+                                    onTapOutside: (_) => _dismissKeyboard(),
+                                    onChanged: (value) {
+                                      final sanitizedValue = _sanitizeVin(
+                                        value,
                                       );
-                                    }
-                                    setLocalState(() {
-                                      currentVin = sanitizedValue;
-                                    });
-                                  },
-                                  decoration: _fieldDecoration(
-                                    'Распознанный VIN (можно исправить)',
-                                  ).copyWith(counterText: ''),
-                                ),
-                                if (sanitized.isNotEmpty && !valid)
-                                  MyText(
-                                    text: '${sanitized.length} из 17 символов',
-                                    size: 11,
-                                    color: kYellowColor,
-                                  ),
-                                if (rawText.trim().isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  ExpansionTile(
-                                    tilePadding: EdgeInsets.zero,
-                                    title: const MyText(
-                                      text: 'Сырой текст OCR',
-                                      size: 11,
-                                      color: kGreyColor,
-                                    ),
-                                    children: [
-                                      Container(
-                                        width: double.infinity,
-                                        padding: const EdgeInsets.all(10),
-                                        decoration: BoxDecoration(
-                                          border: Border.all(color: kBorderColor),
-                                          borderRadius: BorderRadius.circular(10),
-                                        ),
-                                        child: SelectableText(
-                                          rawText,
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            color: kGreyColor,
+                                      if (sanitizedValue != value) {
+                                        controller.value = TextEditingValue(
+                                          text: sanitizedValue,
+                                          selection: TextSelection.collapsed(
+                                            offset: sanitizedValue.length,
                                           ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                                if (error != null && error!.trim().isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  MyText(text: error!, size: 11, color: kRedColor),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () {
-                                      if (isCameraMode &&
-                                          supportsLiveCameraPreview) {
-                                        startLiveCamera(setLocalState);
-                                      } else {
-                                        pickAndRecognize(
-                                          isCameraMode
-                                              ? ImageSource.camera
-                                              : ImageSource.gallery,
-                                          setLocalState,
                                         );
                                       }
+                                      setLocalState(() {
+                                        currentVin = sanitizedValue;
+                                      });
                                     },
-                                    icon: const Icon(Icons.replay),
-                                    label: const Text('Заново'),
+                                    decoration: _fieldDecoration(
+                                      'Распознанный VIN (можно исправить)',
+                                    ).copyWith(counterText: ''),
+                                  ),
+                                  if (sanitized.isNotEmpty && !valid)
+                                    MyText(
+                                      text:
+                                          '${sanitized.length} из 17 символов',
+                                      size: 11,
+                                      color: kYellowColor,
+                                    ),
+                                ],
+                                if (error != null &&
+                                    error!.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 8),
+                                  MyText(
+                                    text: error!,
+                                    size: 11,
+                                    color: kRedColor,
                                   ),
                                 ],
                                 const SizedBox(height: 10),
@@ -4998,7 +5492,8 @@ class _SparkJoyCreateReportScreenState
                               children: [
                                 Expanded(
                                   child: OutlinedButton(
-                                    onPressed: () => Navigator.of(context).pop(),
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
                                     child: const Text('Отмена'),
                                   ),
                                 ),
@@ -5007,8 +5502,9 @@ class _SparkJoyCreateReportScreenState
                                   child: FilledButton(
                                     onPressed: !valid
                                         ? null
-                                        : () =>
-                                            Navigator.of(context).pop(sanitized),
+                                        : () => Navigator.of(
+                                            context,
+                                          ).pop(sanitized),
                                     child: const Text('Применить'),
                                   ),
                                 ),
@@ -5018,13 +5514,17 @@ class _SparkJoyCreateReportScreenState
                         ),
                       ],
                     ),
-                  ),
-                );
-              },
-            );
-          },
-        ).whenComplete(() {
+                  );
+                },
+              );
+            },
+          ),
+        )
+        .whenComplete(() {
           dialogActive = false;
+          _vinScannerRouteOpen = false;
+          focusPointTimer?.cancel();
+          cameraWatchdogTimer?.cancel();
         });
 
     await stopLiveCamera();
@@ -5507,33 +6007,6 @@ class _SparkJoyCreateReportScreenState
     }
   }
 
-  String? _nextMediaGroupKey(String currentGroupKey) {
-    final currentIndex = _mediaGroupsConfig.indexWhere(
-      (config) => config.key == currentGroupKey,
-    );
-    if (currentIndex < 0 || currentIndex >= _mediaGroupsConfig.length - 1) {
-      return null;
-    }
-    return _mediaGroupsConfig[currentIndex + 1].key;
-  }
-
-  Future<void> _openNextMediaGroupFromEditor() async {
-    final currentGroupKey = _activeMediaGroupKey;
-    if (currentGroupKey == null) return;
-    final nextGroupKey = _nextMediaGroupKey(currentGroupKey);
-    if (nextGroupKey == null) return;
-
-    _openMediaGroupEditor(nextGroupKey);
-    final nextState = _mediaState[nextGroupKey];
-    if (nextState == null || nextState.files.isNotEmpty) return;
-
-    try {
-      await _pickMediaFiles(nextGroupKey);
-    } catch (error) {
-      _showErrorSnack('Не удалось открыть галерею: $error');
-    }
-  }
-
   void _closeMediaGroupEditor() {
     setState(() {
       _activeMediaGroupKey = null;
@@ -5615,8 +6088,202 @@ class _SparkJoyCreateReportScreenState
     _markDraftDirty();
   }
 
+  String _tdCustomTagInputKey(String scopeKey, String severity) {
+    return '$scopeKey::$severity';
+  }
+
+  TextEditingController _tdCustomTagController(
+    String scopeKey,
+    String severity,
+  ) {
+    final key = _tdCustomTagInputKey(scopeKey, severity);
+    return _tdCustomTagControllersByScope.putIfAbsent(
+      key,
+      () => TextEditingController(),
+    );
+  }
+
+  FocusNode _tdCustomTagFocusNode(String scopeKey, String severity) {
+    final key = _tdCustomTagInputKey(scopeKey, severity);
+    return _tdCustomTagFocusNodesByScope.putIfAbsent(key, () => FocusNode());
+  }
+
+  List<_MediaTagGroup> _testDriveTagGroups(
+    String scopeKey, {
+    bool includeDisabledDefaults = false,
+  }) {
+    final defaults = _tdTagOptionsByScope[scopeKey] ?? const <String>[];
+    final seriousDefaults = _tdSeriousTagsByScope[scopeKey] ?? const <String>{};
+    final custom = _mediaCustomTagsByScope[scopeKey] ?? const <String>[];
+    final customSerious =
+        (_mediaCustomSeriousTagsByScope[scopeKey] ?? const <String>[])
+            .map((tag) => tag.toLowerCase())
+            .toSet();
+    final disabledDefaults =
+        (_mediaDisabledDefaultTagsByScope[scopeKey] ?? const <String>[])
+            .map((tag) => tag.toLowerCase())
+            .toSet();
+    final order = (_mediaTagOrderByScope[scopeKey] ?? const <String>[])
+        .map((tag) => tag.toLowerCase())
+        .toList();
+
+    final options = <_MediaTagOption>[];
+    final addedLower = <String>{};
+
+    void addOption(
+      String label, {
+      required bool isCustom,
+      required String severity,
+    }) {
+      final trimmed = label.trim();
+      if (trimmed.isEmpty) return;
+      final lower = trimmed.toLowerCase();
+      if (addedLower.contains(lower)) return;
+      if (!isCustom &&
+          !includeDisabledDefaults &&
+          disabledDefaults.contains(lower)) {
+        return;
+      }
+      addedLower.add(lower);
+      options.add(
+        _MediaTagOption(label: trimmed, severity: severity, isCustom: isCustom),
+      );
+    }
+
+    for (final label in defaults) {
+      addOption(
+        label,
+        isCustom: false,
+        severity: seriousDefaults.contains(label) ? 'serious' : 'minor',
+      );
+    }
+    for (final label in custom) {
+      addOption(
+        label,
+        isCustom: true,
+        severity: customSerious.contains(label.toLowerCase())
+            ? 'serious'
+            : 'minor',
+      );
+    }
+
+    if (order.isNotEmpty && options.isNotEmpty) {
+      final indexed = <String, _MediaTagOption>{};
+      for (final option in options) {
+        indexed[option.label.toLowerCase()] = option;
+      }
+      final sorted = <_MediaTagOption>[];
+      for (final key in order) {
+        final option = indexed.remove(key);
+        if (option != null) sorted.add(option);
+      }
+      for (final option in options) {
+        final key = option.label.toLowerCase();
+        if (indexed.containsKey(key)) {
+          sorted.add(option);
+          indexed.remove(key);
+        }
+      }
+      options
+        ..clear()
+        ..addAll(sorted);
+    }
+
+    final serious = options
+        .where((option) => option.severity == 'serious')
+        .toList();
+    final minor = options
+        .where((option) => option.severity != 'serious')
+        .toList();
+
+    final groups = <_MediaTagGroup>[];
+    if (serious.isNotEmpty) {
+      groups.add(
+        _MediaTagGroup(
+          title: 'Серьёзные',
+          severity: 'serious',
+          options: serious,
+        ),
+      );
+    }
+    if (minor.isNotEmpty) {
+      groups.add(
+        _MediaTagGroup(
+          title: 'Незначительные',
+          severity: 'minor',
+          options: minor,
+        ),
+      );
+    }
+    return groups;
+  }
+
+  void _addTestDriveCustomTag({
+    required String scopeKey,
+    required String severity,
+  }) {
+    final controller = _tdCustomTagController(scopeKey, severity);
+    final raw = controller.text.trim();
+    if (raw.isEmpty) return;
+    final groups = _testDriveTagGroups(scopeKey, includeDisabledDefaults: true);
+    final lower = raw.toLowerCase();
+    for (final group in groups) {
+      for (final option in group.options) {
+        if (option.label.toLowerCase() == lower) {
+          controller.clear();
+          return;
+        }
+      }
+    }
+
+    setState(() {
+      final custom = [
+        ...(_mediaCustomTagsByScope[scopeKey] ?? const <String>[]),
+      ];
+      custom.add(raw);
+      _mediaCustomTagsByScope[scopeKey] = custom;
+
+      final serious = [
+        ...(_mediaCustomSeriousTagsByScope[scopeKey] ?? const <String>[]),
+      ];
+      if (severity == 'serious') {
+        serious.add(raw);
+      } else {
+        serious.removeWhere((tag) => tag.toLowerCase() == lower);
+      }
+      if (serious.isEmpty) {
+        _mediaCustomSeriousTagsByScope.remove(scopeKey);
+      } else {
+        _mediaCustomSeriousTagsByScope[scopeKey] = serious;
+      }
+
+      final nextOrder = <String>[
+        ...(_mediaTagOrderByScope[scopeKey] ?? const <String>[]),
+        raw,
+      ];
+      _mediaTagOrderByScope[scopeKey] = nextOrder;
+    });
+    controller.clear();
+    _markDraftDirty();
+  }
+
   bool _testDriveSectionHasData(bool ok, List<String> tags) {
     return ok || tags.isNotEmpty;
+  }
+
+  bool _isTdAllSubsystemsMarkedOk() {
+    return _tdEngineOk &&
+        _tdGearboxOk &&
+        _tdSteeringOk &&
+        _tdRideOk &&
+        _tdBrakeOk;
+  }
+
+  bool _isTdCommentRequired() {
+    final tdConducted = _tdConductedValue();
+    if (tdConducted != true) return false;
+    if (_tdMode != _tdModeProblems) return false;
+    return _isTdAllSubsystemsMarkedOk();
   }
 
   bool _docsAllAnswered() {
@@ -5635,11 +6302,6 @@ class _SparkJoyCreateReportScreenState
     final reasons = <String>[];
     if (!_docsAllAnswered()) {
       reasons.add('Заполните все пункты сверки документов');
-      return reasons;
-    }
-    if (_docsAnyMismatch() &&
-        _docsMismatchCommentController.text.trim().isEmpty) {
-      reasons.add('Добавьте комментарий по расхождениям');
     }
     return reasons;
   }
@@ -5668,23 +6330,20 @@ class _SparkJoyCreateReportScreenState
     if (!_testDriveSectionHasData(_tdBrakeOk, _tdBrakeTags)) {
       reasons.add('Проверьте тормоза на ходу');
     }
+    if (_isTdCommentRequired() && _tdNoteController.text.trim().isEmpty) {
+      reasons.add('Добавьте комментарий по тест-драйву');
+    }
     return reasons;
   }
 
   List<String> _summaryMissingReasons() {
     final reasons = <String>[];
-    final hasVehicle =
-        _vinController.text.trim().isNotEmpty ||
-        _vinUnreadable ||
-        _carName().trim().isNotEmpty;
+    final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
     final hasDocs =
         _docsOwnerMatch != null &&
         _docsVinMatch != null &&
         _docsEngineMatch != null;
-    final hasDocsMismatchComment =
-        !_docsAnyMismatch() ||
-        _docsMismatchCommentController.text.trim().isNotEmpty;
     final requiredMediaKeys = {'body', 'glass', 'underhood', 'interior'};
     final missingMedia = <String>[];
     for (final key in requiredMediaKeys) {
@@ -5694,11 +6353,10 @@ class _SparkJoyCreateReportScreenState
       }
     }
     final hasTestDrive = _tdMode != null;
-    final hasExpertConclusion = _expertController.text.trim().isNotEmpty;
     final attachmentStats = _summaryAttachmentStats();
 
     if (!hasVehicle) {
-      reasons.add('Автомобиль — укажите VIN или марку/модель');
+      reasons.add('Автомобиль — укажите VIN');
     }
     if (!hasMileage) {
       reasons.add('Автомобиль — укажите пробег');
@@ -5706,17 +6364,14 @@ class _SparkJoyCreateReportScreenState
     if (!hasDocs) {
       reasons.add('Сверка документов — ответьте на все вопросы');
     }
-    if (!hasDocsMismatchComment) {
-      reasons.add('Сверка документов — добавьте комментарий по расхождениям');
-    }
     if (!hasTestDrive) {
       reasons.add('Тест-драйв — отметьте проведение');
     }
+    if (_isTdCommentRequired() && _tdNoteController.text.trim().isEmpty) {
+      reasons.add('Тест-драйв — добавьте комментарий');
+    }
     for (final label in missingMedia) {
       reasons.add('Осмотр — добавьте фото: $label');
-    }
-    if (!hasExpertConclusion) {
-      reasons.add('Итог специалиста — заполните заключение');
     }
     if (attachmentStats.brokenCount > 0) {
       reasons.add(
@@ -5913,7 +6568,7 @@ class _SparkJoyCreateReportScreenState
         if (_tdMode == _tdModeAllGood) return 'Да, всё исправно';
         return 'Да, есть проблемы';
       case 'summary':
-        if (_expertController.text.trim().isEmpty) return '';
+        if (_summaryController.text.trim().isEmpty) return '';
         return 'Итог заполнен';
       default:
         return '';
@@ -6046,13 +6701,18 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  Widget _card({required Widget child, EdgeInsets? padding}) {
+  Widget _card({
+    required Widget child,
+    EdgeInsets? padding,
+    Color? borderColor,
+    Color? backgroundColor,
+  }) {
     return Container(
       padding: padding ?? const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: kWhiteColor,
+        color: backgroundColor ?? kWhiteColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kBorderColor),
+        border: Border.all(color: borderColor ?? kBorderColor),
       ),
       child: child,
     );
@@ -6240,24 +6900,34 @@ class _SparkJoyCreateReportScreenState
 
   Widget _testDriveSubsystemCard({
     required String sectionLabel,
+    required String tagScopeKey,
     required bool ok,
     required ValueChanged<bool> onOkChanged,
     required String okLabel,
-    required List<String> options,
     required List<String> selected,
     required ValueChanged<List<String>> onTagsChanged,
   }) {
     final selectedTagsCount = selected.length;
+    final sectionInvalid = !ok && selectedTagsCount == 0;
     final statusLabel = ok
         ? 'Без замечаний'
-        : selectedTagsCount == 0
-        ? 'Добавьте теги замечаний'
+        : sectionInvalid
+        ? 'Обязательное поле'
         : 'Замечания: $selectedTagsCount';
     final statusColor = ok
         ? kGreenColor
-        : selectedTagsCount == 0
-        ? kGreyColor
+        : sectionInvalid
+        ? kRedColor
         : kYellowColor;
+    final managingSeverity = _tdManagingTagSeverityByScope[tagScopeKey];
+    final tagGroups = _testDriveTagGroups(
+      tagScopeKey,
+      includeDisabledDefaults: managingSeverity != null,
+    );
+    final disabledDefaults =
+        (_mediaDisabledDefaultTagsByScope[tagScopeKey] ?? const <String>[])
+            .map((tag) => tag.toLowerCase())
+            .toSet();
 
     return _card(
       child: Column(
@@ -6332,27 +7002,404 @@ class _SparkJoyCreateReportScreenState
           ),
           if (!ok) ...[
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: options.map((option) {
-                final active = selected.contains(option);
-                return _chip(
-                  label: option,
-                  selected: active,
-                  selectedColor: kYellowColor,
-                  onTap: () {
-                    final next = [...selected];
-                    if (active) {
-                      next.remove(option);
-                    } else {
-                      next.add(option);
-                    }
-                    onTagsChanged(next);
-                  },
-                );
-              }).toList(),
-            ),
+            ...tagGroups.map((group) {
+              final isManaging = managingSeverity == group.severity;
+              final customTagController = _tdCustomTagController(
+                tagScopeKey,
+                group.severity,
+              );
+              final customTagFocusNode = _tdCustomTagFocusNode(
+                tagScopeKey,
+                group.severity,
+              );
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: MyText(
+                            text: group.title,
+                            size: 12,
+                            color: _mediaTagGroupTitleColor(group),
+                            weight: FontWeight.w700,
+                          ),
+                        ),
+                        TextButton.icon(
+                          onPressed: () {
+                            _dismissKeyboard();
+                            setState(() {
+                              final current =
+                                  _tdManagingTagSeverityByScope[tagScopeKey];
+                              _tdManagingTagSeverityByScope[tagScopeKey] =
+                                  current == group.severity
+                                  ? null
+                                  : group.severity;
+                            });
+                          },
+                          icon: Icon(
+                            isManaging
+                                ? Icons.check_rounded
+                                : Icons.settings_rounded,
+                            size: 16,
+                          ),
+                          style: TextButton.styleFrom(
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                          ),
+                          label: Text(
+                            isManaging ? 'Готово' : 'Настроить',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: kSecondaryColor,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    if (isManaging)
+                      ReorderableListView.builder(
+                        key: ValueKey(
+                          'td-tag-manage-$tagScopeKey-${group.severity}',
+                        ),
+                        shrinkWrap: true,
+                        buildDefaultDragHandles: false,
+                        physics: const NeverScrollableScrollPhysics(),
+                        proxyDecorator: _tagReorderProxyDecorator,
+                        itemCount: group.options.length,
+                        onReorder: (oldIndex, newIndex) {
+                          setState(() {
+                            final adjusted = oldIndex < newIndex
+                                ? newIndex - 1
+                                : newIndex;
+                            if (oldIndex == adjusted) return;
+
+                            final reordered = [
+                              ...group.options.map((tag) => tag.label),
+                            ];
+                            final moved = reordered.removeAt(oldIndex);
+                            reordered.insert(adjusted, moved);
+
+                            final baseline = [
+                              ...(_mediaTagOrderByScope[tagScopeKey] ??
+                                  tagGroups
+                                      .expand(
+                                        (entry) => entry.options.map(
+                                          (tag) => tag.label,
+                                        ),
+                                      )
+                                      .toList()),
+                            ];
+                            final normalized = <String>[];
+                            for (final value in baseline) {
+                              if (normalized.any(
+                                (item) =>
+                                    item.toLowerCase() == value.toLowerCase(),
+                              )) {
+                                continue;
+                              }
+                              normalized.add(value);
+                            }
+
+                            final groupSet = group.options
+                                .map((tag) => tag.label.toLowerCase())
+                                .toSet();
+                            final withoutGroup = normalized
+                                .where(
+                                  (value) =>
+                                      !groupSet.contains(value.toLowerCase()),
+                                )
+                                .toList();
+                            var insertAt = normalized.indexWhere(
+                              (value) => groupSet.contains(value.toLowerCase()),
+                            );
+                            if (insertAt < 0 ||
+                                insertAt > withoutGroup.length) {
+                              insertAt = withoutGroup.length;
+                            }
+                            withoutGroup.insertAll(insertAt, reordered);
+                            _mediaTagOrderByScope[tagScopeKey] = withoutGroup;
+                          });
+                          _markDraftDirty();
+                        },
+                        itemBuilder: (context, index) {
+                          final tag = group.options[index];
+                          final lower = tag.label.toLowerCase();
+                          final hidden =
+                              !tag.isCustom && disabledDefaults.contains(lower);
+                          return Container(
+                            key: ValueKey(
+                              'td-tag-item-$tagScopeKey-${group.severity}-${tag.label}',
+                            ),
+                            margin: const EdgeInsets.only(bottom: 6),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: hidden
+                                  ? kLightGreyColor.withValues(alpha: 0.55)
+                                  : kWhiteColor,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: kBorderColor),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: ReorderableDelayedDragStartListener(
+                                    index: index,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 2,
+                                      ),
+                                      child: MyText(
+                                        text: tag.label,
+                                        size: 12,
+                                        color: hidden
+                                            ? kGreyColor
+                                            : kTertiaryColor,
+                                        weight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const Icon(
+                                  Icons.drag_indicator_rounded,
+                                  size: 18,
+                                  color: kGreyColor,
+                                ),
+                                const SizedBox(width: 4),
+                                if (tag.isCustom)
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () {
+                                      final nextSelected = selected
+                                          .where(
+                                            (value) =>
+                                                value.toLowerCase() != lower,
+                                          )
+                                          .toList();
+                                      setState(() {
+                                        final custom =
+                                            [
+                                              ...(_mediaCustomTagsByScope[tagScopeKey] ??
+                                                  const <String>[]),
+                                            ]..removeWhere(
+                                              (value) =>
+                                                  value.toLowerCase() == lower,
+                                            );
+                                        if (custom.isEmpty) {
+                                          _mediaCustomTagsByScope.remove(
+                                            tagScopeKey,
+                                          );
+                                        } else {
+                                          _mediaCustomTagsByScope[tagScopeKey] =
+                                              custom;
+                                        }
+
+                                        final serious =
+                                            [
+                                              ...(_mediaCustomSeriousTagsByScope[tagScopeKey] ??
+                                                  const <String>[]),
+                                            ]..removeWhere(
+                                              (value) =>
+                                                  value.toLowerCase() == lower,
+                                            );
+                                        if (serious.isEmpty) {
+                                          _mediaCustomSeriousTagsByScope.remove(
+                                            tagScopeKey,
+                                          );
+                                        } else {
+                                          _mediaCustomSeriousTagsByScope[tagScopeKey] =
+                                              serious;
+                                        }
+
+                                        final order =
+                                            [
+                                              ...(_mediaTagOrderByScope[tagScopeKey] ??
+                                                  const <String>[]),
+                                            ]..removeWhere(
+                                              (value) =>
+                                                  value.toLowerCase() == lower,
+                                            );
+                                        if (order.isEmpty) {
+                                          _mediaTagOrderByScope.remove(
+                                            tagScopeKey,
+                                          );
+                                        } else {
+                                          _mediaTagOrderByScope[tagScopeKey] =
+                                              order;
+                                        }
+                                      });
+                                      if (nextSelected.length !=
+                                          selected.length) {
+                                        onTagsChanged(nextSelected);
+                                      } else {
+                                        _markDraftDirty();
+                                      }
+                                    },
+                                    child: const Padding(
+                                      padding: EdgeInsets.all(4),
+                                      child: Icon(
+                                        Icons.delete_outline_rounded,
+                                        size: 16,
+                                        color: kGreyColor,
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () {
+                                      List<String>? nextSelected;
+                                      setState(() {
+                                        final disabled = [
+                                          ...(_mediaDisabledDefaultTagsByScope[tagScopeKey] ??
+                                              const <String>[]),
+                                        ];
+                                        final disabledLower = disabled
+                                            .map((value) => value.toLowerCase())
+                                            .toSet();
+                                        if (disabledLower.contains(lower)) {
+                                          disabled.removeWhere(
+                                            (value) =>
+                                                value.toLowerCase() == lower,
+                                          );
+                                        } else {
+                                          disabled.add(tag.label);
+                                          nextSelected = selected
+                                              .where(
+                                                (value) =>
+                                                    value.toLowerCase() !=
+                                                    lower,
+                                              )
+                                              .toList();
+                                        }
+                                        if (disabled.isEmpty) {
+                                          _mediaDisabledDefaultTagsByScope
+                                              .remove(tagScopeKey);
+                                        } else {
+                                          _mediaDisabledDefaultTagsByScope[tagScopeKey] =
+                                              disabled;
+                                        }
+                                      });
+                                      if (nextSelected != null) {
+                                        onTagsChanged(nextSelected!);
+                                      } else {
+                                        _markDraftDirty();
+                                      }
+                                    },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(4),
+                                      child: Icon(
+                                        hidden
+                                            ? Icons.visibility_off_outlined
+                                            : Icons.visibility_rounded,
+                                        size: 16,
+                                        color: hidden
+                                            ? kGreyColor
+                                            : kSecondaryColor,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          );
+                        },
+                      )
+                    else if (group.options.isEmpty)
+                      const MyText(
+                        text: 'Теги скрыты в настройке',
+                        size: 11,
+                        color: kGreyColor,
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: group.options.map((tag) {
+                          final lower = tag.label.toLowerCase();
+                          final active = selected.any(
+                            (value) => value.toLowerCase() == lower,
+                          );
+                          return _chip(
+                            label: tag.label,
+                            selected: active,
+                            selectedColor: _mediaTagColor(tag.severity),
+                            onTap: () {
+                              final next = [...selected];
+                              if (active) {
+                                next.removeWhere(
+                                  (value) => value.toLowerCase() == lower,
+                                );
+                              } else {
+                                next.add(tag.label);
+                              }
+                              onTagsChanged(next);
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    if (isManaging) ...[
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: customTagController,
+                              focusNode: customTagFocusNode,
+                              textInputAction: TextInputAction.done,
+                              onTapOutside: (_) => _dismissKeyboard(),
+                              onSubmitted: (_) {
+                                _addTestDriveCustomTag(
+                                  scopeKey: tagScopeKey,
+                                  severity: group.severity,
+                                );
+                              },
+                              decoration: _fieldDecoration('Свой тег').copyWith(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          SizedBox(
+                            height: 38,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                _addTestDriveCustomTag(
+                                  scopeKey: tagScopeKey,
+                                  severity: group.severity,
+                                );
+                              },
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                ),
+                                side: const BorderSide(color: kBorderColor),
+                              ),
+                              child: const Text('Добавить'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }),
           ],
         ],
       ),
@@ -6699,7 +7746,6 @@ class _SparkJoyCreateReportScreenState
     required bool isRecording,
     required String recordingLabel,
     required Future<void> Function() onToggleRecording,
-    required Future<void> Function() onAddAudio,
     required Future<void> Function(int index) onTogglePlay,
     required ValueChanged<int> onRemoveAt,
   }) {
@@ -6718,13 +7764,6 @@ class _SparkJoyCreateReportScreenState
           await onToggleRecording();
         } catch (_) {
           _showErrorSnack('Не удалось запустить запись');
-        }
-      },
-      onAddAudio: () async {
-        try {
-          await onAddAudio();
-        } catch (_) {
-          _showErrorSnack('Не удалось добавить аудиофайл');
         }
       },
       onTogglePlay: (index) async {
@@ -6780,7 +7819,6 @@ class _SparkJoyCreateReportScreenState
             isRecording: _isCommentRecording('td_comment'),
             recordingLabel: _commentRecordingLabel('td_comment'),
             onToggleRecording: _toggleTdCommentRecording,
-            onAddAudio: _pickTdCommentAudioFiles,
             onTogglePlay: _toggleTdCommentAudioPlayback,
             onRemoveAt: (index) {
               setState(() {
@@ -6814,7 +7852,7 @@ class _SparkJoyCreateReportScreenState
       },
       borderRadius: BorderRadius.circular(999),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(
           color: selected
               ? selectedColor.withValues(alpha: 0.12)
@@ -6828,7 +7866,7 @@ class _SparkJoyCreateReportScreenState
         ),
         child: MyText(
           text: label,
-          size: 11,
+          size: 13,
           weight: FontWeight.w700,
           color: selected ? selectedColor : kGreyColor,
         ),
@@ -6836,12 +7874,222 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  Widget _stepVehicle() {
-    final vinError = _vinError();
-    final plateError = _plateError();
+  Widget _tagReorderProxyDecorator(
+    Widget child,
+    int index,
+    Animation<double> animation,
+  ) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, proxyChild) {
+        final t = Curves.easeOutCubic.transform(animation.value);
+        return Transform.scale(
+          scale: 1 + (0.035 * t),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: kSecondaryColor.withValues(alpha: 0.32),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: kSecondaryColor.withValues(alpha: 0.12 + (0.12 * t)),
+                  blurRadius: 12 + (4 * t),
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Material(color: Colors.transparent, child: proxyChild),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _staffInviteCard() {
+    if (!_hasBusinessStatus()) return const SizedBox.shrink();
+    final link = _staffInviteLink.trim();
+    final hasLink = link.isNotEmpty;
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.group_add_outlined, size: 16, color: kSecondaryColor),
+              SizedBox(width: 6),
+              MyText(
+                text: 'Приглашение в штат компании',
+                size: 12,
+                weight: FontWeight.w700,
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          MyText(
+            text: 'Статус: ${_businessStatusLabel()}',
+            size: 11,
+            color: kGreyColor,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _staffInviteLinkCreating
+                      ? null
+                      : _generateStaffInviteLink,
+                  icon: Icon(
+                    hasLink ? Icons.refresh_rounded : Icons.link_rounded,
+                    size: 16,
+                  ),
+                  label: Text(
+                    _staffInviteLinkCreating
+                        ? 'Формируем...'
+                        : hasLink
+                        ? 'Обновить ссылку'
+                        : 'Сформировать ссылку',
+                  ),
+                ),
+              ),
+              if (hasLink) ...[
+                const SizedBox(width: 8),
+                SizedBox(
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    onPressed: _copyStaffInviteLink,
+                    icon: const Icon(Icons.copy_rounded, size: 16),
+                    label: const Text('Копия'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          if (hasLink) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: kInputBgColor,
+                border: Border.all(color: kBorderColor),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: MyText(text: link, size: 11, color: kGreyColor),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _carSelectionCard() {
     final carButtonTitle = _carButtonName();
     final carTitle = _carName();
     final carMeta = _carMetaLabel();
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'Марка и модель',
+            size: 12,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: _openCarPickerDialog,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              height: 52,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                border: Border.all(color: kBorderColor),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: carButtonTitle.isEmpty
+                          ? 'Выбрать автомобиль'
+                          : carButtonTitle,
+                      size: 13,
+                      color: carButtonTitle.isEmpty
+                          ? kGreyColor
+                          : kTertiaryColor,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right_rounded, color: kGreyColor),
+                ],
+              ),
+            ),
+          ),
+          if (carTitle.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _card(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_carPhotoUrl.trim().isNotEmpty) ...[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              _carPhotoUrl.trim(),
+                              width: double.infinity,
+                              height: 112,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: double.infinity,
+                                  height: 112,
+                                  color: kLightGreyColor,
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.directions_car_outlined,
+                                    color: kGreyColor,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                        MyText(
+                          text: carTitle,
+                          size: 12,
+                          weight: FontWeight.w700,
+                        ),
+                        if (carMeta.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          MyText(text: carMeta, size: 11, color: kGreyColor),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _stepVehicle() {
+    final vinError = _vinError();
+    final plateError = _plateError();
 
     return Column(
       children: [
@@ -6902,7 +8150,9 @@ class _SparkJoyCreateReportScreenState
                     width: 52,
                     height: 52,
                     child: OutlinedButton(
-                      onPressed: _vinUnreadable ? null : _openVinScannerDialog,
+                      onPressed: _vinUnreadable
+                          ? null
+                          : _openVinScannerSourceModal,
                       style: OutlinedButton.styleFrom(
                         padding: EdgeInsets.zero,
                         side: const BorderSide(color: kBorderColor),
@@ -7011,109 +8261,6 @@ class _SparkJoyCreateReportScreenState
           ),
         ),
         const SizedBox(height: 10),
-        _card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const MyText(
-                text: 'Марка и модель',
-                size: 12,
-                weight: FontWeight.w700,
-              ),
-              const SizedBox(height: 8),
-              InkWell(
-                onTap: _openCarPickerDialog,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  height: 52,
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: kBorderColor),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: MyText(
-                          text: carButtonTitle.isEmpty
-                              ? 'Выбрать автомобиль'
-                              : carButtonTitle,
-                          size: 13,
-                          color: carButtonTitle.isEmpty
-                              ? kGreyColor
-                              : kTertiaryColor,
-                          maxLines: 1,
-                        ),
-                      ),
-                      const Icon(
-                        Icons.chevron_right_rounded,
-                        color: kGreyColor,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              if (carTitle.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _card(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_carPhotoUrl.trim().isNotEmpty) ...[
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  _carPhotoUrl.trim(),
-                                  width: double.infinity,
-                                  height: 112,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      width: double.infinity,
-                                      height: 112,
-                                      color: kLightGreyColor,
-                                      alignment: Alignment.center,
-                                      child: const Icon(
-                                        Icons.directions_car_outlined,
-                                        color: kGreyColor,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                            ],
-                            MyText(
-                              text: carTitle,
-                              size: 12,
-                              weight: FontWeight.w700,
-                            ),
-                            if (carMeta.isNotEmpty) ...[
-                              const SizedBox(height: 2),
-                              MyText(
-                                text: carMeta,
-                                size: 11,
-                                color: kGreyColor,
-                              ),
-                            ],
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
         _input(
           _adLinkController,
           'https://auto.ru/...',
@@ -7169,6 +8316,10 @@ class _SparkJoyCreateReportScreenState
           focusNode: _inspectionCityFocusNode,
           onSubmitted: (_) => _dismissKeyboard(),
         ),
+        if (_hasBusinessStatus()) ...[
+          const SizedBox(height: 10),
+          _staffInviteCard(),
+        ],
       ],
     );
   }
@@ -7180,6 +8331,8 @@ class _SparkJoyCreateReportScreenState
 
     return Column(
       children: [
+        _carSelectionCard(),
+        const SizedBox(height: 10),
         _card(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -7328,7 +8481,6 @@ class _SparkJoyCreateReportScreenState
                   isRecording: _isCommentRecording('docs_comment'),
                   recordingLabel: _commentRecordingLabel('docs_comment'),
                   onToggleRecording: _toggleDocsCommentRecording,
-                  onAddAudio: _pickDocsCommentAudioFiles,
                   onTogglePlay: (index) => _toggleCommentAudioPlayback(
                     docsComment: true,
                     index: index,
@@ -7500,17 +8652,6 @@ class _SparkJoyCreateReportScreenState
                   weight: FontWeight.w700,
                 ),
               ),
-              if (_legalLoading) ...[
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: const LinearProgressIndicator(
-                    minHeight: 6,
-                    backgroundColor: kLightGreyColor,
-                    valueColor: AlwaysStoppedAnimation<Color>(kSecondaryColor),
-                  ),
-                ),
-              ],
               const SizedBox(height: 10),
               IgnorePointer(
                 ignoring: _legalLoading,
@@ -7566,7 +8707,6 @@ class _SparkJoyCreateReportScreenState
                 isRecording: _isCommentRecording('legal_comment'),
                 recordingLabel: _commentRecordingLabel('legal_comment'),
                 onToggleRecording: _toggleLegalCommentRecording,
-                onAddAudio: _pickLegalCommentAudioFiles,
                 onTogglePlay: (index) => _toggleCommentAudioPlayback(
                   docsComment: false,
                   index: index,
@@ -7596,13 +8736,10 @@ class _SparkJoyCreateReportScreenState
     required String title,
     required double from,
     required double to,
-    required bool editing,
-    required VoidCallback onToggle,
     required ValueChanged<RangeValues> onChanged,
   }) {
     final safeFrom = from.clamp(50, 1500).toDouble();
     final safeTo = to.clamp(safeFrom, 1500).toDouble();
-    final manuallySet = safeFrom != 80 || safeTo != 200;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -7611,83 +8748,62 @@ class _SparkJoyCreateReportScreenState
             Expanded(
               child: MyText(text: title, size: 11, color: kGreyColor),
             ),
-            TextButton(
-              onPressed: onToggle,
-              style: TextButton.styleFrom(
-                minimumSize: Size.zero,
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              child: Text(
-                editing ? 'Готово' : 'Изменить',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: kSecondaryColor,
-                ),
-              ),
-            ),
           ],
         ),
+        const SizedBox(height: 6),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            MyText(
-              text: '${safeFrom.round()}–${safeTo.round()}',
-              size: 18,
-              weight: FontWeight.w800,
+            SizedBox(
+              width: 82,
+              child: _paintManualValueField(
+                label: 'От',
+                value: safeFrom,
+                showLabel: false,
+                hint: '',
+                onSubmitted: (manualFrom) {
+                  final fromValue = manualFrom.toDouble();
+                  final toValue = math.max(fromValue, safeTo);
+                  onChanged(RangeValues(fromValue, toValue));
+                },
+              ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 6),
+            const MyText(text: '—', size: 14, color: kGreyColor),
+            const SizedBox(width: 6),
+            SizedBox(
+              width: 82,
+              child: _paintManualValueField(
+                label: 'До',
+                value: safeTo,
+                showLabel: false,
+                hint: '',
+                onSubmitted: (manualTo) {
+                  final toValue = manualTo.toDouble();
+                  final fromValue = math.min(safeFrom, toValue);
+                  onChanged(RangeValues(fromValue, toValue));
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
             const MyText(text: 'мкм', size: 11, color: kGreyColor),
           ],
         ),
-        if (manuallySet) ...[
-          const SizedBox(height: 2),
-          const MyText(text: 'Задано вручную', size: 11, color: kGreyColor),
-        ],
-        if (editing) ...[
-          RangeSlider(
-            values: RangeValues(safeFrom, safeTo),
-            min: 50,
-            max: 1500,
-            divisions: 29,
-            onChanged: onChanged,
-          ),
-          const Row(
-            children: [
-              MyText(text: '50 мкм', size: 10, color: kGreyColor),
-              Spacer(),
-              MyText(text: '1500 мкм', size: 10, color: kGreyColor),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _paintManualValueField(
-                  label: 'От',
-                  value: safeFrom,
-                  onSubmitted: (manualFrom) {
-                    final fromValue = manualFrom.toDouble();
-                    final toValue = math.max(fromValue, safeTo);
-                    onChanged(RangeValues(fromValue, toValue));
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _paintManualValueField(
-                  label: 'До',
-                  value: safeTo,
-                  onSubmitted: (manualTo) {
-                    final toValue = manualTo.toDouble();
-                    final fromValue = math.min(safeFrom, toValue);
-                    onChanged(RangeValues(fromValue, toValue));
-                  },
-                ),
-              ),
-            ],
-          ),
-        ],
+        const SizedBox(height: 4),
+        RangeSlider(
+          values: RangeValues(safeFrom, safeTo),
+          min: 50,
+          max: 1500,
+          divisions: 29,
+          onChanged: onChanged,
+        ),
+        const Row(
+          children: [
+            MyText(text: '50', size: 10, color: kGreyColor),
+            Spacer(),
+            MyText(text: '1500', size: 10, color: kGreyColor),
+          ],
+        ),
       ],
     );
   }
@@ -7696,6 +8812,8 @@ class _SparkJoyCreateReportScreenState
     required String label,
     required double value,
     required ValueChanged<int> onSubmitted,
+    bool showLabel = true,
+    String hint = 'мкм',
   }) {
     var rawValue = value.round().toString();
     void submitRawValue() {
@@ -7707,8 +8825,10 @@ class _SparkJoyCreateReportScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        MyText(text: label, size: 10, color: kGreyColor),
-        const SizedBox(height: 4),
+        if (showLabel) ...[
+          MyText(text: label, size: 10, color: kGreyColor),
+          const SizedBox(height: 4),
+        ],
         TextFormField(
           key: ValueKey('$label-${value.round()}'),
           initialValue: value.round().toString(),
@@ -7726,7 +8846,7 @@ class _SparkJoyCreateReportScreenState
           onTapOutside: (_) {
             _dismissKeyboard();
           },
-          decoration: _fieldDecoration('мкм').copyWith(
+          decoration: _fieldDecoration(hint).copyWith(
             isDense: true,
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 10,
@@ -7795,7 +8915,6 @@ class _SparkJoyCreateReportScreenState
     final supportsPaint = _mediaSupportsPaintThickness(groupKey);
     var paintFrom = basePartInspection.paintFrom ?? 80.0;
     var paintTo = basePartInspection.paintTo ?? 200.0;
-    var paintEditing = false;
     var customTagsByScope = <String, List<String>>{
       for (final entry in _mediaCustomTagsByScope.entries)
         entry.key: [...entry.value],
@@ -7813,7 +8932,7 @@ class _SparkJoyCreateReportScreenState
         entry.key: [...entry.value],
     };
     var showElementError = false;
-    var manageTagsMode = false;
+    String? managingTagSeverity;
     var isRecording = false;
     var recordingDuration = 0;
     var isDictating = false;
@@ -7829,9 +8948,14 @@ class _SparkJoyCreateReportScreenState
           ? item.inspection.note
           : basePartInspection.note,
     );
-    final customTagController = TextEditingController();
-    final customTagFocusNode = FocusNode();
-    var customTagSeverity = 'minor';
+    final customTagControllers = <String, TextEditingController>{
+      'serious': TextEditingController(),
+      'minor': TextEditingController(),
+    };
+    final customTagFocusNodes = <String, FocusNode>{
+      'serious': FocusNode(),
+      'minor': FocusNode(),
+    };
     var paintToolsExpanded = false;
     final recorder = AudioRecorder();
     final player = AudioPlayer();
@@ -8067,905 +9191,867 @@ class _SparkJoyCreateReportScreenState
 
     bool? saved;
     try {
-      saved = await showDialog<bool>(
-        context: context,
-        builder: (context) {
-          return StatefulBuilder(
-            builder: (context, setLocalState) {
-              playerCompleteSubscription ??= player.onPlayerComplete.listen((
-                _,
-              ) {
-                if (!dialogActive) return;
-                setLocalState(() => playingAudioIndex = -1);
-              });
+      saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (context) {
+            return StatefulBuilder(
+              builder: (context, setLocalState) {
+                playerCompleteSubscription ??= player.onPlayerComplete.listen((
+                  _,
+                ) {
+                  if (!dialogActive) return;
+                  setLocalState(() => playingAudioIndex = -1);
+                });
 
-              final elementOptions = _mediaElementOptions(groupKey);
-              final requiresElementType = elementOptions.isNotEmpty;
-              final elementChosen =
-                  !requiresElementType || (elementType ?? '').trim().isNotEmpty;
-              final canEditDetails = !requiresElementType || elementChosen;
-              final scopeKey = _mediaTagScopeKey(
-                groupKey,
-                elementType: elementType,
-              );
-              final tagGroups = _mediaTagGroups(
-                groupKey,
-                elementType: elementType,
-                customTagsByScope: customTagsByScope,
-                customSeriousTagsByScope: customSeriousTagsByScope,
-                disabledDefaultTagsByScope: disabledDefaultTagsByScope,
-                tagOrderByScope: tagOrderByScope,
-              );
-              final tagGroupsAll = _mediaTagGroups(
-                groupKey,
-                elementType: elementType,
-                customTagsByScope: customTagsByScope,
-                customSeriousTagsByScope: customSeriousTagsByScope,
-                disabledDefaultTagsByScope: disabledDefaultTagsByScope,
-                tagOrderByScope: tagOrderByScope,
-                includeDisabledDefaults: true,
-              );
-              final disabledDefaultsInScope =
-                  disabledDefaultTagsByScope[scopeKey] ?? const <String>[];
-              final viewportWidth = MediaQuery.of(context).size.width;
-              final viewportHeight = MediaQuery.of(context).size.height;
-              final dialogContentWidth = (viewportWidth - 32)
-                  .clamp(220.0, 420.0)
-                  .toDouble();
-              final dialogShellWidth = viewportWidth > 560
-                  ? 460.0
-                  : viewportWidth;
-              void addCustomTag() {
-                final input = customTagController.text.trim();
-                if (input.isEmpty) return;
-
-                final next = customTagsByScope[scopeKey] != null
-                    ? [...customTagsByScope[scopeKey]!]
-                    : <String>[];
-
-                String selectedValue = input;
-                final lower = input.toLowerCase();
-                for (final tag in next) {
-                  if (tag.toLowerCase() == lower) {
-                    selectedValue = tag;
-                    break;
-                  }
-                }
-                if (!next.any((tag) => tag.toLowerCase() == lower)) {
-                  next.add(input);
-                  selectedValue = input;
-                }
-                customTagsByScope[scopeKey] = next;
-                final customSerious = customSeriousTagsByScope[scopeKey] != null
-                    ? [...customSeriousTagsByScope[scopeKey]!]
-                    : <String>[];
-                customSerious.removeWhere(
-                  (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                final elementOptions = _mediaElementOptions(groupKey);
+                final isKeyboardOpen =
+                    MediaQuery.viewInsetsOf(context).bottom > 0;
+                final requiresElementType = elementOptions.isNotEmpty;
+                final elementChosen =
+                    !requiresElementType ||
+                    (elementType ?? '').trim().isNotEmpty;
+                final canEditDetails = !requiresElementType || elementChosen;
+                final scopeKey = _mediaTagScopeKey(
+                  groupKey,
+                  elementType: elementType,
                 );
-                if (customTagSeverity == 'serious') {
-                  customSerious.add(selectedValue);
-                }
-                if (customSerious.isEmpty) {
-                  customSeriousTagsByScope.remove(scopeKey);
-                } else {
-                  customSeriousTagsByScope[scopeKey] = customSerious;
-                }
-                disabledDefaultTagsByScope[scopeKey] =
-                    (disabledDefaultTagsByScope[scopeKey] ?? const <String>[])
-                        .where((tag) => tag.toLowerCase() != lower)
-                        .toList();
-                final baselineOrder = [
-                  ...(tagOrderByScope[scopeKey] ??
-                      tagGroupsAll
-                          .expand(
-                            (entry) => entry.options.map((tag) => tag.label),
-                          )
-                          .toList()),
-                ];
-                final order = <String>[];
-                for (final value in baselineOrder) {
-                  if (order.any(
-                    (item) => item.toLowerCase() == value.toLowerCase(),
-                  )) {
-                    continue;
-                  }
-                  order.add(value);
-                }
-                order.removeWhere(
-                  (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                final tagGroups = _mediaTagGroups(
+                  groupKey,
+                  elementType: elementType,
+                  customTagsByScope: customTagsByScope,
+                  customSeriousTagsByScope: customSeriousTagsByScope,
+                  disabledDefaultTagsByScope: disabledDefaultTagsByScope,
+                  tagOrderByScope: tagOrderByScope,
                 );
-                order.add(selectedValue);
-                tagOrderByScope[scopeKey] = order;
-                if (!selectedTags.any(
-                  (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
-                )) {
-                  selectedTags.add(selectedValue);
-                }
-                customTagSeverity = 'minor';
-                manageTagsMode = true;
-                customTagController.clear();
-                setLocalState(() {});
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (!dialogActive || !customTagFocusNode.canRequestFocus) {
+                final tagGroupsAll = _mediaTagGroups(
+                  groupKey,
+                  elementType: elementType,
+                  customTagsByScope: customTagsByScope,
+                  customSeriousTagsByScope: customSeriousTagsByScope,
+                  disabledDefaultTagsByScope: disabledDefaultTagsByScope,
+                  tagOrderByScope: tagOrderByScope,
+                  includeDisabledDefaults: true,
+                );
+                final disabledDefaultsInScope =
+                    disabledDefaultTagsByScope[scopeKey] ?? const <String>[];
+                void addCustomTag(String severity) {
+                  final customTagController = customTagControllers[severity];
+                  final customTagFocusNode = customTagFocusNodes[severity];
+                  if (customTagController == null ||
+                      customTagFocusNode == null) {
                     return;
                   }
-                  customTagFocusNode.requestFocus();
-                });
-              }
+                  final input = customTagController.text.trim();
+                  if (input.isEmpty) return;
 
-              return Dialog(
-                insetPadding: EdgeInsets.zero,
-                clipBehavior: Clip.antiAlias,
-                backgroundColor: kWhiteColor,
-                child: SafeArea(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: SizedBox(
-                      width: dialogShellWidth,
-                      height: viewportHeight,
-                      child: Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
-                            child: Row(
-                              children: [
-                                IconButton(
-                                  onPressed: () async {
-                                    await stopDictation(setLocalState);
-                                    await stopRecording(
-                                      setLocalState,
-                                      keepResult: false,
-                                    );
-                                    await player.stop();
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop(false);
-                                  },
-                                  icon: const Icon(Icons.arrow_back_rounded),
-                                  tooltip: 'Назад',
-                                ),
-                                const Expanded(
-                                  child: Center(
-                                    child: MyText(
-                                      text: 'Заметка элемента',
-                                      size: 20,
-                                      weight: FontWeight.w700,
-                                    ),
+                  final next = customTagsByScope[scopeKey] != null
+                      ? [...customTagsByScope[scopeKey]!]
+                      : <String>[];
+
+                  String selectedValue = input;
+                  final lower = input.toLowerCase();
+                  for (final tag in next) {
+                    if (tag.toLowerCase() == lower) {
+                      selectedValue = tag;
+                      break;
+                    }
+                  }
+                  if (!next.any((tag) => tag.toLowerCase() == lower)) {
+                    next.add(input);
+                    selectedValue = input;
+                  }
+                  customTagsByScope[scopeKey] = next;
+                  final customSerious =
+                      customSeriousTagsByScope[scopeKey] != null
+                      ? [...customSeriousTagsByScope[scopeKey]!]
+                      : <String>[];
+                  customSerious.removeWhere(
+                    (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                  );
+                  if (severity == 'serious') {
+                    customSerious.add(selectedValue);
+                  }
+                  if (customSerious.isEmpty) {
+                    customSeriousTagsByScope.remove(scopeKey);
+                  } else {
+                    customSeriousTagsByScope[scopeKey] = customSerious;
+                  }
+                  disabledDefaultTagsByScope[scopeKey] =
+                      (disabledDefaultTagsByScope[scopeKey] ?? const <String>[])
+                          .where((tag) => tag.toLowerCase() != lower)
+                          .toList();
+                  final baselineTagGroups = _mediaTagGroups(
+                    groupKey,
+                    elementType: elementType,
+                    customTagsByScope: customTagsByScope,
+                    customSeriousTagsByScope: customSeriousTagsByScope,
+                    disabledDefaultTagsByScope: disabledDefaultTagsByScope,
+                    tagOrderByScope: tagOrderByScope,
+                    includeDisabledDefaults: true,
+                  );
+                  final baselineOrder = [
+                    ...(tagOrderByScope[scopeKey] ??
+                        baselineTagGroups
+                            .expand(
+                              (entry) => entry.options.map((tag) => tag.label),
+                            )
+                            .toList()),
+                  ];
+                  final order = <String>[];
+                  for (final value in baselineOrder) {
+                    if (order.any(
+                      (item) => item.toLowerCase() == value.toLowerCase(),
+                    )) {
+                      continue;
+                    }
+                    order.add(value);
+                  }
+                  order.removeWhere(
+                    (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                  );
+                  order.add(selectedValue);
+                  tagOrderByScope[scopeKey] = order;
+                  if (!selectedTags.any(
+                    (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
+                  )) {
+                    selectedTags.add(selectedValue);
+                  }
+                  managingTagSeverity = severity;
+                  customTagController.clear();
+                  setLocalState(() {});
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (!dialogActive || !customTagFocusNode.canRequestFocus) {
+                      return;
+                    }
+                    customTagFocusNode.requestFocus();
+                  });
+                }
+
+                _MediaTagGroup? findGroupBySeverity(
+                  List<_MediaTagGroup> groups,
+                  String severity,
+                ) {
+                  for (final group in groups) {
+                    if (group.severity == severity) return group;
+                  }
+                  return null;
+                }
+
+                return Scaffold(
+                  backgroundColor: kWhiteColor,
+                  body: SafeArea(
+                    child: Column(
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(8, 4, 8, 6),
+                          child: Row(
+                            children: [
+                              IconButton(
+                                onPressed: () async {
+                                  await stopDictation(setLocalState);
+                                  await stopRecording(
+                                    setLocalState,
+                                    keepResult: false,
+                                  );
+                                  await player.stop();
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop(false);
+                                },
+                                icon: const Icon(Icons.arrow_back_rounded),
+                                tooltip: 'Назад',
+                              ),
+                              const Expanded(
+                                child: Center(
+                                  child: MyText(
+                                    text: 'Заметка элемента',
+                                    size: 20,
+                                    weight: FontWeight.w700,
                                   ),
                                 ),
-                                const SizedBox(width: 40),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 40),
+                            ],
                           ),
-                          const Divider(height: 1),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-                              child: SingleChildScrollView(
-                                keyboardDismissBehavior:
-                                    ScrollViewKeyboardDismissBehavior.onDrag,
-                                child: SizedBox(
-                                  width: dialogContentWidth,
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      DropdownButtonFormField<String>(
-                                        isExpanded: true,
-                                        isDense: true,
-                                        initialValue:
-                                            (elementType ?? '').isEmpty
-                                            ? null
-                                            : elementType,
-                                        decoration: _fieldDecoration('Элемент')
-                                            .copyWith(
-                                              errorText: showElementError
-                                                  ? 'Выберите тип элемента'
-                                                  : null,
-                                            ),
-                                        selectedItemBuilder: (context) {
-                                          return elementOptions.map((option) {
-                                            return Align(
-                                              alignment: Alignment.centerLeft,
-                                              child: Text(
-                                                option.label,
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            );
-                                          }).toList();
-                                        },
-                                        items: elementOptions.map((option) {
-                                          return DropdownMenuItem<String>(
-                                            value: option.id,
+                        ),
+                        const Divider(height: 1),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+                            child: SingleChildScrollView(
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              child: SizedBox(
+                                width: double.infinity,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      isDense: true,
+                                      initialValue: (elementType ?? '').isEmpty
+                                          ? null
+                                          : elementType,
+                                      decoration: _fieldDecoration('Элемент')
+                                          .copyWith(
+                                            errorText: showElementError
+                                                ? 'Выберите тип элемента'
+                                                : null,
+                                          ),
+                                      selectedItemBuilder: (context) {
+                                        return elementOptions.map((option) {
+                                          return Align(
+                                            alignment: Alignment.centerLeft,
                                             child: Text(
                                               option.label,
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           );
-                                        }).toList(),
-                                        onChanged: (value) {
+                                        }).toList();
+                                      },
+                                      items: elementOptions.map((option) {
+                                        return DropdownMenuItem<String>(
+                                          value: option.id,
+                                          child: Text(
+                                            option.label,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        );
+                                      }).toList(),
+                                      onChanged: (value) {
+                                        setLocalState(() {
+                                          elementType = value;
+                                          selectedTags = [];
+                                          noDamage = false;
+                                          managingTagSeverity = null;
+                                          showElementError = false;
+                                        });
+                                      },
+                                    ),
+                                    if (canEditDetails && supportsPaint) ...[
+                                      const SizedBox(height: 10),
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          border: Border.all(
+                                            color: kBorderColor,
+                                          ),
+                                        ),
+                                        child: ExpansionTile(
+                                          key: ValueKey(
+                                            'paint-tools-$paintToolsExpanded',
+                                          ),
+                                          title: const MyText(
+                                            text: 'Толщина ЛКП (дополнительно)',
+                                            size: 12,
+                                            weight: FontWeight.w700,
+                                          ),
+                                          initiallyExpanded: paintToolsExpanded,
+                                          tilePadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 10,
+                                              ),
+                                          childrenPadding:
+                                              const EdgeInsets.fromLTRB(
+                                                10,
+                                                0,
+                                                10,
+                                                10,
+                                              ),
+                                          onExpansionChanged: (expanded) {
+                                            setLocalState(
+                                              () =>
+                                                  paintToolsExpanded = expanded,
+                                            );
+                                          },
+                                          children: [
+                                            _paintRangeBlock(
+                                              title: 'Толщина окраса',
+                                              from: paintFrom,
+                                              to: paintTo,
+                                              onChanged: (values) {
+                                                setLocalState(() {
+                                                  paintFrom = values.start
+                                                      .roundToDouble();
+                                                  paintTo = values.end
+                                                      .roundToDouble();
+                                                });
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    if (canEditDetails) ...[
+                                      const SizedBox(height: 10),
+                                      InkWell(
+                                        onTap: () {
                                           setLocalState(() {
-                                            elementType = value;
-                                            selectedTags = [];
-                                            noDamage = false;
-                                            manageTagsMode = false;
-                                            showElementError = false;
+                                            noDamage = !noDamage;
+                                            if (noDamage) {
+                                              selectedTags = [];
+                                              managingTagSeverity = null;
+                                            }
                                           });
                                         },
-                                      ),
-                                      if (canEditDetails && supportsPaint) ...[
-                                        const SizedBox(height: 10),
-                                        Container(
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          width: double.infinity,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 10,
+                                          ),
                                           decoration: BoxDecoration(
                                             borderRadius: BorderRadius.circular(
                                               10,
                                             ),
                                             border: Border.all(
-                                              color: kBorderColor,
+                                              color: noDamage
+                                                  ? kGreenColor
+                                                  : kBorderColor,
                                             ),
+                                            color: noDamage
+                                                ? kGreenColor.withValues(
+                                                    alpha: 0.1,
+                                                  )
+                                                : kWhiteColor,
                                           ),
-                                          child: ExpansionTile(
-                                            key: ValueKey(
-                                              'paint-tools-$paintToolsExpanded',
-                                            ),
-                                            title: const MyText(
-                                              text:
-                                                  'Толщина ЛКП (дополнительно)',
-                                              size: 12,
-                                              weight: FontWeight.w700,
-                                            ),
-                                            initiallyExpanded:
-                                                paintToolsExpanded,
-                                            tilePadding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 10,
-                                                ),
-                                            childrenPadding:
-                                                const EdgeInsets.fromLTRB(
-                                                  10,
-                                                  0,
-                                                  10,
-                                                  10,
-                                                ),
-                                            onExpansionChanged: (expanded) {
-                                              setLocalState(
-                                                () => paintToolsExpanded =
-                                                    expanded,
-                                              );
-                                            },
+                                          child: Row(
                                             children: [
-                                              _paintRangeBlock(
-                                                title: 'Толщина окраса',
-                                                from: paintFrom,
-                                                to: paintTo,
-                                                editing: paintEditing,
-                                                onToggle: () {
-                                                  _dismissKeyboard();
-                                                  setLocalState(
-                                                    () => paintEditing =
-                                                        !paintEditing,
-                                                  );
-                                                },
-                                                onChanged: (values) {
-                                                  setLocalState(() {
-                                                    paintFrom = values.start
-                                                        .roundToDouble();
-                                                    paintTo = values.end
-                                                        .roundToDouble();
-                                                  });
-                                                },
+                                              Icon(
+                                                noDamage
+                                                    ? Icons.check_box
+                                                    : Icons
+                                                          .check_box_outline_blank,
+                                                color: noDamage
+                                                    ? kGreenColor
+                                                    : kGreyColor,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Expanded(
+                                                child: MyText(
+                                                  text: _mediaNoDamageLabel(
+                                                    groupKey,
+                                                  ),
+                                                  size: 12,
+                                                  weight: FontWeight.w600,
+                                                  color: noDamage
+                                                      ? kGreenColor
+                                                      : kTertiaryColor,
+                                                ),
                                               ),
                                             ],
                                           ),
                                         ),
-                                      ],
-                                      if (canEditDetails) ...[
-                                        const SizedBox(height: 10),
-                                        InkWell(
-                                          onTap: () {
-                                            setLocalState(() {
-                                              noDamage = !noDamage;
-                                              if (noDamage) {
-                                                selectedTags = [];
-                                                manageTagsMode = false;
-                                              }
-                                            });
-                                          },
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          child: Container(
-                                            width: double.infinity,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 10,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              border: Border.all(
-                                                color: noDamage
-                                                    ? kGreenColor
-                                                    : kBorderColor,
-                                              ),
-                                              color: noDamage
-                                                  ? kGreenColor.withValues(
-                                                      alpha: 0.1,
-                                                    )
-                                                  : kWhiteColor,
-                                            ),
-                                            child: Row(
-                                              children: [
-                                                Icon(
-                                                  noDamage
-                                                      ? Icons.check_box
-                                                      : Icons
-                                                            .check_box_outline_blank,
-                                                  color: noDamage
-                                                      ? kGreenColor
-                                                      : kGreyColor,
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: MyText(
-                                                    text: _mediaNoDamageLabel(
-                                                      groupKey,
-                                                    ),
-                                                    size: 12,
-                                                    weight: FontWeight.w600,
-                                                    color: noDamage
-                                                        ? kGreenColor
-                                                        : kTertiaryColor,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      if (canEditDetails && !noDamage) ...[
-                                        const SizedBox(height: 10),
-                                        Row(
-                                          children: [
-                                            const Expanded(
-                                              child: MyText(
-                                                text: 'Теги',
-                                                size: 11,
-                                                color: kGreyColor,
-                                                weight: FontWeight.w700,
-                                              ),
-                                            ),
-                                            TextButton.icon(
-                                              onPressed: () {
-                                                setLocalState(
-                                                  () => manageTagsMode =
-                                                      !manageTagsMode,
-                                                );
-                                              },
-                                              icon: Icon(
-                                                manageTagsMode
-                                                    ? Icons.check_rounded
-                                                    : Icons.settings_rounded,
-                                                size: 16,
-                                              ),
-                                              label: Text(
-                                                manageTagsMode
-                                                    ? 'Готово'
-                                                    : 'Настроить',
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        if (manageTagsMode) ...[
-                                          if (tagGroupsAll.isEmpty)
-                                            const MyText(
-                                              text:
-                                                  'Для выбранного элемента теги не заданы',
-                                              size: 11,
-                                              color: kGreyColor,
-                                            )
-                                          else
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: tagGroupsAll.map((
-                                                group,
-                                              ) {
-                                                final groupTags = group.options;
-                                                if (groupTags.isEmpty) {
-                                                  return const SizedBox.shrink();
-                                                }
-                                                return Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        bottom: 10,
-                                                      ),
-                                                  child: Row(
-                                                    children: [
-                                                      MyText(
-                                                        text: group.title,
-                                                        size: 11,
-                                                        color:
-                                                            _mediaTagGroupTitleColor(
-                                                              group,
-                                                            ),
-                                                        weight: FontWeight.w700,
-                                                      ),
-                                                      const Spacer(),
-                                                      MyText(
-                                                        text:
-                                                            '${groupTags.length}',
-                                                        size: 10,
-                                                        color: kGreyColor,
-                                                        weight: FontWeight.w700,
-                                                      ),
-                                                    ],
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            ),
-                                          const SizedBox(height: 6),
-                                          ...tagGroupsAll.map((group) {
+                                      ),
+                                    ],
+                                    if (canEditDetails && !noDamage) ...[
+                                      const SizedBox(height: 10),
+                                      if (tagGroupsAll.isEmpty)
+                                        const MyText(
+                                          text:
+                                              'Для выбранного элемента теги не заданы',
+                                          size: 11,
+                                          color: kGreyColor,
+                                        )
+                                      else
+                                        Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: tagGroupsAll.map((group) {
                                             final groupTags = group.options;
                                             if (groupTags.isEmpty) {
                                               return const SizedBox.shrink();
                                             }
+                                            final visibleGroup =
+                                                findGroupBySeverity(
+                                                  tagGroups,
+                                                  group.severity,
+                                                );
+                                            final visibleOptions =
+                                                visibleGroup?.options ??
+                                                const <_MediaTagOption>[];
+                                            final isManaging =
+                                                managingTagSeverity ==
+                                                group.severity;
+                                            final customTagController =
+                                                customTagControllers[group
+                                                    .severity];
+                                            final customTagFocusNode =
+                                                customTagFocusNodes[group
+                                                    .severity];
                                             return Padding(
                                               padding: const EdgeInsets.only(
                                                 bottom: 10,
                                               ),
-                                              child: ReorderableListView.builder(
-                                                key: ValueKey(
-                                                  'tag-manage-$scopeKey-${group.title}',
-                                                ),
-                                                shrinkWrap: true,
-                                                buildDefaultDragHandles: false,
-                                                physics:
-                                                    const NeverScrollableScrollPhysics(),
-                                                itemCount: groupTags.length,
-                                                onReorder: (oldIndex, newIndex) {
-                                                  setLocalState(() {
-                                                    final adjusted =
-                                                        oldIndex < newIndex
-                                                        ? newIndex - 1
-                                                        : newIndex;
-                                                    if (oldIndex == adjusted) {
-                                                      return;
-                                                    }
-
-                                                    final reordered = [
-                                                      ...groupTags.map(
-                                                        (tag) => tag.label,
-                                                      ),
-                                                    ];
-                                                    final moved = reordered
-                                                        .removeAt(oldIndex);
-                                                    reordered.insert(
-                                                      adjusted,
-                                                      moved,
-                                                    );
-
-                                                    final baseline = [
-                                                      ...(tagOrderByScope[scopeKey] ??
-                                                          tagGroupsAll
-                                                              .expand(
-                                                                (entry) => entry
-                                                                    .options
-                                                                    .map(
-                                                                      (
-                                                                        tag,
-                                                                      ) => tag
-                                                                          .label,
-                                                                    ),
-                                                              )
-                                                              .toList()),
-                                                    ];
-                                                    final normalized =
-                                                        <String>[];
-                                                    for (final value
-                                                        in baseline) {
-                                                      if (normalized.any(
-                                                        (item) =>
-                                                            item.toLowerCase() ==
-                                                            value.toLowerCase(),
-                                                      )) {
-                                                        continue;
-                                                      }
-                                                      normalized.add(value);
-                                                    }
-
-                                                    final groupSet = groupTags
-                                                        .map(
-                                                          (tag) => tag.label
-                                                              .toLowerCase(),
-                                                        )
-                                                        .toSet();
-                                                    final withoutGroup = normalized
-                                                        .where(
-                                                          (
-                                                            value,
-                                                          ) => !groupSet.contains(
-                                                            value.toLowerCase(),
-                                                          ),
-                                                        )
-                                                        .toList();
-                                                    var insertAt = normalized
-                                                        .indexWhere(
-                                                          (
-                                                            value,
-                                                          ) => groupSet.contains(
-                                                            value.toLowerCase(),
-                                                          ),
-                                                        );
-                                                    if (insertAt < 0 ||
-                                                        insertAt >
-                                                            withoutGroup
-                                                                .length) {
-                                                      insertAt =
-                                                          withoutGroup.length;
-                                                    }
-                                                    withoutGroup.insertAll(
-                                                      insertAt,
-                                                      reordered,
-                                                    );
-                                                    tagOrderByScope[scopeKey] =
-                                                        withoutGroup;
-                                                  });
-                                                },
-                                                itemBuilder: (context, index) {
-                                                  final tag = groupTags[index];
-                                                  final hidden =
-                                                      !tag.isCustom &&
-                                                      disabledDefaultsInScope.any(
-                                                        (value) =>
-                                                            value
-                                                                .toLowerCase() ==
-                                                            tag.label
-                                                                .toLowerCase(),
-                                                      );
-
-                                                  return Container(
-                                                    key: ValueKey(
-                                                      'tag-item-$scopeKey-${group.title}-${tag.label}',
-                                                    ),
-                                                    margin:
-                                                        const EdgeInsets.only(
-                                                          bottom: 6,
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Expanded(
+                                                        child: MyText(
+                                                          text: group.title,
+                                                          size: 12,
+                                                          color:
+                                                              _mediaTagGroupTitleColor(
+                                                                group,
+                                                              ),
+                                                          weight:
+                                                              FontWeight.w700,
                                                         ),
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 8,
-                                                          vertical: 6,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            10,
-                                                          ),
-                                                      border: Border.all(
-                                                        color: kBorderColor,
                                                       ),
-                                                      color: hidden
-                                                          ? kInputBgColor
-                                                          : kWhiteColor,
-                                                    ),
-                                                    child: Row(
-                                                      children: [
-                                                        ReorderableDragStartListener(
-                                                          index: index,
-                                                          child: const Padding(
-                                                            padding:
-                                                                EdgeInsets.symmetric(
-                                                                  horizontal: 4,
-                                                                ),
-                                                            child: Icon(
-                                                              Icons
-                                                                  .drag_indicator_rounded,
-                                                              size: 16,
-                                                              color: kGreyColor,
+                                                      TextButton.icon(
+                                                        onPressed: () {
+                                                          setLocalState(() {
+                                                            if (isManaging) {
+                                                              managingTagSeverity =
+                                                                  null;
+                                                            } else {
+                                                              managingTagSeverity =
+                                                                  group
+                                                                      .severity;
+                                                            }
+                                                          });
+                                                        },
+                                                        icon: Icon(
+                                                          isManaging
+                                                              ? Icons
+                                                                    .check_rounded
+                                                              : Icons
+                                                                    .settings_rounded,
+                                                          size: 16,
+                                                        ),
+                                                        label: Text(
+                                                          isManaging
+                                                              ? 'Готово'
+                                                              : 'Настроить',
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  if (isManaging) ...[
+                                                    ReorderableListView.builder(
+                                                      key: ValueKey(
+                                                        'tag-manage-$scopeKey-${group.severity}',
+                                                      ),
+                                                      shrinkWrap: true,
+                                                      buildDefaultDragHandles:
+                                                          false,
+                                                      physics:
+                                                          const NeverScrollableScrollPhysics(),
+                                                      proxyDecorator:
+                                                          _tagReorderProxyDecorator,
+                                                      itemCount:
+                                                          groupTags.length,
+                                                      onReorder: (oldIndex, newIndex) {
+                                                        setLocalState(() {
+                                                          final adjusted =
+                                                              oldIndex <
+                                                                  newIndex
+                                                              ? newIndex - 1
+                                                              : newIndex;
+                                                          if (oldIndex ==
+                                                              adjusted) {
+                                                            return;
+                                                          }
+
+                                                          final reordered = [
+                                                            ...groupTags.map(
+                                                              (tag) =>
+                                                                  tag.label,
                                                             ),
-                                                          ),
-                                                        ),
-                                                        Expanded(
-                                                          child: MyText(
-                                                            text: tag.label,
-                                                            size: 11,
-                                                            color: hidden
-                                                                ? kGreyColor
-                                                                : kTertiaryColor,
-                                                            weight:
-                                                                FontWeight.w600,
-                                                          ),
-                                                        ),
-                                                        if (tag.isCustom)
-                                                          InkWell(
-                                                            onTap: () {
-                                                              setLocalState(() {
-                                                                final next =
-                                                                    (customTagsByScope[scopeKey] ??
-                                                                            const <
-                                                                              String
-                                                                            >[])
-                                                                        .where(
-                                                                          (
-                                                                            value,
-                                                                          ) =>
-                                                                              value.toLowerCase() !=
-                                                                              tag.label.toLowerCase(),
-                                                                        )
-                                                                        .toList();
-                                                                if (next
-                                                                    .isEmpty) {
-                                                                  customTagsByScope
-                                                                      .remove(
-                                                                        scopeKey,
-                                                                      );
-                                                                } else {
-                                                                  customTagsByScope[scopeKey] =
-                                                                      next;
-                                                                }
-                                                                final order =
-                                                                    (tagOrderByScope[scopeKey] ??
-                                                                            const <
-                                                                              String
-                                                                            >[])
-                                                                        .where(
-                                                                          (
-                                                                            value,
-                                                                          ) =>
-                                                                              value.toLowerCase() !=
-                                                                              tag.label.toLowerCase(),
-                                                                        )
-                                                                        .toList();
-                                                                if (order
-                                                                    .isEmpty) {
-                                                                  tagOrderByScope
-                                                                      .remove(
-                                                                        scopeKey,
-                                                                      );
-                                                                } else {
-                                                                  tagOrderByScope[scopeKey] =
-                                                                      order;
-                                                                }
-                                                                selectedTags.removeWhere(
-                                                                  (value) =>
+                                                          ];
+                                                          final moved =
+                                                              reordered
+                                                                  .removeAt(
+                                                                    oldIndex,
+                                                                  );
+                                                          reordered.insert(
+                                                            adjusted,
+                                                            moved,
+                                                          );
+
+                                                          final baseline = [
+                                                            ...(tagOrderByScope[scopeKey] ??
+                                                                tagGroupsAll
+                                                                    .expand(
+                                                                      (
+                                                                        entry,
+                                                                      ) => entry
+                                                                          .options
+                                                                          .map(
+                                                                            (
+                                                                              tag,
+                                                                            ) =>
+                                                                                tag.label,
+                                                                          ),
+                                                                    )
+                                                                    .toList()),
+                                                          ];
+                                                          final normalized =
+                                                              <String>[];
+                                                          for (final value
+                                                              in baseline) {
+                                                            if (normalized.any(
+                                                              (item) =>
+                                                                  item
+                                                                      .toLowerCase() ==
+                                                                  value
+                                                                      .toLowerCase(),
+                                                            )) {
+                                                              continue;
+                                                            }
+                                                            normalized.add(
+                                                              value,
+                                                            );
+                                                          }
+
+                                                          final groupSet = groupTags
+                                                              .map(
+                                                                (tag) => tag
+                                                                    .label
+                                                                    .toLowerCase(),
+                                                              )
+                                                              .toSet();
+                                                          final withoutGroup =
+                                                              normalized
+                                                                  .where(
+                                                                    (
+                                                                      value,
+                                                                    ) => !groupSet
+                                                                        .contains(
+                                                                          value
+                                                                              .toLowerCase(),
+                                                                        ),
+                                                                  )
+                                                                  .toList();
+                                                          var insertAt = normalized
+                                                              .indexWhere(
+                                                                (
+                                                                  value,
+                                                                ) => groupSet
+                                                                    .contains(
                                                                       value
-                                                                          .toLowerCase() ==
-                                                                      tag.label
                                                                           .toLowerCase(),
-                                                                );
-                                                              });
-                                                            },
+                                                                    ),
+                                                              );
+                                                          if (insertAt < 0 ||
+                                                              insertAt >
+                                                                  withoutGroup
+                                                                      .length) {
+                                                            insertAt =
+                                                                withoutGroup
+                                                                    .length;
+                                                          }
+                                                          withoutGroup
+                                                              .insertAll(
+                                                                insertAt,
+                                                                reordered,
+                                                              );
+                                                          tagOrderByScope[scopeKey] =
+                                                              withoutGroup;
+                                                        });
+                                                      },
+                                                      itemBuilder: (context, index) {
+                                                        final tag =
+                                                            groupTags[index];
+                                                        final hidden =
+                                                            !tag.isCustom &&
+                                                            disabledDefaultsInScope.any(
+                                                              (value) =>
+                                                                  value
+                                                                      .toLowerCase() ==
+                                                                  tag.label
+                                                                      .toLowerCase(),
+                                                            );
+
+                                                        return Container(
+                                                          key: ValueKey(
+                                                            'tag-item-$scopeKey-${group.severity}-${tag.label}',
+                                                          ),
+                                                          margin:
+                                                              const EdgeInsets.only(
+                                                                bottom: 6,
+                                                              ),
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 8,
+                                                                vertical: 6,
+                                                              ),
+                                                          decoration: BoxDecoration(
                                                             borderRadius:
                                                                 BorderRadius.circular(
-                                                                  999,
+                                                                  10,
                                                                 ),
-                                                            child: const Padding(
-                                                              padding:
-                                                                  EdgeInsets.all(
-                                                                    4,
+                                                            border: Border.all(
+                                                              color:
+                                                                  kBorderColor,
+                                                            ),
+                                                            color: hidden
+                                                                ? kInputBgColor
+                                                                : kWhiteColor,
+                                                          ),
+                                                          child: Row(
+                                                            children: [
+                                                              Expanded(
+                                                                child: ReorderableDelayedDragStartListener(
+                                                                  index: index,
+                                                                  child: Padding(
+                                                                    padding: const EdgeInsets.symmetric(
+                                                                      horizontal:
+                                                                          4,
+                                                                      vertical:
+                                                                          2,
+                                                                    ),
+                                                                    child: MyText(
+                                                                      text: tag
+                                                                          .label,
+                                                                      size: 12,
+                                                                      color:
+                                                                          hidden
+                                                                          ? kGreyColor
+                                                                          : kTertiaryColor,
+                                                                      weight: FontWeight
+                                                                          .w600,
+                                                                    ),
                                                                   ),
-                                                              child: Icon(
+                                                                ),
+                                                              ),
+                                                              const Icon(
                                                                 Icons
-                                                                    .delete_outline_rounded,
-                                                                size: 16,
+                                                                    .drag_indicator_rounded,
+                                                                size: 18,
                                                                 color:
                                                                     kGreyColor,
                                                               ),
-                                                            ),
-                                                          )
-                                                        else
-                                                          InkWell(
-                                                            onTap: () {
-                                                              setLocalState(() {
-                                                                final next = [
-                                                                  ...(disabledDefaultTagsByScope[scopeKey] ??
-                                                                      const <
-                                                                        String
-                                                                      >[]),
-                                                                ];
-                                                                next.removeWhere(
-                                                                  (value) =>
-                                                                      value
-                                                                          .toLowerCase() ==
-                                                                      tag.label
-                                                                          .toLowerCase(),
-                                                                );
-                                                                if (!hidden) {
-                                                                  next.add(
-                                                                    tag.label,
-                                                                  );
-                                                                  selectedTags.removeWhere(
-                                                                    (value) =>
-                                                                        value
-                                                                            .toLowerCase() ==
-                                                                        tag.label
-                                                                            .toLowerCase(),
-                                                                  );
-                                                                }
-                                                                if (next
-                                                                    .isEmpty) {
-                                                                  disabledDefaultTagsByScope
-                                                                      .remove(
-                                                                        scopeKey,
+                                                              const SizedBox(
+                                                                width: 4,
+                                                              ),
+                                                              if (tag.isCustom)
+                                                                InkWell(
+                                                                  onTap: () {
+                                                                    setLocalState(() {
+                                                                      final next =
+                                                                          (customTagsByScope[scopeKey] ??
+                                                                                  const <String>[])
+                                                                              .where(
+                                                                                (
+                                                                                  value,
+                                                                                ) =>
+                                                                                    value.toLowerCase() !=
+                                                                                    tag.label.toLowerCase(),
+                                                                              )
+                                                                              .toList();
+                                                                      if (next
+                                                                          .isEmpty) {
+                                                                        customTagsByScope.remove(
+                                                                          scopeKey,
+                                                                        );
+                                                                      } else {
+                                                                        customTagsByScope[scopeKey] =
+                                                                            next;
+                                                                      }
+                                                                      final order =
+                                                                          (tagOrderByScope[scopeKey] ??
+                                                                                  const <String>[])
+                                                                              .where(
+                                                                                (
+                                                                                  value,
+                                                                                ) =>
+                                                                                    value.toLowerCase() !=
+                                                                                    tag.label.toLowerCase(),
+                                                                              )
+                                                                              .toList();
+                                                                      if (order
+                                                                          .isEmpty) {
+                                                                        tagOrderByScope.remove(
+                                                                          scopeKey,
+                                                                        );
+                                                                      } else {
+                                                                        tagOrderByScope[scopeKey] =
+                                                                            order;
+                                                                      }
+                                                                      selectedTags.removeWhere(
+                                                                        (
+                                                                          value,
+                                                                        ) =>
+                                                                            value.toLowerCase() ==
+                                                                            tag.label.toLowerCase(),
                                                                       );
-                                                                } else {
-                                                                  disabledDefaultTagsByScope[scopeKey] =
-                                                                      next;
-                                                                }
-                                                              });
-                                                            },
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  999,
-                                                                ),
-                                                            child: Padding(
-                                                              padding:
-                                                                  const EdgeInsets.all(
-                                                                    4,
+                                                                    });
+                                                                  },
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        999,
+                                                                      ),
+                                                                  child: const Padding(
+                                                                    padding:
+                                                                        EdgeInsets.all(
+                                                                          4,
+                                                                        ),
+                                                                    child: Icon(
+                                                                      Icons
+                                                                          .delete_outline_rounded,
+                                                                      size: 16,
+                                                                      color:
+                                                                          kGreyColor,
+                                                                    ),
                                                                   ),
-                                                              child: Icon(
-                                                                hidden
-                                                                    ? Icons
-                                                                          .visibility_off_outlined
-                                                                    : Icons
-                                                                          .visibility_rounded,
-                                                                size: 16,
-                                                                color: hidden
-                                                                    ? kGreyColor
-                                                                    : kSecondaryColor,
+                                                                )
+                                                              else
+                                                                InkWell(
+                                                                  onTap: () {
+                                                                    setLocalState(() {
+                                                                      final next = [
+                                                                        ...(disabledDefaultTagsByScope[scopeKey] ??
+                                                                            const <
+                                                                              String
+                                                                            >[]),
+                                                                      ];
+                                                                      next.removeWhere(
+                                                                        (
+                                                                          value,
+                                                                        ) =>
+                                                                            value.toLowerCase() ==
+                                                                            tag.label.toLowerCase(),
+                                                                      );
+                                                                      if (!hidden) {
+                                                                        next.add(
+                                                                          tag.label,
+                                                                        );
+                                                                        selectedTags.removeWhere(
+                                                                          (
+                                                                            value,
+                                                                          ) =>
+                                                                              value.toLowerCase() ==
+                                                                              tag.label.toLowerCase(),
+                                                                        );
+                                                                      }
+                                                                      if (next
+                                                                          .isEmpty) {
+                                                                        disabledDefaultTagsByScope.remove(
+                                                                          scopeKey,
+                                                                        );
+                                                                      } else {
+                                                                        disabledDefaultTagsByScope[scopeKey] =
+                                                                            next;
+                                                                      }
+                                                                    });
+                                                                  },
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        999,
+                                                                      ),
+                                                                  child: Padding(
+                                                                    padding:
+                                                                        const EdgeInsets.all(
+                                                                          4,
+                                                                        ),
+                                                                    child: Icon(
+                                                                      hidden
+                                                                          ? Icons.visibility_off_outlined
+                                                                          : Icons.visibility_rounded,
+                                                                      size: 16,
+                                                                      color:
+                                                                          hidden
+                                                                          ? kGreyColor
+                                                                          : kSecondaryColor,
+                                                                    ),
+                                                                  ),
+                                                                ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                      },
+                                                    ),
+                                                    if (customTagController !=
+                                                            null &&
+                                                        customTagFocusNode !=
+                                                            null) ...[
+                                                      const SizedBox(height: 8),
+                                                      Container(
+                                                        width: double.infinity,
+                                                        padding:
+                                                            const EdgeInsets.all(
+                                                              10,
+                                                            ),
+                                                        decoration: BoxDecoration(
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                10,
+                                                              ),
+                                                          border: Border.all(
+                                                            color: kBorderColor,
+                                                          ),
+                                                          color: kInputBgColor,
+                                                        ),
+                                                        child: Row(
+                                                          children: [
+                                                            Expanded(
+                                                              child: TextField(
+                                                                focusNode:
+                                                                    customTagFocusNode,
+                                                                controller:
+                                                                    customTagController,
+                                                                textInputAction:
+                                                                    TextInputAction
+                                                                        .done,
+                                                                onSubmitted: (_) =>
+                                                                    addCustomTag(
+                                                                      group
+                                                                          .severity,
+                                                                    ),
+                                                                onTapOutside: (_) =>
+                                                                    _dismissKeyboard(),
+                                                                decoration:
+                                                                    _fieldDecoration(
+                                                                      'Свой тег (${group.title.toLowerCase()})',
+                                                                    ).copyWith(
+                                                                      contentPadding: const EdgeInsets.symmetric(
+                                                                        horizontal:
+                                                                            12,
+                                                                        vertical:
+                                                                            8,
+                                                                      ),
+                                                                    ),
                                                               ),
                                                             ),
-                                                          ),
-                                                      ],
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            );
-                                          }),
-                                          const SizedBox(height: 8),
-                                          Container(
-                                            width: double.infinity,
-                                            padding: const EdgeInsets.all(10),
-                                            decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              border: Border.all(
-                                                color: kBorderColor,
-                                              ),
-                                              color: kInputBgColor,
-                                            ),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                const MyText(
-                                                  text: 'Добавить свой тег',
-                                                  size: 11,
-                                                  color: kGreyColor,
-                                                  weight: FontWeight.w700,
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Wrap(
-                                                  spacing: 8,
-                                                  runSpacing: 8,
-                                                  children: [
-                                                    ChoiceChip(
-                                                      label: const Text(
-                                                        'Незначительный',
-                                                      ),
-                                                      selected:
-                                                          customTagSeverity ==
-                                                          'minor',
-                                                      onSelected: (_) {
-                                                        setLocalState(
-                                                          () =>
-                                                              customTagSeverity =
-                                                                  'minor',
-                                                        );
-                                                      },
-                                                    ),
-                                                    ChoiceChip(
-                                                      label: const Text(
-                                                        'Серьёзный',
-                                                      ),
-                                                      selected:
-                                                          customTagSeverity ==
-                                                          'serious',
-                                                      selectedColor: kRedColor
-                                                          .withValues(
-                                                            alpha: 0.16,
-                                                          ),
-                                                      onSelected: (_) {
-                                                        setLocalState(
-                                                          () =>
-                                                              customTagSeverity =
-                                                                  'serious',
-                                                        );
-                                                      },
-                                                    ),
-                                                  ],
-                                                ),
-                                                const SizedBox(height: 8),
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: TextField(
-                                                        focusNode:
-                                                            customTagFocusNode,
-                                                        controller:
-                                                            customTagController,
-                                                        textInputAction:
-                                                            TextInputAction
-                                                                .done,
-                                                        onSubmitted: (_) =>
-                                                            addCustomTag(),
-                                                        onTapOutside: (_) =>
-                                                            _dismissKeyboard(),
-                                                        decoration:
-                                                            _fieldDecoration(
-                                                              'Свой тег',
-                                                            ).copyWith(
-                                                              contentPadding:
-                                                                  const EdgeInsets.symmetric(
-                                                                    horizontal:
-                                                                        12,
-                                                                    vertical: 8,
+                                                            const SizedBox(
+                                                              width: 8,
+                                                            ),
+                                                            OutlinedButton(
+                                                              onPressed: () =>
+                                                                  addCustomTag(
+                                                                    group
+                                                                        .severity,
                                                                   ),
+                                                              child: const Text(
+                                                                'Добавить',
+                                                              ),
                                                             ),
+                                                          ],
+                                                        ),
                                                       ),
-                                                    ),
-                                                    const SizedBox(width: 8),
-                                                    OutlinedButton(
-                                                      onPressed: addCustomTag,
-                                                      child: const Text(
-                                                        'Добавить',
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ] else ...[
-                                          if (tagGroups.isEmpty)
-                                            const MyText(
-                                              text:
-                                                  'Для выбранного элемента теги не заданы',
-                                              size: 11,
-                                              color: kGreyColor,
-                                            )
-                                          else
-                                            Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: tagGroups.map((group) {
-                                                return Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        bottom: 10,
-                                                      ),
-                                                  child: Column(
-                                                    crossAxisAlignment:
-                                                        CrossAxisAlignment
-                                                            .start,
-                                                    children: [
-                                                      MyText(
-                                                        text: group.title,
+                                                    ],
+                                                  ] else ...[
+                                                    if (visibleOptions.isEmpty)
+                                                      const MyText(
+                                                        text:
+                                                            'Теги скрыты в настройке',
                                                         size: 11,
-                                                        color:
-                                                            _mediaTagGroupTitleColor(
-                                                              group,
-                                                            ),
-                                                        weight: FontWeight.w700,
-                                                      ),
-                                                      const SizedBox(height: 6),
+                                                        color: kGreyColor,
+                                                      )
+                                                    else
                                                       Wrap(
                                                         spacing: 8,
                                                         runSpacing: 8,
-                                                        children: group.options.map((
+                                                        children: visibleOptions.map((
                                                           tag,
                                                         ) {
                                                           final selected =
@@ -8998,470 +10084,438 @@ class _SparkJoyCreateReportScreenState
                                                           );
                                                         }).toList(),
                                                       ),
-                                                    ],
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            ),
-                                        ],
-                                      ],
-                                      if (canEditDetails) ...[
-                                        const SizedBox(height: 10),
-                                        const MyText(
-                                          text: 'Комментарий',
-                                          size: 11,
-                                          color: kGreyColor,
-                                          weight: FontWeight.w700,
-                                        ),
-                                        const SizedBox(height: 6),
-                                        Container(
-                                          width: double.infinity,
-                                          padding: const EdgeInsets.fromLTRB(
-                                            12,
-                                            10,
-                                            12,
-                                            10,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: kBorderColor,
-                                            ),
-                                            color: kWhiteColor,
-                                          ),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              TextField(
-                                                controller: noteController,
-                                                minLines: 7,
-                                                maxLines: 10,
-                                                onTapOutside: (_) =>
-                                                    _dismissKeyboard(),
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                ),
-                                                decoration:
-                                                    const InputDecoration(
-                                                      hintText:
-                                                          'Добавьте комментарий',
-                                                      hintStyle: TextStyle(
-                                                        fontSize: 14,
-                                                        color: kGreyColor,
-                                                      ),
-                                                      border: InputBorder.none,
-                                                      enabledBorder:
-                                                          InputBorder.none,
-                                                      focusedBorder:
-                                                          InputBorder.none,
-                                                      contentPadding:
-                                                          EdgeInsets.zero,
-                                                    ),
+                                                  ],
+                                                ],
                                               ),
-                                              const SizedBox(height: 10),
-                                              if (isDictating) ...[
-                                                const MyText(
-                                                  text: 'Идёт надиктовка...',
-                                                  size: 11,
-                                                  color: kRedColor,
-                                                  weight: FontWeight.w700,
+                                            );
+                                          }).toList(),
+                                        ),
+                                    ],
+                                    if (canEditDetails) ...[
+                                      const SizedBox(height: 10),
+                                      const MyText(
+                                        text: 'Комментарий',
+                                        size: 11,
+                                        color: kGreyColor,
+                                        weight: FontWeight.w700,
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Container(
+                                        width: double.infinity,
+                                        padding: const EdgeInsets.fromLTRB(
+                                          12,
+                                          10,
+                                          12,
+                                          10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: kBorderColor,
+                                          ),
+                                          color: kWhiteColor,
+                                        ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            TextField(
+                                              controller: noteController,
+                                              minLines: 7,
+                                              maxLines: 10,
+                                              onTapOutside: (_) =>
+                                                  _dismissKeyboard(),
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                              ),
+                                              decoration: const InputDecoration(
+                                                hintText:
+                                                    'Добавьте комментарий',
+                                                hintStyle: TextStyle(
+                                                  fontSize: 14,
+                                                  color: kGreyColor,
                                                 ),
-                                                const SizedBox(height: 8),
-                                              ],
-                                              Align(
-                                                alignment:
-                                                    Alignment.centerRight,
-                                                child: Wrap(
-                                                  spacing: 8,
-                                                  runSpacing: 8,
-                                                  children: [
-                                                    InkWell(
-                                                      onTap: () async {
-                                                        if (isDictating) {
-                                                          await stopDictation(
-                                                            setLocalState,
-                                                          );
-                                                        } else {
-                                                          await startDictation(
-                                                            setLocalState,
-                                                          );
-                                                        }
-                                                      },
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
+                                                border: InputBorder.none,
+                                                enabledBorder: InputBorder.none,
+                                                focusedBorder: InputBorder.none,
+                                                contentPadding: EdgeInsets.zero,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 10),
+                                            if (isDictating) ...[
+                                              const MyText(
+                                                text: 'Идёт надиктовка...',
+                                                size: 11,
+                                                color: kRedColor,
+                                                weight: FontWeight.w700,
+                                              ),
+                                              const SizedBox(height: 8),
+                                            ],
+                                            Align(
+                                              alignment: Alignment.centerRight,
+                                              child: Wrap(
+                                                spacing: 8,
+                                                runSpacing: 8,
+                                                children: [
+                                                  InkWell(
+                                                    onTap: () async {
+                                                      if (isDictating) {
+                                                        await stopDictation(
+                                                          setLocalState,
+                                                        );
+                                                      } else {
+                                                        await startDictation(
+                                                          setLocalState,
+                                                        );
+                                                      }
+                                                    },
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 10,
+                                                            vertical: 6,
                                                           ),
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 10,
-                                                              vertical: 6,
+                                                      decoration: BoxDecoration(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              999,
                                                             ),
-                                                        decoration: BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                999,
-                                                              ),
-                                                          border: Border.all(
-                                                            color: isDictating
-                                                                ? kRedColor
-                                                                      .withValues(
-                                                                        alpha:
-                                                                            0.45,
-                                                                      )
-                                                                : kBorderColor,
-                                                          ),
+                                                        border: Border.all(
                                                           color: isDictating
                                                               ? kRedColor
                                                                     .withValues(
                                                                       alpha:
-                                                                          0.08,
+                                                                          0.45,
                                                                     )
-                                                              : kInputBgColor,
+                                                              : kBorderColor,
                                                         ),
-                                                        child: Row(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: [
-                                                            Icon(
-                                                              isDictating
-                                                                  ? Icons
-                                                                        .mic_off_rounded
-                                                                  : Icons
-                                                                        .mic_rounded,
-                                                              size: 14,
-                                                              color: isDictating
-                                                                  ? kRedColor
-                                                                  : kSecondaryColor,
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 5,
-                                                            ),
-                                                            MyText(
-                                                              text: isDictating
-                                                                  ? 'Стоп'
-                                                                  : 'Голос',
-                                                              size: 9,
-                                                              weight: FontWeight
-                                                                  .w700,
-                                                              color: isDictating
-                                                                  ? kRedColor
-                                                                  : kTertiaryColor,
-                                                            ),
-                                                          ],
-                                                        ),
+                                                        color: isDictating
+                                                            ? kRedColor
+                                                                  .withValues(
+                                                                    alpha: 0.08,
+                                                                  )
+                                                            : kInputBgColor,
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: [
+                                                          Icon(
+                                                            isDictating
+                                                                ? Icons
+                                                                      .mic_off_rounded
+                                                                : Icons
+                                                                      .mic_rounded,
+                                                            size: 14,
+                                                            color: isDictating
+                                                                ? kRedColor
+                                                                : kSecondaryColor,
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 5,
+                                                          ),
+                                                          MyText(
+                                                            text: isDictating
+                                                                ? 'Стоп'
+                                                                : 'Голос',
+                                                            size: 9,
+                                                            weight:
+                                                                FontWeight.w700,
+                                                            color: isDictating
+                                                                ? kRedColor
+                                                                : kTertiaryColor,
+                                                          ),
+                                                        ],
                                                       ),
                                                     ),
-                                                    InkWell(
-                                                      onTap: () =>
-                                                          formatNoteWithAi(
-                                                            setLocalState,
+                                                  ),
+                                                  InkWell(
+                                                    onTap: () =>
+                                                        formatNoteWithAi(
+                                                          setLocalState,
+                                                        ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    child: Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 10,
+                                                            vertical: 6,
                                                           ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
-                                                          ),
-                                                      child: Container(
-                                                        padding:
-                                                            const EdgeInsets.symmetric(
-                                                              horizontal: 10,
-                                                              vertical: 6,
+                                                      decoration: BoxDecoration(
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              999,
                                                             ),
-                                                        decoration: BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                999,
-                                                              ),
-                                                          border: Border.all(
-                                                            color:
-                                                                kSecondaryColor
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.25,
-                                                                    ),
-                                                          ),
+                                                        border: Border.all(
                                                           color: kSecondaryColor
                                                               .withValues(
-                                                                alpha: 0.08,
+                                                                alpha: 0.25,
                                                               ),
                                                         ),
-                                                        child: Row(
-                                                          mainAxisSize:
-                                                              MainAxisSize.min,
-                                                          children: const [
-                                                            Icon(
-                                                              Icons
-                                                                  .auto_awesome_rounded,
-                                                              size: 14,
-                                                              color:
-                                                                  kSecondaryColor,
+                                                        color: kSecondaryColor
+                                                            .withValues(
+                                                              alpha: 0.08,
                                                             ),
-                                                            SizedBox(width: 5),
-                                                            MyText(
-                                                              text: 'ИИ',
-                                                              size: 9,
-                                                              weight: FontWeight
-                                                                  .w700,
-                                                              color:
-                                                                  kSecondaryColor,
-                                                            ),
-                                                          ],
-                                                        ),
+                                                      ),
+                                                      child: Row(
+                                                        mainAxisSize:
+                                                            MainAxisSize.min,
+                                                        children: const [
+                                                          Icon(
+                                                            Icons
+                                                                .auto_awesome_rounded,
+                                                            size: 14,
+                                                            color:
+                                                                kSecondaryColor,
+                                                          ),
+                                                          SizedBox(width: 5),
+                                                          MyText(
+                                                            text: 'ИИ',
+                                                            size: 9,
+                                                            weight:
+                                                                FontWeight.w700,
+                                                            color:
+                                                                kSecondaryColor,
+                                                          ),
+                                                        ],
                                                       ),
                                                     ),
-                                                  ],
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: OutlinedButton.icon(
-                                            onPressed: () async {
-                                              if (isRecording) {
-                                                await stopRecording(
-                                                  setLocalState,
-                                                );
-                                              } else {
-                                                await startRecording(
-                                                  setLocalState,
-                                                );
-                                              }
-                                            },
-                                            icon: const Icon(
-                                              Icons.graphic_eq_rounded,
-                                              size: 16,
-                                            ),
-                                            label: Text(
-                                              isRecording
-                                                  ? 'Стоп (${recordingLabel()})'
-                                                  : 'Записать голосовое',
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 8),
-                                        SizedBox(
-                                          width: double.infinity,
-                                          child: OutlinedButton.icon(
-                                            onPressed: () async {
-                                              final picked =
-                                                  await _pickCommentAudioFiles();
-                                              if (picked.isEmpty) return;
-                                              setLocalState(() {
-                                                audioRecordings = <String>[
-                                                  ...audioRecordings,
-                                                  ...picked
-                                                      .map((file) => file.dataUrl),
-                                                ];
-                                              });
-                                            },
-                                            icon: const Icon(
-                                              Icons.upload_file_rounded,
-                                              size: 16,
-                                            ),
-                                            label: const Text(
-                                              'Приложить аудиофайл',
-                                            ),
-                                          ),
-                                        ),
-                                        if (audioRecordings.isNotEmpty) ...[
-                                          const SizedBox(height: 8),
-                                          ...List.generate(audioRecordings.length, (
-                                            audioIndex,
-                                          ) {
-                                            final playing =
-                                                playingAudioIndex == audioIndex;
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                bottom: 6,
-                                              ),
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 8,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  borderRadius:
-                                                      BorderRadius.circular(10),
-                                                  border: Border.all(
-                                                    color: kBorderColor,
                                                   ),
-                                                  color: kInputBgColor,
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: OutlinedButton.icon(
+                                          onPressed: () async {
+                                            if (isRecording) {
+                                              await stopRecording(
+                                                setLocalState,
+                                              );
+                                            } else {
+                                              await startRecording(
+                                                setLocalState,
+                                              );
+                                            }
+                                          },
+                                          icon: const Icon(
+                                            Icons.graphic_eq_rounded,
+                                            size: 16,
+                                          ),
+                                          label: Text(
+                                            isRecording
+                                                ? 'Стоп (${recordingLabel()})'
+                                                : 'Записать голосовое',
+                                          ),
+                                        ),
+                                      ),
+                                      if (audioRecordings.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        ...List.generate(audioRecordings.length, (
+                                          audioIndex,
+                                        ) {
+                                          final playing =
+                                              playingAudioIndex == audioIndex;
+                                          return Padding(
+                                            padding: const EdgeInsets.only(
+                                              bottom: 6,
+                                            ),
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 8,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: kBorderColor,
                                                 ),
-                                                child: Row(
-                                                  children: [
-                                                    InkWell(
-                                                      onTap: () async {
-                                                        try {
-                                                          if (playing) {
-                                                            await player.stop();
-                                                            if (!dialogActive) {
-                                                              return;
-                                                            }
-                                                            setLocalState(
-                                                              () =>
-                                                                  playingAudioIndex =
-                                                                      -1,
-                                                            );
-                                                          } else {
-                                                            await player.stop();
-                                                            await _playAudioSource(
-                                                              player,
-                                                              audioRecordings[audioIndex],
-                                                            );
-                                                            if (!dialogActive) {
-                                                              return;
-                                                            }
-                                                            setLocalState(
-                                                              () =>
-                                                                  playingAudioIndex =
-                                                                      audioIndex,
-                                                            );
+                                                color: kInputBgColor,
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  InkWell(
+                                                    onTap: () async {
+                                                      try {
+                                                        if (playing) {
+                                                          await player.stop();
+                                                          if (!dialogActive) {
+                                                            return;
                                                           }
-                                                        } catch (_) {
-                                                          await showMessage(
-                                                            'Не удалось воспроизвести аудио',
+                                                          setLocalState(
+                                                            () =>
+                                                                playingAudioIndex =
+                                                                    -1,
+                                                          );
+                                                        } else {
+                                                          await player.stop();
+                                                          await _playAudioSource(
+                                                            player,
+                                                            audioRecordings[audioIndex],
+                                                          );
+                                                          if (!dialogActive) {
+                                                            return;
+                                                          }
+                                                          setLocalState(
+                                                            () =>
+                                                                playingAudioIndex =
+                                                                    audioIndex,
                                                           );
                                                         }
-                                                      },
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
+                                                      } catch (_) {
+                                                        await showMessage(
+                                                          'Не удалось воспроизвести аудио',
+                                                        );
+                                                      }
+                                                    },
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets.all(
+                                                            2,
                                                           ),
-                                                      child: Padding(
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              2,
-                                                            ),
-                                                        child: Icon(
-                                                          playing
-                                                              ? Icons
-                                                                    .pause_circle_outline
-                                                              : Icons
-                                                                    .play_circle_outline,
-                                                          size: 20,
-                                                          color:
-                                                              kSecondaryColor,
-                                                        ),
+                                                      child: Icon(
+                                                        playing
+                                                            ? Icons
+                                                                  .pause_circle_outline
+                                                            : Icons
+                                                                  .play_circle_outline,
+                                                        size: 20,
+                                                        color: kSecondaryColor,
                                                       ),
                                                     ),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(
-                                                      child: MyText(
-                                                        text:
-                                                            'Аудиозапись ${audioIndex + 1}',
-                                                        size: 11,
-                                                        color: kTertiaryColor,
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  Expanded(
+                                                    child: MyText(
+                                                      text:
+                                                          'Аудиозапись ${audioIndex + 1}',
+                                                      size: 11,
+                                                      color: kTertiaryColor,
+                                                    ),
+                                                  ),
+                                                  InkWell(
+                                                    onTap: () async {
+                                                      if (playingAudioIndex ==
+                                                          audioIndex) {
+                                                        await player.stop();
+                                                        playingAudioIndex = -1;
+                                                      }
+                                                      setLocalState(() {
+                                                        audioRecordings
+                                                            .removeAt(
+                                                              audioIndex,
+                                                            );
+                                                      });
+                                                    },
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          999,
+                                                        ),
+                                                    child: const Padding(
+                                                      padding: EdgeInsets.all(
+                                                        2,
+                                                      ),
+                                                      child: Icon(
+                                                        Icons
+                                                            .delete_outline_rounded,
+                                                        size: 16,
+                                                        color: kGreyColor,
                                                       ),
                                                     ),
-                                                    InkWell(
-                                                      onTap: () async {
-                                                        if (playingAudioIndex ==
-                                                            audioIndex) {
-                                                          await player.stop();
-                                                          playingAudioIndex =
-                                                              -1;
-                                                        }
-                                                        setLocalState(() {
-                                                          audioRecordings
-                                                              .removeAt(
-                                                                audioIndex,
-                                                              );
-                                                        });
-                                                      },
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            999,
-                                                          ),
-                                                      child: const Padding(
-                                                        padding: EdgeInsets.all(
-                                                          2,
-                                                        ),
-                                                        child: Icon(
-                                                          Icons
-                                                              .delete_outline_rounded,
-                                                          size: 16,
-                                                          color: kGreyColor,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
+                                                  ),
+                                                ],
                                               ),
-                                            );
-                                          }),
-                                        ],
+                                            ),
+                                          );
+                                        }),
                                       ],
                                     ],
-                                  ),
+                                  ],
                                 ),
                               ),
                             ),
                           ),
-                          const Divider(height: 1),
-                          Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                            child: Row(
-                              children: [
-                                OutlinedButton(
-                                  onPressed: () async {
-                                    await stopDictation(setLocalState);
-                                    await stopRecording(
-                                      setLocalState,
-                                      keepResult: false,
-                                    );
-                                    await player.stop();
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop(false);
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    minimumSize: const Size(98, 42),
-                                  ),
-                                  child: const Text('Отмена'),
+                        ),
+                        const Divider(height: 1),
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                          child: Row(
+                            children: [
+                              OutlinedButton(
+                                onPressed: () async {
+                                  await stopDictation(setLocalState);
+                                  await stopRecording(
+                                    setLocalState,
+                                    keepResult: false,
+                                  );
+                                  await player.stop();
+                                  if (!context.mounted) return;
+                                  Navigator.of(context).pop(false);
+                                },
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(98, 42),
                                 ),
-                                const Spacer(),
-                                ElevatedButton(
-                                  onPressed: () async {
-                                    final requiresElementType =
-                                        _mediaElementOptions(
-                                          groupKey,
-                                        ).isNotEmpty;
-                                    if (requiresElementType &&
-                                        (elementType ?? '').trim().isEmpty) {
-                                      setLocalState(
-                                        () => showElementError = true,
-                                      );
-                                      return;
-                                    }
-                                    await stopDictation(setLocalState);
-                                    await stopRecording(setLocalState);
-                                    await player.stop();
-                                    if (!context.mounted) return;
-                                    Navigator.of(context).pop(true);
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    minimumSize: const Size(108, 42),
-                                  ),
-                                  child: const Text('Сохранить'),
+                                child: const Text('Отмена'),
+                              ),
+                              const Spacer(),
+                              ElevatedButton(
+                                onPressed: isKeyboardOpen
+                                    ? null
+                                    : () async {
+                                        final requiresElementType =
+                                            _mediaElementOptions(
+                                              groupKey,
+                                            ).isNotEmpty;
+                                        if (requiresElementType &&
+                                            (elementType ?? '')
+                                                .trim()
+                                                .isEmpty) {
+                                          setLocalState(
+                                            () => showElementError = true,
+                                          );
+                                          return;
+                                        }
+                                        await stopDictation(setLocalState);
+                                        await stopRecording(setLocalState);
+                                        await player.stop();
+                                        if (!context.mounted) return;
+                                        Navigator.of(context).pop(true);
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  minimumSize: const Size(108, 42),
                                 ),
-                              ],
-                            ),
+                                child: const Text('Сохранить'),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              );
-            },
-          );
-        },
+                );
+              },
+            );
+          },
+        ),
       );
     } finally {
       dialogActive = false;
@@ -9484,8 +10538,12 @@ class _SparkJoyCreateReportScreenState
     }
     final noteValue = noteController.text.trim();
     noteController.dispose();
-    customTagController.dispose();
-    customTagFocusNode.dispose();
+    for (final controller in customTagControllers.values) {
+      controller.dispose();
+    }
+    for (final focusNode in customTagFocusNodes.values) {
+      focusNode.dispose();
+    }
     if (!mounted) return false;
 
     final selectedByLower = <String, String>{};
@@ -9590,15 +10648,6 @@ class _SparkJoyCreateReportScreenState
       );
     });
     return true;
-  }
-
-  void _toggleMediaSelectMode() {
-    setState(() {
-      _mediaGroupSelectMode = !_mediaGroupSelectMode;
-      if (!_mediaGroupSelectMode) {
-        _mediaGroupSelectedIndexes = <int>{};
-      }
-    });
   }
 
   void _toggleMediaGroupSelection(int index) {
@@ -10065,8 +11114,8 @@ class _SparkJoyCreateReportScreenState
                           Container(
                             margin: const EdgeInsets.only(bottom: 6),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                              horizontal: 10,
+                              vertical: 6,
                             ),
                             decoration: BoxDecoration(
                               color: kGreenColor.withValues(alpha: 0.22),
@@ -10076,7 +11125,7 @@ class _SparkJoyCreateReportScreenState
                               _mediaNoDamageLabel(groupKey),
                               style: const TextStyle(
                                 color: kWhiteColor,
-                                fontSize: 10,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
@@ -10095,8 +11144,8 @@ class _SparkJoyCreateReportScreenState
                               );
                               return Container(
                                 padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
+                                  horizontal: 10,
+                                  vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
                                   color: color.withValues(alpha: 0.24),
@@ -10106,7 +11155,7 @@ class _SparkJoyCreateReportScreenState
                                   tag,
                                   style: const TextStyle(
                                     color: kWhiteColor,
-                                    fontSize: 10,
+                                    fontSize: 11,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
@@ -10263,8 +11312,6 @@ class _SparkJoyCreateReportScreenState
     required String title,
     required double from,
     required double to,
-    required bool editing,
-    required VoidCallback onToggle,
     required ValueChanged<RangeValues> onChanged,
   }) {
     final safeFrom = from.clamp(50, 1500).toDouble();
@@ -10284,78 +11331,61 @@ class _SparkJoyCreateReportScreenState
                   weight: FontWeight.w700,
                 ),
               ),
-              TextButton(
-                onPressed: onToggle,
-                style: TextButton.styleFrom(
-                  minimumSize: const Size(0, 28),
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(editing ? 'Готово' : 'Изменить'),
-              ),
             ],
           ),
           const SizedBox(height: 4),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              MyText(
-                text: '${safeFrom.round()}–${safeTo.round()}',
-                size: 24,
-                weight: FontWeight.w800,
+              SizedBox(
+                width: 92,
+                child: _paintManualValueField(
+                  label: 'От',
+                  value: safeFrom,
+                  showLabel: false,
+                  hint: '',
+                  onSubmitted: (manualFrom) {
+                    final fromValue = manualFrom.toDouble();
+                    final toValue = math.max(fromValue, safeTo);
+                    onChanged(RangeValues(fromValue, toValue));
+                  },
+                ),
+              ),
+              const SizedBox(width: 6),
+              const MyText(text: '—', size: 14, color: kGreyColor),
+              const SizedBox(width: 6),
+              SizedBox(
+                width: 92,
+                child: _paintManualValueField(
+                  label: 'До',
+                  value: safeTo,
+                  showLabel: false,
+                  hint: '',
+                  onSubmitted: (manualTo) {
+                    final toValue = manualTo.toDouble();
+                    final fromValue = math.min(safeFrom, toValue);
+                    onChanged(RangeValues(fromValue, toValue));
+                  },
+                ),
               ),
               const SizedBox(width: 8),
-              const Padding(
-                padding: EdgeInsets.only(bottom: 3),
-                child: MyText(text: 'мкм', size: 12, color: kGreyColor),
-              ),
+              const MyText(text: 'мкм', size: 12, color: kGreyColor),
             ],
           ),
           const SizedBox(height: 8),
-          if (editing) ...[
-            RangeSlider(
-              values: RangeValues(safeFrom, safeTo),
-              min: 50,
-              max: 1500,
-              divisions: 145,
-              onChanged: onChanged,
-            ),
-            Row(
-              children: const [
-                MyText(text: '50 мкм', size: 10, color: kGreyColor),
-                Spacer(),
-                MyText(text: '1500 мкм', size: 10, color: kGreyColor),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _paintManualValueField(
-                    label: 'От',
-                    value: safeFrom,
-                    onSubmitted: (manualFrom) {
-                      final fromValue = manualFrom.toDouble();
-                      final toValue = math.max(fromValue, safeTo);
-                      onChanged(RangeValues(fromValue, toValue));
-                    },
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _paintManualValueField(
-                    label: 'До',
-                    value: safeTo,
-                    onSubmitted: (manualTo) {
-                      final toValue = manualTo.toDouble();
-                      final fromValue = math.min(safeFrom, toValue);
-                      onChanged(RangeValues(fromValue, toValue));
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
+          RangeSlider(
+            values: RangeValues(safeFrom, safeTo),
+            min: 50,
+            max: 1500,
+            divisions: 145,
+            onChanged: onChanged,
+          ),
+          Row(
+            children: const [
+              MyText(text: '50', size: 10, color: kGreyColor),
+              Spacer(),
+              MyText(text: '1500', size: 10, color: kGreyColor),
+            ],
+          ),
         ],
       ),
     );
@@ -10395,11 +11425,6 @@ class _SparkJoyCreateReportScreenState
         title: 'ЛКП — кузов',
         from: _bodyPaintFrom,
         to: _bodyPaintTo,
-        editing: _bodyPaintEditing,
-        onToggle: () {
-          _dismissKeyboard();
-          setState(() => _bodyPaintEditing = !_bodyPaintEditing);
-        },
         onChanged: (values) {
           setState(() {
             _bodyPaintFrom = values.start.roundToDouble();
@@ -10412,11 +11437,6 @@ class _SparkJoyCreateReportScreenState
         title: 'ЛКП — силовые',
         from: _structPaintFrom,
         to: _structPaintTo,
-        editing: _structPaintEditing,
-        onToggle: () {
-          _dismissKeyboard();
-          setState(() => _structPaintEditing = !_structPaintEditing);
-        },
         onChanged: (values) {
           setState(() {
             _structPaintFrom = values.start.roundToDouble();
@@ -10566,10 +11586,6 @@ class _SparkJoyCreateReportScreenState
 
     final files = state.files;
     final selectedCount = _mediaGroupSelectedIndexes.length;
-    final nextGroupKey = _nextMediaGroupKey(groupKey);
-    final nextGroupTitle = nextGroupKey == null
-        ? null
-        : _mediaState[nextGroupKey]?.config.title;
 
     return Column(
       children: [
@@ -10603,20 +11619,6 @@ class _SparkJoyCreateReportScreenState
                   ],
                 ),
               ),
-              if (files.isNotEmpty)
-                TextButton(
-                  onPressed: _toggleMediaSelectMode,
-                  child: Text(_mediaGroupSelectMode ? 'Отмена' : 'Выбрать'),
-                ),
-              if (nextGroupKey != null)
-                IconButton(
-                  onPressed: _openNextMediaGroupFromEditor,
-                  icon: const Icon(Icons.arrow_forward_rounded, size: 20),
-                  tooltip:
-                      nextGroupTitle == null || nextGroupTitle.trim().isEmpty
-                      ? 'Далее'
-                      : 'Далее: $nextGroupTitle',
-                ),
               const SizedBox(width: 6),
             ],
           ),
@@ -10758,19 +11760,12 @@ class _SparkJoyCreateReportScreenState
                         borderRadius: BorderRadius.circular(16),
                         child: Container(
                           color: kLightGreyColor,
-                          child: item.isImage
-                              ? _uploadedImageWidget(
-                                  item,
-                                  fit: BoxFit.cover,
-                                  cacheWidth: 720,
-                                  cacheHeight: 720,
-                                )
-                              : Icon(
-                                  item.isVideo
-                                      ? Icons.videocam_outlined
-                                      : Icons.insert_drive_file_outlined,
-                                  color: kGreyColor,
-                                ),
+                          child: _uploadedMediaThumbWidget(
+                            item,
+                            fit: BoxFit.cover,
+                            cacheWidth: 720,
+                            cacheHeight: 720,
+                          ),
                         ),
                       ),
                     ),
@@ -10970,7 +11965,8 @@ class _SparkJoyCreateReportScreenState
         if (showSubsystemCards) ...[
           const SizedBox(height: 10),
           _testDriveSubsystemCard(
-            sectionLabel: '🔧 Двигатель',
+            sectionLabel: 'Двигатель',
+            tagScopeKey: _tdScopeEngine,
             ok: _tdEngineOk,
             onOkChanged: (value) {
               setState(() {
@@ -10982,7 +11978,6 @@ class _SparkJoyCreateReportScreenState
               });
             },
             okLabel: 'Двигатель работает исправно',
-            options: _tdEngineTagOptions,
             selected: _tdEngineTags,
             onTagsChanged: (value) {
               setState(() {
@@ -10993,7 +11988,8 @@ class _SparkJoyCreateReportScreenState
           ),
           const SizedBox(height: 10),
           _testDriveSubsystemCard(
-            sectionLabel: '⚙️ КПП',
+            sectionLabel: 'КПП',
+            tagScopeKey: _tdScopeGearbox,
             ok: _tdGearboxOk,
             onOkChanged: (value) {
               setState(() {
@@ -11005,7 +12001,6 @@ class _SparkJoyCreateReportScreenState
               });
             },
             okLabel: 'КПП работает исправно',
-            options: _tdGearboxTagOptions,
             selected: _tdGearboxTags,
             onTagsChanged: (value) {
               setState(() {
@@ -11016,7 +12011,8 @@ class _SparkJoyCreateReportScreenState
           ),
           const SizedBox(height: 10),
           _testDriveSubsystemCard(
-            sectionLabel: '🎯 Рулевое управление',
+            sectionLabel: 'Рулевое управление',
+            tagScopeKey: _tdScopeSteering,
             ok: _tdSteeringOk,
             onOkChanged: (value) {
               setState(() {
@@ -11028,7 +12024,6 @@ class _SparkJoyCreateReportScreenState
               });
             },
             okLabel: 'Рулевое без замечаний',
-            options: _tdSteeringTagOptions,
             selected: _tdSteeringTags,
             onTagsChanged: (value) {
               setState(() {
@@ -11039,7 +12034,8 @@ class _SparkJoyCreateReportScreenState
           ),
           const SizedBox(height: 10),
           _testDriveSubsystemCard(
-            sectionLabel: '🛣️ Подвеска на ходу',
+            sectionLabel: 'Подвеска на ходу',
+            tagScopeKey: _tdScopeRide,
             ok: _tdRideOk,
             onOkChanged: (value) {
               setState(() {
@@ -11051,7 +12047,6 @@ class _SparkJoyCreateReportScreenState
               });
             },
             okLabel: 'Подвеска без замечаний на ходу',
-            options: _tdRideTagOptions,
             selected: _tdRideTags,
             onTagsChanged: (value) {
               setState(() {
@@ -11062,7 +12057,8 @@ class _SparkJoyCreateReportScreenState
           ),
           const SizedBox(height: 10),
           _testDriveSubsystemCard(
-            sectionLabel: '🛑 Тормоза на ходу',
+            sectionLabel: 'Тормоза на ходу',
+            tagScopeKey: _tdScopeBrake,
             ok: _tdBrakeOk,
             onOkChanged: (value) {
               setState(() {
@@ -11074,7 +12070,6 @@ class _SparkJoyCreateReportScreenState
               });
             },
             okLabel: 'Тормоза работают исправно',
-            options: _tdBrakeTagOptions,
             selected: _tdBrakeTags,
             onTagsChanged: (value) {
               setState(() {
@@ -11120,17 +12115,6 @@ class _SparkJoyCreateReportScreenState
     }
   }
 
-  Color _summaryVerdictColor(String verdict) {
-    switch (verdict) {
-      case 'recommended':
-        return kGreenColor;
-      case 'with_reservations':
-        return kYellowColor;
-      default:
-        return kRedColor;
-    }
-  }
-
   String? _summaryReasonStepId(String reason) {
     final value = reason.trim();
     if (value.startsWith('Автомобиль —')) return 'vehicle';
@@ -11152,34 +12136,6 @@ class _SparkJoyCreateReportScreenState
       }
     }
     return null;
-  }
-
-  double _summaryReadyProgress(
-    _CalculatedSummary summary,
-    List<String> missingReasons,
-  ) {
-    final requiredCount = summary.sections
-        .where((s) => s['required'] == true)
-        .length;
-    if (requiredCount <= 0) return missingReasons.isEmpty ? 1.0 : 0.0;
-    final missingSteps = <String>{};
-    for (final reason in missingReasons) {
-      final stepId = _summaryReasonStepId(reason);
-      if (stepId == null || stepId == 'summary') continue;
-      missingSteps.add(stepId);
-    }
-    final missing = math.min(requiredCount, missingSteps.length);
-    final ready = math.max(0, requiredCount - missing);
-    return (ready / requiredCount).clamp(0.0, 1.0);
-  }
-
-  void _openSummaryMissingReason(String reason) {
-    final stepId = _summaryReasonStepId(reason);
-    if (stepId == null || stepId == 'summary') return;
-    final mediaGroupKey = stepId == 'media'
-        ? _summaryReasonMediaGroupKey(reason)
-        : null;
-    _navigateToStepFromSummary(stepId, mediaGroupKey: mediaGroupKey);
   }
 
   bool _isAttachmentSourceLikelyValid(String source) {
@@ -11248,307 +12204,23 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  List<String> _summaryWarningItems(_CalculatedSummary summary) {
-    final warnings = <String>[];
-    for (final section in summary.sections) {
-      final status = (section['status'] ?? '').toString().trim();
-      if (status.isEmpty || status == 'ok') continue;
-      final title = (section['title'] ?? 'Раздел').toString().trim();
-      warnings.add(
-        status == 'danger' || status == 'bad' || status == 'error'
-            ? '$title: есть критичные замечания.'
-            : '$title: есть замечания, проверьте перед загрузкой.',
-      );
-    }
-    final mediaStats = _summaryAttachmentStats();
-    if (mediaStats.total == 0) {
-      warnings.add(
-        'Вложения не добавлены. Проверьте, нужен ли фото/видео материал.',
-      );
-    } else if (mediaStats.brokenCount > 0) {
-      warnings.add(
-        'Проверка вложений: ${mediaStats.brokenCount} файл(ов) с некорректной ссылкой.',
-      );
-    }
-    return warnings;
-  }
+  Widget _summaryHeaderCard() {
+    final reportName = _reportTitle().trim();
+    final reportMeta = '$_reportCode от $_createdAt';
 
-  Widget _summaryWarningsCard(List<String> warnings) {
-    if (warnings.isEmpty) return const SizedBox.shrink();
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MyText(
-            text: 'Предупреждения перед загрузкой',
-            size: 13,
+          const MyText(text: 'Отчёт', size: 10, color: kGreyColor),
+          const SizedBox(height: 2),
+          MyText(
+            text: reportName.isEmpty ? 'Без названия' : reportName,
+            size: 15,
             weight: FontWeight.w700,
           ),
-          const SizedBox(height: 8),
-          ...warnings.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Icon(
-                      Icons.warning_amber_rounded,
-                      size: 15,
-                      color: kYellowColor,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: MyText(text: line, size: 11, color: kTertiaryColor),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryHeaderCard(
-    _CalculatedSummary summary,
-    List<String> missingReasons,
-  ) {
-    final verdictColor = _summaryVerdictColor(summary.verdict);
-    final isReady = missingReasons.isEmpty;
-    final progress = _summaryReadyProgress(summary, missingReasons);
-    final reportName = _reportNameController.text.trim();
-
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: verdictColor.withValues(alpha: 0.1),
-                  border: Border.all(
-                    color: verdictColor.withValues(alpha: 0.35),
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    MyText(
-                      text: '${summary.score}',
-                      size: 21,
-                      weight: FontWeight.w800,
-                      color: verdictColor,
-                    ),
-                    MyText(
-                      text: '/100',
-                      size: 10,
-                      weight: FontWeight.w700,
-                      color: verdictColor,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const MyText(
-                      text: 'Готовность отчёта',
-                      size: 11,
-                      color: kGreyColor,
-                    ),
-                    const SizedBox(height: 2),
-                    MyText(
-                      text: summary.verdictLabel,
-                      size: 14,
-                      weight: FontWeight.w700,
-                      color: verdictColor,
-                    ),
-                    const SizedBox(height: 5),
-                    MyText(
-                      text: isReady
-                          ? 'Все обязательные разделы заполнены.'
-                          : 'Осталось заполнить: ${missingReasons.length}',
-                      size: 11,
-                      color: isReady ? kGreenColor : kYellowColor,
-                      weight: FontWeight.w700,
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (reportName.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                color: kInputBgColor,
-                border: Border.all(color: kBorderColor),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.description_outlined,
-                    size: 16,
-                    color: kGreyColor,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const MyText(
-                          text: 'Название отчёта',
-                          size: 10,
-                          color: kGreyColor,
-                        ),
-                        const SizedBox(height: 2),
-                        MyText(
-                          text: reportName,
-                          size: 13,
-                          weight: FontWeight.w700,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: 7,
-              backgroundColor: kLightGreyColor,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                isReady ? kGreenColor : kSecondaryColor,
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _mediaMetaPill(
-                icon: Icons.assignment_turned_in_outlined,
-                text: isReady ? 'Можно завершать' : 'Нужны доработки',
-                color: isReady ? kGreenColor : kYellowColor,
-              ),
-              _mediaMetaPill(
-                icon: Icons.rule_rounded,
-                text: 'Пункты чеклиста: ${summary.checklist.length}',
-                color: kSecondaryColor,
-              ),
-              _mediaMetaPill(
-                icon: Icons.list_alt_rounded,
-                text: 'Разделов: ${summary.sections.length}',
-                color: kGreyColor,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryMissingReasonsCard(List<String> missingReasons) {
-    if (missingReasons.isEmpty) return const SizedBox.shrink();
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const MyText(
-            text: 'Что нужно заполнить перед завершением',
-            size: 13,
-            weight: FontWeight.w700,
-          ),
-          const SizedBox(height: 8),
-          ...missingReasons.map((reason) {
-            final stepId = _summaryReasonStepId(reason);
-            final actionable = stepId != null && stepId != 'summary';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                onTap: actionable
-                    ? () => _openSummaryMissingReason(reason)
-                    : null,
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 9,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    color: kRedColor.withValues(alpha: 0.07),
-                    border: Border.all(color: kRedColor.withValues(alpha: 0.2)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.error_outline_rounded,
-                        size: 16,
-                        color: kRedColor,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: MyText(
-                          text: reason,
-                          size: 11,
-                          color: kTertiaryColor,
-                        ),
-                      ),
-                      if (actionable)
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          size: 18,
-                          color: kGreyColor,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          }),
-        ],
-      ),
-    );
-  }
-
-  Widget _summaryChecklistCard(_CalculatedSummary summary) {
-    final topChecklist = summary.checklist.take(6).toList();
-    if (topChecklist.isEmpty) return const SizedBox.shrink();
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const MyText(
-            text: 'Ключевые выводы',
-            size: 13,
-            weight: FontWeight.w700,
-          ),
-          const SizedBox(height: 8),
-          ...topChecklist.map(
-            (line) => Padding(
-              padding: const EdgeInsets.only(bottom: 5),
-              child: MyText(text: '• $line', size: 11, color: kGreyColor),
-            ),
-          ),
+          const SizedBox(height: 4),
+          MyText(text: reportMeta, size: 11, color: kGreyColor),
         ],
       ),
     );
@@ -11595,19 +12267,12 @@ class _SparkJoyCreateReportScreenState
                 width: 74,
                 height: 74,
                 color: kLightGreyColor,
-                child: file.isImage
-                    ? _uploadedImageWidget(
-                        file,
-                        fit: BoxFit.cover,
-                        cacheWidth: 220,
-                        cacheHeight: 220,
-                      )
-                    : Icon(
-                        file.isVideo
-                            ? Icons.videocam_outlined
-                            : Icons.insert_drive_file_outlined,
-                        color: kGreyColor,
-                      ),
+                child: _uploadedMediaThumbWidget(
+                  file,
+                  fit: BoxFit.cover,
+                  cacheWidth: 220,
+                  cacheHeight: 220,
+                ),
               ),
             ),
           );
@@ -11684,19 +12349,12 @@ class _SparkJoyCreateReportScreenState
                     width: 74,
                     height: 74,
                     color: kLightGreyColor,
-                    child: file.isImage
-                        ? _uploadedImageWidget(
-                            file,
-                            fit: BoxFit.cover,
-                            cacheWidth: 220,
-                            cacheHeight: 220,
-                          )
-                        : Icon(
-                            file.isVideo
-                                ? Icons.videocam_outlined
-                                : Icons.insert_drive_file_outlined,
-                            color: kGreyColor,
-                          ),
+                    child: _uploadedMediaThumbWidget(
+                      file,
+                      fit: BoxFit.cover,
+                      cacheWidth: 220,
+                      cacheHeight: 220,
+                    ),
                   ),
                 ),
               );
@@ -11710,6 +12368,7 @@ class _SparkJoyCreateReportScreenState
   Widget _summarySectionCard(
     Map<String, dynamic> section, {
     bool clientPreview = false,
+    bool needsAttention = false,
   }) {
     final title = (section['title'] ?? '').toString().trim();
     final status = (section['status'] ?? '').toString().trim();
@@ -11735,6 +12394,10 @@ class _SparkJoyCreateReportScreenState
     }
 
     return _card(
+      borderColor: needsAttention ? kYellowColor.withValues(alpha: 0.6) : null,
+      backgroundColor: needsAttention
+          ? kYellowColor.withValues(alpha: 0.06)
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -11780,6 +12443,25 @@ class _SparkJoyCreateReportScreenState
                 ),
               if (!clientPreview) ...[
                 if (editable) const SizedBox(width: 4),
+                if (needsAttention) ...[
+                  Container(
+                    margin: const EdgeInsets.only(right: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kYellowColor.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const MyText(
+                      text: 'дополнить',
+                      size: 10,
+                      color: kTertiaryColor,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ],
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 6,
@@ -11865,12 +12547,26 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  Widget _summarySectionsList(_CalculatedSummary summary) {
+  Widget _summarySectionsList(
+    _CalculatedSummary summary, {
+    required Set<String> attentionStepIds,
+    required Set<String> attentionGroupKeys,
+  }) {
     return Column(
       children: summary.sections.map((section) {
+        final title = (section['title'] ?? '').toString().trim();
+        final stepId = _summaryTitleToStepId[title];
+        final groupKey = _summaryTitleToGroupKey[title];
+        final needsAttention =
+            (stepId != null && attentionStepIds.contains(stepId)) ||
+            (groupKey != null && attentionGroupKeys.contains(groupKey));
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: _summarySectionCard(section, clientPreview: false),
+          child: _summarySectionCard(
+            section,
+            clientPreview: false,
+            needsAttention: needsAttention,
+          ),
         );
       }).toList(),
     );
@@ -11910,8 +12606,12 @@ class _SparkJoyCreateReportScreenState
     );
   }
 
-  Widget _summaryExpertConclusionCard() {
+  Widget _summaryExpertConclusionCard({bool needsAttention = false}) {
     return _card(
+      borderColor: needsAttention ? kYellowColor.withValues(alpha: 0.6) : null,
+      backgroundColor: needsAttention
+          ? kYellowColor.withValues(alpha: 0.06)
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -11935,7 +12635,8 @@ class _SparkJoyCreateReportScreenState
           const SizedBox(height: 8),
           _commentInputPanel(
             controller: _expertController,
-            hint: 'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
+            hint:
+                'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
             isDictating: _expertIsDictating,
             onToggleDictation: () async {
               if (_expertIsDictating) {
@@ -11957,7 +12658,6 @@ class _SparkJoyCreateReportScreenState
             isRecording: _isCommentRecording('expert_comment'),
             recordingLabel: _commentRecordingLabel('expert_comment'),
             onToggleRecording: _toggleExpertCommentRecording,
-            onAddAudio: _pickExpertCommentAudioFiles,
             onTogglePlay: _toggleExpertCommentAudioPlayback,
             onRemoveAt: (index) {
               setState(() {
@@ -11981,31 +12681,44 @@ class _SparkJoyCreateReportScreenState
   Widget _stepSummary() {
     final summary = _calculateSummary();
     final missingReasons = _summaryMissingReasons();
-    final warnings = _summaryWarningItems(summary);
+    final attentionStepIds = <String>{};
+    final attentionGroupKeys = <String>{};
+    var expertNeedsAttention = false;
+    for (final reason in missingReasons) {
+      final stepId = _summaryReasonStepId(reason);
+      if (stepId != null) {
+        if (stepId == 'summary') {
+          expertNeedsAttention = true;
+        } else if (stepId != 'media') {
+          attentionStepIds.add(stepId);
+        } else {
+          // For "Осмотр" highlight only конкретные группы по ключу.
+        }
+      }
+      final mediaGroupKey = _summaryReasonMediaGroupKey(reason);
+      if (mediaGroupKey != null) {
+        attentionGroupKeys.add(mediaGroupKey);
+      }
+    }
+
     return Column(
       children: [
-        _summaryHeaderCard(summary, missingReasons),
-        if (missingReasons.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _summaryMissingReasonsCard(missingReasons),
-        ],
-        if (warnings.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _summaryWarningsCard(warnings),
-        ],
-        const SizedBox(height: 10),
-        _summaryChecklistCard(summary),
+        _summaryHeaderCard(),
         const SizedBox(height: 10),
         _summaryNoDamageMediaCard(),
         if (_mediaState.values.any(
           (state) => state.files.any((file) => !_mediaItemHasIssue(file)),
         ))
           const SizedBox(height: 10),
-        _summarySectionsList(summary),
+        _summarySectionsList(
+          summary,
+          attentionStepIds: attentionStepIds,
+          attentionGroupKeys: attentionGroupKeys,
+        ),
         const SizedBox(height: 10),
         _summaryNoteCard(),
         const SizedBox(height: 10),
-        _summaryExpertConclusionCard(),
+        _summaryExpertConclusionCard(needsAttention: expertNeedsAttention),
       ],
     );
   }
@@ -12043,6 +12756,14 @@ class _SparkJoyCreateReportScreenState
     final inMediaGroupEditor = isMediaStep && _activeMediaGroupKey != null;
     final isTestDriveStep = step.id == 'test_drive';
     final isSummaryStep = step.id == 'summary';
+    final hideProgressBar = <String>{
+      'vehicle',
+      'params',
+      'docs_check',
+      'legal',
+      'media',
+      'test_drive',
+    }.contains(step.id);
     final canVehicleContinue = _isVehicleReadyForContinue();
     final missingMediaGroups = isMediaStep
         ? _missingRequiredMediaGroups().map((e) => e.title).toList()
@@ -12102,12 +12823,14 @@ class _SparkJoyCreateReportScreenState
                             size: 15,
                             weight: FontWeight.w700,
                           ),
-                          const SizedBox(height: 2),
-                          MyText(
-                            text: step.description,
-                            size: 11,
-                            color: kGreyColor,
-                          ),
+                          if (isSummaryStep) ...[
+                            const SizedBox(height: 2),
+                            MyText(
+                              text: step.description,
+                              size: 11,
+                              color: kGreyColor,
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -12119,18 +12842,20 @@ class _SparkJoyCreateReportScreenState
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: stepProgress,
-                    minHeight: 6,
-                    backgroundColor: kLightGreyColor,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      kSecondaryColor,
+                if (!hideProgressBar) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: LinearProgressIndicator(
+                      value: stepProgress,
+                      minHeight: 6,
+                      backgroundColor: kLightGreyColor,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        kSecondaryColor,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -12566,6 +13291,45 @@ class _VinGuideScanLineState extends State<_VinGuideScanLine>
   }
 }
 
+class _VinFocusIndicator extends StatelessWidget {
+  const _VinFocusIndicator({required this.active});
+
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      width: active ? 44 : 40,
+      height: active ? 44 : 40,
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: active ? const Color(0xFF6EE7B7) : kWhiteColor,
+          width: 2,
+        ),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: active ? const Color(0xFF6EE7B7) : kWhiteColor,
+            shape: BoxShape.circle,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _VinGuideBadge extends StatelessWidget {
   const _VinGuideBadge();
 
@@ -12583,6 +13347,133 @@ class _VinGuideBadge extends StatelessWidget {
         color: kSecondaryColor,
         weight: FontWeight.w700,
       ),
+    );
+  }
+}
+
+class _SparkJoyVideoThumbnail extends StatefulWidget {
+  const _SparkJoyVideoThumbnail({required this.uri, this.fit = BoxFit.cover});
+
+  final Uri uri;
+  final BoxFit fit;
+
+  @override
+  State<_SparkJoyVideoThumbnail> createState() =>
+      _SparkJoyVideoThumbnailState();
+}
+
+class _SparkJoyVideoThumbnailState extends State<_SparkJoyVideoThumbnail> {
+  VideoPlayerController? _controller;
+  Future<void>? _initializeFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initialize();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SparkJoyVideoThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.uri != widget.uri) {
+      _initialize();
+    }
+  }
+
+  Future<void> _initialize() async {
+    final previous = _controller;
+    _controller = null;
+    if (mounted) setState(() {});
+    if (previous != null) {
+      try {
+        await previous.pause();
+      } catch (_) {}
+      await previous.dispose();
+    }
+
+    final controller = VideoPlayerController.networkUrl(widget.uri);
+    _controller = controller;
+    _initializeFuture = () async {
+      await controller.initialize();
+      await controller.setLooping(false);
+      await controller.setVolume(0);
+      await controller.seekTo(Duration.zero);
+      await controller.pause();
+    }();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    final controller = _controller;
+    _controller = null;
+    if (controller != null) {
+      unawaited(controller.pause());
+      unawaited(controller.dispose());
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller;
+    final future = _initializeFuture;
+    if (controller == null || future == null) {
+      return const Center(
+        child: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    return FutureBuilder<void>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done ||
+            !controller.value.isInitialized) {
+          if (snapshot.hasError) {
+            return const Icon(Icons.videocam_off_outlined, color: kGreyColor);
+          }
+          return const Center(
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        }
+
+        final size = controller.value.size;
+        final width = size.width <= 0 ? 16.0 : size.width;
+        final height = size.height <= 0 ? 9.0 : size.height;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ClipRect(
+              child: FittedBox(
+                fit: widget.fit,
+                clipBehavior: Clip.hardEdge,
+                child: SizedBox(
+                  width: width,
+                  height: height,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+            ),
+            const Align(
+              alignment: Alignment.center,
+              child: Icon(
+                Icons.play_circle_fill_rounded,
+                size: 24,
+                color: Color(0xD9FFFFFF),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -12670,9 +13561,14 @@ class _MediaTagOption {
 }
 
 class _MediaTagGroup {
-  const _MediaTagGroup({required this.title, required this.options});
+  const _MediaTagGroup({
+    required this.title,
+    required this.severity,
+    required this.options,
+  });
 
   final String title;
+  final String severity;
   final List<_MediaTagOption> options;
 }
 

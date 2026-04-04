@@ -91,7 +91,9 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          isDictating ? Icons.mic_off_rounded : Icons.mic_rounded,
+                          isDictating
+                              ? Icons.mic_off_rounded
+                              : Icons.mic_rounded,
                           size: 13,
                           color: isDictating ? kRedColor : kSecondaryColor,
                         ),
@@ -166,7 +168,6 @@ class SparkJoyCommentAudioBlock extends StatelessWidget {
     required this.isRecording,
     required this.recordingLabel,
     required this.onToggleRecording,
-    required this.onAddAudio,
     required this.onTogglePlay,
     required this.onRemoveAt,
   });
@@ -175,7 +176,6 @@ class SparkJoyCommentAudioBlock extends StatelessWidget {
   final bool isRecording;
   final String recordingLabel;
   final Future<void> Function() onToggleRecording;
-  final Future<void> Function() onAddAudio;
   final Future<void> Function(int index) onTogglePlay;
   final ValueChanged<int> onRemoveAt;
 
@@ -191,27 +191,14 @@ class SparkJoyCommentAudioBlock extends StatelessWidget {
               await onToggleRecording();
             },
             icon: Icon(
-              isRecording ? Icons.stop_circle_outlined : Icons.graphic_eq_rounded,
+              isRecording
+                  ? Icons.stop_circle_outlined
+                  : Icons.graphic_eq_rounded,
               size: 16,
             ),
             label: Text(
               isRecording ? 'Стоп ($recordingLabel)' : 'Записать голосовое',
             ),
-            style: OutlinedButton.styleFrom(
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: const Size(0, 36),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: () async {
-              await onAddAudio();
-            },
-            icon: const Icon(Icons.upload_file_rounded, size: 16),
-            label: const Text('Приложить аудиофайл'),
             style: OutlinedButton.styleFrom(
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               minimumSize: const Size(0, 36),
@@ -232,7 +219,9 @@ class SparkJoyCommentAudioBlock extends StatelessWidget {
               children: List.generate(items.length, (index) {
                 final item = items[index];
                 return Padding(
-                  padding: EdgeInsets.only(bottom: index == items.length - 1 ? 0 : 6),
+                  padding: EdgeInsets.only(
+                    bottom: index == items.length - 1 ? 0 : 6,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 10,
