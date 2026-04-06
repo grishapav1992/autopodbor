@@ -11,6 +11,7 @@ class SparkJoyStorage {
   static const String _roleKey = 'spark_joy_role_v1';
   static const String _verifiedInnKey = 'spark_joy_verified_inn_v1';
   static const String _businessTypeKey = 'spark_joy_business_type_v1';
+  static const String _specialistProfileKey = 'spark_joy_specialist_profile_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
   static const String _completedKey = 'spark_joy_completed_v1';
 
@@ -147,6 +148,36 @@ class SparkJoyStorage {
     await pref.remove(_businessTypeKey);
     await pref.setString(_roleKey, sparkJoyRoleKey(SparkJoyRole.specialist));
     await UserSimplePreferences.setUserRole('specialist');
+  }
+
+  static Future<Map<String, dynamic>> loadSpecialistProfile() async {
+    final base = cloneMap(
+      sparkSpecialists.firstWhere(
+        (specialist) =>
+            (specialist['id'] ?? '').toString() == kSparkSpecialistId,
+        orElse: () => sparkSpecialists.first,
+      ),
+    );
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return base;
+    final raw = pref.getString(_specialistProfileKey);
+    if (raw == null || raw.trim().isEmpty) return base;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return base;
+      final saved = Map<String, dynamic>.from(decoded);
+      return {...base, ...saved};
+    } catch (_) {
+      return base;
+    }
+  }
+
+  static Future<void> saveSpecialistProfile(
+    Map<String, dynamic> profile,
+  ) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    await pref.setString(_specialistProfileKey, jsonEncode(profile));
   }
 
   static Future<void> ensureSeedData() async {

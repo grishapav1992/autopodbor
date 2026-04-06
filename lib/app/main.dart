@@ -45,14 +45,14 @@ class MyApp extends StatelessWidget {
       title: 'АВТОХАБ',
       theme: lightTheme,
       themeMode: ThemeMode.light,
-      initialRoute: AppLinks.chooseUserType,
+      initialRoute: AppLinks.landing,
       getPages: AppRoutes.pages,
       defaultTransition: Transition.fadeIn,
       builder: (context, child) {
         if (child == null) return const SizedBox.shrink();
         final media = MediaQuery.of(context);
-        final scaled = media.textScaler.scale(1.0) * 1.1;
-        final scale = scaled < 1.0 ? 1.0 : (scaled > 1.3 ? 1.3 : scaled);
+        final scaled = media.textScaler.scale(1.0);
+        final scale = scaled.clamp(0.95, 1.15);
         void dismissKeyboard() {
           FocusManager.instance.primaryFocus?.unfocus();
         }
