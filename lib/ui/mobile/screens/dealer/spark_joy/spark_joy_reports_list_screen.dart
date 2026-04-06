@@ -5,13 +5,16 @@ import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_create_report_screen.dart';
+import 'spark_joy_data.dart';
 import 'spark_joy_new_report_name_screen.dart';
 import 'spark_joy_report_detail_screen.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyReportsListScreen extends StatefulWidget {
-  const SparkJoyReportsListScreen({super.key});
+  const SparkJoyReportsListScreen({super.key, this.companyMode = false});
+
+  final bool companyMode;
 
   @override
   State<SparkJoyReportsListScreen> createState() =>
@@ -34,8 +37,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final drafts = await SparkJoyStorage.loadDrafts();
+    final allDrafts = await SparkJoyStorage.loadDrafts();
     final completed = await SparkJoyStorage.loadCompleted();
+    final drafts = allDrafts.where(_isVisibleDraft).toList();
     if (!mounted) return;
     setState(() {
       _drafts = drafts;
@@ -45,16 +49,29 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   }
 
   Future<void> _openNewReport() async {
-    final reportName = await Navigator.of(context).push<String>(
-      MaterialPageRoute(builder: (_) => const SparkJoyNewReportNameScreen()),
+    final setup = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) =>
+            SparkJoyNewReportNameScreen(companyMode: widget.companyMode),
+      ),
     );
-
-    if (!mounted || reportName == null || reportName.trim().isEmpty) return;
+    final reportName = sjRead(setup, 'reportName').trim();
+    if (!mounted || reportName.isEmpty) return;
+    final assignedSpecialistId = sjRead(setup, 'assignedSpecialistId').trim();
+    final assignedSpecialistName = sjRead(
+      setup,
+      'assignedSpecialistName',
+    ).trim();
+    final staffInviteLink = sjRead(setup, 'staffInviteLink').trim();
 
     final created = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) =>
-            SparkJoyCreateReportScreen(initialReportName: reportName),
+        builder: (_) => SparkJoyCreateReportScreen(
+          initialReportName: reportName,
+          initialAssignedSpecialistId: assignedSpecialistId,
+          initialAssignedSpecialistName: assignedSpecialistName,
+          initialStaffInviteLink: staffInviteLink,
+        ),
       ),
     );
 
@@ -92,6 +109,23 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   Future<void> _deleteDraft(String id) async {
     await SparkJoyStorage.deleteDraft(id);
     await _load();
+  }
+
+  bool _isVisibleDraft(Map<String, dynamic> draft) {
+    if (widget.companyMode) {
+      final companyId = sjRead(draft, 'companyId');
+      final businessType = sjRead(draft, 'businessType');
+      if (companyId.isNotEmpty) return companyId == kSparkCompanyId;
+      return businessType == 'company' || businessType == 'ip';
+    }
+
+    final assignedSpecialistId = sjRead(
+      draft,
+      'assignedSpecialistId',
+      fallback: sjRead(draft, 'specialistId'),
+    );
+    if (assignedSpecialistId.isEmpty) return true;
+    return assignedSpecialistId == kSparkSpecialistId;
   }
 
   List<Map<String, dynamic>> get _filteredDrafts {
@@ -226,6 +260,14 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                     color: kGreyColor,
                     paddingTop: 4,
                   ),
+                  if (sjRead(draft, 'assignedSpecialistName').isNotEmpty)
+                    MyText(
+                      text:
+                          'Исполнитель: ${sjRead(draft, 'assignedSpecialistName')}',
+                      size: 11,
+                      color: kGreyColor,
+                      paddingTop: 2,
+                    ),
                 ],
               ),
             ),
@@ -370,9 +412,15 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     return ListView(
       padding: AppSizes.DEFAULT.copyWith(bottom: 110),
       children: [
-        const MyText(text: 'Мои отчёты', size: 22, weight: FontWeight.w700),
-        const MyText(
-          text: 'Автоподбор',
+        MyText(
+          text: widget.companyMode ? 'Отчёты компании' : 'Мои отчёты',
+          size: 22,
+          weight: FontWeight.w700,
+        ),
+        MyText(
+          text: widget.companyMode
+              ? 'Черновики и завершённые отчёты'
+              : 'Автоподбор',
           size: 12,
           color: kGreyColor,
           paddingTop: 2,
