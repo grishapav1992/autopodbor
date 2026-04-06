@@ -12,6 +12,8 @@ class SparkJoyStorage {
   static const String _verifiedInnKey = 'spark_joy_verified_inn_v1';
   static const String _businessTypeKey = 'spark_joy_business_type_v1';
   static const String _specialistProfileKey = 'spark_joy_specialist_profile_v1';
+  static const String _hiddenCompanyStaffIdsKey =
+      'spark_joy_hidden_company_staff_ids_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
   static const String _completedKey = 'spark_joy_completed_v1';
 
@@ -178,6 +180,39 @@ class SparkJoyStorage {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
     await pref.setString(_specialistProfileKey, jsonEncode(profile));
+  }
+
+  static Future<List<String>> loadHiddenCompanyStaffIds() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return <String>[];
+    final raw = pref.getStringList(_hiddenCompanyStaffIdsKey) ?? <String>[];
+    return raw
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  static Future<void> hideCompanyStaffId(String staffId) async {
+    final normalized = staffId.trim();
+    if (normalized.isEmpty) return;
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final hidden = await loadHiddenCompanyStaffIds();
+    if (!hidden.contains(normalized)) {
+      hidden.add(normalized);
+    }
+    await pref.setStringList(_hiddenCompanyStaffIdsKey, hidden);
+  }
+
+  static Future<void> unhideCompanyStaffId(String staffId) async {
+    final normalized = staffId.trim();
+    if (normalized.isEmpty) return;
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final hidden = await loadHiddenCompanyStaffIds();
+    hidden.removeWhere((id) => id == normalized);
+    await pref.setStringList(_hiddenCompanyStaffIdsKey, hidden);
   }
 
   static Future<void> ensureSeedData() async {

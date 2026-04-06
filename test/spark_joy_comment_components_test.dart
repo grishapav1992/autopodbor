@@ -53,7 +53,6 @@ void main() {
   group('SparkJoyCommentAudioBlock', () {
     testWidgets('invokes callbacks for controls', (tester) async {
       var recordTapped = 0;
-      var addTapped = 0;
       var playedIndex = -1;
       var removedIndex = -1;
 
@@ -62,15 +61,15 @@ void main() {
           home: Scaffold(
             body: SparkJoyCommentAudioBlock(
               items: const [
-                SparkJoyCommentAudioItemView(name: 'note_1.wav', isPlaying: false),
+                SparkJoyCommentAudioItemView(
+                  name: 'note_1.wav',
+                  isPlaying: false,
+                ),
               ],
               isRecording: false,
               recordingLabel: '00:00',
               onToggleRecording: () async {
                 recordTapped += 1;
-              },
-              onAddAudio: () async {
-                addTapped += 1;
               },
               onTogglePlay: (index) async {
                 playedIndex = index;
@@ -86,10 +85,6 @@ void main() {
       await tester.tap(find.text('Записать голосовое'));
       await tester.pump();
       expect(recordTapped, 1);
-
-      await tester.tap(find.text('Приложить аудиофайл'));
-      await tester.pump();
-      expect(addTapped, 1);
 
       await tester.tap(find.byIcon(Icons.play_circle_outline));
       await tester.pump();
@@ -109,7 +104,6 @@ void main() {
               isRecording: true,
               recordingLabel: '00:07',
               onToggleRecording: () async {},
-              onAddAudio: () async {},
               onTogglePlay: (_) async {},
               onRemoveAt: (_) {},
             ),

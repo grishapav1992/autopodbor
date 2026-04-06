@@ -15,6 +15,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_types.dart';
@@ -29,11 +30,17 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
   const SparkJoyCreateReportScreen({
     super.key,
     this.initialReportName,
+    this.initialAssignedSpecialistId,
+    this.initialAssignedSpecialistName,
+    this.initialStaffInviteLink,
     this.draft,
     this.assignment,
   });
 
   final String? initialReportName;
+  final String? initialAssignedSpecialistId;
+  final String? initialAssignedSpecialistName;
+  final String? initialStaffInviteLink;
   final Map<String, dynamic>? draft;
   final Map<String, dynamic>? assignment;
 
@@ -962,6 +969,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final TextEditingController _summaryController;
   late final TextEditingController _expertController;
   late final TextEditingController _inspectorController;
+  late String _assignedSpecialistId;
+  late String _assignedSpecialistName;
 
   late final String _draftId;
   late final String _reportCode;
@@ -1107,7 +1116,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _accountBusinessType = draftBusinessType.isEmpty ? null : draftBusinessType;
     final draftVerifiedInn = _read(draft, 'verifiedInn');
     _accountVerifiedInn = draftVerifiedInn.isEmpty ? null : draftVerifiedInn;
-    _staffInviteLink = _read(draft, 'staffInviteLink');
+    _staffInviteLink = _read(
+      draft,
+      'staffInviteLink',
+      fallback: widget.initialStaffInviteLink ?? '',
+    );
 
     _stepIndex = _readInt(draft, 'currentStep', fallback: 1) - 1;
     if (_stepIndex < 0 || _stepIndex >= _steps.length) {
@@ -1208,6 +1221,31 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _inspectorController = TextEditingController(
       text: _read(draft, 'inspector', fallback: 'Специалист'),
     );
+    _assignedSpecialistId = _read(
+      draft,
+      'assignedSpecialistId',
+      fallback: _read(
+        draft,
+        'specialistId',
+        fallback:
+            widget.initialAssignedSpecialistId ??
+            _read(assignment, 'specialistId'),
+      ),
+    );
+    _assignedSpecialistName = _read(
+      draft,
+      'assignedSpecialistName',
+      fallback: _read(
+        draft,
+        'specialistName',
+        fallback:
+            widget.initialAssignedSpecialistName ??
+            _read(assignment, 'specialistName'),
+      ),
+    );
+    if (_assignedSpecialistName.isEmpty && _assignedSpecialistId.isNotEmpty) {
+      _assignedSpecialistName = _resolveSpecialistName(_assignedSpecialistId);
+    }
 
     _mileageMismatch = _readTriState(draft['mileageMismatch']);
     if (_mileageMismatch == null &&
@@ -3096,6 +3134,35 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return 'Специалист';
   }
 
+  String _currentCompanyName() {
+    final company = sparkCompanies.firstWhere(
+      (item) => (item['id'] ?? '').toString() == kSparkCompanyId,
+      orElse: () => const {'name': 'Компания'},
+    );
+    final name = (company['name'] ?? '').toString().trim();
+    return name.isEmpty ? 'Компания' : name;
+  }
+
+  List<Map<String, dynamic>> _companyStaffOptions() {
+    return sparkSpecialists
+        .where((specialist) {
+          final companyId = (specialist['companyId'] ?? '').toString();
+          final status = (specialist['status'] ?? '').toString();
+          return companyId == kSparkCompanyId && status != 'blocked';
+        })
+        .map((specialist) => Map<String, dynamic>.from(specialist))
+        .toList();
+  }
+
+  String _resolveSpecialistName(String specialistId) {
+    if (specialistId.trim().isEmpty) return '';
+    final specialist = sparkSpecialists.firstWhere(
+      (item) => (item['id'] ?? '').toString() == specialistId,
+      orElse: () => const {},
+    );
+    return (specialist['name'] ?? '').toString();
+  }
+
   String _buildStaffInviteToken() {
     final source = '$_draftId|${DateTime.now().microsecondsSinceEpoch}';
     final encoded = base64Url.encode(utf8.encode(source)).replaceAll('=', '');
@@ -4640,6 +4707,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       'expertConclusionTouched': _expertController.text.trim().isNotEmpty,
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
       'inspector': _inspectorController.text.trim(),
+      'companyId': _hasBusinessStatus() ? kSparkCompanyId : '',
+      'companyName': _hasBusinessStatus() ? _currentCompanyName() : '',
+      'assignedSpecialistId': _assignedSpecialistId.trim(),
+      'assignedSpecialistName': _assignedSpecialistName.trim(),
+      'specialistId': _assignedSpecialistId.trim(),
+      'specialistName': _assignedSpecialistName.trim(),
       'businessType': _accountBusinessType ?? '',
       'verifiedInn': _accountVerifiedInn ?? '',
       'staffInviteLink': _staffInviteLink.trim(),
@@ -4866,6 +4939,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       'inspector': _inspectorController.text.trim().isEmpty
           ? 'Специалист'
           : _inspectorController.text.trim(),
+      'companyId': _hasBusinessStatus() ? kSparkCompanyId : '',
+      'companyName': _hasBusinessStatus() ? _currentCompanyName() : '',
+      'assignedSpecialistId': _assignedSpecialistId.trim(),
+      'assignedSpecialistName': _assignedSpecialistName.trim(),
+      'specialistId': _assignedSpecialistId.trim(),
+      'specialistName': _assignedSpecialistName.trim(),
       'date': date,
       'verdict': summary.verdict,
       'verdictLabel': summary.verdictLabel,
@@ -8384,6 +8463,71 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
+  Widget _assigneeCard() {
+    if (!_hasBusinessStatus()) return const SizedBox.shrink();
+    final staff = _companyStaffOptions();
+    final currentId = _assignedSpecialistId.trim();
+    final currentName = _assignedSpecialistName.trim();
+    final hasStaff = staff.isNotEmpty;
+    final selectedInList = staff.any(
+      (item) => (item['id'] ?? '').toString() == currentId,
+    );
+
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'Исполнитель из штата',
+            size: 12,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<String>(
+            initialValue: selectedInList ? currentId : '',
+            decoration: _fieldDecoration('Выберите сотрудника'),
+            items: <DropdownMenuItem<String>>[
+              const DropdownMenuItem<String>(
+                value: '',
+                child: Text('Без исполнителя'),
+              ),
+              ...staff.map((specialist) {
+                final id = (specialist['id'] ?? '').toString();
+                final name = (specialist['name'] ?? '').toString();
+                return DropdownMenuItem<String>(value: id, child: Text(name));
+              }),
+            ],
+            onChanged: hasStaff
+                ? (value) {
+                    final id = value ?? '';
+                    final specialist = staff.firstWhere(
+                      (item) => (item['id'] ?? '').toString() == id,
+                      orElse: () => const <String, dynamic>{},
+                    );
+                    final name = (specialist['name'] ?? '').toString();
+                    setState(() {
+                      _assignedSpecialistId = id;
+                      _assignedSpecialistName = name;
+                    });
+                    _markDraftDirty();
+                  }
+                : null,
+          ),
+          const SizedBox(height: 8),
+          MyText(
+            text: !hasStaff
+                ? 'Нет сотрудников в штате. Добавьте через ссылку приглашения ниже.'
+                : currentName.isEmpty
+                ? 'Исполнитель пока не назначен.'
+                : 'Назначен: $currentName',
+            size: 11,
+            color: kGreyColor,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _carSelectionCard() {
     final carButtonTitle = _carButtonName();
     final carTitle = _carName();
@@ -8699,6 +8843,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
             ],
           ),
         ),
+        if (_hasBusinessStatus()) ...[
+          const SizedBox(height: 10),
+          _assigneeCard(),
+        ],
         const SizedBox(height: 10),
         _input(
           _inspectionCityController,
@@ -13439,9 +13587,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                 child: IgnorePointer(
                   ignoring: continueButtonDisabled,
                   child: MyButton(
-                    buttonText: isLast
-                        ? 'Завершить и выгрузить'
-                        : 'Продолжить',
+                    buttonText: isLast ? 'Завершить и выгрузить' : 'Продолжить',
                     bgColor: continueButtonDisabled
                         ? kGreyColor.withValues(alpha: 0.5)
                         : null,

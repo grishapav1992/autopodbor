@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
+import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_reports_list_screen.dart';
-import 'spark_joy_specialist_assignments_screen.dart';
 import 'spark_joy_specialist_profile_screen.dart';
 import 'spark_joy_storage.dart';
 
@@ -95,8 +95,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         label: 'Отчёты',
       ),
       BottomNavigationBarItem(
-        icon: Icon(Icons.assignment_outlined),
-        label: 'Заявки',
+        icon: Icon(Icons.groups_outlined),
+        label: 'Сотрудники',
       ),
       BottomNavigationBarItem(
         icon: Icon(Icons.person_outline),
@@ -126,14 +126,14 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
 
     final tabs = _role == SparkJoyRole.specialist
         ? <Widget>[
-            const SparkJoyReportsListScreen(),
+            const SparkJoyReportsListScreen(companyMode: false),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
             ),
           ]
         : <Widget>[
-            const SparkJoyReportsListScreen(),
-            const SparkJoySpecialistAssignmentsScreen(),
+            const SparkJoyReportsListScreen(companyMode: true),
+            const SparkJoyCompanyStaffScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
             ),
