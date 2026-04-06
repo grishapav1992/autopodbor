@@ -994,6 +994,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
   int _stepIndex = 0;
   bool _editingSection = false;
+  bool _returnToSummaryOnBack = false;
 
   final ScrollController _pageScrollController = ScrollController();
   final FocusNode _vinFocusNode = FocusNode();
@@ -1067,6 +1068,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   String? _activeMediaGroupKey;
   bool _mediaGroupSelectMode = false;
   Set<int> _mediaGroupSelectedIndexes = <int>{};
+  bool _mediaPickerOpening = false;
+  String? _mediaPickerGroupKey;
   int _uploadedItemIdCounter = 0;
   int _localMediaFileCounter = 0;
   bool _vinScannerRouteOpen = false;
@@ -1200,7 +1203,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       text: _read(draft, 'summaryNote', fallback: _read(draft, 'summary')),
     );
     _expertController = TextEditingController(
-      text: _read(draft, 'expertConclusion'),
+      text: _normalizeInitialExpertConclusion(draft),
     );
     _inspectorController = TextEditingController(
       text: _read(draft, 'inspector', fallback: 'Специалист'),
@@ -1294,7 +1297,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     unawaited(_loadBusinessStatusFromStorage());
 
     if (_stepIndex == _steps.length - 1) {
-      _ensureSummaryAutofill();
+      _ensureSummaryAutofill(force: true);
     }
     _attachAutosaveListeners();
     _sectionCommentAudioCompleteSub = _sectionCommentAudioPlayer
@@ -1934,6 +1937,14 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     if (value == null) return fallback;
     final text = value.toString().trim();
     return text.isEmpty ? fallback : text;
+  }
+
+  String _normalizeInitialExpertConclusion(Map<String, dynamic> draft) {
+    final touched =
+        _readBool(draft, 'expertConclusionTouched') ||
+        _readBool(draft, 'expertConclusionUser');
+    if (!touched) return '';
+    return _read(draft, 'expertConclusion');
   }
 
   int _readInt(Map<String, dynamic> map, String key, {int fallback = 0}) {
@@ -2694,46 +2705,68 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Future<int> _pickMediaFiles(String groupKey) async {
+    if (_mediaPickerOpening) return 0;
+    if (mounted) {
+      setState(() {
+        _mediaPickerOpening = true;
+        _mediaPickerGroupKey = groupKey;
+      });
+    } else {
+      _mediaPickerOpening = true;
+      _mediaPickerGroupKey = groupKey;
+    }
     final nativeGalleryPlatform =
         !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android);
 
-    final items = nativeGalleryPlatform
-        ? await _pickMediaFromDeviceGallery()
-        : await _pickFiles(
-            type: FileType.custom,
-            allowedExtensions: const [
-              'png',
-              'jpg',
-              'jpeg',
-              'webp',
-              'heic',
-              'heif',
-              'mp4',
-              'mov',
-              'webm',
-            ],
-          );
-    if (items.isEmpty || !mounted) return 0;
-    setState(() {
-      final state = _mediaState[groupKey];
-      if (state == null) return;
-      final nextPartInspection = _syncPartInspectionWithFiles(
-        partInspection: state.partInspection,
-        files: [...state.files, ...items],
-        fallbackNote: state.note,
-      );
-      final nextFiles = _applyPartInspectionToFiles(
-        files: [...state.files, ...items],
-        partInspection: nextPartInspection,
-      );
-      _mediaState[groupKey] = state.copyWith(
-        files: nextFiles,
-        partInspection: nextPartInspection,
-      );
-    });
-    return items.length;
+    try {
+      final items = nativeGalleryPlatform
+          ? await _pickMediaFromDeviceGallery()
+          : await _pickFiles(
+              type: FileType.custom,
+              allowedExtensions: const [
+                'png',
+                'jpg',
+                'jpeg',
+                'webp',
+                'heic',
+                'heif',
+                'mp4',
+                'mov',
+                'webm',
+              ],
+            );
+      if (items.isEmpty || !mounted) return 0;
+      setState(() {
+        final state = _mediaState[groupKey];
+        if (state == null) return;
+        final nextPartInspection = _syncPartInspectionWithFiles(
+          partInspection: state.partInspection,
+          files: [...state.files, ...items],
+          fallbackNote: state.note,
+        );
+        final nextFiles = _applyPartInspectionToFiles(
+          files: [...state.files, ...items],
+          partInspection: nextPartInspection,
+        );
+        _mediaState[groupKey] = state.copyWith(
+          files: nextFiles,
+          partInspection: nextPartInspection,
+        );
+      });
+      return items.length;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _mediaPickerOpening = false;
+          _mediaPickerGroupKey = null;
+        });
+      } else {
+        _mediaPickerOpening = false;
+        _mediaPickerGroupKey = null;
+      }
+    }
   }
 
   Future<void> _pickLegalFiles() async {
@@ -4164,11 +4197,320 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return kGreyColor;
   }
 
+  Map<String, dynamic>? _summarySectionByTitle(
+    _CalculatedSummary summary,
+    String title,
+  ) {
+    for (final section in summary.sections) {
+      if ((section['title'] ?? '').toString().trim() == title) {
+        return section;
+      }
+    }
+    return null;
+  }
+
+  String _summaryCleanValue(String value) {
+    return value
+        .trim()
+        .replaceFirst(RegExp(r'^[^A-Za-zА-Яа-я0-9]+'), '')
+        .trim();
+  }
+
+  String _summaryStripKnownPrefixes(String value) {
+    return value
+        .replaceFirst(RegExp(r'^Заметка:\s*', caseSensitive: false), '')
+        .replaceFirst(
+          RegExp(r'^по результатам осмотра:\s*', caseSensitive: false),
+          '',
+        )
+        .trim();
+  }
+
+  String _summaryLowerFirst(String value) {
+    if (value.isEmpty) return value;
+    return '${value[0].toLowerCase()}${value.substring(1)}';
+  }
+
+  bool _summaryIsGenericPositiveValue(String value) {
+    final normalized = _summaryCleanValue(value).toLowerCase();
+    return {
+      'без повреждений',
+      'без замечаний',
+      'в порядке',
+      'без ошибок',
+      'без дефектов',
+      'норма',
+      'соответствует',
+      'все соответствует',
+      'всё соответствует',
+    }.contains(normalized);
+  }
+
+  bool _summaryIsInspectionGapValue(String value) {
+    final normalized = _summaryCleanValue(value).toLowerCase();
+    return normalized.contains('не осмотр') ||
+        normalized.contains('не провер') ||
+        normalized.contains('не провод') ||
+        normalized == 'не заполнено' ||
+        normalized == 'не указано';
+  }
+
+  bool _summarySectionHasGap(Map<String, dynamic>? section, RegExp matcher) {
+    if (section == null) return false;
+    final details = section['details'];
+    if (details is! List) return false;
+    for (final detail in details) {
+      if (detail is! Map) continue;
+      final mapped = detail.map((key, value) => MapEntry('$key', value));
+      final value = _summaryCleanValue(
+        (mapped['value'] ?? '').toString(),
+      ).toLowerCase();
+      if (matcher.hasMatch(value)) return true;
+    }
+    return false;
+  }
+
+  List<Map<String, String>> _summaryExtractItems(
+    Map<String, dynamic>? section, {
+    Set<String> severities = const {'serious', 'minor'},
+  }) {
+    if (section == null) return const <Map<String, String>>[];
+    final details = section['details'];
+    if (details is! List) return const <Map<String, String>>[];
+    final result = <Map<String, String>>[];
+    for (final raw in details) {
+      if (raw is! Map) continue;
+      final detail = raw.map((key, value) => MapEntry('$key', value));
+      final severity = (detail['severity'] ?? '')
+          .toString()
+          .trim()
+          .toLowerCase();
+      if (!severities.contains(severity)) continue;
+      final label = (detail['label'] ?? '').toString().trim();
+      final value = _summaryStripKnownPrefixes(
+        _summaryCleanValue((detail['value'] ?? '').toString().trim()),
+      );
+      if (label.isEmpty || value.isEmpty) continue;
+      if (_summaryIsGenericPositiveValue(value)) continue;
+      if (_summaryIsInspectionGapValue(value)) continue;
+      if (label == 'Разброс ЛКП' && severity != 'serious') continue;
+      result.add({'label': label, 'value': value, 'severity': severity});
+    }
+    return result;
+  }
+
+  List<String> _summaryExtractNotes(Map<String, dynamic>? section) {
+    if (section == null) return const <String>[];
+    final details = section['details'];
+    if (details is! List) return const <String>[];
+    final result = <String>[];
+    for (final raw in details) {
+      if (raw is! Map) continue;
+      final detail = raw.map((key, value) => MapEntry('$key', value));
+      final label = (detail['label'] ?? '').toString().trim().toLowerCase();
+      if (label != 'комментарий' &&
+          !label.startsWith('📝') &&
+          !label.startsWith('📋')) {
+        continue;
+      }
+      final note = _summaryStripKnownPrefixes(
+        _summaryCleanValue((detail['value'] ?? '').toString()),
+      );
+      if (note.isEmpty) continue;
+      result.add(note);
+    }
+    return result;
+  }
+
+  String _summaryFormatIssueList(
+    List<Map<String, String>> items, {
+    int limit = 3,
+  }) {
+    if (items.isEmpty) return '';
+    final rows = <String>[];
+    for (final item in items.take(limit)) {
+      final label = _summaryLowerFirst((item['label'] ?? '').trim());
+      final value = (item['value'] ?? '').trim();
+      if (label.isEmpty || value.isEmpty) continue;
+      rows.add('  ▸ $label — $value');
+    }
+    if (items.length > limit) {
+      rows.add('  ▸ а также другие замечания');
+    }
+    if (rows.isEmpty) return '';
+    return '\n${rows.join('\n')}';
+  }
+
+  String _summaryHumanJoin(List<String> items) {
+    if (items.isEmpty) return '';
+    if (items.length == 1) return items.first;
+    if (items.length == 2) return '${items[0]} и ${items[1]}';
+    return '${items.sublist(0, items.length - 1).join(', ')} и ${items.last}';
+  }
+
   String _summaryTemplate(_CalculatedSummary summary) {
-    final car = _carName().isEmpty ? 'автомобилю' : _carName();
-    final topLines = summary.checklist.take(3).join(' ');
-    return 'Отчет по $car. Итог: ${summary.verdictLabel} (${summary.score}/100). '
-        '${topLines.isEmpty ? 'Замечания отсутствуют.' : topLines}';
+    final lines = <String>[];
+    var hasMeaningfulBlocks = false;
+
+    final carName = _carName().trim();
+    final vin = _vinController.text.trim();
+    final plateRaw = _sanitizePlate(_plateController.text.trim());
+    final plate = plateRaw.isEmpty ? '' : _formatPlate(plateRaw);
+    final vinPart = vin.isNotEmpty
+        ? ', VIN $vin'
+        : (_vinUnreadable ? ', VIN не читается' : '');
+    final platePart = plate.isNotEmpty ? ', г/н $plate' : '';
+    lines.add(
+      'Осмотрен автомобиль ${carName.isEmpty ? '—' : carName}$vinPart$platePart.',
+    );
+    lines.add('');
+
+    final identityParts = <String>[];
+    if (_vinUnreadable) {
+      identityParts.add(
+        'VIN не читается, требуется дополнительная сверка идентификационных данных.',
+      );
+    }
+    final mileage = _mileageController.text.trim();
+    if (mileage.isNotEmpty && _mileageMismatch == true) {
+      identityParts.add(
+        'Пробег $mileage км не соответствует заявленному продавцом.',
+      );
+    }
+    final docsMismatch = <String>[];
+    if (_docsOwnerMatch == false) {
+      docsMismatch.add('владелец не соответствует документам');
+    }
+    if (_docsVinMatch == false) {
+      docsMismatch.add('VIN в документах не совпадает');
+    }
+    if (_docsEngineMatch == false) {
+      docsMismatch.add('модель двигателя не совпадает');
+    }
+    if (docsMismatch.isNotEmpty) {
+      identityParts.add(
+        'По результатам сверки документов выявлены несоответствия: '
+        '${_summaryHumanJoin(docsMismatch)}.',
+      );
+    }
+    if (identityParts.isNotEmpty) {
+      hasMeaningfulBlocks = true;
+      lines.add('По проверкам и идентификации:');
+      for (final part in identityParts) {
+        lines.add('  ▸ $part');
+      }
+      lines.add('');
+    }
+
+    void appendIssues(
+      String title, {
+      RegExp? skipIfGapPattern,
+      Set<String> severities = const {'serious', 'minor'},
+      bool includeFirstNote = false,
+    }) {
+      final section = _summarySectionByTitle(summary, title);
+      if (section == null) return;
+      if (skipIfGapPattern != null &&
+          _summarySectionHasGap(section, skipIfGapPattern)) {
+        return;
+      }
+      final issues = _summaryExtractItems(section, severities: severities);
+      final formatted = _summaryFormatIssueList(issues);
+      if (formatted.isNotEmpty) {
+        hasMeaningfulBlocks = true;
+        lines.add('$title:$formatted');
+        lines.add('');
+      }
+      if (!includeFirstNote) return;
+      final notes = _summaryExtractNotes(section);
+      if (notes.isNotEmpty) {
+        hasMeaningfulBlocks = true;
+        lines.add(notes.first);
+        lines.add('');
+      }
+    }
+
+    final inspectionGapPattern = RegExp(r'не осмотр', caseSensitive: false);
+    appendIssues(
+      'Кузов',
+      skipIfGapPattern: inspectionGapPattern,
+      includeFirstNote: true,
+    );
+    appendIssues(
+      'Силовые элементы кузова',
+      skipIfGapPattern: inspectionGapPattern,
+    );
+    appendIssues('Остекление', skipIfGapPattern: inspectionGapPattern);
+    appendIssues('Светотехника', skipIfGapPattern: inspectionGapPattern);
+    appendIssues(
+      'Подкапотное пространство',
+      skipIfGapPattern: inspectionGapPattern,
+      includeFirstNote: true,
+    );
+    appendIssues(
+      'Компьютерная диагностика',
+      skipIfGapPattern: RegExp(r'не провод', caseSensitive: false),
+      includeFirstNote: true,
+    );
+    appendIssues(
+      'Колёса и тормозные механизмы',
+      skipIfGapPattern: inspectionGapPattern,
+    );
+    if (_tdMode != _tdModeNotConducted) {
+      appendIssues('Тест-драйв', severities: const {'serious'});
+    }
+    appendIssues('Салон', skipIfGapPattern: inspectionGapPattern);
+
+    final missing = <String>[];
+    if (!_legalLoaded) {
+      missing.add('юридическую проверку');
+    }
+    if (_tdMode == _tdModeNotConducted) {
+      missing.add('тест-драйв');
+    }
+    if (_docsOwnerMatch == null ||
+        _docsVinMatch == null ||
+        _docsEngineMatch == null) {
+      missing.add('полную сверку документов');
+    }
+    final bodyState = _mediaState['body'];
+    if (bodyState == null || !_groupHasCoverage(bodyState)) {
+      missing.add('осмотр кузова');
+    }
+    final glassState = _mediaState['glass'];
+    if (glassState == null || !_groupHasCoverage(glassState)) {
+      missing.add('осмотр остекления');
+    }
+    final underhoodState = _mediaState['underhood'];
+    if (underhoodState == null || !_groupHasCoverage(underhoodState)) {
+      missing.add('осмотр подкапотного пространства');
+    }
+    final interiorState = _mediaState['interior'];
+    if (interiorState == null || !_groupHasCoverage(interiorState)) {
+      missing.add('осмотр салона');
+    }
+
+    final uniqueMissing = <String>[];
+    for (final item in missing) {
+      if (!uniqueMissing.contains(item)) {
+        uniqueMissing.add(item);
+      }
+    }
+    if (uniqueMissing.isNotEmpty) {
+      hasMeaningfulBlocks = true;
+      lines.add(
+        'Дополнительно рекомендуется выполнить: '
+        '${_summaryHumanJoin(uniqueMissing)}.',
+      );
+    }
+
+    while (lines.isNotEmpty && lines.last.trim().isEmpty) {
+      lines.removeLast();
+    }
+    if (!hasMeaningfulBlocks) {
+      lines.add('Критичных замечаний по результатам осмотра не выявлено.');
+    }
+    return lines.join('\n').trim();
   }
 
   void _ensureSummaryAutofill({bool force = false}) {
@@ -4295,6 +4637,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       'tdCommentAudioFiles': _uploadedToJson(_tdCommentAudioFiles),
       'summaryNote': _summaryController.text.trim(),
       'expertConclusion': _expertController.text.trim(),
+      'expertConclusionTouched': _expertController.text.trim().isNotEmpty,
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
       'inspector': _inspectorController.text.trim(),
       'businessType': _accountBusinessType ?? '',
@@ -4555,6 +4898,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
       'summaryNote': _summaryController.text.trim(),
       'expertConclusion': _expertController.text.trim(),
+      'expertConclusionTouched': _expertController.text.trim().isNotEmpty,
       'fullInspection': summary.fullInspection,
       'businessType': _accountBusinessType ?? '',
       'verifiedInn': _accountVerifiedInn ?? '',
@@ -4571,7 +4915,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       return;
     }
 
-    _ensureSummaryAutofill();
+    _ensureSummaryAutofill(force: true);
     final completed = _buildCompletedReport();
     final uploaded = await _uploadReportToBackend(completed);
     if (!uploaded) {
@@ -4769,7 +5113,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         state.focus();
       } catch (_) {}
       if (!dialogActive) return;
-      await Future<void>.delayed(const Duration(milliseconds: 220));
+      await Future<void>.delayed(const Duration(milliseconds: 420));
     }
 
     Future<void> stopFocusAssist(StateSetter setLocalState) async {
@@ -4928,7 +5272,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
     Future<void> captureFromLiveCamera(
       StateSetter setLocalState, {
-      bool focusBeforeShot = false,
+      bool focusBeforeShot = true,
     }) async {
       if (liveCaptureInFlight || processing) return;
       final live = liveCameraState;
@@ -4939,7 +5283,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           try {
             live.focus();
           } catch (_) {}
-          await Future<void>.delayed(const Duration(milliseconds: 220));
+          await Future<void>.delayed(const Duration(milliseconds: 420));
         }
         final shotRequest = await live.takePhoto();
         final shotPath = shotRequest.path;
@@ -5041,478 +5385,504 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                         icon: const Icon(Icons.close_rounded),
                       ),
                     ),
-                    body: Column(
-                      children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
-                            keyboardDismissBehavior:
-                                ScrollViewKeyboardDismissBehavior.onDrag,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                MyText(
-                                  text: stageHint,
-                                  size: 11,
-                                  color: processing ? kBlueColor : kGreyColor,
-                                ),
-                                const SizedBox(height: 8),
-                                if (isCameraMode &&
-                                    supportsLiveCameraPreview &&
-                                    previewBytes == null &&
-                                    !processing) ...[
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.black,
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    clipBehavior: Clip.antiAlias,
-                                    child: AspectRatio(
-                                      aspectRatio: 3 / 4,
-                                      child: Stack(
-                                        fit: StackFit.expand,
-                                        children: [
-                                          cam.CameraAwesomeBuilder.custom(
-                                            saveConfig: cam.SaveConfig.photo(),
-                                            sensorConfig:
-                                                cam.SensorConfig.single(
-                                                  sensor: cam.Sensor.position(
-                                                    cam.SensorPosition.back,
+                    body: SafeArea(
+                      top: false,
+                      left: true,
+                      right: true,
+                      bottom: false,
+                      child: Column(
+                        children: [
+                          Expanded(
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                              keyboardDismissBehavior:
+                                  ScrollViewKeyboardDismissBehavior.onDrag,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  MyText(
+                                    text: stageHint,
+                                    size: 11,
+                                    color: processing ? kBlueColor : kGreyColor,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (isCameraMode &&
+                                      supportsLiveCameraPreview &&
+                                      previewBytes == null &&
+                                      !processing) ...[
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.black,
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: AspectRatio(
+                                        aspectRatio: 3 / 4,
+                                        child: Stack(
+                                          fit: StackFit.expand,
+                                          children: [
+                                            cam.CameraAwesomeBuilder.custom(
+                                              saveConfig:
+                                                  cam.SaveConfig.photo(),
+                                              sensorConfig:
+                                                  cam.SensorConfig.single(
+                                                    sensor: cam.Sensor.position(
+                                                      cam.SensorPosition.back,
+                                                    ),
+                                                    flashMode:
+                                                        cam.FlashMode.none,
+                                                    aspectRatio: cam
+                                                        .CameraAspectRatios
+                                                        .ratio_4_3,
+                                                    zoom: 0.0,
                                                   ),
-                                                  flashMode: cam.FlashMode.none,
-                                                  aspectRatio: cam
-                                                      .CameraAspectRatios
-                                                      .ratio_4_3,
-                                                  zoom: 0.0,
-                                                ),
-                                            previewFit:
-                                                cam.CameraPreviewFit.cover,
-                                            progressIndicator: const Center(
-                                              child:
-                                                  CircularProgressIndicator(),
-                                            ),
-                                            onPreviewTapBuilder: (state) => cam.OnPreviewTap(
-                                              onTap:
-                                                  (
-                                                    position,
-                                                    flutterPreviewSize,
-                                                    pixelPreviewSize,
-                                                  ) {
-                                                    if (state
-                                                        is! cam.PhotoCameraState) {
-                                                      return;
-                                                    }
-                                                    showFocusPoint(
-                                                      setLocalState,
+                                              previewFit:
+                                                  cam.CameraPreviewFit.cover,
+                                              progressIndicator: const Center(
+                                                child:
+                                                    CircularProgressIndicator(),
+                                              ),
+                                              onPreviewTapBuilder: (state) => cam.OnPreviewTap(
+                                                onTap:
+                                                    (
                                                       position,
-                                                    );
-                                                    safeSetLocalState(
-                                                      setLocalState,
-                                                      () {
-                                                        focusAdjusting = true;
-                                                      },
-                                                    );
-                                                    unawaited(() async {
-                                                      try {
-                                                        await state.focusOnPoint(
-                                                          flutterPosition:
-                                                              position,
-                                                          pixelPreviewSize:
-                                                              pixelPreviewSize,
-                                                          flutterPreviewSize:
-                                                              flutterPreviewSize,
-                                                        );
-                                                      } catch (_) {
-                                                      } finally {
-                                                        safeSetLocalState(
-                                                          setLocalState,
-                                                          () {
-                                                            focusAdjusting =
-                                                                false;
-                                                          },
-                                                        );
+                                                      flutterPreviewSize,
+                                                      pixelPreviewSize,
+                                                    ) {
+                                                      if (state
+                                                          is! cam.PhotoCameraState) {
+                                                        return;
                                                       }
-                                                    }());
-                                                  },
-                                            ),
-                                            onMediaCaptureEvent: (event) {
-                                              if (event.status ==
-                                                  cam
-                                                      .MediaCaptureStatus
-                                                      .failure) {
-                                                safeSetLocalState(
-                                                  setLocalState,
-                                                  () {
-                                                    cameraError =
-                                                        mapLiveCameraError(
-                                                          event.exception ??
-                                                              Exception(
-                                                                'VIN live camera failed',
-                                                              ),
-                                                        );
-                                                  },
-                                                );
-                                              }
-                                            },
-                                            builder: (state, preview) {
-                                              liveCameraState = state;
-                                              if (!cameraReady) {
-                                                WidgetsBinding.instance
-                                                    .addPostFrameCallback((_) {
+                                                      showFocusPoint(
+                                                        setLocalState,
+                                                        position,
+                                                      );
                                                       safeSetLocalState(
                                                         setLocalState,
                                                         () {
-                                                          cameraReady = true;
-                                                          cameraLive = true;
-                                                          cameraError = '';
-                                                          resetCameraWatchdog();
+                                                          focusAdjusting = true;
                                                         },
                                                       );
-                                                    });
-                                              }
-                                              return const SizedBox.expand();
-                                            },
-                                          ),
-                                          IgnorePointer(
-                                            child: Column(
-                                              children: [
-                                                Expanded(
-                                                  flex: 39,
-                                                  child: Container(
-                                                    color: Colors.black54,
-                                                  ),
-                                                ),
-                                                Expanded(
-                                                  flex: 22,
-                                                  child: Row(
-                                                    children: [
-                                                      Expanded(
-                                                        flex: 7,
-                                                        child: Container(
-                                                          color: Colors.black54,
-                                                        ),
-                                                      ),
-                                                      Expanded(
-                                                        flex: 86,
-                                                        child: _VinGuideFrame(
-                                                          animate:
-                                                              cameraLive &&
-                                                              cameraError
-                                                                  .isEmpty,
-                                                        ),
-                                                      ),
-                                                      Expanded(
-                                                        flex: 7,
-                                                        child: Container(
-                                                          color: Colors.black54,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                Expanded(
-                                                  flex: 39,
-                                                  child: Container(
-                                                    color: Colors.black54,
-                                                  ),
-                                                ),
-                                              ],
+                                                      unawaited(() async {
+                                                        try {
+                                                          await state.focusOnPoint(
+                                                            flutterPosition:
+                                                                position,
+                                                            pixelPreviewSize:
+                                                                pixelPreviewSize,
+                                                            flutterPreviewSize:
+                                                                flutterPreviewSize,
+                                                          );
+                                                        } catch (_) {
+                                                        } finally {
+                                                          safeSetLocalState(
+                                                            setLocalState,
+                                                            () {
+                                                              focusAdjusting =
+                                                                  false;
+                                                            },
+                                                          );
+                                                        }
+                                                      }());
+                                                    },
+                                              ),
+                                              onMediaCaptureEvent: (event) {
+                                                if (event.status ==
+                                                    cam
+                                                        .MediaCaptureStatus
+                                                        .failure) {
+                                                  safeSetLocalState(
+                                                    setLocalState,
+                                                    () {
+                                                      cameraError =
+                                                          mapLiveCameraError(
+                                                            event.exception ??
+                                                                Exception(
+                                                                  'VIN live camera failed',
+                                                                ),
+                                                          );
+                                                    },
+                                                  );
+                                                }
+                                              },
+                                              builder: (state, preview) {
+                                                liveCameraState = state;
+                                                if (!cameraReady) {
+                                                  WidgetsBinding.instance
+                                                      .addPostFrameCallback((
+                                                        _,
+                                                      ) {
+                                                        safeSetLocalState(
+                                                          setLocalState,
+                                                          () {
+                                                            cameraReady = true;
+                                                            cameraLive = true;
+                                                            cameraError = '';
+                                                            resetCameraWatchdog();
+                                                          },
+                                                        );
+                                                        if (state
+                                                            is cam.PhotoCameraState) {
+                                                          unawaited(() async {
+                                                            try {
+                                                              state.focus();
+                                                            } catch (_) {}
+                                                          }());
+                                                        }
+                                                      });
+                                                }
+                                                return const SizedBox.expand();
+                                              },
                                             ),
-                                          ),
-                                          if (focusPoint != null)
-                                            Positioned(
-                                              left: focusPoint!.dx - 22,
-                                              top: focusPoint!.dy - 22,
-                                              child: IgnorePointer(
-                                                child: _VinFocusIndicator(
-                                                  active: focusAdjusting,
-                                                ),
+                                            IgnorePointer(
+                                              child: Column(
+                                                children: [
+                                                  Expanded(
+                                                    flex: 39,
+                                                    child: Container(
+                                                      color: Colors.black54,
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 22,
+                                                    child: Row(
+                                                      children: [
+                                                        Expanded(
+                                                          flex: 7,
+                                                          child: Container(
+                                                            color:
+                                                                Colors.black54,
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 86,
+                                                          child: _VinGuideFrame(
+                                                            animate:
+                                                                cameraLive &&
+                                                                cameraError
+                                                                    .isEmpty,
+                                                          ),
+                                                        ),
+                                                        Expanded(
+                                                          flex: 7,
+                                                          child: Container(
+                                                            color:
+                                                                Colors.black54,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  Expanded(
+                                                    flex: 39,
+                                                    child: Container(
+                                                      color: Colors.black54,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
-                                          if (cameraError.isNotEmpty)
-                                            Center(
-                                              child: Padding(
-                                                padding: const EdgeInsets.all(
-                                                  24,
-                                                ),
-                                                child: MyText(
-                                                  text: cameraError,
-                                                  size: 12,
-                                                  color: kWhiteColor,
-                                                  textAlign: TextAlign.center,
+                                            if (focusPoint != null)
+                                              Positioned(
+                                                left: focusPoint!.dx - 22,
+                                                top: focusPoint!.dy - 22,
+                                                child: IgnorePointer(
+                                                  child: _VinFocusIndicator(
+                                                    active: focusAdjusting,
+                                                  ),
                                                 ),
                                               ),
-                                            ),
-                                          if (cameraLive && cameraError.isEmpty)
-                                            const Align(
-                                              alignment: Alignment(0, -0.34),
-                                              child: _VinGuideBadge(),
-                                            ),
-                                        ],
+                                            if (cameraError.isNotEmpty)
+                                              Center(
+                                                child: Padding(
+                                                  padding: const EdgeInsets.all(
+                                                    24,
+                                                  ),
+                                                  child: MyText(
+                                                    text: cameraError,
+                                                    size: 12,
+                                                    color: kWhiteColor,
+                                                    textAlign: TextAlign.center,
+                                                  ),
+                                                ),
+                                              ),
+                                            if (cameraLive &&
+                                                cameraError.isEmpty)
+                                              const Align(
+                                                alignment: Alignment(0, -0.34),
+                                                child: _VinGuideBadge(),
+                                              ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  GestureDetector(
-                                    onTap: canCapture
-                                        ? () => captureFromLiveCamera(
-                                            setLocalState,
-                                          )
-                                        : null,
-                                    onLongPressStart: canCapture
-                                        ? (_) {
-                                            unawaited(
-                                              startFocusAssist(setLocalState),
-                                            );
-                                          }
-                                        : null,
-                                    onLongPressEnd: canCapture
-                                        ? (_) {
-                                            unawaited(() async {
-                                              await stopFocusAssist(
-                                                setLocalState,
+                                    const SizedBox(height: 10),
+                                    GestureDetector(
+                                      onTap: canCapture
+                                          ? () => captureFromLiveCamera(
+                                              setLocalState,
+                                            )
+                                          : null,
+                                      onLongPressStart: canCapture
+                                          ? (_) {
+                                              unawaited(
+                                                startFocusAssist(setLocalState),
                                               );
-                                              await captureFromLiveCamera(
-                                                setLocalState,
-                                                focusBeforeShot: true,
+                                            }
+                                          : null,
+                                      onLongPressEnd: canCapture
+                                          ? (_) {
+                                              unawaited(() async {
+                                                await stopFocusAssist(
+                                                  setLocalState,
+                                                );
+                                                await captureFromLiveCamera(
+                                                  setLocalState,
+                                                  focusBeforeShot: true,
+                                                );
+                                              }());
+                                            }
+                                          : null,
+                                      onLongPressCancel: canCapture
+                                          ? () {
+                                              unawaited(
+                                                stopFocusAssist(setLocalState),
                                               );
-                                            }());
-                                          }
-                                        : null,
-                                    onLongPressCancel: canCapture
-                                        ? () {
-                                            unawaited(
-                                              stopFocusAssist(setLocalState),
-                                            );
-                                          }
-                                        : null,
-                                    child: AbsorbPointer(
-                                      child: FilledButton.icon(
-                                        onPressed: canCapture ? () {} : null,
-                                        icon: Icon(
-                                          focusAdjusting
-                                              ? Icons
-                                                    .center_focus_strong_rounded
-                                              : Icons.camera_alt_outlined,
+                                            }
+                                          : null,
+                                      child: AbsorbPointer(
+                                        child: FilledButton.icon(
+                                          onPressed: canCapture ? () {} : null,
+                                          icon: Icon(
+                                            focusAdjusting
+                                                ? Icons
+                                                      .center_focus_strong_rounded
+                                                : Icons.camera_alt_outlined,
+                                          ),
+                                          label: Text(
+                                            focusAdjusting
+                                                ? 'Фокусировка... отпустите'
+                                                : 'Сделать фото',
+                                          ),
                                         ),
-                                        label: Text(
-                                          focusAdjusting
-                                              ? 'Фокусировка... отпустите'
-                                              : 'Сделать фото',
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
-                                if (previewBytes != null) ...[
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.memory(
-                                      previewBytes!,
-                                      height: 220,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  if (!processing) ...[
-                                    if (hasPendingCapture) ...[
-                                      FilledButton.icon(
-                                        onPressed: () => recognizeCapturedPhoto(
-                                          setLocalState,
-                                        ),
-                                        icon: const Icon(
-                                          Icons.document_scanner_outlined,
-                                        ),
-                                        label: const Text('Распознать VIN'),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      OutlinedButton(
-                                        onPressed: () {
-                                          safeSetLocalState(setLocalState, () {
-                                            recognitionAttempted = true;
-                                            error = null;
-                                          });
-                                        },
-                                        child: const Text('Ввести вручную'),
-                                      ),
-                                      const SizedBox(height: 8),
-                                    ],
-                                    OutlinedButton.icon(
-                                      onPressed: () {
-                                        if (isCameraMode) {
-                                          retryPhoto(setLocalState);
-                                        } else {
-                                          pickAndRecognize(
-                                            ImageSource.gallery,
-                                            setLocalState,
-                                          );
-                                        }
-                                      },
-                                      icon: const Icon(Icons.replay_rounded),
-                                      label: Text(
-                                        isCameraMode
-                                            ? 'Сфотографировать заново'
-                                            : 'Выбрать другое фото',
                                       ),
                                     ),
                                     const SizedBox(height: 10),
                                   ],
-                                ],
-                                if (!isCameraMode &&
-                                    previewBytes == null &&
-                                    !processing) ...[
-                                  OutlinedButton.icon(
-                                    onPressed: () => pickAndRecognize(
-                                      ImageSource.gallery,
-                                      setLocalState,
-                                    ),
-                                    icon: const Icon(
-                                      Icons.photo_library_outlined,
-                                    ),
-                                    label: const Text(
-                                      'Выбрать фото из галереи',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
-                                if (isCameraMode &&
-                                    supportsLiveCameraPreview &&
-                                    cameraError.isNotEmpty &&
-                                    !processing) ...[
-                                  MyText(
-                                    text: cameraError,
-                                    size: 11,
-                                    color: kRedColor,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () => pickAndRecognize(
-                                      ImageSource.camera,
-                                      setLocalState,
-                                    ),
-                                    icon: const Icon(
-                                      Icons.photo_camera_outlined,
-                                    ),
-                                    label: const Text('Системная камера'),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  OutlinedButton.icon(
-                                    onPressed: () => retryPhoto(setLocalState),
-                                    icon: const Icon(Icons.replay),
-                                    label: const Text(
-                                      'Повторить запуск камеры',
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
-                                if (processing) ...[
-                                  const Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
+                                  if (previewBytes != null) ...[
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: Image.memory(
+                                        previewBytes!,
+                                        height: 220,
+                                        fit: BoxFit.cover,
                                       ),
-                                      SizedBox(width: 8),
-                                      Expanded(
-                                        child: MyText(
-                                          text: 'Распознаю VIN...',
-                                          size: 11,
-                                          color: kGreyColor,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 10),
-                                ],
-                                if (!vinOcrSupported) ...[
-                                  const MyText(
-                                    text:
-                                        'OCR недоступен. Можно вставить VIN вручную.',
-                                    size: 11,
-                                    color: kGreyColor,
-                                  ),
-                                  const SizedBox(height: 8),
-                                ],
-                                if (recognitionAttempted) ...[
-                                  TextField(
-                                    controller: controller,
-                                    maxLength: 17,
-                                    onTapOutside: (_) => _dismissKeyboard(),
-                                    onChanged: (value) {
-                                      final sanitizedValue = _sanitizeVin(
-                                        value,
-                                      );
-                                      if (sanitizedValue != value) {
-                                        controller.value = TextEditingValue(
-                                          text: sanitizedValue,
-                                          selection: TextSelection.collapsed(
-                                            offset: sanitizedValue.length,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    if (!processing) ...[
+                                      if (hasPendingCapture) ...[
+                                        FilledButton.icon(
+                                          onPressed: () =>
+                                              recognizeCapturedPhoto(
+                                                setLocalState,
+                                              ),
+                                          icon: const Icon(
+                                            Icons.document_scanner_outlined,
                                           ),
-                                        );
-                                      }
-                                      setLocalState(() {
-                                        currentVin = sanitizedValue;
-                                      });
-                                    },
-                                    decoration: _fieldDecoration(
-                                      'Распознанный VIN (можно исправить)',
-                                    ).copyWith(counterText: ''),
-                                  ),
-                                  if (sanitized.isNotEmpty && !valid)
-                                    MyText(
-                                      text:
-                                          '${sanitized.length} из 17 символов',
-                                      size: 11,
-                                      color: kYellowColor,
+                                          label: const Text('Распознать VIN'),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        OutlinedButton(
+                                          onPressed: () {
+                                            safeSetLocalState(
+                                              setLocalState,
+                                              () {
+                                                recognitionAttempted = true;
+                                                error = null;
+                                              },
+                                            );
+                                          },
+                                          child: const Text('Ввести вручную'),
+                                        ),
+                                        const SizedBox(height: 8),
+                                      ],
+                                      OutlinedButton.icon(
+                                        onPressed: () {
+                                          if (isCameraMode) {
+                                            retryPhoto(setLocalState);
+                                          } else {
+                                            pickAndRecognize(
+                                              ImageSource.gallery,
+                                              setLocalState,
+                                            );
+                                          }
+                                        },
+                                        icon: const Icon(Icons.replay_rounded),
+                                        label: Text(
+                                          isCameraMode
+                                              ? 'Сфотографировать заново'
+                                              : 'Выбрать другое фото',
+                                        ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                    ],
+                                  ],
+                                  if (!isCameraMode &&
+                                      previewBytes == null &&
+                                      !processing) ...[
+                                    OutlinedButton.icon(
+                                      onPressed: () => pickAndRecognize(
+                                        ImageSource.gallery,
+                                        setLocalState,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.photo_library_outlined,
+                                      ),
+                                      label: const Text(
+                                        'Выбрать фото из галереи',
+                                      ),
                                     ),
+                                    const SizedBox(height: 10),
+                                  ],
+                                  if (isCameraMode &&
+                                      supportsLiveCameraPreview &&
+                                      cameraError.isNotEmpty &&
+                                      !processing) ...[
+                                    MyText(
+                                      text: cameraError,
+                                      size: 11,
+                                      color: kRedColor,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    OutlinedButton.icon(
+                                      onPressed: () => pickAndRecognize(
+                                        ImageSource.camera,
+                                        setLocalState,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.photo_camera_outlined,
+                                      ),
+                                      label: const Text('Системная камера'),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          retryPhoto(setLocalState),
+                                      icon: const Icon(Icons.replay),
+                                      label: const Text(
+                                        'Повторить запуск камеры',
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
+                                  if (processing) ...[
+                                    const Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        ),
+                                        SizedBox(width: 8),
+                                        Expanded(
+                                          child: MyText(
+                                            text: 'Распознаю VIN...',
+                                            size: 11,
+                                            color: kGreyColor,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
+                                  if (!vinOcrSupported) ...[
+                                    const MyText(
+                                      text:
+                                          'OCR недоступен. Можно вставить VIN вручную.',
+                                      size: 11,
+                                      color: kGreyColor,
+                                    ),
+                                    const SizedBox(height: 8),
+                                  ],
+                                  if (recognitionAttempted) ...[
+                                    TextField(
+                                      controller: controller,
+                                      maxLength: 17,
+                                      onTapOutside: (_) => _dismissKeyboard(),
+                                      onChanged: (value) {
+                                        final sanitizedValue = _sanitizeVin(
+                                          value,
+                                        );
+                                        if (sanitizedValue != value) {
+                                          controller.value = TextEditingValue(
+                                            text: sanitizedValue,
+                                            selection: TextSelection.collapsed(
+                                              offset: sanitizedValue.length,
+                                            ),
+                                          );
+                                        }
+                                        setLocalState(() {
+                                          currentVin = sanitizedValue;
+                                        });
+                                      },
+                                      decoration: _fieldDecoration(
+                                        'Распознанный VIN (можно исправить)',
+                                      ).copyWith(counterText: ''),
+                                    ),
+                                    if (sanitized.isNotEmpty && !valid)
+                                      MyText(
+                                        text:
+                                            '${sanitized.length} из 17 символов',
+                                        size: 11,
+                                        color: kYellowColor,
+                                      ),
+                                  ],
+                                  if (error != null &&
+                                      error!.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 8),
+                                    MyText(
+                                      text: error!,
+                                      size: 11,
+                                      color: kRedColor,
+                                    ),
+                                  ],
+                                  const SizedBox(height: 10),
                                 ],
-                                if (error != null &&
-                                    error!.trim().isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  MyText(
-                                    text: error!,
-                                    size: 11,
-                                    color: kRedColor,
-                                  ),
-                                ],
-                                const SizedBox(height: 10),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
-                        SafeArea(
-                          top: false,
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(),
-                                    child: const Text('Отмена'),
+                          SafeArea(
+                            top: false,
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: OutlinedButton(
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                      child: const Text('Отмена'),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: FilledButton(
-                                    onPressed: !valid
-                                        ? null
-                                        : () => Navigator.of(
-                                            context,
-                                          ).pop(sanitized),
-                                    child: const Text('Применить'),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: FilledButton(
+                                      onPressed: !valid
+                                          ? null
+                                          : () => Navigator.of(
+                                              context,
+                                            ).pop(sanitized),
+                                      child: const Text('Применить'),
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -5947,11 +6317,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     setState(() {
       _stepIndex = index;
       _editingSection = true;
+      _returnToSummaryOnBack = false;
       _activeMediaGroupKey = null;
       _mediaGroupSelectMode = false;
       _mediaGroupSelectedIndexes = <int>{};
       if (_stepIndex == _steps.length - 1) {
-        _ensureSummaryAutofill();
+        _ensureSummaryAutofill(force: true);
       }
     });
     _scrollEditorToTop();
@@ -5964,11 +6335,13 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   void _navigateToStepFromSummary(String stepId, {String? mediaGroupKey}) {
     final nextIndex = _stepIndexById(stepId);
     if (nextIndex < 0) return;
+    final summaryIndex = _stepIndexById('summary');
 
     _dismissKeyboard();
     setState(() {
       _stepIndex = nextIndex;
       _editingSection = true;
+      _returnToSummaryOnBack = summaryIndex >= 0 && nextIndex != summaryIndex;
       _mediaGroupSelectMode = false;
       _mediaGroupSelectedIndexes = <int>{};
       if (stepId == 'media') {
@@ -5977,7 +6350,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         _activeMediaGroupKey = null;
       }
       if (_stepIndex == _steps.length - 1) {
-        _ensureSummaryAutofill();
+        _ensureSummaryAutofill(force: true);
       }
     });
     _scrollEditorToTop();
@@ -6479,8 +6852,9 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       _mediaGroupSelectedIndexes = <int>{};
       _stepIndex += 1;
       _editingSection = true;
+      _returnToSummaryOnBack = false;
       if (_stepIndex == _steps.length - 1) {
-        _ensureSummaryAutofill();
+        _ensureSummaryAutofill(force: true);
       }
     });
     _scrollEditorToTop();
@@ -6498,6 +6872,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
     setState(() {
       _editingSection = false;
+      _returnToSummaryOnBack = false;
       _activeMediaGroupKey = null;
       _mediaGroupSelectMode = false;
       _mediaGroupSelectedIndexes = <int>{};
@@ -6508,6 +6883,22 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     if (_stepIndex == 4 && _activeMediaGroupKey != null) {
       _closeMediaGroupEditor();
       return;
+    }
+    if (_returnToSummaryOnBack) {
+      final summaryIndex = _stepIndexById('summary');
+      if (summaryIndex >= 0) {
+        setState(() {
+          _stepIndex = summaryIndex;
+          _editingSection = true;
+          _returnToSummaryOnBack = false;
+          _activeMediaGroupKey = null;
+          _mediaGroupSelectMode = false;
+          _mediaGroupSelectedIndexes = <int>{};
+          _ensureSummaryAutofill(force: true);
+        });
+        _scrollEditorToTop();
+        return;
+      }
     }
     await _closeSection(save: false);
   }
@@ -6796,106 +7187,111 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     String negativeLabel = 'Нет',
     bool allowClear = false,
     String clearLabel = 'Сбросить выбор',
+    bool compact = false,
+    bool wrapWithCard = true,
   }) {
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(12),
     );
 
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          MyText(text: title, size: 13, weight: FontWeight.w700),
-          if (subtitle != null) ...[
-            const SizedBox(height: 3),
-            MyText(text: subtitle, size: 11, color: subtitleColor),
-          ],
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    onChanged(allowClear && value == true ? null : true);
-                    _markDraftDirty();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: value == true ? kGreenColor : kBorderColor,
-                    ),
-                    backgroundColor: value == true
-                        ? kGreenColor.withValues(alpha: 0.1)
-                        : kWhiteColor,
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 10,
-                    ),
-                    shape: buttonShape,
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        MyText(text: title, size: compact ? 12 : 13, weight: FontWeight.w700),
+        if (subtitle != null) ...[
+          const SizedBox(height: 3),
+          MyText(text: subtitle, size: compact ? 10 : 11, color: subtitleColor),
+        ],
+        SizedBox(height: compact ? 6 : 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  onChanged(allowClear && value == true ? null : true);
+                  _markDraftDirty();
+                },
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: value == true ? kGreenColor : kBorderColor,
                   ),
-                  child: Text(
-                    positiveLabel,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: TextStyle(
-                      color: value == true ? kGreenColor : kGreyColor,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  backgroundColor: value == true
+                      ? kGreenColor.withValues(alpha: 0.1)
+                      : kWhiteColor,
+                  minimumSize: Size(0, compact ? 40 : 48),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 6 : 8,
+                    vertical: compact ? 8 : 10,
+                  ),
+                  shape: buttonShape,
+                ),
+                child: Text(
+                  positiveLabel,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  style: TextStyle(
+                    color: value == true ? kGreenColor : kGreyColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: compact ? 12 : 14,
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    onChanged(allowClear && value == false ? null : false);
-                    _markDraftDirty();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    side: BorderSide(
-                      color: value == false ? kRedColor : kBorderColor,
-                    ),
-                    backgroundColor: value == false
-                        ? kRedColor.withValues(alpha: 0.1)
-                        : kWhiteColor,
-                    minimumSize: const Size(0, 48),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 10,
-                    ),
-                    shape: buttonShape,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () {
+                  onChanged(allowClear && value == false ? null : false);
+                  _markDraftDirty();
+                },
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(
+                    color: value == false ? kRedColor : kBorderColor,
                   ),
-                  child: Text(
-                    negativeLabel,
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    style: TextStyle(
-                      color: value == false ? kRedColor : kGreyColor,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  backgroundColor: value == false
+                      ? kRedColor.withValues(alpha: 0.1)
+                      : kWhiteColor,
+                  minimumSize: Size(0, compact ? 40 : 48),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: compact ? 6 : 8,
+                    vertical: compact ? 8 : 10,
+                  ),
+                  shape: buttonShape,
+                ),
+                child: Text(
+                  negativeLabel,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  style: TextStyle(
+                    color: value == false ? kRedColor : kGreyColor,
+                    fontWeight: FontWeight.w700,
+                    fontSize: compact ? 12 : 14,
                   ),
                 ),
-              ),
-            ],
-          ),
-          if (allowClear) ...[
-            const SizedBox(height: 6),
-            Align(
-              alignment: Alignment.centerRight,
-              child: TextButton(
-                onPressed: value == null
-                    ? null
-                    : () {
-                        onChanged(null);
-                        _markDraftDirty();
-                      },
-                child: Text(clearLabel),
               ),
             ),
           ],
+        ),
+        if (allowClear) ...[
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: value == null
+                  ? null
+                  : () {
+                      onChanged(null);
+                      _markDraftDirty();
+                    },
+              child: Text(clearLabel),
+            ),
+          ),
         ],
-      ),
+      ],
     );
+
+    if (!wrapWithCard) return content;
+    return _card(child: content);
   }
 
   Widget _testDriveSubsystemCard({
@@ -8261,52 +8657,47 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           ),
         ),
         const SizedBox(height: 10),
-        _input(
-          _adLinkController,
-          'https://auto.ru/...',
-          keyboardType: TextInputType.url,
-          textInputAction: TextInputAction.next,
-          focusNode: _adLinkFocusNode,
-          onSubmitted: (_) {
-            FocusScope.of(context).requestFocus(_mileageFocusNode);
-          },
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MyText(
+                text: 'Ссылка на объявление',
+                size: 12,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: 8),
+              _input(
+                _adLinkController,
+                'https://auto.ru/...',
+                keyboardType: TextInputType.url,
+                textInputAction: TextInputAction.next,
+                focusNode: _adLinkFocusNode,
+                onSubmitted: (_) {
+                  FocusScope.of(context).requestFocus(_inspectionCityFocusNode);
+                },
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
-        TextField(
-          controller: _mileageController,
-          focusNode: _mileageFocusNode,
-          keyboardType: TextInputType.number,
-          textInputAction: TextInputAction.next,
-          onSubmitted: (_) {
-            FocusScope.of(context).requestFocus(_inspectionCityFocusNode);
-          },
-          onTapOutside: (_) => _dismissKeyboard(),
-          onChanged: (value) {
-            final cleaned = value.replaceAll(RegExp(r'[^0-9]'), '');
-            if (cleaned == value) return;
-            _mileageController.value = TextEditingValue(
-              text: cleaned,
-              selection: TextSelection.collapsed(offset: cleaned.length),
-            );
-          },
-          decoration: _fieldDecoration('Пробег (км)'),
-        ),
-        const SizedBox(height: 10),
-        _yesNoSelector(
-          title: 'Пробег соответствует состоянию?',
-          value: _mileageMismatch == null ? null : !_mileageMismatch!,
-          allowClear: true,
-          positiveLabel: 'Да',
-          negativeLabel: 'Нет',
-          clearLabel: 'Не оценивал',
-          onChanged: (v) =>
-              setState(() => _mileageMismatch = v == null ? null : !v),
-        ),
-        const SizedBox(height: 10),
-        _dropdownField(
-          _ownersCountController,
-          'Количество владельцев',
-          _ownersCounts,
+        _card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const MyText(
+                text: 'Количество владельцев',
+                size: 12,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: 8),
+              _dropdownField(
+                _ownersCountController,
+                'Выберите количество',
+                _ownersCounts,
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
         _input(
@@ -11586,6 +11977,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
     final files = state.files;
     final selectedCount = _mediaGroupSelectedIndexes.length;
+    final pickerOpeningForGroup =
+        _mediaPickerOpening && _mediaPickerGroupKey == groupKey;
 
     return Column(
       children: [
@@ -11595,32 +11988,35 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: kBorderColor),
           ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: _closeMediaGroupEditor,
-                icon: const Icon(Icons.arrow_back_rounded),
-                tooltip: 'К группам',
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MyText(
-                      text: state.config.title,
-                      size: 16,
-                      weight: FontWeight.w700,
-                    ),
-                    MyText(
-                      text: '${files.length} файлов',
-                      size: 11,
-                      color: kGreyColor,
-                    ),
-                  ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MyText(
+                        text: state.config.title,
+                        size: 16,
+                        weight: FontWeight.w700,
+                        maxLines: 1,
+                        textOverflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      MyText(
+                        text: '${files.length} файлов',
+                        size: 11,
+                        color: kGreyColor,
+                        maxLines: 1,
+                        textOverflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-            ],
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 10),
@@ -11680,28 +12076,45 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           itemBuilder: (context, index) {
             if (index == 0) {
               return InkWell(
-                onTap: () async {
-                  try {
-                    await _pickMediaFiles(groupKey);
-                  } catch (error) {
-                    _showErrorSnack('Не удалось открыть галерею: $error');
-                  }
-                },
+                onTap: pickerOpeningForGroup
+                    ? null
+                    : () async {
+                        try {
+                          await _pickMediaFiles(groupKey);
+                        } catch (error) {
+                          _showErrorSnack('Не удалось открыть галерею: $error');
+                        }
+                      },
                 borderRadius: BorderRadius.circular(16),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: kInputBgColor,
+                    color: pickerOpeningForGroup
+                        ? kInputBgColor.withValues(alpha: 0.7)
+                        : kInputBgColor,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: kBorderColor),
                   ),
-                  child: const Center(
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.add_rounded, size: 56, color: kGreyColor),
-                        SizedBox(height: 6),
+                        if (pickerOpeningForGroup)
+                          const SizedBox(
+                            width: 26,
+                            height: 26,
+                            child: CircularProgressIndicator(strokeWidth: 2.2),
+                          )
+                        else
+                          const Icon(
+                            Icons.add_rounded,
+                            size: 56,
+                            color: kGreyColor,
+                          ),
+                        const SizedBox(height: 6),
                         MyText(
-                          text: 'Фото / Видео',
+                          text: pickerOpeningForGroup
+                              ? 'Открываю галерею...'
+                              : 'Фото / Видео',
                           size: 12,
                           color: kGreyColor,
                           weight: FontWeight.w700,
@@ -11902,6 +12315,47 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
+  Widget _mediaMileageBlock() {
+    return _card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(text: 'Пробег (км)', size: 12, weight: FontWeight.w700),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _mileageController,
+            focusNode: _mileageFocusNode,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _dismissKeyboard(),
+            onTapOutside: (_) => _dismissKeyboard(),
+            onChanged: (value) {
+              final cleaned = value.replaceAll(RegExp(r'[^0-9]'), '');
+              if (cleaned == value) return;
+              _mileageController.value = TextEditingValue(
+                text: cleaned,
+                selection: TextSelection.collapsed(offset: cleaned.length),
+              );
+            },
+            decoration: _fieldDecoration('Пробег (км)'),
+          ),
+          const SizedBox(height: 10),
+          _yesNoSelector(
+            title: 'Пробег соответствует состоянию?',
+            value: _mileageMismatch == null ? null : !_mileageMismatch!,
+            allowClear: false,
+            positiveLabel: 'Да',
+            negativeLabel: 'Нет',
+            compact: true,
+            wrapWithCard: false,
+            onChanged: (v) =>
+                setState(() => _mileageMismatch = v == null ? null : !v),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _stepMedia() {
     final requiredGroups = _mediaGroupsConfig
         .where((config) => config.required)
@@ -11922,6 +12376,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _mediaMileageBlock(),
+        const SizedBox(height: 10),
         if (hasRequiredGroups)
           Padding(
             padding: const EdgeInsets.only(left: 10, bottom: 8),
@@ -12209,18 +12665,67 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     final reportMeta = '$_reportCode от $_createdAt';
 
     return _card(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MyText(text: 'Отчёт', size: 10, color: kGreyColor),
-          const SizedBox(height: 2),
-          MyText(
-            text: reportName.isEmpty ? 'Без названия' : reportName,
-            size: 15,
-            weight: FontWeight.w700,
+          Row(
+            children: [
+              const Icon(
+                Icons.description_outlined,
+                size: 16,
+                color: kGreyColor,
+              ),
+              const SizedBox(width: 6),
+              const Expanded(
+                child: MyText(
+                  text: 'Название отчёта',
+                  size: 12,
+                  color: kGreyColor,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
-          MyText(text: reportMeta, size: 11, color: kGreyColor),
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => unawaited(_editReportTitle()),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              decoration: BoxDecoration(
+                color: kInputBgColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kBorderColor),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: reportName.isEmpty ? 'Без названия' : reportName,
+                      size: 20,
+                      weight: FontWeight.w700,
+                      maxLines: 2,
+                      textOverflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.edit_outlined, size: 18, color: kGreyColor),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              const Icon(Icons.schedule_rounded, size: 14, color: kGreyColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: MyText(text: reportMeta, size: 13, color: kGreyColor),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -12305,7 +12810,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
               const Expanded(
                 child: MyText(
                   text: 'Обзор авто',
-                  size: 13,
+                  size: 15,
                   weight: FontWeight.w700,
                 ),
               ),
@@ -12317,7 +12822,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                 ),
                 child: MyText(
                   text: '${cleanItems.length} фото',
-                  size: 10,
+                  size: 11,
                   weight: FontWeight.w700,
                   color: kGreenColor,
                 ),
@@ -12327,7 +12832,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           const SizedBox(height: 6),
           const MyText(
             text: 'Элементы без выявленных повреждений и нераспределённые фото',
-            size: 11,
+            size: 12,
             color: kGreyColor,
           ),
           const SizedBox(height: 8),
@@ -12406,7 +12911,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
               Expanded(
                 child: MyText(
                   text: title.isEmpty ? 'Раздел' : title,
-                  size: 13,
+                  size: 15,
                   weight: FontWeight.w700,
                 ),
               ),
@@ -12426,14 +12931,14 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                     children: [
                       Icon(
                         Icons.open_in_new_rounded,
-                        size: 12,
+                        size: 14,
                         color: kSecondaryColor,
                       ),
                       SizedBox(width: 4),
                       Text(
                         'Открыть',
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: kSecondaryColor,
                         ),
@@ -12456,7 +12961,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                     ),
                     child: const MyText(
                       text: 'дополнить',
-                      size: 10,
+                      size: 11,
                       color: kTertiaryColor,
                       weight: FontWeight.w700,
                     ),
@@ -12475,7 +12980,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                   ),
                   child: MyText(
                     text: required ? 'обяз.' : 'доп.',
-                    size: 10,
+                    size: 11,
                     color: required ? kSecondaryColor : kGreyColor,
                     weight: FontWeight.w700,
                   ),
@@ -12499,7 +13004,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                               status == 'error'
                           ? 'Критично'
                           : 'Есть замечания'),
-                size: 10,
+                size: 11,
                 weight: FontWeight.w700,
                 color: statusColor,
               ),
@@ -12510,7 +13015,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           ...detailLines.map(
             (line) => Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: MyText(text: '• $line', size: 11, color: kGreyColor),
+              child: MyText(text: '• $line', size: 12, color: kGreyColor),
             ),
           ),
           ...detailMaps.map((detail) {
@@ -12521,7 +13026,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
               padding: const EdgeInsets.only(bottom: 4),
               child: RichText(
                 text: TextSpan(
-                  style: const TextStyle(fontSize: 11),
+                  style: const TextStyle(fontSize: 12),
                   children: [
                     TextSpan(
                       text: '• ${label.isEmpty ? 'Пункт' : label}: ',
@@ -12580,7 +13085,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         children: [
           const MyText(
             text: 'Сводка по данным осмотра',
-            size: 13,
+            size: 15,
             weight: FontWeight.w700,
           ),
           const SizedBox(height: 8),
@@ -12596,7 +13101,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
               text: note.isEmpty
                   ? 'Заполните разделы осмотра для формирования сводки.'
                   : note,
-              size: 11,
+              size: 13,
               color: note.isEmpty ? kGreyColor : kTertiaryColor,
               lineHeight: 1.35,
             ),
@@ -12621,7 +13126,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
               SizedBox(width: 6),
               MyText(
                 text: 'Итог специалиста',
-                size: 13,
+                size: 15,
                 weight: FontWeight.w700,
               ),
             ],
@@ -12629,7 +13134,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           const SizedBox(height: 4),
           const MyText(
             text: '🔒 Видна только заказчику',
-            size: 11,
+            size: 12,
             color: kGreyColor,
           ),
           const SizedBox(height: 8),
@@ -12935,9 +13440,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                   ignoring: continueButtonDisabled,
                   child: MyButton(
                     buttonText: isLast
-                        ? (canSummaryFinish
-                              ? 'Завершить отчет'
-                              : 'Заполните обязательные разделы')
+                        ? 'Завершить и выгрузить'
                         : 'Продолжить',
                     bgColor: continueButtonDisabled
                         ? kGreyColor.withValues(alpha: 0.5)

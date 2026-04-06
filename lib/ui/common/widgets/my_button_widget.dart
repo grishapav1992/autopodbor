@@ -2,11 +2,13 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_responsive.dart';
 import 'my_text_widget.dart';
 
 // ignore: must_be_immutable
 class MyButton extends StatelessWidget {
-  MyButton({super.key, 
+  MyButton({
+    super.key,
     required this.buttonText,
     required this.onTap,
     this.height = 48,
@@ -27,10 +29,23 @@ class MyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveHeight = AppResponsive.dp(
+      context,
+      height ?? 48,
+      min: 44,
+      max: 60,
+    );
+    final effectiveRadius = AppResponsive.dp(
+      context,
+      radius ?? 8,
+      min: 6,
+      max: 14,
+    );
+    final effectiveTextSize = textSize ?? 16;
     return Container(
-      height: height,
+      height: effectiveHeight,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius ?? 8),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         color: bgColor ?? kSecondaryColor,
         border: Border.all(color: kSecondaryColor, width: 1),
       ),
@@ -40,15 +55,17 @@ class MyButton extends StatelessWidget {
           onTap: onTap,
           splashColor: kSecondaryColor.withValues(alpha: 0.08),
           highlightColor: kSecondaryColor.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(radius ?? 8),
-          child: customChild ?? Center(
-                  child: MyText(
-                    text: buttonText,
-                    size: textSize ?? 16,
-                    weight: weight ?? FontWeight.w600,
-                    color: textColor ?? kWhiteColor,
-                  ),
+          borderRadius: BorderRadius.circular(effectiveRadius),
+          child:
+              customChild ??
+              Center(
+                child: MyText(
+                  text: buttonText,
+                  size: effectiveTextSize,
+                  weight: weight ?? FontWeight.w600,
+                  color: textColor ?? kWhiteColor,
                 ),
+              ),
         ),
       ),
     );
@@ -57,7 +74,8 @@ class MyButton extends StatelessWidget {
 
 // ignore: must_be_immutable
 class MyBorderButton extends StatelessWidget {
-  MyBorderButton({super.key, 
+  MyBorderButton({
+    super.key,
     required this.buttonText,
     required this.onTap,
     this.height = 48,
@@ -76,10 +94,23 @@ class MyBorderButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveHeight = AppResponsive.dp(
+      context,
+      height ?? 48,
+      min: 44,
+      max: 60,
+    );
+    final effectiveRadius = AppResponsive.dp(
+      context,
+      radius ?? 8,
+      min: 6,
+      max: 14,
+    );
+    final effectiveTextSize = textSize ?? 16;
     return Container(
-      height: height,
+      height: effectiveHeight,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(radius ?? 8),
+        borderRadius: BorderRadius.circular(effectiveRadius),
         color: kInputBgColor,
         border: Border.all(width: 1.0, color: kBorderColor),
       ),
@@ -89,15 +120,17 @@ class MyBorderButton extends StatelessWidget {
           onTap: onTap,
           splashColor: kSecondaryColor.withValues(alpha: 0.08),
           highlightColor: kSecondaryColor.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(radius ?? 8),
-          child: child ?? Center(
-                  child: MyText(
-                    text: buttonText,
-                    size: textSize ?? 16,
-                    weight: weight ?? FontWeight.bold,
-                    color: kSecondaryColor,
-                  ),
+          borderRadius: BorderRadius.circular(effectiveRadius),
+          child:
+              child ??
+              Center(
+                child: MyText(
+                  text: buttonText,
+                  size: effectiveTextSize,
+                  weight: weight ?? FontWeight.bold,
+                  color: kSecondaryColor,
                 ),
+              ),
         ),
       ),
     );
@@ -117,6 +150,14 @@ class NextButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveHeight = AppResponsive.dp(context, 48, min: 44, max: 60);
+    final effectiveHorizontalPadding = AppResponsive.dp(
+      context,
+      15,
+      min: 12,
+      max: 20,
+    );
+    final effectiveRadius = AppResponsive.dp(context, 8, min: 6, max: 14);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -131,12 +172,14 @@ class NextButton extends StatelessWidget {
         GestureDetector(
           onTap: onTap,
           child: Container(
-            height: 48,
-            padding: EdgeInsets.symmetric(horizontal: 15),
+            height: effectiveHeight,
+            padding: EdgeInsets.symmetric(
+              horizontal: effectiveHorizontalPadding,
+            ),
             decoration: BoxDecoration(
               color: kWhiteColor,
               border: Border.all(width: 1.0, color: kBorderColor),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(effectiveRadius),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

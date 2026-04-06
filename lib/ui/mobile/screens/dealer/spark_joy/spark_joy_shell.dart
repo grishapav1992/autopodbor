@@ -77,6 +77,18 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   }
 
   List<BottomNavigationBarItem> _navItems() {
+    if (_role == SparkJoyRole.specialist) {
+      return const [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.description_outlined),
+          label: 'Отчёты',
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.person_outline),
+          label: 'Профиль',
+        ),
+      ];
+    }
     return const [
       BottomNavigationBarItem(
         icon: Icon(Icons.description_outlined),
@@ -112,13 +124,20 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       return _SparkJoyLogin(onLogin: _login);
     }
 
-    final tabs = [
-      const SparkJoyReportsListScreen(),
-      const SparkJoySpecialistAssignmentsScreen(),
-      SparkJoySpecialistProfileScreen(
-        onBusinessStatusChanged: _onBusinessStatusChanged,
-      ),
-    ];
+    final tabs = _role == SparkJoyRole.specialist
+        ? <Widget>[
+            const SparkJoyReportsListScreen(),
+            SparkJoySpecialistProfileScreen(
+              onBusinessStatusChanged: _onBusinessStatusChanged,
+            ),
+          ]
+        : <Widget>[
+            const SparkJoyReportsListScreen(),
+            const SparkJoySpecialistAssignmentsScreen(),
+            SparkJoySpecialistProfileScreen(
+              onBusinessStatusChanged: _onBusinessStatusChanged,
+            ),
+          ];
     final navItems = _navItems();
     final index = _index >= tabs.length ? 0 : _index;
 

@@ -1,4 +1,4 @@
-﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
@@ -22,21 +22,21 @@ class _LandingScreenState extends State<LandingScreen> {
 
   final List<_LandingSlide> _slides = const [
     _LandingSlide(
-      title: 'Создайте заявку за 2–3 минуты',
+      title: 'Создавайте отчёты по авто в одном приложении',
       description:
-          'Короткая форма с понятными шагами. Выбираете параметры авто — остальное поможем собрать.',
+          'Фиксируйте осмотр, фото, заметки и итог специалиста в структурированном отчёте прямо на месте.',
       image: Assets.imagesCar,
     ),
     _LandingSlide(
-      title: 'Проверка и подбор под ключ',
+      title: 'Для компаний — управление специалистами',
       description:
-          'Получайте предложения от автоподборщиков, сравнивайте условия и выбирайте исполнителя.',
+          'Добавляйте сотрудников в штат по ссылке, распределяйте работу и контролируйте статус отчётов.',
       image: Assets.imagesCarDealer,
     ),
     _LandingSlide(
-      title: 'Прозрачные статусы и отчеты',
+      title: 'Подгружайте данные из ГИБДД',
       description:
-          'Фиксируем этапы работы, результаты осмотров и рекомендации по покупке.',
+          'Дополняйте отчёт официальной информацией для более точной оценки автомобиля.',
       image: Assets.imagesCarPedia,
     ),
   ];
@@ -54,10 +54,12 @@ class _LandingScreenState extends State<LandingScreen> {
   }
 
   Future<void> _checkSession() async {
-    final hasSession = await StorageApi.hasSavedSession(probeWithGetBrand: true);
+    final hasSession = await StorageApi.hasSavedSession(
+      probeWithGetBrand: true,
+    );
     if (!mounted) return;
     if (hasSession) {
-      Get.offAllNamed(AppLinks.chooseUserType);
+      Get.offAllNamed(AppLinks.dealerHome);
       return;
     }
     setState(() {
@@ -73,16 +75,14 @@ class _LandingScreenState extends State<LandingScreen> {
       );
       return;
     }
-    Get.offAllNamed(AppLinks.chooseUserType);
+    Get.offAllNamed(AppLinks.login);
   }
 
   @override
   Widget build(BuildContext context) {
     if (_checkingSession) {
       return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        body: Center(child: CircularProgressIndicator(strokeWidth: 2)),
       );
     }
     return Scaffold(
@@ -128,7 +128,9 @@ class _LandingScreenState extends State<LandingScreen> {
                                     ),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: kGreyColor.withValues(alpha: 0.12),
+                                        color: kGreyColor.withValues(
+                                          alpha: 0.12,
+                                        ),
                                         blurRadius: 20,
                                         offset: const Offset(0, 10),
                                       ),
@@ -183,7 +185,7 @@ class _LandingScreenState extends State<LandingScreen> {
               ),
               const SizedBox(height: 12),
               TextButton(
-                onPressed: () => Get.offAllNamed(AppLinks.chooseUserType),
+                onPressed: () => Get.offAllNamed(AppLinks.login),
                 child: const Text(
                   'Пропустить',
                   style: TextStyle(

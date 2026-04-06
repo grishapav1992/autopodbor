@@ -1,4 +1,5 @@
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_responsive.dart';
 import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/core/constants/app_fonts.dart';
@@ -48,19 +49,44 @@ class MyText extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scaledTop = AppResponsive.dp(
+      context,
+      paddingTop ?? 0,
+      min: 0,
+      max: 48,
+    );
+    final scaledLeft = AppResponsive.dp(
+      context,
+      paddingLeft ?? 0,
+      min: 0,
+      max: 48,
+    );
+    final scaledRight = AppResponsive.dp(
+      context,
+      paddingRight ?? 0,
+      min: 0,
+      max: 48,
+    );
+    final scaledBottom = AppResponsive.dp(
+      context,
+      paddingBottom ?? 0,
+      min: 0,
+      max: 48,
+    );
+    final scaledSize = size == null ? null : AppResponsive.sp(context, size!);
     return Padding(
       padding: EdgeInsets.only(
-        top: paddingTop!,
-        left: paddingLeft!,
-        right: paddingRight!,
-        bottom: paddingBottom!,
+        top: scaledTop,
+        left: scaledLeft,
+        right: scaledRight,
+        bottom: scaledBottom,
       ),
       child: GestureDetector(
         onTap: onTap,
         child: Text(
           text,
           style: TextStyle(
-            fontSize: size,
+            fontSize: scaledSize,
             color: color ?? kTertiaryColor,
             fontWeight: weight,
             decoration: decoration,
