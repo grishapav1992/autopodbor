@@ -4,9 +4,10 @@ import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
+import 'spark_joy_i18n.dart';
+import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyReportDetailScreen extends StatefulWidget {
@@ -102,8 +103,8 @@ class _SparkJoyReportDetailScreenState
               color: kBorderColor,
               alignment: Alignment.center,
               child: const SizedBox(
-                width: 22,
-                height: 22,
+                width: SparkSize.iconXl,
+                height: SparkSize.iconXl,
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
             );
@@ -204,276 +205,284 @@ class _SparkJoyReportDetailScreenState
     final sections = _sections();
     final checklist = _checklist();
     final images = _images();
+    final createdAtLabel = sjFormatDate(
+      sjRead(
+        report,
+        'date',
+        fallback: sjRead(report, 'createdAt', fallback: '-'),
+      ),
+    );
+    final inspector = sjRead(report, 'inspector');
+    final headerSubtitle = inspector.trim().isEmpty
+        ? 'Отчёт от $createdAtLabel'
+        : 'Отчёт от $createdAtLabel • $inspector';
 
-    return Scaffold(
-      appBar: AppBar(title: Text(title.isEmpty ? 'Отчёт' : title)),
-      body: ListView(
-        padding: AppSizes.DEFAULT.copyWith(bottom: 28),
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              height: 220,
-              child: Stack(
-                children: [
-                  PageView.builder(
-                    itemCount: images.length,
-                    onPageChanged: (idx) => setState(() => _imageIndex = idx),
-                    itemBuilder: (context, index) {
-                      return _reportImageWidget(images[index]);
-                    },
-                  ),
-                  if (images.length > 1)
-                    Positioned(
-                      right: 8,
-                      bottom: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.55),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: MyText(
-                          text: '${_imageIndex + 1}/${images.length}',
-                          size: 10,
-                          color: kWhiteColor,
-                          weight: FontWeight.w600,
-                        ),
+    return SparkPageScaffold(
+      appBar: AppBar(centerTitle: false, title: const Text('Отчёт')),
+      bottomInset: SparkSpace.xl,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(SparkRadius.lg),
+          child: SizedBox(
+            height: SparkSize.mediaPreviewHeight,
+            child: Stack(
+              children: [
+                PageView.builder(
+                  itemCount: images.length,
+                  onPageChanged: (idx) => setState(() => _imageIndex = idx),
+                  itemBuilder: (context, index) {
+                    return _reportImageWidget(images[index]);
+                  },
+                ),
+                if (images.length > 1)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: SparkSpace.md,
+                        vertical: SparkSpace.xs,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(SparkRadius.pill),
+                      ),
+                      child: MyText(
+                        text: '${_imageIndex + 1}/${images.length}',
+                        size: SparkTextSize.chip,
+                        color: kWhiteColor,
+                        weight: FontWeight.w600,
                       ),
                     ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              SparkChip(
-                text: verdictLabel,
-                background: sparkVerdictColor(verdict).withValues(alpha: 0.12),
-                color: sparkVerdictColor(verdict),
-              ),
-              if (sjRead(report, 'score').isNotEmpty)
-                SparkChip(
-                  text: 'Оценка ${sjRead(report, 'score')}',
-                  background: kSecondaryColor.withValues(alpha: 0.08),
-                  color: kSecondaryColor,
-                ),
-            ],
-          ),
-          const SparkSectionTitle('Общие данные', top: 14),
-          SparkCard(
-            child: Column(
-              children: [
-                SparkInfoRow(
-                  label: 'Авто',
-                  value: sjRead(report, 'car', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'VIN',
-                  value: sjRead(report, 'vin', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'Госномер',
-                  value: sjRead(report, 'plate', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'Пробег',
-                  value: sjRead(report, 'mileage', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'Двигатель',
-                  value: sjRead(report, 'engine', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'КПП',
-                  value: sjRead(report, 'transmission', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'Привод',
-                  value: sjRead(report, 'drive', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'Эксперт',
-                  value: sjRead(report, 'inspector', fallback: '-'),
-                ),
-                SparkInfoRow(
-                  label: 'Дата',
-                  value: sjRead(
-                    report,
-                    'date',
-                    fallback: sjRead(report, 'createdAt', fallback: '-'),
                   ),
-                ),
               ],
             ),
           ),
-          if (sections.isNotEmpty) const SparkSectionTitle('Осмотр', top: 14),
-          if (sections.isNotEmpty)
-            ...sections.map((section) {
-              final details = sjReadMapList(section['details']);
-              final sectionStatus = sjRead(section, 'status');
-              final hasIssue =
-                  sectionStatus == 'warn' ||
-                  sectionStatus == 'danger' ||
-                  sectionStatus == 'error';
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: SparkCard(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: MyText(
-                              text: sjRead(
-                                section,
-                                'title',
-                                fallback: 'Раздел',
-                              ),
-                              size: 13,
-                              weight: FontWeight.w700,
-                            ),
-                          ),
-                          SparkChip(
-                            text: hasIssue ? 'Есть замечания' : 'ОК',
-                            background: hasIssue
-                                ? kYellowColor.withValues(alpha: 0.16)
-                                : kGreenColor.withValues(alpha: 0.14),
-                            color: hasIssue ? kYellowColor : kGreenColor,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      if (details.isEmpty)
-                        const MyText(
-                          text: 'Детали не указаны',
-                          size: 12,
-                          color: kGreyColor,
-                        ),
-                      ...details.map((item) {
-                        final severity = sjRead(item, 'severity');
-                        final color = severity == 'minor'
-                            ? kYellowColor
-                            : severity == 'critical'
-                            ? kRedColor
-                            : kGreyColor;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: 6,
-                                  right: 8,
-                                ),
-                                child: Container(
-                                  width: 6,
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    color: color,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    MyText(
-                                      text: sjRead(
-                                        item,
-                                        'label',
-                                        fallback: 'Проверка',
-                                      ),
-                                      size: 12,
-                                      weight: FontWeight.w600,
-                                    ),
-                                    const SizedBox(height: 1),
-                                    MyText(
-                                      text: sjRead(
-                                        item,
-                                        'value',
-                                        fallback: '-',
-                                      ),
-                                      size: 11,
-                                      color: kGreyColor,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
-              );
-            }),
-          if (checklist.isNotEmpty) const SparkSectionTitle('Чеклист', top: 6),
-          if (checklist.isNotEmpty)
-            SparkCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: checklist.map((item) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+        const SizedBox(height: SparkSpace.xl),
+        SparkPageHeader(
+          title: title.isEmpty ? 'Отчёт' : title,
+          subtitle: headerSubtitle,
+        ),
+        const SizedBox(height: SparkSpace.xxl),
+        Wrap(
+          spacing: SparkSpace.md,
+          runSpacing: SparkSpace.md,
+          children: [
+            SparkChip(
+              text: verdictLabel,
+              background: sparkVerdictColor(verdict).withValues(alpha: 0.12),
+              color: sparkVerdictColor(verdict),
+            ),
+            if (sjRead(report, 'score').isNotEmpty)
+              SparkChip(
+                text: 'Оценка ${sjRead(report, 'score')}',
+                background: kSecondaryColor.withValues(alpha: 0.08),
+                color: kSecondaryColor,
+              ),
+          ],
+        ),
+        const SparkSectionTitle('Общие данные', top: SparkSpace.xxl),
+        SparkCard(
+          child: Column(
+            children: [
+              SparkInfoRow(
+                label: 'Авто',
+                value: sjRead(report, 'car', fallback: '-'),
+              ),
+              SparkInfoRow(
+                label: 'VIN',
+                value: sjRead(report, 'vin', fallback: '-'),
+              ),
+              SparkInfoRow(
+                label: 'Госномер',
+                value: sjRead(report, 'plate', fallback: '-'),
+              ),
+              SparkInfoRow(
+                label: 'Пробег',
+                value: sjRead(report, 'mileage').trim().isEmpty
+                    ? '-'
+                    : sjFormatMileage(sjRead(report, 'mileage')),
+              ),
+              SparkInfoRow(
+                label: 'Двигатель',
+                value: sjRead(report, 'engine', fallback: '-'),
+              ),
+              SparkInfoRow(
+                label: 'КПП',
+                value: sjRead(report, 'transmission', fallback: '-'),
+              ),
+              SparkInfoRow(
+                label: 'Привод',
+                value: sjRead(report, 'drive', fallback: '-'),
+              ),
+              SparkInfoRow(
+                label: 'Эксперт',
+                value: sjRead(report, 'inspector', fallback: '-'),
+              ),
+              SparkInfoRow(label: 'Дата', value: createdAtLabel),
+            ],
+          ),
+        ),
+        if (sections.isNotEmpty)
+          const SparkSectionTitle('Осмотр', top: SparkSpace.xxl),
+        if (sections.isNotEmpty)
+          ...sections.map((section) {
+            final details = sjReadMapList(section['details']);
+            final sectionStatus = sjRead(section, 'status');
+            final hasIssue =
+                sectionStatus == 'warn' ||
+                sectionStatus == 'danger' ||
+                sectionStatus == 'error';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.lg),
+              child: SparkCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
-                        const Padding(
-                          padding: EdgeInsets.only(top: 6, right: 8),
-                          child: Icon(
-                            Icons.check_circle_outline,
-                            size: 14,
-                            color: kSecondaryColor,
-                          ),
-                        ),
                         Expanded(
                           child: MyText(
-                            text: sjRead(item, 'text', fallback: '-'),
-                            size: 12,
-                            color: kTertiaryColor,
+                            text: sjRead(section, 'title', fallback: 'Раздел'),
+                            size: SparkTextSize.bodyLg,
+                            weight: FontWeight.w700,
                           ),
+                        ),
+                        SparkChip(
+                          text: hasIssue ? 'Есть замечания' : 'ОК',
+                          background: hasIssue
+                              ? kYellowColor.withValues(alpha: 0.16)
+                              : kGreenColor.withValues(alpha: 0.14),
+                          color: hasIssue ? kYellowColor : kGreenColor,
                         ),
                       ],
                     ),
-                  );
-                }).toList(),
+                    const SizedBox(height: SparkSpace.md),
+                    if (details.isEmpty)
+                      const MyText(
+                        text: 'Детали не указаны',
+                        size: SparkTextSize.body,
+                        color: kGreyColor,
+                      ),
+                    ...details.map((item) {
+                      final severity = sjRead(item, 'severity');
+                      final color = severity == 'minor'
+                          ? kYellowColor
+                          : severity == 'critical'
+                          ? kRedColor
+                          : kGreyColor;
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: SparkSpace.sm),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: SparkSpace.sm,
+                                right: SparkSpace.md,
+                              ),
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  MyText(
+                                    text: sjRead(
+                                      item,
+                                      'label',
+                                      fallback: 'Проверка',
+                                    ),
+                                    size: SparkTextSize.body,
+                                    weight: FontWeight.w600,
+                                  ),
+                                  const SizedBox(height: SparkSpace.hairline),
+                                  MyText(
+                                    text: sjRead(item, 'value', fallback: '-'),
+                                    size: SparkTextSize.caption,
+                                    color: kGreyColor,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
               ),
+            );
+          }),
+        if (checklist.isNotEmpty)
+          const SparkSectionTitle('Чеклист', top: SparkSpace.sm),
+        if (checklist.isNotEmpty)
+          SparkCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: List.generate(checklist.length, (index) {
+                final item = checklist[index];
+                final isLast = index == checklist.length - 1;
+                return Padding(
+                  padding: EdgeInsets.only(bottom: isLast ? 0 : SparkSpace.md),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(
+                          top: SparkSpace.sm,
+                          right: SparkSpace.md,
+                        ),
+                        child: Icon(
+                          Icons.check_circle_outline,
+                          size: SparkTextSize.label,
+                          color: kSecondaryColor,
+                        ),
+                      ),
+                      Expanded(
+                        child: MyText(
+                          text: sjRead(item, 'text', fallback: '-'),
+                          size: SparkTextSize.body,
+                          color: kTertiaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }),
             ),
-          if (sjRead(report, 'summaryNote').isNotEmpty)
-            const SparkSectionTitle('Резюме', top: 14),
-          if (sjRead(report, 'summaryNote').isNotEmpty)
-            SparkCard(
-              child: MyText(
-                text: sjRead(report, 'summaryNote'),
-                size: 12,
-                color: kGreyColor,
-                lineHeight: 1.4,
-              ),
+          ),
+        if (sjRead(report, 'summaryNote').isNotEmpty)
+          const SparkSectionTitle('Резюме', top: SparkSpace.xxl),
+        if (sjRead(report, 'summaryNote').isNotEmpty)
+          SparkCard(
+            child: MyText(
+              text: sjRead(report, 'summaryNote'),
+              size: SparkTextSize.body,
+              color: kGreyColor,
+              lineHeight: 1.4,
             ),
-          if (sjRead(report, 'expertConclusion').isNotEmpty)
-            const SparkSectionTitle('Заключение эксперта', top: 14),
-          if (sjRead(report, 'expertConclusion').isNotEmpty)
-            SparkCard(
-              child: MyText(
-                text: sjRead(report, 'expertConclusion'),
-                size: 12,
-                color: kGreyColor,
-                lineHeight: 1.4,
-              ),
+          ),
+        if (sjRead(report, 'expertConclusion').isNotEmpty)
+          const SparkSectionTitle('Заключение эксперта', top: SparkSpace.xxl),
+        if (sjRead(report, 'expertConclusion').isNotEmpty)
+          SparkCard(
+            child: MyText(
+              text: sjRead(report, 'expertConclusion'),
+              size: SparkTextSize.body,
+              color: kGreyColor,
+              lineHeight: 1.4,
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 }

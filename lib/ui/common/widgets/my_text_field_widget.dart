@@ -24,6 +24,17 @@ class MyTextField extends StatefulWidget {
     this.textAlign,
     this.inputFormatters,
     this.keyboardType,
+    this.focusNode,
+    this.textInputAction,
+    this.maxLength,
+    this.enabled,
+    this.onSubmitted,
+    this.validator,
+    this.errorText,
+    this.textCapitalization = TextCapitalization.none,
+    this.autocorrect = true,
+    this.enableSuggestions = true,
+    this.contentPadding,
   });
 
   String? labelText, hintText;
@@ -38,6 +49,17 @@ class MyTextField extends StatefulWidget {
   TextAlign? textAlign;
   List<TextInputFormatter>? inputFormatters;
   TextInputType? keyboardType;
+  FocusNode? focusNode;
+  TextInputAction? textInputAction;
+  int? maxLength;
+  bool? enabled;
+  ValueChanged<String>? onSubmitted;
+  String? Function(String?)? validator;
+  String? errorText;
+  TextCapitalization textCapitalization;
+  bool autocorrect;
+  bool enableSuggestions;
+  EdgeInsetsGeometry? contentPadding;
 
   @override
   State<MyTextField> createState() => _MyTextFieldState();
@@ -66,14 +88,22 @@ class _MyTextFieldState extends State<MyTextField> {
             textAlignVertical: widget.prefix != null || widget.suffix != null
                 ? TextAlignVertical.center
                 : null,
+            focusNode: widget.focusNode,
             cursorColor: kSecondaryColor,
             maxLines: widget.maxLines,
+            maxLength: widget.maxLength,
+            enabled: widget.enabled,
             readOnly: widget.isReadOnly ?? false,
             controller: widget.controller,
             onChanged: widget.onChanged,
+            onFieldSubmitted: widget.onSubmitted,
+            validator: widget.validator,
             inputFormatters: widget.inputFormatters,
             keyboardType: widget.keyboardType,
-            textInputAction: TextInputAction.next,
+            textInputAction: widget.textInputAction ?? TextInputAction.next,
+            textCapitalization: widget.textCapitalization,
+            autocorrect: widget.autocorrect,
+            enableSuggestions: widget.enableSuggestions,
             obscureText: widget.isObSecure!,
             obscuringCharacter: '*',
             style: TextStyle(
@@ -86,10 +116,12 @@ class _MyTextFieldState extends State<MyTextField> {
               filled: true,
               prefixIcon: widget.prefix,
               suffixIcon: widget.suffix,
-              contentPadding: EdgeInsets.symmetric(
-                horizontal: 15,
-                vertical: widget.maxLines! > 1 ? 15 : 0,
-              ),
+              contentPadding:
+                  widget.contentPadding ??
+                  EdgeInsets.symmetric(
+                    horizontal: 15,
+                    vertical: widget.maxLines! > 1 ? 15 : 0,
+                  ),
               hintText: widget.hintText,
               hintStyle: TextStyle(
                 fontSize: 12,
@@ -105,7 +137,9 @@ class _MyTextFieldState extends State<MyTextField> {
                 borderRadius: BorderRadius.circular(8),
                 borderSide: BorderSide(color: kSecondaryColor, width: 1),
               ),
+              errorText: widget.errorText,
               errorBorder: InputBorder.none,
+              counterText: '',
             ),
           ),
         ],

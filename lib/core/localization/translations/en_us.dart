@@ -57,6 +57,28 @@ const Map<String, String> enUS = {
   "callVerifySubtitleWithPhone":
       'We will call {phone}. Answer the call to confirm.',
   "callVerifyHint": 'If you missed the call, tap Call me again.',
+  "spark.state.loading": "Loading...",
+  "spark.state.loading.reports": "Loading reports...",
+  "spark.state.loading.staff": "Loading staff...",
+  "spark.state.loading.profileBootstrap": "Preparing profile...",
+  "spark.state.error.title": "Loading error",
+  "spark.state.error.reports":
+      "Unable to load reports. Check local data and try again.",
+  "spark.state.error.staff":
+      "Unable to load staff list. Check local data and try again.",
+  "spark.action.retry": "Retry",
+  "spark.empty.noDrafts.title": "No drafts yet",
+  "spark.empty.noDrafts.subtitle":
+      "Create a new report and it will appear here",
+  "spark.empty.noCompleted.title": "No completed reports",
+  "spark.empty.noCompleted.subtitle": "Finish an inspection to see the result",
+  "spark.empty.noPendingInvites": "No active invites",
+  "spark.empty.noStaff": "No staff members yet",
+  "spark.empty.noAssignedReports": "No assigned reports yet",
+  "spark.status.pending": "Pending",
+  "spark.status.confirmed": "Confirmed",
+  "spark.unit.km": "km",
+  "spark.report.meta": "{code} on {date}",
   "vehicleSummary": 'Vehicle Summary',
   "leadSource": 'Lead Source',
   "type": 'Type',
@@ -298,6 +320,5 @@ const Map<String, String> enUS = {
   'keyChooseLanguage': 'Choose Language',
   'keyChooseLanguageDescription':
       'Choose your preferred language for the app to personalize your experience.',
-'chooseYourLocation': 'Choose Your Location',
-
+  'chooseYourLocation': 'Choose Your Location',
 };

@@ -6,6 +6,7 @@ import 'package:flutter_application_1/ui/mobile/screens/launch/choose_user_type.
 import 'package:flutter_application_1/ui/mobile/screens/launch/landing.dart';
 import 'package:flutter_application_1/ui/mobile/screens/launch/splash_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_new_report_name_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/user_nav_bar.dart';
 
 class AppRoutes {
@@ -20,6 +21,10 @@ class AppRoutes {
     GetPage(name: AppLinks.chooseUserType, page: () => ChooseUserType()),
     GetPage(name: AppLinks.userHome, page: () => UserNavBar()),
     GetPage(name: AppLinks.dealerHome, page: () => DealerNavBar()),
+    GetPage(
+      name: AppLinks.sparkNewReport,
+      page: () => const SparkJoyNewReportNameScreen(),
+    ),
   ];
 }
 
@@ -32,4 +37,5 @@ class AppLinks {
   static const chooseUserType = '/choose_user_type';
   static const userHome = '/user_home';
   static const dealerHome = '/dealer_home';
+  static const sparkNewReport = '/spark/new_report';
 }

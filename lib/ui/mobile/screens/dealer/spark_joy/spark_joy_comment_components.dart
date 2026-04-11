@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
 
 class SparkJoyCommentInputPanel extends StatelessWidget {
   const SparkJoyCommentInputPanel({
@@ -26,13 +28,12 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kBorderColor),
-        color: kWhiteColor,
+    return SparkCard(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xl,
+        SparkSpace.lg,
+        SparkSpace.xl,
+        SparkSpace.lg,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,42 +43,45 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
             minLines: minLines,
             maxLines: maxLines,
             onTapOutside: (_) => onDismissKeyboard(),
-            style: const TextStyle(fontSize: 14),
+            style: const TextStyle(fontSize: SparkTextSize.label),
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: const TextStyle(fontSize: 14, color: kGreyColor),
+              hintStyle: const TextStyle(
+                fontSize: SparkTextSize.label,
+                color: kGreyColor,
+              ),
               border: InputBorder.none,
               enabledBorder: InputBorder.none,
               focusedBorder: InputBorder.none,
               contentPadding: EdgeInsets.zero,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: SparkSpace.lg),
           if (isDictating) ...[
             const MyText(
               text: 'Идёт надиктовка...',
-              size: 11,
+              size: SparkTextSize.caption,
               color: kRedColor,
               weight: FontWeight.w700,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: SparkSpace.md),
           ],
           Align(
             alignment: Alignment.centerRight,
             child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
+              spacing: SparkSpace.md,
+              runSpacing: SparkSpace.md,
               children: [
                 InkWell(
                   onTap: onToggleDictation,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                      horizontal: SparkSpace.lg,
+                      vertical: SparkSpace.sm,
                     ),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
                       border: Border.all(
                         color: isDictating
                             ? kRedColor.withValues(alpha: 0.45)
@@ -94,13 +98,13 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                           isDictating
                               ? Icons.mic_off_rounded
                               : Icons.mic_rounded,
-                          size: 13,
+                          size: SparkTextSize.bodyLg,
                           color: isDictating ? kRedColor : kSecondaryColor,
                         ),
-                        const SizedBox(width: 4),
+                        const SizedBox(width: SparkSpace.xs),
                         MyText(
                           text: isDictating ? 'Стоп' : 'Голос',
-                          size: 9,
+                          size: SparkTextSize.chip,
                           weight: FontWeight.w700,
                           color: isDictating ? kRedColor : kTertiaryColor,
                         ),
@@ -110,14 +114,14 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                 ),
                 InkWell(
                   onTap: onAiFormat,
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
+                      horizontal: SparkSpace.lg,
+                      vertical: SparkSpace.sm,
                     ),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
                       border: Border.all(
                         color: kSecondaryColor.withValues(alpha: 0.25),
                       ),
@@ -128,13 +132,13 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.auto_awesome_rounded,
-                          size: 13,
+                          size: SparkTextSize.bodyLg,
                           color: kSecondaryColor,
                         ),
-                        SizedBox(width: 4),
+                        SizedBox(width: SparkSpace.xs),
                         MyText(
                           text: 'ИИ',
-                          size: 9,
+                          size: SparkTextSize.chip,
                           weight: FontWeight.w700,
                           color: kSecondaryColor,
                         ),
@@ -194,41 +198,41 @@ class SparkJoyCommentAudioBlock extends StatelessWidget {
               isRecording
                   ? Icons.stop_circle_outlined
                   : Icons.graphic_eq_rounded,
-              size: 16,
+              size: SparkSize.iconSm,
             ),
             label: Text(
               isRecording ? 'Стоп ($recordingLabel)' : 'Записать голосовое',
             ),
             style: OutlinedButton.styleFrom(
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: const Size(0, 36),
+              minimumSize: const Size(0, SparkSize.actionHeightSm),
             ),
           ),
         ),
         if (items.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: kBorderColor),
-              color: kInputBgColor,
+          const SizedBox(height: SparkSpace.md),
+          SparkCard(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.lg,
+              SparkSpace.lg,
+              SparkSpace.lg,
+              SparkSpace.md,
             ),
+            backgroundColor: kInputBgColor,
             child: Column(
               children: List.generate(items.length, (index) {
                 final item = items[index];
                 return Padding(
                   padding: EdgeInsets.only(
-                    bottom: index == items.length - 1 ? 0 : 6,
+                    bottom: index == items.length - 1 ? 0 : SparkSpace.sm,
                   ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
+                      horizontal: SparkSpace.lg,
+                      vertical: SparkSpace.md,
                     ),
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(SparkRadius.md),
                       border: Border.all(color: kBorderColor),
                       color: kWhiteColor,
                     ),
@@ -238,37 +242,37 @@ class SparkJoyCommentAudioBlock extends StatelessWidget {
                           onTap: () async {
                             await onTogglePlay(index);
                           },
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(SparkRadius.pill),
                           child: Padding(
-                            padding: const EdgeInsets.all(2),
+                            padding: const EdgeInsets.all(SparkSpace.xxs),
                             child: Icon(
                               item.isPlaying
                                   ? Icons.pause_circle_outline
                                   : Icons.play_circle_outline,
-                              size: 20,
+                              size: SparkSize.iconLg,
                               color: kSecondaryColor,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: SparkSpace.md),
                         Expanded(
                           child: MyText(
                             text: item.name.trim().isEmpty
                                 ? 'Аудиозапись ${index + 1}'
                                 : item.name,
-                            size: 11,
+                            size: SparkTextSize.caption,
                             maxLines: 1,
                             color: kTertiaryColor,
                           ),
                         ),
                         InkWell(
                           onTap: () => onRemoveAt(index),
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: BorderRadius.circular(SparkRadius.pill),
                           child: const Padding(
-                            padding: EdgeInsets.all(2),
+                            padding: EdgeInsets.all(SparkSpace.xxs),
                             child: Icon(
                               Icons.delete_outline_rounded,
-                              size: 16,
+                              size: SparkSize.iconSm,
                               color: kGreyColor,
                             ),
                           ),

@@ -51,7 +51,9 @@ void main() {
       expect(drafts.last['id'], 'd2');
     });
 
-    test('moveDraftToCompleted moves data atomically', () async {
+    test(
+      'moveDraftToCompleted removes draft and does not keep completed locally',
+      () async {
       await SparkJoyStorage.upsertDraft(<String, dynamic>{
         'id': 'draft_42',
         'name': 'Черновик',
@@ -68,10 +70,10 @@ void main() {
       final drafts = await SparkJoyStorage.loadDrafts();
       final completed = await SparkJoyStorage.loadCompleted();
       expect(drafts.where((d) => d['id'] == 'draft_42'), isEmpty);
-      expect(completed.first['id'], 'report_42');
+      expect(completed, isEmpty);
     });
 
-    test('ensureSeedData removes only legacy seeded completed id', () async {
+    test('ensureSeedData clears completed cache', () async {
       final pref = UserSimplePreferences.pref!;
       await pref.setStringList('spark_joy_completed_v1', <String>[
         jsonEncode(<String, dynamic>{'id': 'spark_report_seed_1', 'name': 'old'}),
@@ -81,8 +83,7 @@ void main() {
       await SparkJoyStorage.ensureSeedData();
       final completed = await SparkJoyStorage.loadCompleted();
 
-      expect(completed.length, 1);
-      expect(completed.first['id'], 'report_keep');
+      expect(completed, isEmpty);
     });
   });
 }

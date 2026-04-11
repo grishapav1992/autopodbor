@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_sizes.dart';
-import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_data.dart';
+import 'spark_joy_i18n.dart';
 import 'spark_joy_new_report_name_screen.dart';
 import 'spark_joy_report_detail_screen.dart';
 import 'spark_joy_storage.dart';
+import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyReportsListScreen extends StatefulWidget {
@@ -22,79 +22,43 @@ class SparkJoyReportsListScreen extends StatefulWidget {
 }
 
 class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
-  String _search = '';
-  String _tab = 'drafts';
-  bool _loading = true;
-
-  List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];
-  List<Map<String, dynamic>> _completed = <Map<String, dynamic>>[];
+  late final _SparkJoyReportsListController _controller;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _controller = _SparkJoyReportsListController(
+      companyMode: widget.companyMode,
+    );
+    _controller.load();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    final allDrafts = await SparkJoyStorage.loadDrafts();
-    final completed = await SparkJoyStorage.loadCompleted();
-    final drafts = allDrafts.where(_isVisibleDraft).toList();
-    if (!mounted) return;
-    setState(() {
-      _drafts = drafts;
-      _completed = completed;
-      _loading = false;
-    });
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
+
+  Future<void> _load() => _controller.load();
 
   Future<void> _openNewReport() async {
-    final setup = await Navigator.of(context).push<Map<String, dynamic>>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) =>
             SparkJoyNewReportNameScreen(companyMode: widget.companyMode),
       ),
     );
-    final reportName = sjRead(setup, 'reportName').trim();
-    if (!mounted || reportName.isEmpty) return;
-    final assignedSpecialistId = sjRead(setup, 'assignedSpecialistId').trim();
-    final assignedSpecialistName = sjRead(
-      setup,
-      'assignedSpecialistName',
-    ).trim();
-    final staffInviteLink = sjRead(setup, 'staffInviteLink').trim();
-
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => SparkJoyCreateReportScreen(
-          initialReportName: reportName,
-          initialAssignedSpecialistId: assignedSpecialistId,
-          initialAssignedSpecialistName: assignedSpecialistName,
-          initialStaffInviteLink: staffInviteLink,
-        ),
-      ),
-    );
-
-    if (created == true) {
-      await _load();
-      return;
-    }
-
+    if (!mounted) return;
     await _load();
   }
 
   Future<void> _openDraft(Map<String, dynamic> draft) async {
-    final created = await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => SparkJoyCreateReportScreen(draft: draft),
       ),
     );
-
-    if (created == true) {
-      await _load();
-      return;
-    }
-
+    if (!mounted) return;
     await _load();
   }
 
@@ -111,109 +75,13 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     await _load();
   }
 
-  bool _isVisibleDraft(Map<String, dynamic> draft) {
-    if (widget.companyMode) {
-      final companyId = sjRead(draft, 'companyId');
-      final businessType = sjRead(draft, 'businessType');
-      if (companyId.isNotEmpty) return companyId == kSparkCompanyId;
-      return businessType == 'company' || businessType == 'ip';
-    }
-
-    final assignedSpecialistId = sjRead(
-      draft,
-      'assignedSpecialistId',
-      fallback: sjRead(draft, 'specialistId'),
-    );
-    if (assignedSpecialistId.isEmpty) return true;
-    return assignedSpecialistId == kSparkSpecialistId;
-  }
-
-  List<Map<String, dynamic>> get _filteredDrafts {
-    if (_search.trim().isEmpty) return _drafts;
-    final query = _search.toLowerCase();
-    return _drafts.where((d) {
-      final text = [
-        sjRead(d, 'reportName'),
-        sjRead(d, 'car'),
-        sjRead(d, 'brand'),
-        sjRead(d, 'model'),
-        sjRead(d, 'vin'),
-      ].join(' ').toLowerCase();
-      return text.contains(query);
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> get _filteredCompleted {
-    if (_search.trim().isEmpty) return _completed;
-    final query = _search.toLowerCase();
-    return _completed.where((r) {
-      final text = [
-        sjRead(r, 'reportName'),
-        sjRead(r, 'car'),
-        sjRead(r, 'make'),
-        sjRead(r, 'model'),
-        sjRead(r, 'vin'),
-        sjRead(r, 'plate'),
-      ].join(' ').toLowerCase();
-      return text.contains(query);
-    }).toList();
-  }
-
-  Widget _tabButton({
-    required String value,
+  Widget _buildStatTile({
     required String title,
-    required int count,
+    required String value,
+    required IconData icon,
   }) {
-    final active = _tab == value;
     return Expanded(
-      child: GestureDetector(
-        onTap: () => setState(() => _tab = value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: active
-                ? kSecondaryColor.withValues(alpha: 0.1)
-                : kWhiteColor,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: active
-                  ? kSecondaryColor.withValues(alpha: 0.45)
-                  : kBorderColor,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              MyText(
-                text: title,
-                size: 12,
-                weight: FontWeight.w700,
-                color: active ? kSecondaryColor : kGreyColor,
-              ),
-              if (count > 0) ...[
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    color: active ? kSecondaryColor : kLightGreyColor,
-                  ),
-                  child: MyText(
-                    text: '$count',
-                    size: 10,
-                    color: active ? kWhiteColor : kGreyColor,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
+      child: SparkStatTile(title: title, value: value, icon: icon),
     );
   }
 
@@ -227,90 +95,100 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final step = int.tryParse(sjRead(draft, 'currentStep')) ?? 1;
     final total = int.tryParse(sjRead(draft, 'totalSteps')) ?? 7;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SparkCard(
-        onTap: () => _openDraft(draft),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  MyText(text: title, size: 13, weight: FontWeight.w700),
-                  if (sjRead(draft, 'car').isNotEmpty &&
-                      sjRead(draft, 'car') != title)
-                    MyText(
-                      text: sjRead(draft, 'car'),
-                      size: 11,
-                      color: kGreyColor,
-                      paddingTop: 2,
-                    ),
-                  if (sjRead(draft, 'vin').isNotEmpty)
-                    MyText(
-                      text: sjRead(draft, 'vin'),
-                      size: 11,
-                      color: kGreyColor,
-                      paddingTop: 2,
-                    ),
-                  MyText(
-                    text: 'Шаг $step из $total',
-                    size: 11,
-                    color: kGreyColor,
-                    paddingTop: 4,
-                  ),
-                  if (sjRead(draft, 'assignedSpecialistName').isNotEmpty)
-                    MyText(
-                      text:
-                          'Исполнитель: ${sjRead(draft, 'assignedSpecialistName')}',
-                      size: 11,
-                      color: kGreyColor,
-                      paddingTop: 2,
-                    ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+    return SparkListCard(
+      onTap: () => _openDraft(draft),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 MyText(
-                  text: sjRead(draft, 'updatedAt'),
-                  size: 10,
-                  color: kGreyColor,
+                  text: title,
+                  size: SparkTextSize.bodyLg,
+                  weight: FontWeight.w700,
                 ),
-                const SizedBox(height: 4),
-                SparkChip(
-                  text: 'Продолжить',
-                  background: kSecondaryColor.withValues(alpha: 0.1),
-                  color: kSecondaryColor,
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: () => _deleteDraft(sjRead(draft, 'id')),
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(0, 30),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 4,
-                    ),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    side: const BorderSide(color: kBorderColor),
-                    foregroundColor: kGreyColor,
-                    backgroundColor: kInputBgColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(999),
-                    ),
+                if (sjRead(draft, 'car').isNotEmpty &&
+                    sjRead(draft, 'car') != title)
+                  MyText(
+                    text: sjRead(draft, 'car'),
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    paddingTop: SparkSpace.xxs,
                   ),
-                  icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                  label: const Text('Удалить'),
+                if (sjRead(draft, 'vin').isNotEmpty)
+                  MyText(
+                    text: sjRead(draft, 'vin'),
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    paddingTop: SparkSpace.xxs,
+                  ),
+                MyText(
+                  text: 'Шаг $step из $total',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                  paddingTop: SparkSpace.xs,
                 ),
+                if (sjRead(draft, 'assignedSpecialistName').isNotEmpty)
+                  MyText(
+                    text:
+                        'Исполнитель: ${sjRead(draft, 'assignedSpecialistName')}',
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    paddingTop: SparkSpace.xxs,
+                  ),
               ],
             ),
-          ],
-        ),
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              MyText(
+                text: sjFormatDate(sjRead(draft, 'updatedAt')),
+                size: SparkTextSize.chip,
+                color: kGreyColor,
+              ),
+              const SizedBox(height: SparkSpace.xs),
+              SparkChip(
+                text: 'Продолжить',
+                background: kSecondaryColor.withValues(alpha: 0.1),
+                color: kSecondaryColor,
+              ),
+              const SizedBox(height: SparkSpace.md),
+              OutlinedButton.icon(
+                onPressed: () => _deleteDraft(sjRead(draft, 'id')),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(0, SparkSize.actionCompactHeight),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.lg,
+                    vertical: SparkSpace.xs,
+                  ),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  side: const BorderSide(color: kBorderColor),
+                  foregroundColor: kGreyColor,
+                  backgroundColor: kInputBgColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  ),
+                ),
+                icon: const Icon(
+                  Icons.delete_outline_rounded,
+                  size: SparkTextSize.title,
+                ),
+                label: const Text('Удалить'),
+              ),
+              const SizedBox(height: SparkSpace.xs),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: SparkSize.iconMd,
+                color: kGreyColor,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -327,218 +205,320 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final title = sjRead(report, 'reportName', fallback: car);
     final verdict = sjRead(report, 'verdict');
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SparkCard(
-        onTap: () => _openCompleted(report),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      MyText(text: title, size: 13, weight: FontWeight.w700),
-                      if (car != title)
-                        MyText(
-                          text: car,
-                          size: 11,
-                          color: kGreyColor,
-                          paddingTop: 2,
-                        ),
-                      if (sjRead(report, 'vin').isNotEmpty)
-                        MyText(
-                          text: sjRead(report, 'vin'),
-                          size: 11,
-                          color: kGreyColor,
-                          paddingTop: 2,
-                        ),
-                      if (sjRead(report, 'mileage').isNotEmpty)
-                        MyText(
-                          text: '${sjRead(report, 'mileage')} км',
-                          size: 11,
-                          color: kGreyColor,
-                          paddingTop: 2,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+    return SparkListCard(
+      onTap: () => _openCompleted(report),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MyText(
-                      text: sjRead(report, 'createdAt'),
-                      size: 10,
-                      color: kGreyColor,
+                      text: title,
+                      size: SparkTextSize.bodyLg,
+                      weight: FontWeight.w700,
                     ),
+                    if (car != title)
+                      MyText(
+                        text: car,
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxs,
+                      ),
+                    if (sjRead(report, 'vin').isNotEmpty)
+                      MyText(
+                        text: sjRead(report, 'vin'),
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxs,
+                      ),
+                    if (sjRead(report, 'mileage').isNotEmpty)
+                      MyText(
+                        text: sjFormatMileage(sjRead(report, 'mileage')),
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxs,
+                      ),
                   ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                SparkChip(
-                  text: sjRead(report, 'score', fallback: '—'),
-                  background: kSecondaryColor.withValues(alpha: 0.08),
-                  color: kSecondaryColor,
-                ),
-                SparkChip(
-                  text: sparkVerdictLabel(verdict),
-                  background: sparkVerdictColor(
-                    verdict,
-                  ).withValues(alpha: 0.12),
-                  color: sparkVerdictColor(verdict),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  MyText(
+                    text: sjFormatDate(sjRead(report, 'createdAt')),
+                    size: SparkTextSize.chip,
+                    color: kGreyColor,
+                  ),
+                  const SizedBox(height: SparkSpace.sm),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: SparkSize.iconMd,
+                    color: kGreyColor,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Wrap(
+            spacing: SparkSpace.md,
+            runSpacing: SparkSpace.md,
+            children: [
+              SparkChip(
+                text: sjRead(report, 'score', fallback: '—'),
+                background: kSecondaryColor.withValues(alpha: 0.08),
+                color: kSecondaryColor,
+              ),
+              SparkChip(
+                text: sparkVerdictLabel(verdict),
+                background: sparkVerdictColor(verdict).withValues(alpha: 0.12),
+                color: sparkVerdictColor(verdict),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final drafts = _filteredDrafts;
-    final completed = _filteredCompleted;
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final drafts = _controller.filteredDrafts;
+        final completed = _controller.filteredCompleted;
+        final activeCount = _controller.tab == 'drafts'
+            ? drafts.length
+            : completed.length;
 
-    return ListView(
-      padding: AppSizes.DEFAULT.copyWith(bottom: 110),
-      children: [
-        MyText(
-          text: widget.companyMode ? 'Отчёты компании' : 'Мои отчёты',
-          size: 22,
-          weight: FontWeight.w700,
-        ),
-        MyText(
-          text: widget.companyMode
-              ? 'Черновики и завершённые отчёты'
-              : 'Автоподбор',
-          size: 12,
-          color: kGreyColor,
-          paddingTop: 2,
-          paddingBottom: 12,
-        ),
-        MyButton(
-          buttonText: 'Создать новый отчёт',
-          onTap: _openNewReport,
-          customChild: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.add, color: kWhiteColor, size: 20),
-              SizedBox(width: 6),
-              MyText(
-                text: 'Создать новый отчёт',
-                size: 14,
-                weight: FontWeight.w700,
-                color: kWhiteColor,
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 10),
-        TextField(
-          onChanged: (value) => setState(() => _search = value),
-          decoration: InputDecoration(
-            hintText: 'Поиск по марке, модели, VIN... ',
-            prefixIcon: const Icon(Icons.search, color: kGreyColor, size: 18),
-            filled: true,
-            fillColor: kWhiteColor,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kBorderColor),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kBorderColor),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kSecondaryColor),
-            ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Row(
+        return SparkScreenList(
+          bottomInset: 56,
           children: [
-            _tabButton(
-              value: 'drafts',
-              title: 'Черновики',
-              count: drafts.length,
+            SparkPrimaryActionButton(
+              label: 'Создать новый отчёт',
+              onTap: _openNewReport,
             ),
-            const SizedBox(width: 8),
-            _tabButton(
-              value: 'completed',
-              title: 'Завершённые',
-              count: completed.length,
+            const SizedBox(height: SparkSpace.xl),
+            Row(
+              children: [
+                _buildStatTile(
+                  title: 'Черновики',
+                  value: '${_controller.drafts.length}',
+                  icon: Icons.edit_note_rounded,
+                ),
+                const SizedBox(width: SparkSpace.md),
+                _buildStatTile(
+                  title: 'Завершённые',
+                  value: '${_controller.completed.length}',
+                  icon: Icons.task_alt_rounded,
+                ),
+              ],
             ),
+            const SizedBox(height: SparkSpace.xl),
+            SparkSearchField(
+              hint: 'Поиск по марке, модели, VIN...',
+              onChanged: _controller.setSearch,
+            ),
+            const SizedBox(height: SparkSpace.xl),
+            SparkSegmentedTabs(
+              items: [
+                SparkSegmentedTabItem(
+                  value: 'drafts',
+                  label: 'Черновики',
+                  count: drafts.length,
+                ),
+                SparkSegmentedTabItem(
+                  value: 'completed',
+                  label: 'Завершённые',
+                  count: completed.length,
+                ),
+              ],
+              value: _controller.tab,
+              onChanged: _controller.setTab,
+            ),
+            const SizedBox(height: SparkSpace.lg),
+            MyText(
+              text: _controller.tab == 'drafts'
+                  ? 'Черновики • $activeCount'
+                  : 'Завершённые • $activeCount',
+              size: SparkTextSize.title,
+              weight: FontWeight.w700,
+            ),
+            const SizedBox(height: SparkSpace.xl),
+            if (_controller.loading)
+              SparkLoadingState(
+                message: sjT(
+                  'spark.state.loading.reports',
+                  fallback: 'Загрузка отчётов...',
+                ),
+              )
+            else if (_controller.loadError != null)
+              SparkErrorState(
+                title: sjT(
+                  'spark.state.error.title',
+                  fallback: 'Ошибка загрузки',
+                ),
+                subtitle: _controller.loadError!,
+                onRetry: _load,
+              )
+            else if (_controller.tab == 'drafts')
+              if (drafts.isEmpty)
+                SparkEmptyState(
+                  icon: Icons.edit_note,
+                  title: sjT(
+                    'spark.empty.noDrafts.title',
+                    fallback: 'Нет черновиков',
+                  ),
+                  subtitle: sjT(
+                    'spark.empty.noDrafts.subtitle',
+                    fallback: 'Начните новый отчёт, чтобы увидеть его здесь',
+                  ),
+                )
+              else
+                ...drafts.map(_buildDraftCard)
+            else if (completed.isEmpty)
+              SparkEmptyState(
+                icon: Icons.check_circle_outline,
+                title: sjT(
+                  'spark.empty.noCompleted.title',
+                  fallback: 'Нет завершённых отчётов',
+                ),
+                subtitle: sjT(
+                  'spark.empty.noCompleted.subtitle',
+                  fallback: 'Завершите осмотр, чтобы увидеть результат',
+                ),
+              )
+            else
+              ...completed.map(_buildCompletedCard),
           ],
-        ),
-        const SizedBox(height: 12),
-        if (_loading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.only(top: 30),
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          )
-        else if (_tab == 'drafts')
-          if (drafts.isEmpty)
-            const _SparkEmptyState(
-              icon: Icons.edit_note,
-              title: 'Нет черновиков',
-              subtitle: 'Начните новый отчёт, чтобы увидеть его здесь',
-            )
-          else
-            ...drafts.map(_buildDraftCard)
-        else if (completed.isEmpty)
-          const _SparkEmptyState(
-            icon: Icons.check_circle_outline,
-            title: 'Нет завершённых отчётов',
-            subtitle: 'Завершите осмотр, чтобы увидеть результат',
-          )
-        else
-          ...completed.map(_buildCompletedCard),
-      ],
+        );
+      },
     );
   }
 }
 
-class _SparkEmptyState extends StatelessWidget {
-  const _SparkEmptyState({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-  });
+class _SparkJoyReportsListController extends ChangeNotifier {
+  _SparkJoyReportsListController({required this.companyMode});
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
+  final bool companyMode;
+  String _search = '';
+  String _tab = 'drafts';
+  bool _loading = true;
+  String? _loadError;
+  int _loadToken = 0;
+  bool _disposed = false;
+
+  List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _completed = <Map<String, dynamic>>[];
+
+  String get tab => _tab;
+  bool get loading => _loading;
+  String? get loadError => _loadError;
+  List<Map<String, dynamic>> get drafts => _drafts;
+  List<Map<String, dynamic>> get completed => _completed;
+
+  List<Map<String, dynamic>> get filteredDrafts {
+    if (_search.trim().isEmpty) return _drafts;
+    final query = _search.toLowerCase();
+    return _drafts.where((d) {
+      final text = [
+        sjRead(d, 'reportName'),
+        sjRead(d, 'car'),
+        sjRead(d, 'brand'),
+        sjRead(d, 'model'),
+        sjRead(d, 'vin'),
+      ].join(' ').toLowerCase();
+      return text.contains(query);
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get filteredCompleted {
+    if (_search.trim().isEmpty) return _completed;
+    final query = _search.toLowerCase();
+    return _completed.where((r) {
+      final text = [
+        sjRead(r, 'reportName'),
+        sjRead(r, 'car'),
+        sjRead(r, 'make'),
+        sjRead(r, 'model'),
+        sjRead(r, 'vin'),
+        sjRead(r, 'plate'),
+      ].join(' ').toLowerCase();
+      return text.contains(query);
+    }).toList();
+  }
+
+  void setSearch(String value) {
+    if (_search == value) return;
+    _search = value;
+    _safeNotify();
+  }
+
+  void setTab(String value) {
+    if (_tab == value) return;
+    _tab = value;
+    _safeNotify();
+  }
+
+  Future<void> load() async {
+    final token = ++_loadToken;
+    _loading = true;
+    _loadError = null;
+    _safeNotify();
+    try {
+      final allDraftsFuture = SparkJoyStorage.loadDrafts();
+      final completedFuture = SparkJoyStorage.loadCompleted();
+      final allDrafts = await allDraftsFuture;
+      final completed = await completedFuture;
+      if (_disposed || token != _loadToken) return;
+      _drafts = allDrafts.where(_isVisibleDraft).toList();
+      _completed = completed;
+      _loading = false;
+      _safeNotify();
+    } catch (_) {
+      if (_disposed || token != _loadToken) return;
+      _loading = false;
+      _loadError = sjT(
+        'spark.state.error.reports',
+        fallback:
+            'Не удалось загрузить отчёты. Проверьте локальные данные и повторите.',
+      );
+      _safeNotify();
+    }
+  }
+
+  bool _isVisibleDraft(Map<String, dynamic> draft) {
+    if (companyMode) {
+      final companyId = sjRead(draft, 'companyId');
+      final businessType = sjRead(draft, 'businessType');
+      if (companyId.isNotEmpty) return companyId == kSparkCompanyId;
+      return businessType == 'company' || businessType == 'ip';
+    }
+
+    final assignedSpecialistId = sjRead(
+      draft,
+      'assignedSpecialistId',
+      fallback: sjRead(draft, 'specialistId'),
+    );
+    if (assignedSpecialistId.isEmpty) return true;
+    return assignedSpecialistId == kSparkSpecialistId;
+  }
+
+  void _safeNotify() {
+    if (_disposed) return;
+    notifyListeners();
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 32),
-      child: Column(
-        children: [
-          Icon(icon, size: 34, color: kGreyColor.withValues(alpha: 0.5)),
-          const SizedBox(height: 8),
-          MyText(text: title, size: 14, weight: FontWeight.w700),
-          const SizedBox(height: 3),
-          MyText(text: subtitle, size: 11, color: kGreyColor),
-        ],
-      ),
-    );
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }
