@@ -46,66 +46,68 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
 
   Widget _sectionCard(int index, {required _SparkJoyOverviewState overview}) {
     final step = _SparkJoyStepRegistry.steps[index];
-    final isSummary = _SparkJoyStepRegistry.isSummaryStepId(step.id);
     final value = overview.sectionValues[step.id] ?? '';
-    final done = value.isNotEmpty;
+    final fillState =
+        overview.sectionFillStates[step.id] ?? SparkJoySectionFillState.empty;
     return SparkSectionNavCard(
       index: index,
       title: step.title,
       icon: _overviewController.sectionIcon(step.id),
       description: step.description,
       value: value,
-      done: done,
-      isSummary: isSummary,
+      fillState: fillState,
       onTap: () => _openSection(index),
     );
   }
 
   Widget _sectionsOverview() {
     final overview = _overviewController.build(this);
+    final total = _SparkJoyStepRegistry.steps.length;
+    final filled = overview.sectionFillStates.values.where((state) {
+      return state != SparkJoySectionFillState.empty;
+    }).length;
+    final progress = total == 0 ? 0.0 : (filled / total).clamp(0.0, 1.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SparkReportOverviewHeaderCard(
-          title: _reportTitle(),
-          meta: sjFormatReportMeta(_reportCode, _createdAt),
-          draftStatusText: _draftSaveStatusText(),
-          draftStatusColor: _draftSaveStatusColor(),
-          currentStepPrefix: _SparkJoyOverviewController.currentStepPrefix,
-          currentStepTitle: overview.currentTitle,
-        ),
-        const SizedBox(height: SparkSpace.lg),
-        Row(
-          children: [
-            Expanded(
-              child: SparkStatTile(
-                title: _SparkJoyOverviewController.completedStatTitle,
-                value: '${overview.completed}/${overview.total}',
-                icon: Icons.task_alt_rounded,
+        SparkCard(
+          radius: SparkRadius.md,
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xl,
+            SparkSpace.lg,
+            SparkSpace.xl,
+            SparkSpace.xl,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MyText(
+                text: 'Прогресс отчёта',
+                size: SparkTextSize.body,
+                weight: FontWeight.w700,
+                color: kTertiaryColor,
               ),
-            ),
-            const SizedBox(width: SparkSpace.md),
-            Expanded(
-              child: SparkStatTile(
-                title: _SparkJoyOverviewController.remainingStatTitle,
-                value: '${overview.remaining}',
-                icon: Icons.pending_actions_rounded,
+              const SizedBox(height: SparkSpace.xxs),
+              MyText(
+                text: 'Заполнено разделов: $filled из $total',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: SparkSpace.lg),
-        SparkProgressSummaryCard(
-          completed: overview.completed,
-          total: overview.total,
-          progress: overview.progress,
-        ),
-        const SizedBox(height: SparkSpace.section),
-        const MyText(
-          text: _SparkJoyOverviewController.sectionsHeaderTitle,
-          size: SparkTextSize.sectionTitle,
-          weight: FontWeight.w700,
+              const SizedBox(height: SparkSpace.md),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(SparkRadius.pill),
+                child: LinearProgressIndicator(
+                  value: progress,
+                  minHeight: SparkSize.progress,
+                  backgroundColor: kLightGreyColor,
+                  valueColor: const AlwaysStoppedAnimation<Color>(
+                    kSecondaryColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: SparkSpace.lg),
         ...List.generate(_SparkJoyStepRegistry.steps.length, (index) {

@@ -5,90 +5,11 @@ Widget _buildSparkJoyStepDocsCheck(
   required bool hasMismatch,
   required void Function(VoidCallback fn) setStateFn,
 }) {
-  final checks = <bool?>[
-    s._docsOwnerMatch,
-    s._docsVinMatch,
-    s._docsEngineMatch,
-  ];
-  final checkedCount = checks.where((value) => value != null).length;
-  final mismatchCount = checks.where((value) => value == false).length;
-  final totalChecks = checks.length;
-  final isCompleted = checkedCount == totalChecks;
-  final statusColor = mismatchCount > 0
-      ? kYellowColor
-      : (isCompleted ? kGreenColor : kGreyColor);
-  final statusText = mismatchCount > 0
-      ? 'Есть расхождения'
-      : (isCompleted ? 'Проверка завершена' : 'Нужно заполнить поля');
-
   return Column(
     children: [
-      s._sectionHeading(
-        'Сверка документов',
-        icon: Icons.policy_outlined,
-        subtitle: 'Сравните данные документов и автомобиля',
-      ),
-      s._card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.fact_check_outlined,
-                  size: SparkSize.iconMd,
-                  color: kSecondaryColor,
-                ),
-                const SizedBox(width: SparkSpace.sm),
-                Expanded(
-                  child: MyText(
-                    text: statusText,
-                    size: SparkTextSize.body,
-                    weight: FontWeight.w700,
-                    color: statusColor,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: SparkSpace.sm),
-            Wrap(
-              spacing: SparkSpace.sm,
-              runSpacing: SparkSpace.sm,
-              children: [
-                SparkChip(
-                  text: 'Заполнено: $checkedCount/$totalChecks',
-                  background: kSecondaryColor.withValues(alpha: 0.1),
-                  color: kSecondaryColor,
-                  textSize: SparkTextSize.caption,
-                ),
-                SparkChip(
-                  text: 'Расхождения: $mismatchCount',
-                  background: mismatchCount > 0
-                      ? kYellowColor.withValues(alpha: 0.16)
-                      : kGreenColor.withValues(alpha: 0.12),
-                  color: mismatchCount > 0 ? kTertiaryColor : kGreenColor,
-                  textSize: SparkTextSize.caption,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: SparkSpace.lg),
-      if (!isCompleted) ...[
-        const SparkHintCard(
-          text: 'Выберите статус в каждом пункте сверки.',
-          icon: Icons.info_outline_rounded,
-        ),
-        const SizedBox(height: SparkSpace.lg),
-      ],
       s._yesNoSelector(
         title: 'Данные владельца',
         value: s._docsOwnerMatch,
-        subtitle: s._docsOwnerMatch == null
-            ? null
-            : s._docsStateLabel(s._docsOwnerMatch),
-        subtitleColor: s._docsStateColor(s._docsOwnerMatch),
         positiveLabel: 'Соответствует',
         negativeLabel: 'Не соответствует',
         onChanged: (v) => setStateFn(() => s._docsOwnerMatch = v),
@@ -97,10 +18,6 @@ Widget _buildSparkJoyStepDocsCheck(
       s._yesNoSelector(
         title: 'Идентификационные номера',
         value: s._docsVinMatch,
-        subtitle: s._docsVinMatch == null
-            ? null
-            : s._docsStateLabel(s._docsVinMatch),
-        subtitleColor: s._docsStateColor(s._docsVinMatch),
         positiveLabel: 'Соответствует',
         negativeLabel: 'Не соответствует',
         onChanged: (v) => setStateFn(() => s._docsVinMatch = v),
@@ -109,10 +26,6 @@ Widget _buildSparkJoyStepDocsCheck(
       s._yesNoSelector(
         title: 'Модель двигателя',
         value: s._docsEngineMatch,
-        subtitle: s._docsEngineMatch == null
-            ? null
-            : s._docsStateLabel(s._docsEngineMatch),
-        subtitleColor: s._docsStateColor(s._docsEngineMatch),
         positiveLabel: 'Соответствует',
         negativeLabel: 'Не соответствует',
         onChanged: (v) => setStateFn(() => s._docsEngineMatch = v),

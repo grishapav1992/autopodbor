@@ -6,9 +6,32 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       return left.trim().toLowerCase() == right.trim().toLowerCase();
     }
 
+    String brandLabel(storage_api.BrandItem brand) {
+      final rus = brand.nameRus.trim();
+      if (rus.isNotEmpty) return rus;
+      return brand.name.trim();
+    }
+
+    String modelLabel(storage_api.ModelItem model) {
+      final rus = model.modelRus.trim();
+      if (rus.isNotEmpty) return rus;
+      return model.model.trim();
+    }
+
     _CarCatalogBrand? selectedBrand;
     _CarCatalogModel? selectedModel;
     _CarCatalogGeneration? selectedGeneration;
+    storage_api.BrandItem? selectedRemoteBrand;
+    storage_api.ModelItem? selectedRemoteModel;
+    List<storage_api.BrandItem> remoteBrands = const [];
+    final remoteModelsByBrandId = <int, List<storage_api.ModelItem>>{};
+    final remoteGenerationsByModelId = <int, List<_CarCatalogGeneration>>{};
+    var remoteModelsLoading = false;
+    var remoteModelsFailed = false;
+    var remoteGenerationsLoading = false;
+    var remoteGenerationsFailed = false;
+    var useRemoteCatalog = false;
+    const remoteCatalogLoadTimeout = Duration(seconds: 12);
     _CarPickerStep step = _CarPickerStep.brand;
     var search = '';
 
@@ -33,7 +56,172 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       break;
     }
 
-    if (selectedBrand != null) {
+    _CarCatalogBrand? findLocalBrandForRemote(
+      storage_api.BrandItem remoteBrand,
+    ) {
+      for (final item in _SparkJoyVehicleRegistry.carCatalog) {
+        if (same(item.name, remoteBrand.name) ||
+            same(item.name, remoteBrand.nameRus)) {
+          return item;
+        }
+      }
+      return null;
+    }
+
+    _CarCatalogModel? findLocalModelForRemote(
+      _CarCatalogBrand localBrand,
+      storage_api.ModelItem remoteModel,
+    ) {
+      for (final item in localBrand.models) {
+        if (same(item.name, remoteModel.model) ||
+            same(item.name, remoteModel.modelRus)) {
+          return item;
+        }
+      }
+      return null;
+    }
+
+    Future<List<storage_api.ModelItem>> loadRemoteModels(
+      storage_api.BrandItem brand,
+    ) async {
+      final cached = remoteModelsByBrandId[brand.id];
+      if (cached != null) return cached;
+      final models = await storage_api.StorageApi.fetchModels(
+        brandId: brand.id,
+      );
+      remoteModelsByBrandId[brand.id] = models;
+      return models;
+    }
+
+    _CarCatalogGeneration mapRemoteGeneration(
+      storage_api.GenerationItem source,
+    ) {
+      final restylings = source.restylings.map((restyling) {
+        final years = [
+          if (restyling.yearStart != null) restyling.yearStart.toString(),
+          if (restyling.yearEnd != null) restyling.yearEnd.toString(),
+        ].join('-');
+        final frames = restyling.frames.map((item) => item.frame).join(', ');
+        final photo = restyling.photos.firstWhere(
+          (item) =>
+              item.urlX2.trim().isNotEmpty || item.urlX1.trim().isNotEmpty,
+          orElse: () =>
+              storage_api.PhotoItem(id: 0, size: '', urlX1: '', urlX2: ''),
+        );
+        final photoUrl = photo.urlX2.trim().isNotEmpty
+            ? photo.urlX2.trim()
+            : photo.urlX1.trim();
+        final labelParts = <String>[
+          if (restyling.restyling.trim().isNotEmpty) restyling.restyling.trim(),
+          if (years.isNotEmpty) years,
+        ];
+        return _CarCatalogRestyling(
+          label: labelParts.isEmpty ? 'Рестайлинг' : labelParts.join(' · '),
+          frames: frames,
+          photoUrl: photoUrl,
+        );
+      }).toList();
+
+      if (restylings.isEmpty) {
+        final frames = source.frames.map((item) => item.frame).join(', ');
+        restylings.add(
+          _CarCatalogRestyling(
+            label: 'Базовая версия',
+            frames: frames,
+            photoUrl: '',
+          ),
+        );
+      }
+
+      return _CarCatalogGeneration(
+        name: source.generation.toString(),
+        restylings: restylings,
+      );
+    }
+
+    Future<List<_CarCatalogGeneration>> loadRemoteGenerations(
+      storage_api.ModelItem model,
+    ) async {
+      final cached = remoteGenerationsByModelId[model.id];
+      if (cached != null) return cached;
+      final generations = await storage_api.StorageApi.fetchGenerations(
+        modelCarId: model.id,
+      );
+      final mapped = generations.map(mapRemoteGeneration).toList();
+      remoteGenerationsByModelId[model.id] = mapped;
+      return mapped;
+    }
+
+    bool matchesRemoteBrand(storage_api.BrandItem brand, String savedValue) {
+      return same(brand.name, savedValue) || same(brand.nameRus, savedValue);
+    }
+
+    bool matchesRemoteModel(storage_api.ModelItem model, String savedValue) {
+      return same(model.model, savedValue) || same(model.modelRus, savedValue);
+    }
+
+    try {
+      final catalog = await storage_api.StorageApi.fetchBrandCatalog();
+      if (catalog.items.isNotEmpty) {
+        remoteBrands = List<storage_api.BrandItem>.from(catalog.items)
+          ..sort(
+            (a, b) => brandLabel(
+              a,
+            ).toLowerCase().compareTo(brandLabel(b).toLowerCase()),
+          );
+        useRemoteCatalog = true;
+      }
+    } catch (_) {
+      useRemoteCatalog = false;
+    }
+
+    if (useRemoteCatalog) {
+      for (final brand in remoteBrands) {
+        if (!matchesRemoteBrand(brand, savedBrand)) continue;
+        selectedRemoteBrand = brand;
+        selectedBrand ??= findLocalBrandForRemote(brand);
+        break;
+      }
+
+      if (selectedRemoteBrand != null && savedModel.isNotEmpty) {
+        try {
+          final models = await loadRemoteModels(selectedRemoteBrand);
+          for (final model in models) {
+            if (!matchesRemoteModel(model, savedModel)) continue;
+            selectedRemoteModel = model;
+            if (selectedBrand != null) {
+              selectedModel = findLocalModelForRemote(selectedBrand, model);
+            }
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (selectedRemoteModel != null &&
+          !remoteGenerationsByModelId.containsKey(selectedRemoteModel.id)) {
+        try {
+          await loadRemoteGenerations(selectedRemoteModel);
+        } catch (_) {}
+      }
+
+      if (selectedRemoteModel != null && savedGeneration.isNotEmpty) {
+        try {
+          final generations = await loadRemoteGenerations(selectedRemoteModel);
+          for (final generation in generations) {
+            final label = 'Поколение ${generation.name}';
+            if (!same(generation.name, savedGeneration) &&
+                !same(label, savedGeneration)) {
+              continue;
+            }
+            selectedGeneration = generation;
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (selectedBrand != null &&
+        (selectedRemoteBrand == null || !useRemoteCatalog)) {
       step = _CarPickerStep.model;
     }
     if (selectedModel != null) {
@@ -41,6 +229,17 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     }
     if (selectedGeneration != null && savedRestyling.isNotEmpty) {
       step = _CarPickerStep.restyling;
+    }
+    if (useRemoteCatalog &&
+        selectedRemoteModel != null &&
+        selectedGeneration == null) {
+      step = _CarPickerStep.generation;
+    }
+    if (useRemoteCatalog &&
+        selectedRemoteBrand != null &&
+        selectedRemoteModel == null &&
+        selectedModel == null) {
+      step = _CarPickerStep.model;
     }
 
     String titleForStep(_CarPickerStep value) {
@@ -58,8 +257,14 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
 
     String breadcrumb() {
       final parts = <String>[
-        if (selectedBrand != null) selectedBrand!.name,
-        if (selectedModel != null) selectedModel!.name,
+        if (selectedBrand != null)
+          selectedBrand!.name
+        else if (selectedRemoteBrand != null)
+          brandLabel(selectedRemoteBrand!),
+        if (selectedModel != null)
+          selectedModel!.name
+        else if (selectedRemoteModel != null)
+          modelLabel(selectedRemoteModel!),
         if (selectedGeneration != null && step == _CarPickerStep.restyling)
           'Пок. ${selectedGeneration!.name}',
       ];
@@ -67,14 +272,16 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     }
 
     _CarPickerSelection? buildSelection(_CarCatalogRestyling restyling) {
-      if (selectedBrand == null ||
-          selectedModel == null ||
+      final brand = selectedBrand?.name ?? selectedRemoteBrand?.name ?? '';
+      final model = selectedModel?.name ?? selectedRemoteModel?.model ?? '';
+      if (brand.trim().isEmpty ||
+          model.trim().isEmpty ||
           selectedGeneration == null) {
         return null;
       }
       return _CarPickerSelection(
-        brand: selectedBrand!.name,
-        model: selectedModel!.name,
+        brand: brand,
+        model: model,
         generation: selectedGeneration!.name,
         restyling: restyling.label,
         frames: restyling.frames,
@@ -82,6 +289,21 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       );
     }
 
+    _CarPickerSelection buildSelectionForModel({
+      required String brand,
+      required String model,
+    }) {
+      return _CarPickerSelection(
+        brand: brand,
+        model: model,
+        generation: '',
+        restyling: '',
+        frames: '',
+        photoUrl: '',
+      );
+    }
+
+    if (!mounted) return;
     final selection = await showDialog<_CarPickerSelection>(
       context: context,
       builder: (context) {
@@ -105,6 +327,12 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   selectedBrand = null;
                   selectedModel = null;
                   selectedGeneration = null;
+                  selectedRemoteBrand = null;
+                  selectedRemoteModel = null;
+                  remoteModelsLoading = false;
+                  remoteModelsFailed = false;
+                  remoteGenerationsLoading = false;
+                  remoteGenerationsFailed = false;
                   search = '';
                   return;
                 }
@@ -112,6 +340,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   step = _CarPickerStep.model;
                   selectedModel = null;
                   selectedGeneration = null;
+                  selectedRemoteModel = null;
+                  remoteGenerationsLoading = false;
+                  remoteGenerationsFailed = false;
                   search = '';
                   return;
                 }
@@ -124,6 +355,76 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
 
             Widget listContent() {
               if (step == _CarPickerStep.brand) {
+                if (useRemoteCatalog) {
+                  final brands = remoteBrands
+                      .where(
+                        (brand) => search.trim().isEmpty
+                            ? true
+                            : [
+                                brand.name.trim().toLowerCase(),
+                                brand.nameRus.trim().toLowerCase(),
+                              ].any(
+                                (value) =>
+                                    value.contains(search.trim().toLowerCase()),
+                              ),
+                      )
+                      .toList();
+                  if (brands.isEmpty) {
+                    return const Center(child: Text('Ничего не найдено'));
+                  }
+                  return ListView.separated(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    itemCount: brands.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final brand = brands[index];
+                      final title = brandLabel(brand);
+                      final subtitle =
+                          brand.nameRus.trim().isNotEmpty &&
+                              !same(brand.nameRus, brand.name)
+                          ? brand.name
+                          : null;
+                      return ListTile(
+                        title: Text(title),
+                        subtitle: subtitle == null ? null : Text(subtitle),
+                        trailing: const Icon(Icons.chevron_right_rounded),
+                        onTap: () async {
+                          setLocalState(() {
+                            selectedRemoteBrand = brand;
+                            selectedRemoteModel = null;
+                            selectedBrand = findLocalBrandForRemote(brand);
+                            selectedModel = null;
+                            selectedGeneration = null;
+                            step = _CarPickerStep.model;
+                            search = '';
+                            remoteModelsLoading = true;
+                            remoteModelsFailed = false;
+                            remoteGenerationsLoading = false;
+                            remoteGenerationsFailed = false;
+                          });
+                          var failed = false;
+                          try {
+                            await loadRemoteModels(
+                              brand,
+                            ).timeout(remoteCatalogLoadTimeout);
+                          } catch (_) {
+                            failed = true;
+                          } finally {
+                            if (mounted) {
+                              setLocalState(() {
+                                remoteModelsLoading = false;
+                                remoteModelsFailed = failed;
+                              });
+                            }
+                          }
+                        },
+                      );
+                    },
+                  );
+                }
+
                 final brands = _SparkJoyVehicleRegistry.carCatalog
                     .where(
                       (brand) => search.trim().isEmpty
@@ -162,6 +463,150 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               }
 
               if (step == _CarPickerStep.model) {
+                if (useRemoteCatalog) {
+                  final remoteBrand = selectedRemoteBrand;
+                  if (remoteBrand == null) {
+                    return const Center(child: Text('Выберите марку'));
+                  }
+
+                  final remoteModels =
+                      remoteModelsByBrandId[remoteBrand.id] ??
+                      const <storage_api.ModelItem>[];
+
+                  if (remoteModelsLoading && remoteModels.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+
+                  if (remoteModels.isNotEmpty) {
+                    final models = remoteModels
+                        .where(
+                          (model) => search.trim().isEmpty
+                              ? true
+                              : [
+                                  model.model.trim().toLowerCase(),
+                                  model.modelRus.trim().toLowerCase(),
+                                ].any(
+                                  (value) => value.contains(
+                                    search.trim().toLowerCase(),
+                                  ),
+                                ),
+                        )
+                        .toList();
+                    if (models.isEmpty) {
+                      return const Center(child: Text('Нет моделей'));
+                    }
+                    return ListView.separated(
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      itemCount: models.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final model = models[index];
+                        final title = modelLabel(model);
+                        final subtitle =
+                            model.modelRus.trim().isNotEmpty &&
+                                !same(model.modelRus, model.model)
+                            ? model.model
+                            : null;
+                        return ListTile(
+                          title: Text(title),
+                          subtitle: subtitle == null ? null : Text(subtitle),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () async {
+                            final dialogNavigator = Navigator.of(context);
+                            final localBrand = selectedBrand;
+                            final localModel = localBrand == null
+                                ? null
+                                : findLocalModelForRemote(localBrand, model);
+                            setLocalState(() {
+                              selectedRemoteModel = model;
+                              selectedModel = localModel;
+                              selectedGeneration = null;
+                              step = _CarPickerStep.generation;
+                              search = '';
+                              remoteGenerationsLoading = true;
+                              remoteGenerationsFailed = false;
+                            });
+                            var failed = false;
+                            try {
+                              await loadRemoteGenerations(
+                                model,
+                              ).timeout(remoteCatalogLoadTimeout);
+                            } catch (_) {
+                              failed = true;
+                            } finally {
+                              if (mounted) {
+                                final remoteGenerations =
+                                    remoteGenerationsByModelId[model.id] ??
+                                    const <_CarCatalogGeneration>[];
+                                final localGenerations =
+                                    localModel?.generations ??
+                                    const <_CarCatalogGeneration>[];
+                                if (remoteGenerations.isEmpty &&
+                                    localGenerations.isEmpty) {
+                                  dialogNavigator.pop(
+                                    buildSelectionForModel(
+                                      brand: remoteBrand.name,
+                                      model: model.model,
+                                    ),
+                                  );
+                                } else {
+                                  setLocalState(() {
+                                    remoteGenerationsLoading = false;
+                                    remoteGenerationsFailed = failed;
+                                  });
+                                }
+                              }
+                            }
+                          },
+                        );
+                      },
+                    );
+                  }
+
+                  if (remoteModelsFailed && selectedBrand != null) {
+                    final fallbackModels = selectedBrand!.models
+                        .where(
+                          (model) => search.trim().isEmpty
+                              ? true
+                              : model.name.toLowerCase().contains(
+                                  search.trim().toLowerCase(),
+                                ),
+                        )
+                        .toList();
+                    if (fallbackModels.isNotEmpty) {
+                      return ListView.separated(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        itemCount: fallbackModels.length,
+                        separatorBuilder: (context, index) =>
+                            const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final model = fallbackModels[index];
+                          return ListTile(
+                            title: Text(model.name),
+                            trailing: const Icon(Icons.chevron_right_rounded),
+                            onTap: () {
+                              setLocalState(() {
+                                selectedRemoteModel = null;
+                                selectedModel = model;
+                                selectedGeneration = null;
+                                step = _CarPickerStep.generation;
+                                search = '';
+                                remoteGenerationsLoading = false;
+                                remoteGenerationsFailed = false;
+                              });
+                            },
+                          );
+                        },
+                      );
+                    }
+                  }
+
+                  return const Center(child: Text('Нет моделей'));
+                }
+
                 final models =
                     (selectedBrand?.models ?? const <_CarCatalogModel>[])
                         .where(
@@ -188,10 +633,13 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () {
                         setLocalState(() {
+                          selectedRemoteModel = null;
                           selectedModel = model;
                           selectedGeneration = null;
                           step = _CarPickerStep.generation;
                           search = '';
+                          remoteGenerationsLoading = false;
+                          remoteGenerationsFailed = false;
                         });
                       },
                     );
@@ -200,9 +648,22 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               }
 
               if (step == _CarPickerStep.generation) {
-                final generations =
+                List<_CarCatalogGeneration> generations =
                     selectedModel?.generations ??
                     const <_CarCatalogGeneration>[];
+                if (useRemoteCatalog && selectedRemoteModel != null) {
+                  final remoteGenerations =
+                      remoteGenerationsByModelId[selectedRemoteModel!.id] ??
+                      const <_CarCatalogGeneration>[];
+                  if (remoteGenerationsLoading && remoteGenerations.isEmpty) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (remoteGenerations.isNotEmpty) {
+                    generations = remoteGenerations;
+                  } else if (remoteGenerationsFailed && generations.isEmpty) {
+                    return const Center(child: Text('Нет поколений'));
+                  }
+                }
                 if (generations.isEmpty) {
                   return const Center(child: Text('Нет поколений'));
                 }
@@ -243,15 +704,43 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                 itemBuilder: (context, index) {
                   final restyling = restylings[index];
                   return ListTile(
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(SparkRadius.sm),
-                      child: Image.network(
-                        restyling.photoUrl,
-                        width: SparkSize.inputHeight,
-                        height: SparkSize.inputHeight,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
+                    leading: restyling.photoUrl.trim().isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(SparkRadius.sm),
+                            child: Image.network(
+                              restyling.photoUrl,
+                              width: SparkSize.inputHeight,
+                              height: SparkSize.inputHeight,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: SparkSize.inputHeight,
+                                  height: SparkSize.inputHeight,
+                                  alignment: Alignment.center,
+                                  color: kLightGreyColor,
+                                  child: const Icon(
+                                    Icons.directions_car_outlined,
+                                    color: kGreyColor,
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                        : Container(
+                            width: SparkSize.inputHeight,
+                            height: SparkSize.inputHeight,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: kLightGreyColor,
+                              borderRadius: BorderRadius.circular(
+                                SparkRadius.sm,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.directions_car_outlined,
+                              color: kGreyColor,
+                            ),
+                          ),
                     title: Text(restyling.label),
                     subtitle: Text(restyling.frames),
                     trailing: const Icon(Icons.check_rounded),

@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
@@ -246,14 +247,27 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _staffInviteLinkCreating = false;
 
   String? _activeMediaGroupKey;
+  double? _mediaGroupListScrollOffset;
   bool _mediaGroupSelectMode = false;
   Set<int> _mediaGroupSelectedIndexes = <int>{};
   bool _mediaPickerOpening = false;
   String? _mediaPickerGroupKey;
+  DateTime? _mediaPickerStartedAt;
   int? _mediaGroupPressedIndex;
   String? _mediaListPressedGroupKey;
+  Map<String, dynamic> _backendUploadState = {};
+  bool _backendUploadInProgress = false;
+  bool _backendUploadFailed = false;
+  String _backendUploadStatusText = '';
+  String _backendUploadErrorText = '';
+  int _backendUploadCurrentFile = 0;
+  int _backendUploadTotalFiles = 0;
+  int _backendUploadCurrentPart = 0;
+  int _backendUploadTotalParts = 0;
+  List<_BackendUploadFileProgress> _backendUploadFilesProgress = const [];
+  bool _backendFileUploadLocked = false;
   int _uploadedItemIdCounter = 0;
-  int _localMediaFileCounter = 0;
+  final Map<String, int> _localSavedFileNameUsages = <String, int>{};
 
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;

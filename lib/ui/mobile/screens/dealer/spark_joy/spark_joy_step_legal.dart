@@ -16,22 +16,15 @@ Widget _buildSparkJoyLegalFilesCard(
               color: kGreyColor,
             ),
             const SizedBox(width: SparkSpace.sm),
-            const Expanded(
-              child: MyText(
-                text: 'Файлы специалиста',
-                size: SparkTextSize.body,
-                weight: FontWeight.w700,
-              ),
-            ),
-            SparkChip(
-              text: '${s._legalFiles.length}',
-              background: kSecondaryColor.withValues(alpha: 0.1),
-              color: kSecondaryColor,
-              textSize: SparkTextSize.caption,
+            MyText(
+              text: 'Файлы: ${s._legalFiles.length}',
+              size: SparkTextSize.caption,
+              color: kTertiaryColor,
+              weight: FontWeight.w600,
             ),
           ],
         ),
-        const SizedBox(height: SparkSpace.md),
+        const SizedBox(height: SparkSpace.sm),
         OutlinedButton.icon(
           onPressed: s._pickLegalFiles,
           icon: const Icon(Icons.upload_file_rounded),
@@ -115,15 +108,6 @@ Widget _buildSparkJoyStepLegal(
   _SparkJoyCreateReportScreenState s, {
   required void Function(VoidCallback fn) setStateFn,
 }) {
-  final hasManualData =
-      s._legalFiles.isNotEmpty || s._legalNoteController.text.trim().isNotEmpty;
-  final statusLabel = s._legalLoading
-      ? 'В процессе'
-      : (s._legalLoaded
-            ? 'Готов'
-            : (s._legalTimedOut
-                  ? 'Ошибка'
-                  : (s._legalSkipped ? 'Отложено' : 'Не готов')));
   final statusColor = s._legalLoading
       ? kSecondaryColor
       : (s._legalLoaded
@@ -132,70 +116,44 @@ Widget _buildSparkJoyStepLegal(
                   ? kRedColor
                   : (s._legalSkipped ? kYellowColor : kGreyColor)));
   final statusSubtitle = s._legalLoading
-      ? 'Формируем отчёт, обычно это занимает несколько секунд.'
+      ? 'Формируем отчёт…'
       : (s._legalLoaded
-            ? 'Отчёт сформирован, можно продолжать заполнение.'
+            ? 'Отчёт сформирован'
             : (s._legalTimedOut
-                  ? 'Автопроверка не завершилась. Запустите ещё раз.'
+                  ? 'Автопроверка не завершилась'
                   : (s._legalSkipped
-                        ? 'Раздел отложен, вы можете вернуться к нему позже.'
-                        : 'Запустите формирование отчёта или добавьте документы вручную.')));
-  final statusIcon = s._legalLoading
-      ? Icons.hourglass_top_rounded
-      : (s._legalLoaded
-            ? Icons.check_circle_rounded
-            : (s._legalTimedOut
-                  ? Icons.error_outline_rounded
-                  : (s._legalSkipped
-                        ? Icons.pause_circle_outline_rounded
-                        : Icons.description_outlined)));
+                        ? 'Раздел отложен'
+                        : 'Отчёт ещё не сформирован')));
 
   return Column(
     children: [
-      s._sectionHeading(
-        'Юридическая проверка',
-        icon: Icons.gavel_rounded,
-        subtitle: 'Запустите формирование юридического отчёта',
-      ),
       s._card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(statusIcon, size: SparkTextSize.title, color: statusColor),
-                const SizedBox(width: SparkSpace.sm),
                 Expanded(
                   child: MyText(
                     text: statusSubtitle,
-                    size: SparkTextSize.body,
+                    size: SparkTextSize.caption,
                     color: kTertiaryColor,
                     weight: FontWeight.w600,
+                  ),
+                ),
+                Container(
+                  width: SparkSize.iconSm,
+                  height: SparkSize.iconSm,
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.16),
+                    shape: BoxShape.circle,
                   ),
                 ),
               ],
             ),
             const SizedBox(height: SparkSpace.md),
-            Wrap(
-              spacing: SparkSpace.sm,
-              runSpacing: SparkSpace.sm,
-              children: [
-                SparkChip(
-                  text: 'Статус: $statusLabel',
-                  background: statusColor.withValues(alpha: 0.12),
-                  color: statusColor,
-                  textSize: SparkTextSize.caption,
-                ),
-                SparkChip(
-                  text: 'Файлы: ${s._legalFiles.length}',
-                  background: kSecondaryColor.withValues(alpha: 0.1),
-                  color: kSecondaryColor,
-                  textSize: SparkTextSize.caption,
-                ),
-              ],
-            ),
             if (s._legalLoading) ...[
-              const SizedBox(height: SparkSpace.md),
+              const SizedBox(height: SparkSpace.sm),
               ClipRRect(
                 borderRadius: BorderRadius.circular(SparkRadius.pill),
                 child: const LinearProgressIndicator(
@@ -224,13 +182,6 @@ Widget _buildSparkJoyStepLegal(
           ],
         ),
       ),
-      if (!s._legalLoading && !s._legalLoaded && !hasManualData) ...[
-        const SizedBox(height: SparkSpace.lg),
-        const SparkHintCard(
-          text: 'Сформируйте отчёт или добавьте документы вручную.',
-          icon: Icons.info_outline_rounded,
-        ),
-      ],
       s._sectionHeading('Файлы специалиста', icon: Icons.folder_open_outlined),
       const SizedBox(height: SparkSpace.lg),
       _buildSparkJoyLegalFilesCard(s, setStateFn: setStateFn),

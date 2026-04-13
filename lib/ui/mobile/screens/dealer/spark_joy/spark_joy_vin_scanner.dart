@@ -161,7 +161,10 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
     var focusAdjusting = false;
     Offset? focusPoint;
     Timer? focusPointTimer;
+    Timer? focusAssistPulseTimer;
     var liveCaptureInFlight = false;
+    dynamic lastFlutterPreviewSize;
+    dynamic lastPixelPreviewSize;
 
     void safeSetLocalState(StateSetter setLocalState, VoidCallback fn) {
       if (!mounted || !dialogActive) return;
@@ -213,17 +216,74 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
       if (!cameraLive || processing) return;
       final state = liveCameraState;
       if (state is! cam.PhotoCameraState) return;
+
+      Future<void> focusAt({
+        required cam.PhotoCameraState cameraState,
+        Offset? point,
+      }) async {
+        final flutterPreview = lastFlutterPreviewSize;
+        final pixelPreview = lastPixelPreviewSize;
+        final previewWidth = ((flutterPreview?.width as num?) ?? 0).toDouble();
+        final previewHeight =
+            ((flutterPreview?.height as num?) ?? 0).toDouble();
+        if (flutterPreview != null &&
+            pixelPreview != null &&
+            previewWidth > 0 &&
+            previewHeight > 0) {
+          final target = point ?? Offset(previewWidth / 2, previewHeight / 2);
+          final safeTarget = Offset(
+            target.dx.clamp(0.0, previewWidth),
+            target.dy.clamp(0.0, previewHeight),
+          );
+          try {
+            await cameraState.focusOnPoint(
+              flutterPosition: safeTarget,
+              pixelPreviewSize: pixelPreview,
+              flutterPreviewSize: flutterPreview,
+            );
+            return;
+          } catch (_) {}
+        }
+
+        try {
+          final preview = await cameraState.previewSize(0);
+          final previewW = ((preview.width as num?) ?? 0).toDouble();
+          final previewH = ((preview.height as num?) ?? 0).toDouble();
+          if (previewW > 0 && previewH > 0) {
+            await cameraState.focusOnPoint(
+              flutterPosition: Offset(previewW / 2, previewH / 2),
+              pixelPreviewSize: preview,
+              flutterPreviewSize: preview,
+            );
+            return;
+          }
+        } catch (_) {}
+
+        try {
+          cameraState.focus();
+        } catch (_) {}
+      }
+
       safeSetLocalState(setLocalState, () {
         focusAdjusting = true;
       });
-      try {
-        state.focus();
-      } catch (_) {}
+      focusAssistPulseTimer?.cancel();
+      await focusAt(cameraState: state);
+      focusAssistPulseTimer = Timer.periodic(const Duration(milliseconds: 450), (
+        _,
+      ) {
+        if (!dialogActive || !cameraLive || processing) return;
+        final nextState = liveCameraState;
+        if (nextState is! cam.PhotoCameraState) return;
+        unawaited(focusAt(cameraState: nextState));
+      });
       if (!dialogActive) return;
       await Future<void>.delayed(const Duration(milliseconds: 420));
     }
 
     Future<void> stopFocusAssist(StateSetter setLocalState) async {
+      focusAssistPulseTimer?.cancel();
+      focusAssistPulseTimer = null;
       safeSetLocalState(setLocalState, () {
         focusAdjusting = false;
       });
@@ -231,6 +291,8 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
 
     Future<void> stopLiveCamera() async {
       focusAdjusting = false;
+      focusAssistPulseTimer?.cancel();
+      focusAssistPulseTimer = null;
       liveCameraState = null;
       cameraReady = false;
       cameraLive = false;
@@ -387,9 +449,7 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
       liveCaptureInFlight = true;
       try {
         if (focusBeforeShot) {
-          try {
-            live.focus();
-          } catch (_) {}
+          await startFocusAssist(setLocalState);
           await Future<void>.delayed(const Duration(milliseconds: 420));
         }
         final shotRequest = await live.takePhoto();
@@ -563,6 +623,10 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                                         setLocalState,
                                                         position,
                                                       );
+                                                      lastFlutterPreviewSize =
+                                                          flutterPreviewSize;
+                                                      lastPixelPreviewSize =
+                                                          pixelPreviewSize;
                                                       safeSetLocalState(
                                                         setLocalState,
                                                         () {
@@ -631,7 +695,12 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                                             is cam.PhotoCameraState) {
                                                           unawaited(() async {
                                                             try {
-                                                              state.focus();
+                                                              await startFocusAssist(
+                                                                setLocalState,
+                                                              );
+                                                              await stopFocusAssist(
+                                                                setLocalState,
+                                                              );
                                                             } catch (_) {}
                                                           }());
                                                         }
@@ -999,6 +1068,7 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
         .whenComplete(() {
           dialogActive = false;
           focusPointTimer?.cancel();
+          focusAssistPulseTimer?.cancel();
           cameraWatchdogTimer?.cancel();
         });
 

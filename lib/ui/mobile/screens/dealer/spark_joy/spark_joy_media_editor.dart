@@ -2,24 +2,50 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
   Future<int> _runPickMediaFiles(String groupKey) async {
-    if (_mediaPickerOpening) return 0;
+    if (_mediaPickerOpening) {
+      final startedAt = _mediaPickerStartedAt;
+      final isStale =
+          startedAt == null ||
+          DateTime.now().difference(startedAt) > const Duration(seconds: 25);
+      if (!isStale) return 0;
+      if (mounted) {
+        _setStateSafely(() {
+          _mediaPickerOpening = false;
+          _mediaPickerGroupKey = null;
+          _mediaPickerStartedAt = null;
+        });
+      } else {
+        _mediaPickerOpening = false;
+        _mediaPickerGroupKey = null;
+        _mediaPickerStartedAt = null;
+      }
+    }
     if (mounted) {
       _setStateSafely(() {
         _mediaPickerOpening = true;
         _mediaPickerGroupKey = groupKey;
+        _mediaPickerStartedAt = DateTime.now();
       });
     } else {
       _mediaPickerOpening = true;
       _mediaPickerGroupKey = groupKey;
+      _mediaPickerStartedAt = DateTime.now();
     }
     final nativeGalleryPlatform =
         !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android);
+    var timedOut = false;
 
     try {
       final items = nativeGalleryPlatform
-          ? await _pickMediaFromDeviceGallery()
+          ? await _pickMediaFromDeviceGallery().timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                timedOut = true;
+                return const <_UploadedItem>[];
+              },
+            )
           : await _pickFiles(
               type: FileType.custom,
               allowedExtensions: const [
@@ -33,23 +59,35 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                 'mov',
                 'webm',
               ],
+            ).timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                timedOut = true;
+                return const <_UploadedItem>[];
+              },
             );
+      if (timedOut) {
+        _showErrorSnack(
+          'Галерея не ответила вовремя. Попробуйте снова.',
+        );
+      }
       if (items.isEmpty || !mounted) return 0;
       _setStateSafely(() {
         final state = _mediaState[groupKey];
         if (state == null) return;
+        final currentFiles = [...state.files];
+        final nextFiles = [...currentFiles, ...items];
+        // Не переносим заметки/теги на новые медиа автоматически.
+        // Иначе заметка одного фото "прилипает" ко всем добавленным позже.
         final nextPartInspection = _syncPartInspectionWithFiles(
           partInspection: state.partInspection,
-          files: [...state.files, ...items],
+          files: currentFiles,
           fallbackNote: state.note,
-        );
-        final nextFiles = _applyPartInspectionToFiles(
-          files: [...state.files, ...items],
-          partInspection: nextPartInspection,
         );
         _mediaState[groupKey] = state.copyWith(
           files: nextFiles,
           partInspection: nextPartInspection,
+          hasIssue: nextFiles.any(_mediaItemHasIssue),
         );
       });
       return items.length;
@@ -58,16 +96,22 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         _setStateSafely(() {
           _mediaPickerOpening = false;
           _mediaPickerGroupKey = null;
+          _mediaPickerStartedAt = null;
         });
       } else {
         _mediaPickerOpening = false;
         _mediaPickerGroupKey = null;
+        _mediaPickerStartedAt = null;
       }
     }
   }
 
   void _runOpenMediaGroupEditor(String groupKey) {
+    final currentOffset = _pageScrollController.hasClients
+        ? _pageScrollController.offset
+        : null;
     _setStateSafely(() {
+      _mediaGroupListScrollOffset = currentOffset;
       _activeMediaGroupKey = groupKey;
       _mediaGroupSelectMode = false;
       _mediaGroupSelectedIndexes = <int>{};
@@ -992,7 +1036,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                                   color: kLightGreyColor,
                                   child: _uploadedMediaThumbWidget(
                                     item,
-                                    fit: BoxFit.cover,
+                                    fit: BoxFit.contain,
                                     cacheWidth: 720,
                                     cacheHeight: 720,
                                   ),

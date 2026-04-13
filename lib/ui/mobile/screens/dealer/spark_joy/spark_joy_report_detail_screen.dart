@@ -3,10 +3,14 @@ import 'dart:convert';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'spark_joy_i18n.dart';
+import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
@@ -24,6 +28,238 @@ class _SparkJoyReportDetailScreenState
     extends State<SparkJoyReportDetailScreen> {
   int _imageIndex = 0;
   final Map<String, Uint8List> _imageBytesCache = {};
+  late Map<String, dynamic> _report;
+  bool _remoteLoading = false;
+  bool _shareLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _report = Map<String, dynamic>.from(widget.report);
+    _loadRemoteReport();
+  }
+
+  int? _readReportId(Map<String, dynamic> report) {
+    return storage_api.StorageApi.readSpecialistReportId(report);
+  }
+
+  String _readReportNumber(Map<String, dynamic> report) {
+    return storage_api.StorageApi.readSpecialistReportNumber(report);
+  }
+
+  Future<int?> _ensureReportId() async {
+    final directId = _readReportId(_report);
+    if (directId != null) return directId;
+    try {
+      final resolved = await storage_api.StorageApi.resolveSpecialistReportId(
+        report: _report,
+      );
+      if (resolved == null) return null;
+      final updated = <String, dynamic>{..._report, 'id': resolved.toString()};
+      await SparkJoyStorage.upsertCompleted(updated);
+      if (mounted) {
+        setState(() => _report = updated);
+      } else {
+        _report = updated;
+      }
+      return resolved;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _hasMeaningfulValue(dynamic value) {
+    if (value == null) return false;
+    if (value is String) return value.trim().isNotEmpty;
+    if (value is Iterable) return value.isNotEmpty;
+    if (value is Map) return value.isNotEmpty;
+    return true;
+  }
+
+  Map<String, dynamic> _mergeRemoteSnapshot({
+    required Map<String, dynamic> local,
+    required Map<String, dynamic> remote,
+  }) {
+    final merged = <String, dynamic>{...local, ...remote};
+    for (final key in const [
+      'images',
+      'mediaGroups',
+      'sections',
+      'checklist',
+      'summaryNote',
+      'expertConclusion',
+      'legalFiles',
+      'docsCommentAudioFiles',
+      'legalCommentAudioFiles',
+      'tdCommentAudioFiles',
+      'expertAudioFiles',
+    ]) {
+      final remoteValue = remote[key];
+      final localValue = local[key];
+      if (!_hasMeaningfulValue(remoteValue) && _hasMeaningfulValue(localValue)) {
+        merged[key] = localValue;
+      }
+    }
+    return merged;
+  }
+
+  Future<void> _loadRemoteReport() async {
+    final reportId = await _ensureReportId();
+    if (reportId == null) return;
+    setState(() => _remoteLoading = true);
+    try {
+      final remote = await storage_api.StorageApi.viewSpecialistReport(
+        reportId: reportId,
+      );
+      if (!mounted || remote.isEmpty) return;
+      setState(() {
+        _report = _mergeRemoteSnapshot(local: _report, remote: remote);
+      });
+    } catch (_) {
+      // Keep local snapshot if backend detail is temporarily unavailable.
+    } finally {
+      if (mounted) {
+        setState(() => _remoteLoading = false);
+      }
+    }
+  }
+
+  Future<void> _createAndCopyShareLink() async {
+    final reportId = await _ensureReportId();
+    if (!mounted) return;
+    if (reportId == null || _shareLoading) {
+      if (reportId == null) {
+        final reportNumber = _readReportNumber(_report);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              reportNumber.isEmpty
+                  ? 'Не удалось определить ID отчёта'
+                  : 'Не удалось определить ID отчёта для №$reportNumber',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    setState(() => _shareLoading = true);
+    try {
+      final generated = await storage_api
+          .StorageApi.createSpecialistReportShareUrl(reportId: reportId);
+      final url = generated.url.trim();
+      if (url.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ссылка не была сгенерирована')),
+        );
+        return;
+      }
+      final updated = <String, dynamic>{
+        ..._report,
+        'shareUrl': url,
+        'shareUrlCreatedAt': DateTime.now().toIso8601String(),
+      };
+      await SparkJoyStorage.upsertCompleted(updated);
+      if (!mounted) return;
+      setState(() => _report = updated);
+      await _showShareLinkSheet(url);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сгенерировать ссылку')),
+      );
+    } finally {
+      if (mounted) setState(() => _shareLoading = false);
+    }
+  }
+
+  Future<void> _openShareUrl(String rawUrl) async {
+    final uri = Uri.tryParse(rawUrl.trim());
+    if (uri == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Некорректная ссылка')));
+      return;
+    }
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Не удалось открыть ссылку')));
+  }
+
+  Future<void> _showShareLinkSheet(String url) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.all(SparkSpace.xl),
+            decoration: BoxDecoration(
+              color: kWhiteColor,
+              borderRadius: BorderRadius.circular(SparkRadius.xl),
+              border: Border.all(color: kBorderColor),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(SparkSpace.xxxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const MyText(
+                    text: 'Ссылка на отчёт',
+                    size: SparkTextSize.title,
+                    weight: FontWeight.w700,
+                  ),
+                  const SizedBox(height: SparkSpace.md),
+                  SparkHintCard(text: url, icon: Icons.link_rounded),
+                  const SizedBox(height: SparkSpace.xl),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: url));
+                            if (!ctx.mounted) return;
+                            Navigator.of(ctx).pop();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Ссылка скопирована'),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.copy_rounded),
+                          label: const Text('Копировать'),
+                        ),
+                      ),
+                      const SizedBox(width: SparkSpace.md),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            await _openShareUrl(url);
+                          },
+                          icon: const Icon(Icons.open_in_new_rounded),
+                          label: const Text('Открыть'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   Uint8List? _decodeDataUrlImageBytes(String source) {
     if (!source.trimLeft().startsWith('data:')) return null;
@@ -134,7 +370,7 @@ class _SparkJoyReportDetailScreenState
   }
 
   List<String> _images() {
-    final direct = widget.report['images'];
+    final direct = _report['images'];
     if (direct is List) {
       final urls = direct
           .map((e) => e.toString())
@@ -143,7 +379,7 @@ class _SparkJoyReportDetailScreenState
       if (urls.isNotEmpty) return urls;
     }
 
-    final mediaGroups = widget.report['mediaGroups'];
+    final mediaGroups = _report['mediaGroups'];
     if (mediaGroups is Map) {
       final urls = <String>[];
       for (final value in mediaGroups.values) {
@@ -164,7 +400,7 @@ class _SparkJoyReportDetailScreenState
   }
 
   List<Map<String, dynamic>> _sections() {
-    final sections = widget.report['sections'];
+    final sections = _report['sections'];
     if (sections is! List) return const <Map<String, dynamic>>[];
     return sections.whereType<Map>().map((e) {
       return Map<String, dynamic>.from(e);
@@ -172,7 +408,7 @@ class _SparkJoyReportDetailScreenState
   }
 
   List<Map<String, dynamic>> _checklist() {
-    final checklist = widget.report['checklist'];
+    final checklist = _report['checklist'];
     if (checklist is! List) return const <Map<String, dynamic>>[];
     return checklist.whereType<Map>().map((e) {
       return Map<String, dynamic>.from(e);
@@ -181,7 +417,7 @@ class _SparkJoyReportDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final report = widget.report;
+    final report = _report;
     final title = sjRead(
       report,
       'reportName',
@@ -205,6 +441,8 @@ class _SparkJoyReportDetailScreenState
     final sections = _sections();
     final checklist = _checklist();
     final images = _images();
+    final reportId = _readReportId(report);
+    final reportNumber = _readReportNumber(report);
     final createdAtLabel = sjFormatDate(
       sjRead(
         report,
@@ -218,9 +456,29 @@ class _SparkJoyReportDetailScreenState
         : 'Отчёт от $createdAtLabel • $inspector';
 
     return SparkPageScaffold(
-      appBar: AppBar(centerTitle: false, title: const Text('Отчёт')),
+      appBar: AppBar(
+        centerTitle: false,
+        title: const Text('Отчёт'),
+        actions: [
+          IconButton(
+            onPressed: _shareLoading ? null : _createAndCopyShareLink,
+            tooltip: 'Поделиться',
+            icon: _shareLoading
+                ? const SizedBox(
+                    width: SparkSize.iconSm,
+                    height: SparkSize.iconSm,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.share_outlined),
+          ),
+        ],
+      ),
       bottomInset: SparkSpace.xl,
       children: [
+        if (_remoteLoading) ...[
+          const LinearProgressIndicator(minHeight: SparkSize.progressThin),
+          const SizedBox(height: SparkSpace.lg),
+        ],
         ClipRRect(
           borderRadius: BorderRadius.circular(SparkRadius.lg),
           child: SizedBox(
@@ -286,6 +544,13 @@ class _SparkJoyReportDetailScreenState
         SparkCard(
           child: Column(
             children: [
+              if (reportId != null || reportNumber.isNotEmpty)
+                SparkInfoRow(
+                  label: 'ID отчёта',
+                  value: reportId?.toString() ?? '-',
+                ),
+              if (reportNumber.isNotEmpty)
+                SparkInfoRow(label: 'Номер отчёта', value: reportNumber),
               SparkInfoRow(
                 label: 'Авто',
                 value: sjRead(report, 'car', fallback: '-'),

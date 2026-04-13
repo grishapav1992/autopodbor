@@ -1,6 +1,18 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
+  String _backendReportNumber() {
+    final raw = _backendUploadState['reportNumber'];
+    if (raw == null) return '';
+    return raw.toString().trim();
+  }
+
+  String _currentReportCode() {
+    final backendNumber = _backendReportNumber();
+    if (backendNumber.isNotEmpty) return backendNumber;
+    return _reportCode.trim();
+  }
+
   String _reportTitle() {
     final value = _reportNameController.text.trim();
     if (value.isNotEmpty) return value;

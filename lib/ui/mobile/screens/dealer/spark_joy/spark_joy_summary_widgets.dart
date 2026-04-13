@@ -29,7 +29,7 @@ Color _sparkSummaryDetailSeverityColor(String severity) {
 
 Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
   final reportName = s._reportTitle().trim();
-  final reportMeta = sjFormatReportMeta(s._reportCode, s._createdAt);
+  final reportMeta = sjFormatReportMeta(s._currentReportCode(), s._createdAt);
 
   return s._card(
     padding: const EdgeInsets.fromLTRB(

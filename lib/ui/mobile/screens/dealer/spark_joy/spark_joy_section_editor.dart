@@ -30,11 +30,11 @@ Widget _buildSparkJoyStepHero(
     currentStep: actionState.currentStep,
     totalSteps: actionState.totalSteps,
     title: actionState.step.title,
-    description: actionState.step.description,
+    description: '',
     statusText: actionState.statusText,
     statusColor: statusColor,
     stepProgress: actionState.stepProgress,
-    currentValue: actionState.currentValue,
+    currentValue: '',
     hideProgressBar: actionState.hideProgressBar,
   );
 }
@@ -70,15 +70,257 @@ Widget _buildSparkJoyValidationHint(String text) {
   );
 }
 
+Color _sparkJoyUploadStatusColor(_BackendUploadFileStatus status) {
+  switch (status) {
+    case _BackendUploadFileStatus.uploaded:
+      return kGreenColor;
+    case _BackendUploadFileStatus.failed:
+      return kRedColor;
+    case _BackendUploadFileStatus.uploading:
+      return kSecondaryColor;
+    case _BackendUploadFileStatus.pending:
+      return kGreyColor;
+  }
+}
+
+IconData _sparkJoyUploadStatusIcon(_BackendUploadFileStatus status) {
+  switch (status) {
+    case _BackendUploadFileStatus.uploaded:
+      return Icons.check_circle_rounded;
+    case _BackendUploadFileStatus.failed:
+      return Icons.error_rounded;
+    case _BackendUploadFileStatus.uploading:
+      return Icons.cloud_upload_rounded;
+    case _BackendUploadFileStatus.pending:
+      return Icons.schedule_rounded;
+  }
+}
+
+String _sparkJoyUploadStatusText(_BackendUploadFileProgress file) {
+  switch (file.status) {
+    case _BackendUploadFileStatus.uploaded:
+      return 'Загружен';
+    case _BackendUploadFileStatus.failed:
+      return 'Ошибка';
+    case _BackendUploadFileStatus.uploading:
+      final percent = (file.progress * 100).round().clamp(0, 100);
+      return '$percent%';
+    case _BackendUploadFileStatus.pending:
+      return 'Ожидание';
+  }
+}
+
+Widget _buildSparkJoyUploadFileRow(_BackendUploadFileProgress file) {
+  final statusColor = _sparkJoyUploadStatusColor(file.status);
+  final statusText = _sparkJoyUploadStatusText(file);
+  final showProgress =
+      file.status == _BackendUploadFileStatus.uploading ||
+      (file.status == _BackendUploadFileStatus.failed && file.progress > 0);
+  return Container(
+    padding: const EdgeInsets.symmetric(
+      horizontal: SparkSpace.md,
+      vertical: SparkSpace.sm,
+    ),
+    decoration: BoxDecoration(
+      color: kWhiteColor.withValues(alpha: 0.66),
+      borderRadius: BorderRadius.circular(SparkRadius.sm),
+      border: Border.all(color: statusColor.withValues(alpha: 0.2)),
+    ),
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Icon(
+              _sparkJoyUploadStatusIcon(file.status),
+              size: SparkSize.iconSm,
+              color: statusColor,
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            Expanded(
+              child: MyText(
+                text: '${file.index}. ${file.fileName}',
+                size: SparkTextSize.body,
+                color: kPrimaryColor,
+                weight: FontWeight.w600,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            MyText(
+              text: statusText,
+              size: SparkTextSize.caption,
+              color: statusColor,
+              weight: FontWeight.w700,
+            ),
+          ],
+        ),
+        if (showProgress) ...[
+          const SizedBox(height: SparkSpace.xs),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
+            child: LinearProgressIndicator(
+              value: file.progress.clamp(0.0, 1.0),
+              minHeight: SparkSpace.xs,
+              backgroundColor: statusColor.withValues(alpha: 0.14),
+              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+            ),
+          ),
+        ],
+        if (file.totalParts > 0) ...[
+          const SizedBox(height: SparkSpace.xs),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: MyText(
+              text:
+                  'часть ${file.uploadedParts.clamp(0, file.totalParts)}/${file.totalParts}',
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+              weight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+Widget _buildSparkJoyUploadHint(
+  String text, {
+  required double progress,
+  required List<_BackendUploadFileProgress> files,
+}) {
+  return SparkCard(
+    padding: const EdgeInsets.symmetric(
+      horizontal: SparkSpace.xl,
+      vertical: SparkSpace.lg,
+    ),
+    borderColor: kSecondaryColor.withValues(alpha: 0.24),
+    backgroundColor: kSecondaryColor.withValues(alpha: 0.06),
+    radius: SparkRadius.md,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(
+              width: SparkSize.iconSm,
+              height: SparkSize.iconSm,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(kSecondaryColor),
+              ),
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            Expanded(
+              child: MyText(
+                text: text,
+                size: SparkTextSize.caption,
+                color: kSecondaryColor,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.sm),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(SparkRadius.pill),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            minHeight: SparkSize.progressThin,
+            backgroundColor: kSecondaryColor.withValues(alpha: 0.14),
+            valueColor: const AlwaysStoppedAnimation<Color>(kSecondaryColor),
+          ),
+        ),
+        if (files.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.md),
+          ...files.map(
+            (file) => Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.xs),
+              child: _buildSparkJoyUploadFileRow(file),
+            ),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+Widget _buildSparkJoyUploadErrorHint(
+  _SparkJoyCreateReportScreenState s, {
+  required String text,
+}) {
+  return SparkCard(
+    padding: const EdgeInsets.symmetric(
+      horizontal: SparkSpace.xl,
+      vertical: SparkSpace.lg,
+    ),
+    borderColor: kRedColor2.withValues(alpha: 0.35),
+    backgroundColor: kRedColor2.withValues(alpha: 0.06),
+    radius: SparkRadius.md,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.cloud_off_rounded,
+              color: kRedColor,
+              size: SparkSize.iconSm,
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            Expanded(
+              child: MyText(
+                text: text,
+                size: SparkTextSize.caption,
+                color: kRedColor,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.md),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => s._finishReport(),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: kRedColor2),
+              foregroundColor: kRedColor,
+              backgroundColor: kWhiteColor.withValues(alpha: 0.75),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(SparkRadius.lg),
+              ),
+            ),
+            icon: const Icon(Icons.refresh_rounded, size: SparkSize.iconSm),
+            label: const Text(
+              'Повторить выгрузку',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
 Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
   final actionState = s._stepActionController.build(s);
+  final uploadInSummary =
+      actionState.isSummaryStep && s._backendUploadInProgress;
+  final uploadErrorInSummary =
+      actionState.isSummaryStep &&
+      !s._backendUploadInProgress &&
+      s._backendUploadFailed;
 
   return Column(
     children: [
       if (!actionState.inMediaGroupEditor)
         _buildSparkJoyStepHero(s, actionState: actionState),
       if (!actionState.inMediaGroupEditor)
-        const SizedBox(height: SparkSpace.xl),
+        const SizedBox(height: SparkSpace.lg),
       _buildSparkJoyStepContent(s),
       if (!actionState.inMediaGroupEditor &&
           actionState.isDocsCheckStep &&
@@ -108,13 +350,34 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
       ],
       if (!actionState.inMediaGroupEditor) ...[
         const SizedBox(height: SparkSpace.xl),
+        if (uploadInSummary) ...[
+          _buildSparkJoyUploadHint(
+            s._backendUploadStatusLabel(),
+            progress: s._backendUploadProgressValue(),
+            files: s._backendUploadFilesProgress,
+          ),
+          const SizedBox(height: SparkSpace.md),
+        ] else if (uploadErrorInSummary) ...[
+          _buildSparkJoyUploadErrorHint(
+            s,
+            text: s._backendUploadErrorText.trim().isNotEmpty
+                ? 'Ошибка выгрузки: ${s._backendUploadErrorText.trim()}'
+                : s._backendUploadStatusLabel(),
+          ),
+          const SizedBox(height: SparkSpace.md),
+        ],
         SparkStepActionBar(
           secondaryLabel: 'К разделам',
+          secondaryDisabled: uploadInSummary,
           onSecondaryTap: () => s._closeSection(save: true),
-          primaryLabel: actionState.isLast
+          primaryLabel: uploadInSummary
+              ? 'Выгрузка...'
+              : actionState.isLast
               ? 'Завершить и выгрузить'
               : 'Продолжить',
-          primaryDisabled: actionState.continueButtonDisabled,
+          primaryDisabled:
+              actionState.continueButtonDisabled || uploadInSummary,
+          primaryBusy: uploadInSummary,
           onPrimaryTap: () =>
               s._stepActionController.handlePrimaryTap(s, actionState),
         ),

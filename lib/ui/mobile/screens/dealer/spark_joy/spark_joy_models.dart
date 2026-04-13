@@ -433,6 +433,56 @@ class _UploadedItem {
   bool get isAudio => mimeType.startsWith('audio/');
 }
 
+enum _BackendUploadFileStatus { pending, uploading, uploaded, failed }
+
+class _BackendUploadFileProgress {
+  const _BackendUploadFileProgress({
+    required this.sourceKey,
+    required this.fileName,
+    required this.index,
+    required this.total,
+    this.progress = 0,
+    this.status = _BackendUploadFileStatus.pending,
+    this.uploadedParts = 0,
+    this.totalParts = 0,
+    this.errorText = '',
+  });
+
+  final String sourceKey;
+  final String fileName;
+  final int index;
+  final int total;
+  final double progress;
+  final _BackendUploadFileStatus status;
+  final int uploadedParts;
+  final int totalParts;
+  final String errorText;
+
+  _BackendUploadFileProgress copyWith({
+    String? sourceKey,
+    String? fileName,
+    int? index,
+    int? total,
+    double? progress,
+    _BackendUploadFileStatus? status,
+    int? uploadedParts,
+    int? totalParts,
+    String? errorText,
+  }) {
+    return _BackendUploadFileProgress(
+      sourceKey: sourceKey ?? this.sourceKey,
+      fileName: fileName ?? this.fileName,
+      index: index ?? this.index,
+      total: total ?? this.total,
+      progress: progress ?? this.progress,
+      status: status ?? this.status,
+      uploadedParts: uploadedParts ?? this.uploadedParts,
+      totalParts: totalParts ?? this.totalParts,
+      errorText: errorText ?? this.errorText,
+    );
+  }
+}
+
 class _SummaryAttachmentStats {
   const _SummaryAttachmentStats({
     required this.total,

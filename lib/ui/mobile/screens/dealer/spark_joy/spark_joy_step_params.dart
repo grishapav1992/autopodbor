@@ -19,39 +19,32 @@ Widget _buildSparkJoyStepParams(
       s._sectionHeading(
         'Технические параметры',
         icon: Icons.settings_suggest_outlined,
-        subtitle: 'Силовой агрегат, трансмиссия, привод',
       ),
       s._card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const MyText(
-              text: 'Силовой агрегат',
-              size: SparkTextSize.body,
-              weight: FontWeight.w700,
-            ),
-            const SizedBox(height: SparkSpace.md),
             s._dropdownField(
               s._engineVolumeController,
               'Объём двигателя (л)',
               engineVolumes,
               clearable: true,
             ),
-            const SizedBox(height: SparkSpace.lg),
+            const SizedBox(height: SparkSpace.md),
             s._dropdownField(
               s._engineTypeController,
               'Тип двигателя',
               engineTypes,
               clearable: true,
             ),
-            const SizedBox(height: SparkSpace.lg),
+            const SizedBox(height: SparkSpace.md),
             s._dropdownField(
               s._gearboxTypeController,
               'Коробка передач',
               gearboxTypes,
               clearable: true,
             ),
-            const SizedBox(height: SparkSpace.lg),
+            const SizedBox(height: SparkSpace.md),
             s._dropdownField(
               s._driveTypeController,
               'Привод',
@@ -62,28 +55,18 @@ Widget _buildSparkJoyStepParams(
         ),
       ),
       const SizedBox(height: SparkSpace.lg),
-      s._sectionHeading(
-        'Дополнительно',
-        icon: Icons.palette_outlined,
-        subtitle: 'Цвет и комплектация',
-      ),
+      s._sectionHeading('Дополнительно', icon: Icons.palette_outlined),
       s._card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const MyText(
-              text: 'Исполнение',
-              size: SparkTextSize.body,
-              weight: FontWeight.w700,
-            ),
-            const SizedBox(height: SparkSpace.md),
             s._dropdownField(
               s._colorController,
               'Цвет',
               colors,
               clearable: true,
             ),
-            const SizedBox(height: SparkSpace.lg),
+            const SizedBox(height: SparkSpace.md),
             s._input(
               s._trimController,
               'Комплектация',

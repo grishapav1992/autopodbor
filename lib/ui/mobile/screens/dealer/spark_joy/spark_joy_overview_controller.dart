@@ -2,55 +2,122 @@ part of 'spark_joy_create_report_screen.dart';
 
 class _SparkJoyOverviewState {
   const _SparkJoyOverviewState({
-    required this.completed,
-    required this.total,
-    required this.progress,
-    required this.remaining,
-    required this.currentTitle,
     required this.sectionValues,
+    required this.sectionFillStates,
   });
 
-  final int completed;
-  final int total;
-  final double progress;
-  final int remaining;
-  final String currentTitle;
   final Map<String, String> sectionValues;
+  final Map<String, SparkJoySectionFillState> sectionFillStates;
 }
 
 class _SparkJoyOverviewController {
   const _SparkJoyOverviewController();
 
-  static const String completedStatTitle = 'Заполнено';
-  static const String remainingStatTitle = 'Осталось';
-  static const String sectionsHeaderTitle = 'Разделы отчёта';
-  static const String currentStepPrefix = 'Текущий';
-
   _SparkJoyOverviewState build(_SparkJoyCreateReportScreenState s) {
-    final total = _SparkJoyStepRegistry.steps.length;
     final values = <String, String>{};
-    var completed = 0;
+    final fillStates = <String, SparkJoySectionFillState>{};
 
     for (final step in _SparkJoyStepRegistry.steps) {
       final value = sectionValue(s, step.id);
       values[step.id] = value;
-      if (value.isNotEmpty) completed++;
+      fillStates[step.id] = sectionFillState(s, step.id);
     }
 
-    final progress = total == 0 ? 0.0 : (completed / total).clamp(0.0, 1.0);
-    final remaining = (total - completed).clamp(0, total);
-    final currentTitle = total == 0
-        ? ''
-        : _SparkJoyStepRegistry.stepAt(s._stepIndex).title;
-
     return _SparkJoyOverviewState(
-      completed: completed,
-      total: total,
-      progress: progress,
-      remaining: remaining,
-      currentTitle: currentTitle,
       sectionValues: values,
+      sectionFillStates: fillStates,
     );
+  }
+
+  SparkJoySectionFillState sectionFillState(
+    _SparkJoyCreateReportScreenState s,
+    String stepId,
+  ) {
+    switch (stepId) {
+      case _SparkJoyStepRegistry.idVehicle:
+        final hasAny =
+            s._vinController.text.trim().isNotEmpty ||
+            s._vinUnreadable ||
+            s._plateController.text.trim().isNotEmpty ||
+            s._mileageController.text.trim().isNotEmpty ||
+            s._inspectionCityController.text.trim().isNotEmpty;
+        final done =
+            s._isVehicleReadyForContinue() &&
+            s._mileageController.text.trim().isNotEmpty;
+        if (done) return SparkJoySectionFillState.done;
+        if (hasAny) return SparkJoySectionFillState.partial;
+        return SparkJoySectionFillState.empty;
+      case _SparkJoyStepRegistry.idParams:
+        final hasAny =
+            s._brandController.text.trim().isNotEmpty ||
+            s._modelController.text.trim().isNotEmpty ||
+            s._generationController.text.trim().isNotEmpty ||
+            s._engineVolumeController.text.trim().isNotEmpty ||
+            s._engineTypeController.text.trim().isNotEmpty ||
+            s._gearboxTypeController.text.trim().isNotEmpty ||
+            s._driveTypeController.text.trim().isNotEmpty ||
+            s._colorController.text.trim().isNotEmpty ||
+            s._trimController.text.trim().isNotEmpty;
+        final done =
+            s._brandController.text.trim().isNotEmpty &&
+            s._modelController.text.trim().isNotEmpty;
+        if (done) return SparkJoySectionFillState.done;
+        if (hasAny) return SparkJoySectionFillState.partial;
+        return SparkJoySectionFillState.empty;
+      case _SparkJoyStepRegistry.idDocsCheck:
+        final answeredCount = [
+          s._docsOwnerMatch,
+          s._docsVinMatch,
+          s._docsEngineMatch,
+        ].where((value) => value != null).length;
+        final hasAny =
+            answeredCount > 0 ||
+            s._docsMismatchCommentController.text.trim().isNotEmpty ||
+            s._docsCommentAudioFiles.isNotEmpty;
+        final done = s._docsCheckMissingReasons().isEmpty;
+        if (done) return SparkJoySectionFillState.done;
+        if (hasAny) return SparkJoySectionFillState.partial;
+        return SparkJoySectionFillState.empty;
+      case _SparkJoyStepRegistry.idLegal:
+        final hasAny =
+            s._legalLoading ||
+            s._legalLoaded ||
+            s._legalSkipped ||
+            s._legalTimedOut ||
+            s._legalPurchased ||
+            s._legalFiles.isNotEmpty ||
+            s._legalNoteController.text.trim().isNotEmpty ||
+            s._legalCommentAudioFiles.isNotEmpty;
+        final done =
+            s._legalLoaded ||
+            s._legalSkipped ||
+            s._legalFiles.isNotEmpty ||
+            s._legalNoteController.text.trim().isNotEmpty;
+        if (done) return SparkJoySectionFillState.done;
+        if (hasAny) return SparkJoySectionFillState.partial;
+        return SparkJoySectionFillState.empty;
+      case _SparkJoyStepRegistry.idMedia:
+        final covered = s._mediaState.values.where(s._groupHasCoverage).length;
+        final done = s._missingRequiredMediaGroups().isEmpty && covered > 0;
+        if (done) return SparkJoySectionFillState.done;
+        if (covered > 0) return SparkJoySectionFillState.partial;
+        return SparkJoySectionFillState.empty;
+      case _SparkJoyStepRegistry.idTestDrive:
+        if (s._tdMode == null) return SparkJoySectionFillState.empty;
+        final done = s._testDriveMissingReasons().isEmpty;
+        if (done) return SparkJoySectionFillState.done;
+        return SparkJoySectionFillState.partial;
+      case _SparkJoyStepRegistry.idSummary:
+        final hasAny =
+            s._summaryController.text.trim().isNotEmpty ||
+            s._expertController.text.trim().isNotEmpty;
+        final done = s._summaryMissingReasons().isEmpty;
+        if (done) return SparkJoySectionFillState.done;
+        if (hasAny) return SparkJoySectionFillState.partial;
+        return SparkJoySectionFillState.empty;
+      default:
+        return SparkJoySectionFillState.empty;
+    }
   }
 
   String sectionValue(_SparkJoyCreateReportScreenState s, String stepId) {

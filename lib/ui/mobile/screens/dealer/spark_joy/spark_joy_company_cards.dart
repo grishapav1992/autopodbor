@@ -167,12 +167,6 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MyText(
-            text: 'Марка и модель',
-            size: SparkTextSize.body,
-            weight: FontWeight.w700,
-          ),
-          const SizedBox(height: SparkSpace.md),
           InkWell(
             onTap: _openCarPickerDialog,
             borderRadius: BorderRadius.circular(SparkRadius.lg),

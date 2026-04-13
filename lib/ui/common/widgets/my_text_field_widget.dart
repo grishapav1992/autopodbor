@@ -178,7 +178,7 @@ class _PhoneFieldState extends State<PhoneField> {
         keyboardType: TextInputType.number,
         inputFormatters: [RuPhoneFormatter()],
         textInputAction: TextInputAction.next,
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         decoration: InputDecoration(
           filled: true,
           fillColor: kWhiteColor,
@@ -189,8 +189,8 @@ class _PhoneFieldState extends State<PhoneField> {
           prefixIconConstraints: const BoxConstraints(minWidth: 36),
           contentPadding: EdgeInsets.symmetric(horizontal: 15),
           hintText: '+7',
-          hintStyle: TextStyle(
-            fontSize: 12,
+          hintStyle: const TextStyle(
+            fontSize: 18,
             color: kHintColor,
             fontWeight: FontWeight.w500,
           ),

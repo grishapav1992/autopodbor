@@ -63,12 +63,20 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
       _runOpenMediaGroupFlow(groupKey);
 
   void _closeMediaGroupEditor() {
+    final restoreOffset = _mediaGroupListScrollOffset;
     _setStateSafely(() {
       _activeMediaGroupKey = null;
       _mediaGroupSelectMode = false;
       _mediaGroupSelectedIndexes = <int>{};
       _mediaGroupPressedIndex = null;
       _mediaListPressedGroupKey = null;
+      _mediaGroupListScrollOffset = null;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_pageScrollController.hasClients) return;
+      final maxOffset = _pageScrollController.position.maxScrollExtent;
+      final targetOffset = (restoreOffset ?? 0).clamp(0.0, maxOffset);
+      _pageScrollController.jumpTo(targetOffset);
     });
   }
 

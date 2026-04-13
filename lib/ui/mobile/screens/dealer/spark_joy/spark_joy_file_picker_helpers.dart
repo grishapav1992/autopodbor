@@ -39,6 +39,7 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
             bytes: bytes,
             mimeType: mimeType,
             prefix: 'picked',
+            originalFileName: fileName,
           );
         }
         if (kIsWeb && (storedSource ?? '').isEmpty) {
@@ -89,6 +90,7 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
             bytes: bytes,
             mimeType: mimeType,
             prefix: prefix,
+            originalFileName: fileName,
           );
         }
         if (kIsWeb && (storedSource ?? '').isEmpty) {
@@ -122,6 +124,9 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
       if (picked.isNotEmpty) {
         return _uploadedItemsFromXFiles(picked, prefix: 'media');
       }
+      // Пользователь открыл галерею и закрыл/снял выбор: это валидная отмена.
+      // Не запускаем fallback pickImage, чтобы не зависать во втором вызове.
+      return const [];
     } catch (_) {}
 
     try {

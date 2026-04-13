@@ -7,18 +7,6 @@ extension _SparkJoySummaryRulesMethods on _SparkJoyCreateReportScreenState {
     return 'Не проверено';
   }
 
-  String _docsStateLabel(bool? value) {
-    if (value == true) return 'Соответствует';
-    if (value == false) return 'Не соответствует';
-    return '';
-  }
-
-  Color _docsStateColor(bool? value) {
-    if (value == true) return kGreenColor;
-    if (value == false) return kRedColor;
-    return kGreyColor;
-  }
-
   Map<String, dynamic>? _summarySectionByTitle(
     _CalculatedSummary summary,
     String title,

@@ -13,13 +13,14 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
       child: SparkPageScaffold(
         appBar: SparkReportEditorAppBar(
           title: _reportTitle(),
-          meta: sjFormatReportMeta(_reportCode, _createdAt),
+          meta: sjFormatReportMeta(_currentReportCode(), _createdAt),
           draftStatus: _draftSaveStatusText(),
           draftStatusColor: _draftSaveStatusColor(),
           onBack: () => _handleEditorBack(context),
           showEditAction: !_editingSection,
           onEdit: _editReportTitle,
         ),
+        scrollController: _pageScrollController,
         padding: AppSizes.listPaddingWithBottomBar(),
         bottomInset: 0,
         children: [_editingSection ? _sectionEditor() : _sectionsOverview()],

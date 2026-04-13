@@ -79,11 +79,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return '$d.$m.${value.year}';
   }
 
-  String _buildReportCode(DateTime now) {
-    final random = 100000 + now.millisecondsSinceEpoch % 900000;
-    return 'A$random';
-  }
-
   Future<void> _loadBusinessStatusFromStorage() async {
     final businessType = await SparkJoyStorage.currentBusinessType();
     final verifiedInn = await SparkJoyStorage.currentVerifiedInn();
@@ -147,7 +142,7 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
 
     final link = Uri.https('invite.autocheck.local', '/staff', {
       'report': _draftId,
-      'code': _reportCode,
+      'code': _currentReportCode(),
       'type': _accountBusinessType ?? 'company',
       'inn': _accountVerifiedInn ?? '',
       'token': _buildStaffInviteToken(),

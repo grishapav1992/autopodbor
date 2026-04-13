@@ -31,7 +31,6 @@ class _LoginState extends State<Login> {
   static const String _techRefreshToken =
       'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzAyMjk0MjYuMzc5Mjk5LCJleHAiOjE3NzI4MjE0MjYuMzc5Mjk5LCJzdWIiOiIyOCIsInR5cGUiOiJyZWZyZXNoIn0.lueu7sU6ZR3rgbsB1Q1r1ryX0hnP68wlMSqaH6sI4IMs1AaEQUAtguFKJhAuFYEz8ay-ruLHMXw_-v413bgl6jsqP3RTlZ04JY2RCpuPScADY1w9R6o9tixfLjuSH572JkEHgHnCSxbx5UKuR-NOlkLvweRhjSesRCQBy2CMy8chUJX7cbPmyXe3fnaYUjzo-mVWkva2ZBab6fu1QPf-8O9pj2DXWAbpHisvdUJDArhUVQKZm3GSch56MZzG8C-3GSEyrRTQ-SN5AqgXMH0KPiiw6pOmaKlDkEklRHF-ZO9kzIv7lLo8Vy-EIzz3dBDb78ih-nQtvbrOhzSBkZbdyw';
 
-  String _requestPhone = '';
   String _callPhone = '';
   String? _sessionId;
   String _statusText = '';
@@ -49,6 +48,20 @@ class _LoginState extends State<Login> {
   String _normalizePhone(String raw) {
     final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digits.isEmpty) return '';
+    if (digits.startsWith('8') && digits.length == 11) {
+      return '+7${digits.substring(1)}';
+    }
+    if (digits.startsWith('7') && digits.length == 11) return '+$digits';
+    if (digits.length == 10) return '+7$digits';
+    return '+$digits';
+  }
+
+  String _normalizeCallPhone(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return '';
+    final digits = trimmed.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return '';
+    if (trimmed.startsWith('+')) return '+$digits';
     if (digits.startsWith('8') && digits.length == 11) {
       return '+7${digits.substring(1)}';
     }
@@ -76,7 +89,6 @@ class _LoginState extends State<Login> {
     final currentOp = ++_opId;
     setState(() {
       _isAuthLoading = true;
-      _requestPhone = phone;
       _callPhone = '';
       _sessionId = null;
       _statusText = 'Запрашиваем номер для звонка...';
@@ -85,11 +97,11 @@ class _LoginState extends State<Login> {
     try {
       final result = await StorageApi.auth(phone: phone);
       if (!mounted || currentOp != _opId) return;
+      final callPhone = _normalizeCallPhone(result.callPhone);
       setState(() {
-        _callPhone = result.callPhone;
+        _callPhone = callPhone;
         _sessionId = result.sessionId;
-        _statusText =
-            'Ожидаем звонок с номера $_requestPhone на $_callPhone. Проверка выполняется автоматически до 3 минут.';
+        _statusText = 'Позвоните на номер выше. Проверка займет до 3 минут.';
       });
       unawaited(_startAutoVerify(phone, currentOp));
     } catch (_) {
@@ -123,10 +135,10 @@ class _LoginState extends State<Login> {
     if (!mounted || startOp != _opId || _callPhone.isEmpty) return;
     setState(() {
       _isVerifyLoading = true;
-      _statusText = 'Ждем звонок и проверяем автоматически...';
+      _statusText = 'Проверяем звонок...';
     });
 
-    final deadline = DateTime.now().add(const Duration(minutes: 3));
+    final deadline = DateTime.now().add(const Duration(minutes: 5));
     while (mounted && startOp == _opId && DateTime.now().isBefore(deadline)) {
       try {
         final verify = await StorageApi.authVerify(
@@ -157,8 +169,62 @@ class _LoginState extends State<Login> {
     setState(() {
       _isVerifyLoading = false;
       _statusText =
-          'Статус проверки: не OK. Не удалось подтвердить звонок за 3 минуты.';
+          'Статус проверки: не OK. Не удалось подтвердить звонок автоматически. Нажмите «Проверить статус звонка» после вызова.';
     });
+  }
+
+  Future<void> _verifyOnceManually() async {
+    if (_isAuthLoading || _isVerifyLoading) return;
+    final phone = _normalizePhone(_phoneController.text.trim());
+    final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
+    if (digitsLen < 11) {
+      _showError('Введите корректный номер телефона.');
+      return;
+    }
+
+    final currentOp = _opId;
+    if (mounted) {
+      setState(() {
+        _isVerifyLoading = true;
+        _statusText = 'Проверяем статус звонка...';
+      });
+    }
+
+    try {
+      final verify = await StorageApi.authVerify(
+        phone: phone,
+        sessionId: _sessionId,
+      );
+      if (!mounted || currentOp != _opId) return;
+      if (verify.hasTokens) {
+        await UserSimplePreferences.setAuthTokens(
+          accessToken: verify.accessToken!,
+          refreshToken: verify.refreshToken!,
+        );
+        if (!mounted || currentOp != _opId) return;
+        setState(() {
+          _statusText = 'Статус проверки: все OK. Выполняем вход...';
+        });
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (!mounted || currentOp != _opId) return;
+        await _proceedAfterCheck();
+        return;
+      }
+      setState(() {
+        _statusText =
+            'Звонок пока не подтверждён. Выполните звонок на выданный номер и повторите проверку.';
+      });
+    } catch (_) {
+      if (!mounted || currentOp != _opId) return;
+      setState(() {
+        _statusText =
+            'Не удалось проверить статус звонка. Повторите через несколько секунд.';
+      });
+    } finally {
+      if (mounted && currentOp == _opId) {
+        setState(() => _isVerifyLoading = false);
+      }
+    }
   }
 
   Future<void> _techSignIn() async {
@@ -253,16 +319,9 @@ class _LoginState extends State<Login> {
             textAlign: TextAlign.center,
             title: 'Авторизация',
             subTitle:
-                'Введите номер телефона и нажмите "Далее". Затем позвоните на выданный номер — проверка пройдет автоматически.',
+                'Введите номер телефона. Затем позвоните на выданный номер для автоматической проверки.',
           ),
           PhoneField(controller: _phoneController),
-          if (_requestPhone.isNotEmpty)
-            MyText(
-              text: 'Ваш номер: $_requestPhone',
-              size: 12,
-              color: kGreyColor,
-              paddingBottom: 8,
-            ),
           if (_callPhone.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -272,51 +331,45 @@ class _LoginState extends State<Login> {
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 14,
+                    horizontal: 16,
+                    vertical: 16,
                   ),
                   decoration: BoxDecoration(
                     color: kWhiteColor,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(14),
                     border: Border.all(color: kBorderColor),
                   ),
                   child: Row(
                     children: [
                       Container(
-                        height: 36,
-                        width: 36,
+                        height: 42,
+                        width: 42,
                         decoration: BoxDecoration(
                           color: kSecondaryColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
                           Icons.call_outlined,
                           color: kSecondaryColor,
-                          size: 18,
+                          size: 20,
                         ),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const MyText(
                               text: 'Номер для звонка',
-                              size: 11,
+                              size: 12,
                               color: kGreyColor,
                             ),
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 4),
                             MyText(
                               text: _callPhone,
-                              size: 16,
+                              size: 21,
                               weight: FontWeight.w700,
                               color: kTertiaryColor,
-                            ),
-                            const SizedBox(height: 2),
-                            const MyText(
-                              text: 'Нажмите, чтобы открыть звонок',
-                              size: 10,
-                              color: kGreyColor,
                             ),
                           ],
                         ),
@@ -332,7 +385,7 @@ class _LoginState extends State<Login> {
                         ),
                         child: const MyText(
                           text: 'Позвонить',
-                          size: 10,
+                          size: 11,
                           color: kSecondaryColor,
                           weight: FontWeight.w700,
                         ),
@@ -361,17 +414,14 @@ class _LoginState extends State<Login> {
               bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
             )
           else
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: kSecondaryColor.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kBorderColor),
-              ),
-              child: const MyText(
-                text: 'Нажмите на номер выше и выполните звонок.',
-                size: 11,
-                color: kGreyColor,
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: MyBorderButton(
+                onTap: _verifyOnceManually,
+                buttonText: _isVerifyLoading
+                    ? 'Проверка...'
+                    : 'Проверить статус звонка',
+                textSize: 12,
               ),
             ),
           const SizedBox(height: 14),

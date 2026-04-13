@@ -13,7 +13,12 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     );
 
     _createdAt = _read(draft, 'createdAt', fallback: _dateLabel(now));
-    _reportCode = _read(draft, 'reportCode', fallback: _buildReportCode(now));
+    _reportCode = _read(
+      draft,
+      'reportNumber',
+      fallback: _read(draft, 'reportCode'),
+    );
+    _lastDraftSavedAt = DateTime.tryParse(_read(draft, 'lastSavedAtIso'));
 
     _assignmentId = _read(
       draft,
@@ -239,6 +244,14 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
       draft['mediaDisabledDefaultTags'],
     );
     _mediaTagOrderByScope = _readStringListMap(draft['mediaTagOrder']);
+    final rawBackendUploadState = draft['backendUploadState'];
+    if (rawBackendUploadState is Map) {
+      _backendUploadState = cloneMap(
+        Map<String, dynamic>.from(rawBackendUploadState),
+      );
+    } else {
+      _backendUploadState = <String, dynamic>{};
+    }
     unawaited(_compactInlineDraftMediaIfNeeded());
     unawaited(_loadBusinessStatusFromStorage());
   }

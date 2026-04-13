@@ -78,12 +78,18 @@ String sjFormatMileage(String raw) {
 }
 
 String sjFormatReportMeta(String code, String createdAt) {
+  final trimmedCode = code.trim();
+  final formattedDate = sjFormatDate(createdAt);
+  if (trimmedCode.isEmpty) {
+    return sjTFormat(
+      'spark.report.meta.noCode',
+      fallback: 'от {date}',
+      args: <String, String>{'date': formattedDate},
+    );
+  }
   return sjTFormat(
     'spark.report.meta',
     fallback: '{code} от {date}',
-    args: <String, String>{
-      'code': code.trim(),
-      'date': sjFormatDate(createdAt),
-    },
+    args: <String, String>{'code': trimmedCode, 'date': formattedDate},
   );
 }

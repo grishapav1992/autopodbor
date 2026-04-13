@@ -102,6 +102,8 @@ String sparkVerdictLabel(String verdict) {
   }
 }
 
+enum SparkJoySectionFillState { empty, partial, done }
+
 class SparkCard extends StatelessWidget {
   const SparkCard({
     super.key,
@@ -522,14 +524,17 @@ class SparkSegmentedTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SparkCard(
-      padding: const EdgeInsets.all(SparkSpace.sm),
-      radius: SparkRadius.md,
-      backgroundColor: kInputBgColor,
+    return Container(
+      decoration: BoxDecoration(
+        color: kInputBgColor,
+        borderRadius: BorderRadius.circular(SparkRadius.xl),
+        border: Border.all(color: kBorderColor),
+      ),
+      padding: const EdgeInsets.all(SparkSpace.xs),
       child: Row(
         children: [
           for (int index = 0; index < items.length; index++) ...[
-            if (index > 0) const SizedBox(width: SparkSpace.md),
+            if (index > 0) const SizedBox(width: SparkSpace.xs),
             Expanded(
               child: _SparkSegmentedTabButton(
                 item: items[index],
@@ -557,41 +562,58 @@ class _SparkSegmentedTabButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SparkCard(
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.md,
-        vertical: SparkSpace.sm,
-      ),
-      radius: SparkRadius.md,
-      borderColor: active
-          ? kSecondaryColor.withValues(alpha: 0.45)
-          : kBorderColor,
-      backgroundColor: active
-          ? kSecondaryColor.withValues(alpha: 0.08)
-          : kWhiteColor,
-      onTap: onTap,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SparkSelectableChip(
-            text: item.label,
-            selected: active,
-            selectedColor: kSecondaryColor,
-            onTap: onTap,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SparkRadius.xl),
+        child: AnimatedContainer(
+          duration: SparkMotion.fast,
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.md,
+            vertical: SparkSpace.xl,
           ),
-          if (item.count > 0) ...[
-            const SizedBox(width: SparkSpace.sm),
-            SparkChip(
-              text: '${item.count}',
-              background: active ? kSecondaryColor : kLightGreyColor,
-              color: active ? kWhiteColor : kGreyColor,
-              padding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.sm,
-                vertical: SparkSpace.xxs,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SparkRadius.xl),
+            color: active ? kWhiteColor : Colors.transparent,
+            border: active
+                ? Border.all(color: kSecondaryColor.withValues(alpha: 0.35))
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: MyText(
+                  text: item.label,
+                  size: SparkTextSize.title,
+                  weight: FontWeight.w700,
+                  color: active ? kSecondaryColor : kGreyColor,
+                ),
               ),
-            ),
-          ],
-        ],
+              if (item.count > 0) ...[
+                const SizedBox(width: SparkSpace.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.xxxs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: active ? kSecondaryColor : kLightGreyColor,
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  ),
+                  child: MyText(
+                    text: '${item.count}',
+                    size: SparkTextSize.chip,
+                    weight: FontWeight.w700,
+                    color: active ? kWhiteColor : kGreyColor,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -788,6 +810,8 @@ class SparkStepActionBar extends StatelessWidget {
     required this.primaryLabel,
     required this.onPrimaryTap,
     this.primaryDisabled = false,
+    this.primaryBusy = false,
+    this.secondaryDisabled = false,
   });
 
   final String secondaryLabel;
@@ -795,6 +819,8 @@ class SparkStepActionBar extends StatelessWidget {
   final String primaryLabel;
   final VoidCallback onPrimaryTap;
   final bool primaryDisabled;
+  final bool primaryBusy;
+  final bool secondaryDisabled;
 
   @override
   Widget build(BuildContext context) {
@@ -811,7 +837,9 @@ class SparkStepActionBar extends StatelessWidget {
                 SizedBox(
                   height: SparkSize.actionHeight,
                   child: FilledButton.icon(
-                    onPressed: primaryDisabled ? null : onPrimaryTap,
+                    onPressed: (primaryDisabled || primaryBusy)
+                        ? null
+                        : onPrimaryTap,
                     style: FilledButton.styleFrom(
                       elevation: 0,
                       backgroundColor: kSecondaryColor,
@@ -827,10 +855,21 @@ class SparkStepActionBar extends StatelessWidget {
                         side: const BorderSide(color: kSecondaryColor),
                       ),
                     ),
-                    icon: const Icon(
-                      Icons.arrow_forward_rounded,
-                      size: SparkSize.iconSm,
-                    ),
+                    icon: primaryBusy
+                        ? const SizedBox(
+                            width: SparkSize.iconSm,
+                            height: SparkSize.iconSm,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                kWhiteColor,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: SparkSize.iconSm,
+                          ),
                     label: Text(
                       primaryLabel,
                       style: const TextStyle(
@@ -844,7 +883,7 @@ class SparkStepActionBar extends StatelessWidget {
                 SizedBox(
                   height: SparkSize.actionHeight,
                   child: OutlinedButton.icon(
-                    onPressed: onSecondaryTap,
+                    onPressed: secondaryDisabled ? null : onSecondaryTap,
                     style: OutlinedButton.styleFrom(
                       side: const BorderSide(color: kBorderColor),
                       shape: RoundedRectangleBorder(
@@ -874,7 +913,7 @@ class SparkStepActionBar extends StatelessWidget {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: onSecondaryTap,
+                  onPressed: secondaryDisabled ? null : onSecondaryTap,
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: kBorderColor),
                     minimumSize: const Size.fromHeight(SparkSize.actionHeight),
@@ -902,7 +941,9 @@ class SparkStepActionBar extends StatelessWidget {
                 child: SizedBox(
                   height: SparkSize.actionHeight,
                   child: FilledButton.icon(
-                    onPressed: primaryDisabled ? null : onPrimaryTap,
+                    onPressed: (primaryDisabled || primaryBusy)
+                        ? null
+                        : onPrimaryTap,
                     style: FilledButton.styleFrom(
                       elevation: 0,
                       backgroundColor: kSecondaryColor,
@@ -918,10 +959,21 @@ class SparkStepActionBar extends StatelessWidget {
                         side: const BorderSide(color: kSecondaryColor),
                       ),
                     ),
-                    icon: const Icon(
-                      Icons.arrow_forward_rounded,
-                      size: SparkSize.iconSm,
-                    ),
+                    icon: primaryBusy
+                        ? const SizedBox(
+                            width: SparkSize.iconSm,
+                            height: SparkSize.iconSm,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                kWhiteColor,
+                              ),
+                            ),
+                          )
+                        : const Icon(
+                            Icons.arrow_forward_rounded,
+                            size: SparkSize.iconSm,
+                          ),
                     label: Text(
                       primaryLabel,
                       style: const TextStyle(
@@ -1111,17 +1163,20 @@ class SparkStepHeroCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SparkCard(
-      padding: const EdgeInsets.all(SparkSpace.section),
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xl,
+        vertical: SparkSpace.lg,
+      ),
       radius: SparkRadius.md,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: SparkSize.icon5xl,
-                height: SparkSize.icon5xl,
+                width: SparkSize.icon4xl,
+                height: SparkSize.icon4xl,
                 decoration: BoxDecoration(
                   color: kSecondaryColor.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(SparkRadius.sm),
@@ -1129,7 +1184,7 @@ class SparkStepHeroCard extends StatelessWidget {
                 alignment: Alignment.center,
                 child: Icon(
                   icon,
-                  size: SparkSize.iconLg,
+                  size: SparkSize.iconMd,
                   color: kSecondaryColor,
                 ),
               ),
@@ -1139,25 +1194,17 @@ class SparkStepHeroCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MyText(
-                      text: 'Шаг $currentStep из $totalSteps',
+                      text: 'Шаг $currentStep/$totalSteps',
                       size: SparkTextSize.caption,
                       color: kGreyColor,
                       weight: FontWeight.w700,
                     ),
-                    const SizedBox(height: SparkSpace.xxxs),
+                    const SizedBox(height: SparkSpace.xxs),
                     MyText(
                       text: title,
-                      size: SparkTextSize.titleLg,
+                      size: SparkTextSize.title,
                       weight: FontWeight.w700,
                     ),
-                    if (description.trim().isNotEmpty) ...[
-                      const SizedBox(height: SparkSpace.xxxs),
-                      MyText(
-                        text: description.trim(),
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -1166,24 +1213,21 @@ class SparkStepHeroCard extends StatelessWidget {
                 text: statusText,
                 background: statusColor.withValues(alpha: 0.12),
                 color: statusColor,
+                textSize: SparkTextSize.caption,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.sm,
+                  vertical: SparkSpace.xxxs,
+                ),
               ),
             ],
           ),
-          if (currentValue.isNotEmpty) ...[
-            const SizedBox(height: SparkSpace.md),
-            MyText(
-              text: currentValue,
-              size: SparkTextSize.caption,
-              color: kSecondaryColor,
-            ),
-          ],
           if (!hideProgressBar) ...[
-            const SizedBox(height: SparkSpace.lg),
+            const SizedBox(height: SparkSpace.sm),
             ClipRRect(
               borderRadius: BorderRadius.circular(SparkRadius.pill),
               child: LinearProgressIndicator(
                 value: stepProgress.clamp(0.0, 1.0),
-                minHeight: SparkSize.progressThin,
+                minHeight: SparkSpace.sm,
                 backgroundColor: kLightGreyColor,
                 valueColor: const AlwaysStoppedAnimation<Color>(
                   kSecondaryColor,
@@ -1255,26 +1299,32 @@ class SparkSectionNavCard extends StatelessWidget {
     required this.index,
     required this.title,
     required this.onTap,
+    required this.fillState,
     this.icon,
     this.description = '',
     this.value = '',
-    this.done = false,
-    this.isSummary = false,
   });
 
   final int index;
   final String title;
   final VoidCallback onTap;
+  final SparkJoySectionFillState fillState;
   final IconData? icon;
   final String description;
   final String value;
-  final bool done;
-  final bool isSummary;
 
   @override
   Widget build(BuildContext context) {
-    final statusText = done ? 'Заполнено' : 'Заполнить';
-    final statusColor = done ? kGreenColor : kGreyColor;
+    final isFilled = fillState != SparkJoySectionFillState.empty;
+    final stateColor = isFilled ? kSecondaryColor : kGreyColor;
+    final stateBorderColor = isFilled
+        ? kSecondaryColor.withValues(alpha: 0.32)
+        : kBorderColor;
+    final stateBackgroundColor = isFilled
+        ? kSecondaryColor.withValues(alpha: 0.1)
+        : kLightGreyColor;
+    final hasValue = value.trim().isNotEmpty;
+    final showDescription = !hasValue && description.trim().isNotEmpty;
 
     return SparkCard(
       onTap: onTap,
@@ -1283,9 +1333,7 @@ class SparkSectionNavCard extends StatelessWidget {
         horizontal: SparkSpace.xl,
         vertical: SparkSpace.xl,
       ),
-      borderColor: done
-          ? kSecondaryColor.withValues(alpha: 0.25)
-          : kBorderColor,
+      borderColor: stateBorderColor,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1294,38 +1342,27 @@ class SparkSectionNavCard extends StatelessWidget {
             height: SparkSize.navStepBadge,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: done
-                  ? kSecondaryColor.withValues(alpha: 0.14)
-                  : kLightGreyColor,
-              border: Border.all(
-                color: done
-                    ? kSecondaryColor.withValues(alpha: 0.4)
-                    : kBorderColor,
-              ),
+              color: stateBackgroundColor,
+              border: Border.all(color: stateBorderColor),
               borderRadius: BorderRadius.circular(SparkRadius.md),
             ),
             child: icon != null
                 ? Icon(
                     icon,
                     size: SparkSize.iconSm,
-                    color: done ? kSecondaryColor : kGreyColor,
+                    color: fillState == SparkJoySectionFillState.empty
+                        ? kGreyColor
+                        : stateColor,
                   )
                 : MyText(
-                    text: done ? '✓' : '${index + 1}',
+                    text: '${index + 1}',
                     size: SparkTextSize.body,
                     weight: FontWeight.w700,
-                    color: done ? kSecondaryColor : kGreyColor,
+                    color: fillState == SparkJoySectionFillState.empty
+                        ? kGreyColor
+                        : stateColor,
                   ),
           ),
-          if (icon != null) ...[
-            const SizedBox(width: SparkSpace.sm),
-            MyText(
-              text: '${index + 1}',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-              weight: FontWeight.w700,
-            ),
-          ],
           const SizedBox(width: SparkSpace.xl),
           Expanded(
             child: Column(
@@ -1338,38 +1375,22 @@ class SparkSectionNavCard extends StatelessWidget {
                         text: title,
                         size: SparkTextSize.title,
                         weight: FontWeight.w700,
-                        color: kTertiaryColor,
-                      ),
-                    ),
-                    const SizedBox(width: SparkSpace.sm),
-                    SparkChip(
-                      text: statusText,
-                      background: statusColor.withValues(alpha: 0.11),
-                      color: statusColor,
-                      textSize: SparkTextSize.chip,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: SparkSpace.sm,
-                        vertical: SparkSpace.xxs,
+                        color: isFilled ? kSecondaryColor : kTertiaryColor,
                       ),
                     ),
                   ],
                 ),
-                MyText(
-                  text: '#${index + 1}',
-                  size: SparkTextSize.chip,
-                  color: kGreyColor,
-                ),
-                if (value.trim().isNotEmpty) ...[
+                if (hasValue) ...[
                   const SizedBox(height: SparkSpace.xxs),
                   MyText(
                     text: value.trim(),
                     size: SparkTextSize.caption,
-                    color: kSecondaryColor,
+                    color: isFilled ? kSecondaryColor : kGreyColor,
                     maxLines: 2,
                     textOverflow: TextOverflow.ellipsis,
                   ),
                 ],
-                if (description.trim().isNotEmpty) ...[
+                if (showDescription) ...[
                   const SizedBox(height: SparkSpace.xxs),
                   MyText(
                     text: description.trim(),
@@ -1386,13 +1407,10 @@ class SparkSectionNavCard extends StatelessWidget {
           Container(
             width: SparkSize.iconXl,
             height: SparkSize.iconXl,
-            decoration: BoxDecoration(
-              color: kInputBgColor,
-              borderRadius: BorderRadius.circular(SparkRadius.pill),
-            ),
+            alignment: Alignment.center,
             child: Icon(
-              isSummary ? Icons.done_rounded : Icons.chevron_right_rounded,
-              color: isSummary ? kSecondaryColor : kGreyColor,
+              Icons.chevron_right_rounded,
+              color: isFilled ? kSecondaryColor : kGreyColor,
               size: SparkSize.iconSm,
             ),
           ),
@@ -1667,12 +1685,14 @@ class SparkPageScaffold extends StatelessWidget {
     super.key,
     this.appBar,
     required this.children,
+    this.scrollController,
     this.padding,
     this.bottomInset = SparkSize.pageBottomInset,
   });
 
   final PreferredSizeWidget? appBar;
   final List<Widget> children;
+  final ScrollController? scrollController;
   final EdgeInsets? padding;
   final double bottomInset;
 
@@ -1681,6 +1701,7 @@ class SparkPageScaffold extends StatelessWidget {
     return Scaffold(
       appBar: appBar,
       body: SparkScreenList(
+        controller: scrollController,
         padding: padding,
         bottomInset: bottomInset,
         children: children,
