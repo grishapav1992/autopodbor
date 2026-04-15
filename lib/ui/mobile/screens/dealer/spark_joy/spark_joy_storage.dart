@@ -16,6 +16,8 @@ class SparkJoyStorage {
       'spark_joy_hidden_company_staff_ids_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
   static const String _completedKey = 'spark_joy_completed_v1';
+  static const String _completedSyncedAtKey =
+      'spark_joy_completed_synced_at_v1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
@@ -216,7 +218,7 @@ class SparkJoyStorage {
   }
 
   static Future<void> ensureSeedData() async {
-    await _clearCompletedCache();
+    // Intentionally keep completed cache for fast first paint after app restart.
   }
 
   static Future<List<Map<String, dynamic>>> loadDrafts() async {
@@ -224,8 +226,27 @@ class SparkJoyStorage {
   }
 
   static Future<List<Map<String, dynamic>>> loadCompleted() async {
-    await _clearCompletedCache();
-    return const <Map<String, dynamic>>[];
+    return _readList(_completedKey);
+  }
+
+  static Future<void> replaceCompleted(
+    List<Map<String, dynamic>> reports,
+  ) async {
+    await _writeList(_completedKey, reports);
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    await pref.setString(
+      _completedSyncedAtKey,
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  static Future<DateTime?> completedSyncedAt() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_completedSyncedAtKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw);
   }
 
   static Future<void> upsertDraft(Map<String, dynamic> draft) async {
@@ -246,11 +267,26 @@ class SparkJoyStorage {
   }
 
   static Future<void> upsertCompleted(Map<String, dynamic> report) async {
-    // Completed reports are not stored locally anymore.
+    final completed = await loadCompleted();
+    final id = (report['id'] ?? report['reportId'] ?? '').toString();
+    if (id.isEmpty) return;
+    final filtered = completed.where((r) {
+      final rid = (r['id'] ?? r['reportId'] ?? '').toString();
+      return rid != id;
+    }).toList();
+    filtered.insert(0, report);
+    await replaceCompleted(filtered);
   }
 
   static Future<void> deleteCompleted(String id) async {
-    // Completed reports are not stored locally anymore.
+    final normalized = id.trim();
+    if (normalized.isEmpty) return;
+    final completed = await loadCompleted();
+    final filtered = completed.where((r) {
+      final rid = (r['id'] ?? r['reportId'] ?? '').toString();
+      return rid != normalized;
+    }).toList();
+    await replaceCompleted(filtered);
   }
 
   static Future<void> moveDraftToCompleted({
@@ -290,9 +326,10 @@ class SparkJoyStorage {
     await pref.setStringList(key, values.map(jsonEncode).toList());
   }
 
-  static Future<void> _clearCompletedCache() async {
+  static Future<void> clearCompletedCache() async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
     await pref.remove(_completedKey);
+    await pref.remove(_completedSyncedAtKey);
   }
 }

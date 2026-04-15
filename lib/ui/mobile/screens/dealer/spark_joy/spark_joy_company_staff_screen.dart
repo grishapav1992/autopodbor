@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_staff_detail_screen.dart';
 import 'spark_joy_data.dart';
+import 'spark_joy_i18n.dart';
 import 'spark_joy_storage.dart';
+import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyCompanyStaffScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class SparkJoyCompanyStaffScreen extends StatefulWidget {
 class _SparkJoyCompanyStaffScreenState
     extends State<SparkJoyCompanyStaffScreen> {
   bool _loading = true;
+  String? _loadError;
   String _search = '';
   List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];
   List<String> _hiddenStaffIds = <String>[];
@@ -38,15 +40,30 @@ class _SparkJoyCompanyStaffScreenState
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final drafts = await SparkJoyStorage.loadDrafts();
-    final hiddenIds = await SparkJoyStorage.loadHiddenCompanyStaffIds();
-    if (!mounted) return;
     setState(() {
-      _drafts = drafts.where(_isCompanyDraft).toList();
-      _hiddenStaffIds = hiddenIds;
-      _loading = false;
+      _loading = true;
+      _loadError = null;
     });
+    try {
+      final drafts = await SparkJoyStorage.loadDrafts();
+      final hiddenIds = await SparkJoyStorage.loadHiddenCompanyStaffIds();
+      if (!mounted) return;
+      setState(() {
+        _drafts = drafts.where(_isCompanyDraft).toList();
+        _hiddenStaffIds = hiddenIds;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = sjT(
+          'spark.state.error.staff',
+          fallback:
+              'Не удалось загрузить список сотрудников. Проверьте локальные данные и повторите.',
+        );
+      });
+    }
   }
 
   List<Map<String, dynamic>> get _confirmedStaff {
@@ -139,21 +156,54 @@ class _SparkJoyCompanyStaffScreenState
     final shouldRemove = await showDialog<bool>(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: const Text('Удалить сотрудника'),
-          content: Text(
-            'Сотрудник "$specialistName" будет удалён из раздела компании. Назначения в черновиках будут сняты.',
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SparkRadius.xl),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Отмена'),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xxxl,
+              SparkSpace.xxxl,
+              SparkSpace.xxxl,
+              SparkSpace.xl,
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Удалить'),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const MyText(
+                  text: 'Удалить сотрудника',
+                  size: SparkTextSize.title,
+                  weight: FontWeight.w700,
+                ),
+                const SizedBox(height: SparkSpace.md),
+                MyText(
+                  text:
+                      'Сотрудник "$specialistName" будет удалён из раздела компании. Назначения в черновиках будут сняты.',
+                  size: SparkTextSize.body,
+                  color: kGreyColor,
+                ),
+                const SizedBox(height: SparkSpace.xl),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: const Text('Отмена'),
+                      ),
+                    ),
+                    const SizedBox(width: SparkSpace.md),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('Удалить'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
@@ -200,6 +250,54 @@ class _SparkJoyCompanyStaffScreenState
     ).showSnackBar(const SnackBar(content: Text('Ссылка скопирована')));
   }
 
+  Widget _buildStatTile({
+    required String title,
+    required String value,
+    required IconData icon,
+  }) {
+    return Expanded(
+      child: SparkCard(
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.xl,
+          vertical: SparkSpace.xl,
+        ),
+        radius: SparkRadius.md,
+        child: Row(
+          children: [
+            Container(
+              width: SparkSize.navStepBadge,
+              height: SparkSize.navStepBadge,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(SparkRadius.sm),
+                color: kSecondaryColor.withValues(alpha: 0.08),
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: SparkSize.iconSm, color: kSecondaryColor),
+            ),
+            const SizedBox(width: SparkSpace.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MyText(
+                    text: value,
+                    size: SparkTextSize.title,
+                    weight: FontWeight.w700,
+                  ),
+                  MyText(
+                    text: title,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _pendingCard(Map<String, dynamic> invite) {
     final title = sjRead(
       invite,
@@ -208,72 +306,83 @@ class _SparkJoyCompanyStaffScreenState
     ).trim();
     final link = sjRead(invite, 'staffInviteLink').trim();
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SparkCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.hourglass_top_rounded,
-                  size: 16,
-                  color: kGreyColor,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: MyText(text: title, size: 13, weight: FontWeight.w700),
-                ),
-                SparkChip(
-                  text: 'Ожидает',
-                  background: const Color(0xFFFFF4D8),
-                  color: const Color(0xFFA87300),
-                ),
-              ],
-            ),
-            if (sjRead(invite, 'vin').isNotEmpty)
-              MyText(
-                text: sjRead(invite, 'vin'),
-                size: 11,
+    return SparkListCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.hourglass_top_rounded,
+                size: SparkSize.iconSm,
                 color: kGreyColor,
-                paddingTop: 3,
               ),
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kBorderColor),
-                color: kInputBgColor,
+              const SizedBox(width: SparkSpace.md),
+              Expanded(
+                child: MyText(
+                  text: title,
+                  size: SparkTextSize.bodyLg,
+                  weight: FontWeight.w700,
+                ),
               ),
-              child: MyText(text: link, size: 11, color: kGreyColor),
+              SparkChip(
+                text: sjT('spark.status.pending', fallback: 'Ожидает'),
+                background: const Color(0xFFFFF4D8),
+                color: const Color(0xFFA87300),
+              ),
+            ],
+          ),
+          if (sjRead(invite, 'vin').isNotEmpty)
+            MyText(
+              text: sjRead(invite, 'vin'),
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+              paddingTop: SparkSpace.xxxs,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _copyInvite(link),
-                    icon: const Icon(Icons.copy_rounded, size: 16),
-                    label: const Text('Копировать ссылку'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 40,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _clearPendingInvite(invite),
-                    icon: const Icon(Icons.delete_outline_rounded, size: 16),
-                    label: const Text('Удалить'),
-                    style: OutlinedButton.styleFrom(foregroundColor: kRedColor),
-                  ),
-                ),
-              ],
+          const SizedBox(height: SparkSpace.md),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.lg,
+              vertical: SparkSpace.md,
             ),
-          ],
-        ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+              border: Border.all(color: kBorderColor),
+              color: kInputBgColor,
+            ),
+            child: MyText(
+              text: link,
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _copyInvite(link),
+                  icon: const Icon(Icons.copy_rounded, size: SparkSize.iconSm),
+                  label: const Text('Копировать ссылку'),
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              SizedBox(
+                height: SparkSize.actionHeightMd,
+                child: OutlinedButton.icon(
+                  onPressed: () => _clearPendingInvite(invite),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    size: SparkSize.iconSm,
+                  ),
+                  label: const Text('Удалить'),
+                  style: OutlinedButton.styleFrom(foregroundColor: kRedColor),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -281,58 +390,90 @@ class _SparkJoyCompanyStaffScreenState
   Widget _staffCard(Map<String, dynamic> specialist) {
     final specialistId = sjRead(specialist, 'id');
     final assignedCount = _draftsForSpecialist(specialistId).length;
+    final phone = sjRead(specialist, 'phone');
+    final specialization = sjRead(specialist, 'specialization');
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: SparkCard(
-        onTap: () => _openSpecialist(specialist),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: kSecondaryColor.withValues(alpha: 0.1),
+    return SparkListCard(
+      onTap: () => _openSpecialist(specialist),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              SparkInitialsAvatar(
+                name: sjRead(specialist, 'name'),
+                size: SparkSize.avatarSm,
+                textSize: SparkTextSize.label,
               ),
-              alignment: Alignment.center,
-              child: MyText(
-                text: sjInitials(sjRead(specialist, 'name')),
-                size: 14,
-                weight: FontWeight.w700,
+              const SizedBox(width: SparkSpace.lg),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MyText(
+                      text: sjRead(specialist, 'name'),
+                      size: SparkTextSize.bodyLg,
+                      weight: FontWeight.w700,
+                    ),
+                    if (specialization.trim().isNotEmpty)
+                      MyText(
+                        text: specialization,
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxxs,
+                      ),
+                    if (phone.trim().isNotEmpty)
+                      MyText(
+                        text: phone,
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxxs,
+                      ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: SparkSize.iconMd,
+                color: kGreyColor,
+              ),
+            ],
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Row(
+            children: [
+              SparkChip(
+                text: 'Текущих отчётов: $assignedCount',
+                background: kSecondaryColor.withValues(alpha: 0.08),
                 color: kSecondaryColor,
               ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  MyText(
-                    text: sjRead(specialist, 'name'),
-                    size: 13,
-                    weight: FontWeight.w700,
+              const Spacer(),
+              SizedBox(
+                height: SparkSize.actionCompactHeight,
+                child: OutlinedButton.icon(
+                  onPressed: () => _removeSpecialist(specialist),
+                  icon: const Icon(
+                    Icons.person_remove_outlined,
+                    size: SparkTextSize.title,
                   ),
-                  MyText(
-                    text: 'Текущих отчётов: $assignedCount',
-                    size: 11,
-                    color: kGreyColor,
-                    paddingTop: 2,
+                  label: const Text('Удалить'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kRedColor,
+                    side: const BorderSide(color: kRedColor2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.lg,
+                      vertical: SparkSpace.xs,
+                    ),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    ),
                   ),
-                ],
+                ),
               ),
-            ),
-            IconButton(
-              tooltip: 'Удалить сотрудника',
-              onPressed: () => _removeSpecialist(specialist),
-              icon: const Icon(
-                Icons.person_remove_outlined,
-                size: 18,
-                color: kRedColor,
-              ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -341,85 +482,68 @@ class _SparkJoyCompanyStaffScreenState
   Widget build(BuildContext context) {
     final confirmed = _confirmedStaff;
     final pending = _pendingInvites;
-    return ListView(
-      padding: AppSizes.DEFAULT.copyWith(bottom: 110),
+    return SparkScreenList(
+      bottomInset: 56,
       children: [
-        const MyText(text: 'Сотрудники', size: 22, weight: FontWeight.w700),
-        const MyText(
-          text: 'Штат компании и приглашения',
-          size: 12,
-          color: kGreyColor,
-          paddingTop: 2,
-          paddingBottom: 10,
+        const SparkPageHeader(
+          title: 'Сотрудники',
+          subtitle: 'Штат компании и приглашения',
         ),
-        TextField(
+        Row(
+          children: [
+            _buildStatTile(
+              title: 'Подтверждённые',
+              value: '${confirmed.length}',
+              icon: Icons.verified_user_outlined,
+            ),
+            const SizedBox(width: SparkSpace.md),
+            _buildStatTile(
+              title: 'Ожидают',
+              value: '${pending.length}',
+              icon: Icons.hourglass_top_rounded,
+            ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.xl),
+        SparkSearchField(
+          hint: 'Поиск сотрудника или приглашения',
           onChanged: (value) => setState(() => _search = value),
-          decoration: InputDecoration(
-            hintText: 'Поиск сотрудника или приглашения',
-            prefixIcon: const Icon(Icons.search, color: kGreyColor, size: 18),
-            filled: true,
-            fillColor: kWhiteColor,
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
-            ),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kBorderColor),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kBorderColor),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kSecondaryColor),
-            ),
-          ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: SparkSpace.xl),
         if (_loading)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.only(top: 30),
-              child: CircularProgressIndicator(strokeWidth: 2),
+          SparkLoadingState(
+            message: sjT(
+              'spark.state.loading.staff',
+              fallback: 'Загрузка сотрудников...',
             ),
           )
+        else if (_loadError != null)
+          SparkErrorState(
+            title: sjT('spark.state.error.title', fallback: 'Ошибка загрузки'),
+            subtitle: _loadError!,
+            onRetry: _load,
+          )
         else ...[
-          const MyText(
-            text: 'Ожидают подтверждения',
-            size: 13,
-            weight: FontWeight.w700,
-            color: kGreyColor,
-            paddingBottom: 8,
-          ),
+          const SparkSectionTitle('Ожидают подтверждения'),
           if (pending.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(bottom: 10),
-              child: SparkCard(
-                child: MyText(
-                  text: 'Нет активных приглашений',
-                  size: 12,
-                  color: kGreyColor,
+            Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.lg),
+              child: SparkHintCard(
+                text: sjT(
+                  'spark.empty.noPendingInvites',
+                  fallback: 'Нет активных приглашений',
                 ),
               ),
             )
           else
             ...pending.map(_pendingCard),
-          const SizedBox(height: 8),
-          const MyText(
-            text: 'Подтверждённые сотрудники',
-            size: 13,
-            weight: FontWeight.w700,
-            color: kGreyColor,
-            paddingBottom: 8,
-          ),
+          const SizedBox(height: SparkSpace.md),
+          const SparkSectionTitle('Подтверждённые сотрудники'),
           if (confirmed.isEmpty)
-            const SparkCard(
-              child: MyText(
-                text: 'В штате пока нет сотрудников',
-                size: 12,
-                color: kGreyColor,
+            SparkHintCard(
+              text: sjT(
+                'spark.empty.noStaff',
+                fallback: 'В штате пока нет сотрудников',
               ),
             )
           else

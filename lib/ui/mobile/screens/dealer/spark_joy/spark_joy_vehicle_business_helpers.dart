@@ -1,0 +1,383 @@
+part of 'spark_joy_create_report_screen.dart';
+
+const List<int> _vinWeights = [
+  8,
+  7,
+  6,
+  5,
+  4,
+  3,
+  2,
+  10,
+  0,
+  9,
+  8,
+  7,
+  6,
+  5,
+  4,
+  3,
+  2,
+];
+
+const Map<String, int> _vinTransliteration = {
+  'A': 1,
+  'B': 2,
+  'C': 3,
+  'D': 4,
+  'E': 5,
+  'F': 6,
+  'G': 7,
+  'H': 8,
+  'J': 1,
+  'K': 2,
+  'L': 3,
+  'M': 4,
+  'N': 5,
+  'P': 7,
+  'R': 9,
+  'S': 2,
+  'T': 3,
+  'U': 4,
+  'V': 5,
+  'W': 6,
+  'X': 7,
+  'Y': 8,
+  'Z': 9,
+  '0': 0,
+  '1': 1,
+  '2': 2,
+  '3': 3,
+  '4': 4,
+  '5': 5,
+  '6': 6,
+  '7': 7,
+  '8': 8,
+  '9': 9,
+};
+
+const String _plateCyr = 'АВЕКМНОРСТУХ';
+const Map<String, String> _plateLatToCyr = {
+  'A': 'А',
+  'B': 'В',
+  'E': 'Е',
+  'K': 'К',
+  'M': 'М',
+  'H': 'Н',
+  'O': 'О',
+  'P': 'Р',
+  'C': 'С',
+  'T': 'Т',
+  'Y': 'У',
+  'X': 'Х',
+};
+
+extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
+  String _dateLabel(DateTime value) {
+    final d = value.day.toString().padLeft(2, '0');
+    final m = value.month.toString().padLeft(2, '0');
+    return '$d.$m.${value.year}';
+  }
+
+  Future<void> _loadBusinessStatusFromStorage() async {
+    final businessType = await SparkJoyStorage.currentBusinessType();
+    final verifiedInn = await SparkJoyStorage.currentVerifiedInn();
+    if (!mounted) return;
+    _setStateSafely(() {
+      _accountBusinessType ??= businessType;
+      _accountVerifiedInn ??= verifiedInn;
+    });
+  }
+
+  bool _hasBusinessStatus() {
+    return _accountBusinessType == 'company' || _accountBusinessType == 'ip';
+  }
+
+  String _businessStatusLabel() {
+    if (_accountBusinessType == 'ip') return 'ИП';
+    if (_accountBusinessType == 'company') return 'Компания';
+    return 'Специалист';
+  }
+
+  String _currentCompanyName() {
+    final company = sparkCompanies.firstWhere(
+      (item) => (item['id'] ?? '').toString() == kSparkCompanyId,
+      orElse: () => const {'name': 'Компания'},
+    );
+    final name = (company['name'] ?? '').toString().trim();
+    return name.isEmpty ? 'Компания' : name;
+  }
+
+  List<Map<String, dynamic>> _companyStaffOptions() {
+    return sparkSpecialists
+        .where((specialist) {
+          final companyId = (specialist['companyId'] ?? '').toString();
+          final status = (specialist['status'] ?? '').toString();
+          return companyId == kSparkCompanyId && status != 'blocked';
+        })
+        .map((specialist) => Map<String, dynamic>.from(specialist))
+        .toList();
+  }
+
+  String _resolveSpecialistName(String specialistId) {
+    if (specialistId.trim().isEmpty) return '';
+    final specialist = sparkSpecialists.firstWhere(
+      (item) => (item['id'] ?? '').toString() == specialistId,
+      orElse: () => const {},
+    );
+    return (specialist['name'] ?? '').toString();
+  }
+
+  String _buildStaffInviteToken() {
+    final source = '$_draftId|${DateTime.now().microsecondsSinceEpoch}';
+    final encoded = base64Url.encode(utf8.encode(source)).replaceAll('=', '');
+    if (encoded.length <= 18) return encoded;
+    return encoded.substring(0, 18);
+  }
+
+  Future<void> _generateStaffInviteLink() async {
+    if (_staffInviteLinkCreating || !_hasBusinessStatus()) return;
+    _setStateSafely(() => _staffInviteLinkCreating = true);
+    await Future<void>.delayed(const Duration(milliseconds: 450));
+
+    final link = Uri.https('invite.autocheck.local', '/staff', {
+      'report': _draftId,
+      'code': _currentReportCode(),
+      'type': _accountBusinessType ?? 'company',
+      'inn': _accountVerifiedInn ?? '',
+      'token': _buildStaffInviteToken(),
+    }).toString();
+
+    if (!mounted) return;
+    _setStateSafely(() {
+      _staffInviteLink = link;
+      _staffInviteLinkCreating = false;
+    });
+    _markDraftDirty();
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Ссылка приглашения сформирована и скопирована'),
+      ),
+    );
+  }
+
+  Future<void> _copyStaffInviteLink() async {
+    final link = _staffInviteLink.trim();
+    if (link.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: link));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Ссылка скопирована')));
+  }
+
+  InputDecoration _fieldDecoration(String hint) {
+    return sparkInputDecoration(hint);
+  }
+
+  String _carName() {
+    final brand = _brandController.text.trim();
+    final model = _modelController.text.trim();
+    final generation = _generationController.text.trim();
+    return [brand, model, generation].where((e) => e.isNotEmpty).join(' ');
+  }
+
+  String _carButtonName() {
+    final brand = _brandController.text.trim();
+    final model = _modelController.text.trim();
+    return [brand, model].where((e) => e.isNotEmpty).join(' ');
+  }
+
+  String _carMetaLabel() {
+    final generation = _generationController.text.trim();
+    final restyling = _restylingLabel.trim();
+    final frames = _carFrames.trim();
+    final parts = <String>[
+      if (generation.isNotEmpty) 'Поколение $generation',
+      if (restyling.isNotEmpty) restyling,
+      if (frames.isNotEmpty) frames,
+    ];
+    return parts.join(' · ');
+  }
+
+  String _sanitizeVin(String value) {
+    final cleaned = value
+        .toUpperCase()
+        .replaceAll(RegExp(r'[^A-Z0-9]'), '')
+        .replaceAll(RegExp(r'[IOQ]'), '');
+    return cleaned.length > 17 ? cleaned.substring(0, 17) : cleaned;
+  }
+
+  String _normalizeVinOcrText(String value) {
+    return value
+        .toUpperCase()
+        .replaceAll('А', 'A')
+        .replaceAll('В', 'B')
+        .replaceAll('С', 'C')
+        .replaceAll('Е', 'E')
+        .replaceAll('Н', 'H')
+        .replaceAll('К', 'K')
+        .replaceAll('М', 'M')
+        .replaceAll('Р', 'P')
+        .replaceAll('Т', 'T')
+        .replaceAll('У', 'Y')
+        .replaceAll('Х', 'X')
+        .replaceAll('З', '3')
+        .replaceAll('Б', '6')
+        .replaceAll('І', '1')
+        .replaceAll('|', '1')
+        .replaceAll('I', '1')
+        .replaceAll('O', '0')
+        .replaceAll('Q', '0');
+  }
+
+  String _extractStrictVinFromText(String text) {
+    final cleaned = _normalizeVinOcrText(
+      text,
+    ).replaceAll(RegExp(r'[^A-Z0-9]'), '');
+    if (cleaned.length < 17) return '';
+    for (var i = 0; i <= cleaned.length - 17; i++) {
+      final candidate = cleaned.substring(i, i + 17);
+      if (_isStrictVin(candidate)) {
+        return _maybeFixVinOcrAmbiguity(candidate);
+      }
+    }
+    return '';
+  }
+
+  String _extractVinFromOcrResult(VinOcrResult result) {
+    final direct = _extractStrictVinFromText(result.vin);
+    if (direct.isNotEmpty) return direct;
+    return _extractStrictVinFromText(result.rawText);
+  }
+
+  bool _isStrictVin(String value) {
+    final vin = value.trim().toUpperCase();
+    if (vin.length != 17) return false;
+    if (RegExp(r'[IOQ]').hasMatch(vin)) return false;
+    if (!RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(vin)) return false;
+    if (!RegExp(r'[A-Z]').hasMatch(vin) || !RegExp(r'\d').hasMatch(vin)) {
+      return false;
+    }
+    return true;
+  }
+
+  bool _isValidVinChecksum(String vin) {
+    if (!_isStrictVin(vin)) return false;
+    var sum = 0;
+    for (var i = 0; i < vin.length; i++) {
+      final value = _vinTransliteration[vin[i]];
+      if (value == null) return false;
+      sum += value * _vinWeights[i];
+    }
+    final remainder = sum % 11;
+    final expected = remainder == 10 ? 'X' : remainder.toString();
+    return vin[8] == expected;
+  }
+
+  String _toggleVinAmbiguousChar(String vin, int index) {
+    if (index < 0 || index >= vin.length) return vin;
+    final ch = vin[index];
+    if (ch != '1' && ch != 'L') return vin;
+    final replacement = ch == '1' ? 'L' : '1';
+    return vin.substring(0, index) + replacement + vin.substring(index + 1);
+  }
+
+  String _maybeFixVinOcrAmbiguity(String value) {
+    final vin = value.trim().toUpperCase();
+    if (!_isStrictVin(vin)) return vin;
+    if (_isValidVinChecksum(vin)) return vin;
+
+    final ambiguousIndexes = <int>[];
+    for (var i = 0; i < vin.length; i++) {
+      if (i == 8) continue;
+      if (vin[i] == '1' || vin[i] == 'L') {
+        ambiguousIndexes.add(i);
+      }
+    }
+    if (ambiguousIndexes.isEmpty) return vin;
+
+    final validCandidates = <String>{};
+
+    for (final index in ambiguousIndexes) {
+      final candidate = _toggleVinAmbiguousChar(vin, index);
+      if (_isStrictVin(candidate) && _isValidVinChecksum(candidate)) {
+        validCandidates.add(candidate);
+      }
+    }
+
+    const maxPairChecks = 28;
+    var pairChecks = 0;
+    for (var i = 0; i < ambiguousIndexes.length; i++) {
+      for (var j = i + 1; j < ambiguousIndexes.length; j++) {
+        if (pairChecks >= maxPairChecks) break;
+        pairChecks += 1;
+        final first = _toggleVinAmbiguousChar(vin, ambiguousIndexes[i]);
+        final candidate = _toggleVinAmbiguousChar(first, ambiguousIndexes[j]);
+        if (_isStrictVin(candidate) && _isValidVinChecksum(candidate)) {
+          validCandidates.add(candidate);
+        }
+      }
+      if (pairChecks >= maxPairChecks) break;
+    }
+
+    if (validCandidates.length == 1) {
+      return validCandidates.first;
+    }
+    return vin;
+  }
+
+  String _sanitizePlate(String value) {
+    var cleaned = value.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+    cleaned = cleaned.split('').map((ch) => _plateLatToCyr[ch] ?? ch).join('');
+    cleaned = cleaned.replaceAll(RegExp('[^${_plateCyr}0-9]'), '');
+    return cleaned.length > 9 ? cleaned.substring(0, 9) : cleaned;
+  }
+
+  String _formatPlate(String sanitized) {
+    if (sanitized.length <= 1) return sanitized;
+    var result = sanitized[0];
+    final rest = sanitized.substring(1);
+    final digits = rest.substring(0, rest.length < 3 ? rest.length : 3);
+    if (digits.isNotEmpty) result += ' $digits';
+    final letters = rest.length > 3
+        ? rest.substring(3, rest.length < 5 ? rest.length : 5)
+        : '';
+    if (letters.isNotEmpty) result += ' $letters';
+    final region = rest.length > 5 ? rest.substring(5) : '';
+    if (region.isNotEmpty) result += ' $region';
+    return result;
+  }
+
+  String? _vinError() {
+    if (_vinUnreadable) return null;
+    final vin = _vinController.text.trim().toUpperCase();
+    if (vin.isEmpty) return null;
+    if (vin.length < 17) return 'Введено ${vin.length} из 17 символов';
+    if (RegExp(r'[IOQ]').hasMatch(vin)) {
+      return 'VIN не может содержать буквы I, O, Q';
+    }
+    if (!RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(vin)) {
+      return 'Некорректный формат VIN';
+    }
+    if (!RegExp(r'[A-Z]').hasMatch(vin) || !RegExp(r'\d').hasMatch(vin)) {
+      return 'VIN должен содержать буквы и цифры';
+    }
+    return null;
+  }
+
+  String? _plateError() {
+    final value = _plateController.text.trim();
+    if (value.isEmpty) return null;
+    final clean = _sanitizePlate(value);
+    if (clean.length < 8) return 'Введено ${clean.length} из 8-9 символов';
+    if (!RegExp(
+      '^[$_plateCyr]\\d{3}[$_plateCyr]{2}\\d{2,3}\$',
+    ).hasMatch(clean)) {
+      return 'Некорректный формат госномера';
+    }
+    return null;
+  }
+}

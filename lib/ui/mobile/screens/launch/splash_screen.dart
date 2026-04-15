@@ -42,9 +42,7 @@ class _SplashScreenState extends State<SplashScreen> {
   void _splashHandler() {
     Timer(const Duration(seconds: 4), () async {
       if (!mounted) return;
-      final hasSession = await StorageApi.hasSavedSession(
-        probeWithGetBrand: true,
-      );
+      final hasSession = await StorageApi.hasSavedSession();
       if (!mounted) return;
       final Widget target;
       if (hasSession) {

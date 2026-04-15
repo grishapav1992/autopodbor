@@ -2027,6 +2027,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
       final result = await StorageApi.createRequest(
         requestType: 'by_car',
         requestCars: requestCars,
+        dueAt: dueAt,
       );
       final override = <String, dynamic>{'requestCars': displayCars};
       if (result.id > 0) {
@@ -4303,6 +4304,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
       final result = await StorageApi.createRequest(
         requestType: 'turnkey',
         requestCars: requestCars,
+        dueAt: dueAt,
         note: note.isEmpty ? null : note,
         city: city.isEmpty ? null : city,
         budgetFrom: budgetFrom,

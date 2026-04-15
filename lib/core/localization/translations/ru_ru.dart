@@ -49,9 +49,34 @@ const Map<String, String> ruRu = {
   "checkNumberButton": "Проверить звонок",
   "callMeError": "Не удалось открыть звонок на этом устройстве.",
   "callVerifyTitle": "Проверка номера",
-  "callVerifySubtitle": "Мы позвоним на указанный номер. Ответьте на звонок для подтверждения.",
-  "callVerifySubtitleWithPhone": "Мы позвоним на номер {phone}. Ответьте на звонок для подтверждения.",
+  "callVerifySubtitle":
+      "Мы позвоним на указанный номер. Ответьте на звонок для подтверждения.",
+  "callVerifySubtitleWithPhone":
+      "Мы позвоним на номер {phone}. Ответьте на звонок для подтверждения.",
   "callVerifyHint": "Если звонок не пришел, нажмите Call me еще раз.",
+  "spark.state.loading": "Загрузка...",
+  "spark.state.loading.reports": "Загрузка отчётов...",
+  "spark.state.loading.staff": "Загрузка сотрудников...",
+  "spark.state.loading.profileBootstrap": "Подготовка профиля...",
+  "spark.state.error.title": "Ошибка загрузки",
+  "spark.state.error.reports":
+      "Не удалось загрузить отчёты. Проверьте локальные данные и повторите.",
+  "spark.state.error.staff":
+      "Не удалось загрузить список сотрудников. Проверьте локальные данные и повторите.",
+  "spark.action.retry": "Повторить",
+  "spark.empty.noDrafts.title": "Нет черновиков",
+  "spark.empty.noDrafts.subtitle":
+      "Начните новый отчёт, чтобы увидеть его здесь",
+  "spark.empty.noCompleted.title": "Нет завершённых отчётов",
+  "spark.empty.noCompleted.subtitle":
+      "Завершите осмотр, чтобы увидеть результат",
+  "spark.empty.noPendingInvites": "Нет активных приглашений",
+  "spark.empty.noStaff": "В штате пока нет сотрудников",
+  "spark.empty.noAssignedReports": "Назначенных отчётов пока нет",
+  "spark.status.pending": "Ожидает",
+  "spark.status.confirmed": "Подтверждён",
+  "spark.unit.km": "км",
+  "spark.report.meta": "{code} от {date}",
   "vehicleSummary": "Сводка по авто",
   "leadSource": "Источник лида",
   "type": "Тип",

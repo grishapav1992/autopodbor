@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_sizes.dart';
-import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_data.dart';
 import 'spark_joy_storage.dart';
+import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoySpecialistProfileScreen extends StatefulWidget {
@@ -378,26 +377,35 @@ class _SparkJoySpecialistProfileScreenState
     String? Function(String?)? validator,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: TextFormField(
-        controller: controller,
-        keyboardType: keyboardType,
-        inputFormatters: inputFormatters,
-        validator: validator,
-        onTapOutside: (_) => FocusScope.of(context).unfocus(),
-        onChanged: (_) => _setProfileDirty(),
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          border: const OutlineInputBorder(),
-          isDense: true,
-        ),
+      padding: const EdgeInsets.only(bottom: SparkSpace.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MyText(
+            text: label,
+            size: SparkTextSize.body,
+            color: kGreyColor,
+            paddingBottom: SparkSpace.sm,
+          ),
+          TextFormField(
+            controller: controller,
+            keyboardType: keyboardType,
+            inputFormatters: inputFormatters,
+            validator: validator,
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            onChanged: (_) => _setProfileDirty(),
+            decoration: sparkInputDecoration(hint ?? label),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildSpecializationChip(String specialization) {
-    final isCustom = _containsIgnoreCase(_customSpecializations, specialization);
+    final isCustom = _containsIgnoreCase(
+      _customSpecializations,
+      specialization,
+    );
     final selected = _containsIgnoreCase(
       _selectedSpecializations,
       specialization,
@@ -406,14 +414,16 @@ class _SparkJoySpecialistProfileScreenState
       selected: selected,
       label: Text(specialization),
       onSelected: (_) => _togglePresetSpecialization(specialization),
-      onDeleted: isCustom ? () => _removeCustomSpecialization(specialization) : null,
+      onDeleted: isCustom
+          ? () => _removeCustomSpecialization(specialization)
+          : null,
       selectedColor: kSecondaryColor.withValues(alpha: 0.14),
       backgroundColor: isCustom ? kWhiteColor : kInputBgColor,
       side: BorderSide(color: selected ? kSecondaryColor : kBorderColor),
       labelStyle: TextStyle(
         color: selected ? kSecondaryColor : kTertiaryColor,
         fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-        fontSize: 12,
+        fontSize: SparkTextSize.body,
       ),
       deleteIconColor: kSecondaryColor,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -436,48 +446,55 @@ class _SparkJoySpecialistProfileScreenState
 
   Widget _buildSpecializationEditor() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: SparkSpace.lg),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const MyText(
             text: 'Специализация',
-            size: 12,
+            size: SparkTextSize.body,
             color: kGreyColor,
-            paddingBottom: 8,
+            paddingBottom: SparkSpace.md,
           ),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: SparkSpace.md,
+            runSpacing: SparkSpace.md,
             children: _allSpecializationOptions()
                 .map(_buildSpecializationChip)
                 .toList(growable: false),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: SparkSpace.lg),
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _customSpecializationController,
-                  textInputAction: TextInputAction.done,
-                  onTapOutside: (_) => FocusScope.of(context).unfocus(),
-                  onSubmitted: (_) => _addCustomSpecialization(),
-                  decoration: const InputDecoration(
-                    labelText: 'Своя специализация',
-                    hintText: 'Напишите вручную',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MyText(
+                      text: 'Своя специализация',
+                      size: SparkTextSize.body,
+                      color: kGreyColor,
+                      paddingBottom: SparkSpace.sm,
+                    ),
+                    TextField(
+                      controller: _customSpecializationController,
+                      textInputAction: TextInputAction.done,
+                      onSubmitted: (_) => _addCustomSpecialization(),
+                      onTapOutside: (_) =>
+                          FocusManager.instance.primaryFocus?.unfocus(),
+                      decoration: sparkInputDecoration('Напишите вручную'),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: SparkSpace.md),
               SizedBox(
-                width: 100,
-                height: 44,
-                child: MyBorderButton(
-                  buttonText: 'Добавить',
-                  textSize: 12,
-                  onTap: _addCustomSpecialization,
+                width: 120,
+                height: SparkSize.actionHeight,
+                child: OutlinedButton.icon(
+                  onPressed: _addCustomSpecialization,
+                  icon: const Icon(Icons.add_rounded, size: SparkSize.iconSm),
+                  label: const Text('Добавить'),
                 ),
               ),
             ],
@@ -495,44 +512,36 @@ class _SparkJoySpecialistProfileScreenState
         : _nameController.text.trim();
     final hasVerifiedBusiness = (_verifiedInn ?? '').isNotEmpty;
 
-    return ListView(
-      padding: AppSizes.DEFAULT.copyWith(bottom: 110),
+    return SparkScreenList(
+      bottomInset: 56,
       children: [
-        const MyText(text: 'Мой профиль', size: 22, weight: FontWeight.w700),
-        const SizedBox(height: 12),
+        const SparkPageHeader(
+          title: 'Мой профиль',
+          subtitle: 'Данные специалиста и статус компании',
+        ),
         SparkCard(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: kSecondaryColor.withValues(alpha: 0.1),
-                ),
-                alignment: Alignment.center,
-                child: MyText(
-                  text: sjInitials(profileName),
-                  size: 20,
-                  weight: FontWeight.w700,
-                  color: kSecondaryColor,
-                ),
+              SparkInitialsAvatar(
+                name: profileName,
+                size: SparkSize.icon6xl,
+                textSize: SparkTextSize.modalTitle,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: SparkSpace.xl),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     MyText(
                       text: profileName,
-                      size: 16,
+                      size: SparkTextSize.title,
                       weight: FontWeight.w700,
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: SparkSpace.xs),
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: SparkSpace.sm,
+                      runSpacing: SparkSpace.sm,
                       children: [
                         SparkChip(
                           text:
@@ -560,7 +569,7 @@ class _SparkJoySpecialistProfileScreenState
             ],
           ),
         ),
-        const SparkSectionTitle('Информация', top: 14),
+        const SparkSectionTitle('Информация', top: SparkSpace.xxl),
         SparkCard(
           child: Form(
             key: _profileFormKey,
@@ -599,25 +608,21 @@ class _SparkJoySpecialistProfileScreenState
                   keyboardType: TextInputType.emailAddress,
                   validator: _emailValidator,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: SparkSpace.xs),
                 SizedBox(
-                  height: 40,
-                  child: MyButton(
-                    buttonText: _isSavingProfile
-                        ? 'Сохраняем...'
-                        : 'Сохранить профиль',
-                    onTap: _isSavingProfile ? () {} : _saveProfile,
-                    bgColor: _isSavingProfile ? kGreyColor : kSecondaryColor,
+                  height: SparkSize.actionHeightMd,
+                  child: FilledButton(
+                    onPressed: _isSavingProfile ? null : _saveProfile,
+                    child: Text(_isSavingProfile ? 'Обновляем...' : 'Готово'),
                   ),
                 ),
                 if (_profileDirty) ...[
-                  const SizedBox(height: 8),
+                  const SizedBox(height: SparkSpace.md),
                   SizedBox(
-                    height: 40,
-                    child: MyBorderButton(
-                      buttonText: 'Отменить изменения',
-                      textSize: 12,
-                      onTap: _resetProfileDraft,
+                    height: SparkSize.actionHeightMd,
+                    child: OutlinedButton(
+                      onPressed: _resetProfileDraft,
+                      child: const Text('Отменить изменения'),
                     ),
                   ),
                 ],
@@ -625,7 +630,7 @@ class _SparkJoySpecialistProfileScreenState
             ),
           ),
         ),
-        const SparkSectionTitle('Проверка компании', top: 14),
+        const SparkSectionTitle('Проверка компании', top: SparkSpace.xxl),
         SparkCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -633,15 +638,21 @@ class _SparkJoySpecialistProfileScreenState
               if (hasVerifiedBusiness) ...[
                 SparkInfoRow(label: 'Статус', value: _businessTypeLabel()),
                 SparkInfoRow(label: 'Подтвержденный ИНН', value: _verifiedInn!),
-                const SizedBox(height: 8),
+                const SizedBox(height: SparkSpace.md),
               ] else
                 const MyText(
                   text:
                       'Добавьте ИНН для тех. проверки статуса компании или ИП',
-                  size: 12,
+                  size: SparkTextSize.body,
                   color: kGreyColor,
-                  paddingBottom: 8,
+                  paddingBottom: SparkSpace.md,
                 ),
+              const MyText(
+                text: 'ИНН',
+                size: SparkTextSize.body,
+                color: kGreyColor,
+                paddingBottom: SparkSpace.sm,
+              ),
               TextField(
                 controller: _innController,
                 keyboardType: TextInputType.number,
@@ -650,48 +661,46 @@ class _SparkJoySpecialistProfileScreenState
                   FilteringTextInputFormatter.digitsOnly,
                   LengthLimitingTextInputFormatter(12),
                 ],
-                onTapOutside: (_) => FocusScope.of(context).unfocus(),
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
                 onChanged: (_) {
                   if (_innError != null) {
                     setState(() => _innError = null);
                   }
                 },
-                decoration: InputDecoration(
-                  labelText: 'ИНН',
-                  hintText: '10 или 12 цифр',
-                  border: const OutlineInputBorder(),
-                  isDense: true,
+                decoration: sparkInputDecoration(
+                  '10 или 12 цифр',
                   errorText: _innError,
                 ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: SparkSpace.lg),
               SizedBox(
-                height: 40,
-                child: MyButton(
-                  buttonText: _isVerifying
-                      ? 'Проверяем...'
-                      : hasVerifiedBusiness
-                      ? 'Проверить снова'
-                      : 'Проверить ИНН',
-                  onTap: _isVerifying ? () {} : _verifyInn,
-                  bgColor: _isVerifying ? kGreyColor : kSecondaryColor,
+                height: SparkSize.actionHeightMd,
+                child: FilledButton(
+                  onPressed: _isVerifying ? null : _verifyInn,
+                  child: Text(
+                    _isVerifying
+                        ? 'Проверяем...'
+                        : hasVerifiedBusiness
+                        ? 'Проверить снова'
+                        : 'Проверить ИНН',
+                  ),
                 ),
               ),
               if (hasVerifiedBusiness) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: SparkSpace.md),
                 SizedBox(
-                  height: 40,
-                  child: MyBorderButton(
-                    buttonText: 'Сбросить статус до специалиста',
-                    textSize: 12,
-                    onTap: _resetBusinessStatus,
+                  height: SparkSize.actionHeightMd,
+                  child: OutlinedButton(
+                    onPressed: _resetBusinessStatus,
+                    child: const Text('Сбросить статус до специалиста'),
                   ),
                 ),
               ],
             ],
           ),
         ),
-        const SparkSectionTitle('Статистика', top: 14),
+        const SparkSectionTitle('Статистика', top: SparkSpace.xxl),
         Row(
           children: [
             Expanded(
@@ -700,16 +709,20 @@ class _SparkJoySpecialistProfileScreenState
                   children: [
                     MyText(
                       text: sjRead(specialist, 'reportCount', fallback: '0'),
-                      size: 24,
+                      size: SparkSize.iconXl,
                       weight: FontWeight.w700,
                       color: kSecondaryColor,
                     ),
-                    const MyText(text: 'Отчётов', size: 11, color: kGreyColor),
+                    const MyText(
+                      text: 'Отчётов',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: SparkSpace.lg),
             Expanded(
               child: SparkCard(
                 child: Column(
@@ -720,13 +733,13 @@ class _SparkJoySpecialistProfileScreenState
                         'activeInspections',
                         fallback: '0',
                       ),
-                      size: 24,
+                      size: SparkSize.iconXl,
                       weight: FontWeight.w700,
                       color: kSecondaryColor,
                     ),
                     const MyText(
                       text: 'Активных осмотров',
-                      size: 11,
+                      size: SparkTextSize.caption,
                       color: kGreyColor,
                     ),
                   ],

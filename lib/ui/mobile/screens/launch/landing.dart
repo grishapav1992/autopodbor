@@ -54,9 +54,7 @@ class _LandingScreenState extends State<LandingScreen> {
   }
 
   Future<void> _checkSession() async {
-    final hasSession = await StorageApi.hasSavedSession(
-      probeWithGetBrand: true,
-    );
+    final hasSession = await StorageApi.hasSavedSession();
     if (!mounted) return;
     if (hasSession) {
       Get.offAllNamed(AppLinks.dealerHome);
