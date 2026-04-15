@@ -26,6 +26,8 @@ import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:video_player/video_player.dart';
 
+import 'spark_joy_report_models.dart';
+
 class SparkJoyCreateReportScreen extends StatefulWidget {
   const SparkJoyCreateReportScreen({
     super.key,
@@ -83,23 +85,23 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     'Золотистый',
   ];
   static const List<String> _ownersCounts = ['1', '2', '3', '4+'];
-  static const List<_CarCatalogBrand> _carCatalog = [
-    _CarCatalogBrand(
+  static const List<SjCarCatalogBrand> _carCatalog = [
+    SjCarCatalogBrand(
       name: 'Toyota',
       models: [
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'Camry',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'XV70',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2018-2021 · рест. 0',
                   frames: 'XV70 дорест',
                   photoUrl:
                       'https://images.unsplash.com/photo-1493238792000-8113da705763?w=1200&q=80&auto=format&fit=crop',
                 ),
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2021-н.в. · рест. 1',
                   frames: 'XV70 рест',
                   photoUrl:
@@ -109,13 +111,13 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
             ),
           ],
         ),
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'RAV4',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'XA50',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2019-н.в. · рест. 0',
                   frames: 'XA50',
                   photoUrl:
@@ -127,22 +129,22 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         ),
       ],
     ),
-    _CarCatalogBrand(
+    SjCarCatalogBrand(
       name: 'BMW',
       models: [
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'X5',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'G05',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2018-2023 · рест. 0',
                   frames: 'G05 дорест',
                   photoUrl:
                       'https://images.unsplash.com/photo-1552519507-da3b142c6e3d?w=1200&q=80&auto=format&fit=crop',
                 ),
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2023-н.в. · рест. 1',
                   frames: 'G05 LCI',
                   photoUrl:
@@ -154,16 +156,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         ),
       ],
     ),
-    _CarCatalogBrand(
+    SjCarCatalogBrand(
       name: 'Kia',
       models: [
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'Sportage',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'NQ5',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2021-н.в. · рест. 0',
                   frames: 'NQ5',
                   photoUrl:
@@ -175,16 +177,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         ),
       ],
     ),
-    _CarCatalogBrand(
+    SjCarCatalogBrand(
       name: 'Hyundai',
       models: [
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'Tucson',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'NX4',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2020-н.в. · рест. 0',
                   frames: 'NX4',
                   photoUrl:
@@ -196,22 +198,22 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         ),
       ],
     ),
-    _CarCatalogBrand(
+    SjCarCatalogBrand(
       name: 'Audi',
       models: [
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'A4',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'B9',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2015-2019 · рест. 0',
                   frames: 'B9 дорест',
                   photoUrl:
                       'https://images.unsplash.com/photo-1613214150388-5607da5f5f59?w=1200&q=80&auto=format&fit=crop',
                 ),
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2019-н.в. · рест. 1',
                   frames: 'B9 рест',
                   photoUrl:
@@ -223,22 +225,22 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         ),
       ],
     ),
-    _CarCatalogBrand(
+    SjCarCatalogBrand(
       name: 'Genesis',
       models: [
-        _CarCatalogModel(
+        SjCarCatalogModel(
           name: 'G70',
           generations: [
-            _CarCatalogGeneration(
+            SjCarCatalogGeneration(
               name: 'IK',
               restylings: [
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2017-2020 · рест. 0',
                   frames: 'IK дорест',
                   photoUrl:
                       'https://images.unsplash.com/photo-1619767886558-efdc259cde1a?w=1200&q=80&auto=format&fit=crop',
                 ),
-                _CarCatalogRestyling(
+                SjCarCatalogRestyling(
                   label: '2020-н.в. · рест. 1',
                   frames: 'IK рест',
                   photoUrl:
@@ -374,159 +376,159 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     'gear_selector_area',
     'dashboard_buttons_left',
   };
-  static const Map<String, List<_MediaOption>> _mediaElementOptionsByGroup = {
+  static const Map<String, List<SjMediaOption>> _mediaElementOptionsByGroup = {
     'body': [
-      _MediaOption(id: 'hood', label: 'Капот'),
-      _MediaOption(id: 'front_bumper', label: 'Передний бампер'),
-      _MediaOption(id: 'roof', label: 'Крыша'),
-      _MediaOption(id: 'trunk', label: 'Багажник'),
-      _MediaOption(id: 'rear_bumper', label: 'Задний бампер'),
-      _MediaOption(id: 'left_front_fender', label: 'Левое переднее крыло'),
-      _MediaOption(id: 'left_front_door', label: 'Левая передняя дверь'),
-      _MediaOption(id: 'left_rear_door', label: 'Левая задняя дверь'),
-      _MediaOption(id: 'left_rear_fender', label: 'Левое заднее крыло'),
-      _MediaOption(id: 'right_front_fender', label: 'Правое переднее крыло'),
-      _MediaOption(id: 'right_front_door', label: 'Правая передняя дверь'),
-      _MediaOption(id: 'right_rear_door', label: 'Правая задняя дверь'),
-      _MediaOption(id: 'right_rear_fender', label: 'Правое заднее крыло'),
-      _MediaOption(
+      SjMediaOption(id: 'hood', label: 'Капот'),
+      SjMediaOption(id: 'front_bumper', label: 'Передний бампер'),
+      SjMediaOption(id: 'roof', label: 'Крыша'),
+      SjMediaOption(id: 'trunk', label: 'Багажник'),
+      SjMediaOption(id: 'rear_bumper', label: 'Задний бампер'),
+      SjMediaOption(id: 'left_front_fender', label: 'Левое переднее крыло'),
+      SjMediaOption(id: 'left_front_door', label: 'Левая передняя дверь'),
+      SjMediaOption(id: 'left_rear_door', label: 'Левая задняя дверь'),
+      SjMediaOption(id: 'left_rear_fender', label: 'Левое заднее крыло'),
+      SjMediaOption(id: 'right_front_fender', label: 'Правое переднее крыло'),
+      SjMediaOption(id: 'right_front_door', label: 'Правая передняя дверь'),
+      SjMediaOption(id: 'right_rear_door', label: 'Правая задняя дверь'),
+      SjMediaOption(id: 'right_rear_fender', label: 'Правое заднее крыло'),
+      SjMediaOption(
         id: 'uh_body_elements',
         label: 'Кузовные элементы под капотом',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'inner_trunk_lid',
         label: 'Внутренняя сторона крышки багажника',
       ),
-      _MediaOption(id: 'body_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'body_general', label: 'Общее состояние'),
     ],
     'structural': [
-      _MediaOption(id: 'a_pillar_left', label: 'Передняя стойка левая (A)'),
-      _MediaOption(id: 'a_pillar_right', label: 'Передняя стойка правая (A)'),
-      _MediaOption(id: 'b_pillar_left', label: 'Центральная стойка левая (B)'),
-      _MediaOption(
+      SjMediaOption(id: 'a_pillar_left', label: 'Передняя стойка левая (A)'),
+      SjMediaOption(id: 'a_pillar_right', label: 'Передняя стойка правая (A)'),
+      SjMediaOption(id: 'b_pillar_left', label: 'Центральная стойка левая (B)'),
+      SjMediaOption(
         id: 'b_pillar_right',
         label: 'Центральная стойка правая (B)',
       ),
-      _MediaOption(id: 'c_pillar_left', label: 'Задняя стойка левая (C)'),
-      _MediaOption(id: 'c_pillar_right', label: 'Задняя стойка правая (C)'),
-      _MediaOption(id: 'rail_left', label: 'Лонжерон левый'),
-      _MediaOption(id: 'rail_right', label: 'Лонжерон правый'),
-      _MediaOption(id: 'sill_left', label: 'Порог левый'),
-      _MediaOption(id: 'sill_right', label: 'Порог правый'),
-      _MediaOption(
+      SjMediaOption(id: 'c_pillar_left', label: 'Задняя стойка левая (C)'),
+      SjMediaOption(id: 'c_pillar_right', label: 'Задняя стойка правая (C)'),
+      SjMediaOption(id: 'rail_left', label: 'Лонжерон левый'),
+      SjMediaOption(id: 'rail_right', label: 'Лонжерон правый'),
+      SjMediaOption(id: 'sill_left', label: 'Порог левый'),
+      SjMediaOption(id: 'sill_right', label: 'Порог правый'),
+      SjMediaOption(
         id: 'fender_liner_left_front',
         label: 'Брызговик левый передний',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'fender_liner_right_front',
         label: 'Брызговик правый передний',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'fender_liner_left_rear',
         label: 'Брызговик левый задний',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'fender_liner_right_rear',
         label: 'Брызговик правый задний',
       ),
-      _MediaOption(id: 'structural_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'structural_general', label: 'Общее состояние'),
     ],
     'glass': [
-      _MediaOption(id: 'windshield', label: 'Лобовое стекло'),
-      _MediaOption(id: 'rear_glass', label: 'Заднее стекло'),
-      _MediaOption(id: 'glass_front_left', label: 'Переднее левое стекло'),
-      _MediaOption(id: 'glass_front_right', label: 'Переднее правое стекло'),
-      _MediaOption(id: 'glass_rear_left', label: 'Заднее левое стекло'),
-      _MediaOption(id: 'glass_rear_right', label: 'Заднее правое стекло'),
-      _MediaOption(id: 'mirror_left', label: 'Зеркало левое'),
-      _MediaOption(id: 'mirror_right', label: 'Зеркало правое'),
-      _MediaOption(id: 'glass_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'windshield', label: 'Лобовое стекло'),
+      SjMediaOption(id: 'rear_glass', label: 'Заднее стекло'),
+      SjMediaOption(id: 'glass_front_left', label: 'Переднее левое стекло'),
+      SjMediaOption(id: 'glass_front_right', label: 'Переднее правое стекло'),
+      SjMediaOption(id: 'glass_rear_left', label: 'Заднее левое стекло'),
+      SjMediaOption(id: 'glass_rear_right', label: 'Заднее правое стекло'),
+      SjMediaOption(id: 'mirror_left', label: 'Зеркало левое'),
+      SjMediaOption(id: 'mirror_right', label: 'Зеркало правое'),
+      SjMediaOption(id: 'glass_general', label: 'Общее состояние'),
     ],
     'lighting': [
-      _MediaOption(id: 'headlights_front', label: 'Передние фары'),
-      _MediaOption(id: 'taillights_rear', label: 'Задние фонари'),
-      _MediaOption(id: 'drl', label: 'ДХО'),
-      _MediaOption(id: 'fog_lights', label: 'Противотуманки'),
-      _MediaOption(id: 'turn_signals', label: 'Поворотники'),
-      _MediaOption(id: 'brake_lights', label: 'Стоп-сигналы'),
-      _MediaOption(id: 'plate_light', label: 'Подсветка номера'),
-      _MediaOption(id: 'lighting_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'headlights_front', label: 'Передние фары'),
+      SjMediaOption(id: 'taillights_rear', label: 'Задние фонари'),
+      SjMediaOption(id: 'drl', label: 'ДХО'),
+      SjMediaOption(id: 'fog_lights', label: 'Противотуманки'),
+      SjMediaOption(id: 'turn_signals', label: 'Поворотники'),
+      SjMediaOption(id: 'brake_lights', label: 'Стоп-сигналы'),
+      SjMediaOption(id: 'plate_light', label: 'Подсветка номера'),
+      SjMediaOption(id: 'lighting_general', label: 'Общее состояние'),
     ],
     'underhood': [
-      _MediaOption(id: 'uh_engine', label: 'Двигатель'),
-      _MediaOption(id: 'uh_accessories', label: 'Навесное оборудование'),
-      _MediaOption(id: 'uh_cooling', label: 'Система охлаждения'),
-      _MediaOption(id: 'uh_fuel', label: 'Топливная система'),
-      _MediaOption(id: 'uh_intake_turbo', label: 'Впуск / турбина'),
-      _MediaOption(id: 'uh_exhaust_ecology', label: 'Выпуск / экология'),
-      _MediaOption(id: 'uh_electrical', label: 'Электрика'),
-      _MediaOption(id: 'uh_brakes', label: 'Тормозная система'),
-      _MediaOption(id: 'uh_steering', label: 'Рулевое управление'),
-      _MediaOption(id: 'uh_fluids', label: 'Жидкости и бачки'),
-      _MediaOption(id: 'uh_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'uh_engine', label: 'Двигатель'),
+      SjMediaOption(id: 'uh_accessories', label: 'Навесное оборудование'),
+      SjMediaOption(id: 'uh_cooling', label: 'Система охлаждения'),
+      SjMediaOption(id: 'uh_fuel', label: 'Топливная система'),
+      SjMediaOption(id: 'uh_intake_turbo', label: 'Впуск / турбина'),
+      SjMediaOption(id: 'uh_exhaust_ecology', label: 'Выпуск / экология'),
+      SjMediaOption(id: 'uh_electrical', label: 'Электрика'),
+      SjMediaOption(id: 'uh_brakes', label: 'Тормозная система'),
+      SjMediaOption(id: 'uh_steering', label: 'Рулевое управление'),
+      SjMediaOption(id: 'uh_fluids', label: 'Жидкости и бачки'),
+      SjMediaOption(id: 'uh_general', label: 'Общее состояние'),
     ],
     'wheels': [
-      _MediaOption(id: 'front_left_wheel', label: 'Переднее левое колесо'),
-      _MediaOption(id: 'front_right_wheel', label: 'Переднее правое колесо'),
-      _MediaOption(id: 'rear_left_wheel', label: 'Заднее левое колесо'),
-      _MediaOption(id: 'rear_right_wheel', label: 'Заднее правое колесо'),
-      _MediaOption(id: 'spare_wheel', label: 'Запасное колесо / докатка'),
-      _MediaOption(
+      SjMediaOption(id: 'front_left_wheel', label: 'Переднее левое колесо'),
+      SjMediaOption(id: 'front_right_wheel', label: 'Переднее правое колесо'),
+      SjMediaOption(id: 'rear_left_wheel', label: 'Заднее левое колесо'),
+      SjMediaOption(id: 'rear_right_wheel', label: 'Заднее правое колесо'),
+      SjMediaOption(id: 'spare_wheel', label: 'Запасное колесо / докатка'),
+      SjMediaOption(
         id: 'front_left_brake',
         label: 'Передний левый тормозной механизм',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'front_right_brake',
         label: 'Передний правый тормозной механизм',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'rear_left_brake',
         label: 'Задний левый тормозной механизм',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'rear_right_brake',
         label: 'Задний правый тормозной механизм',
       ),
-      _MediaOption(id: 'wheels_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'wheels_general', label: 'Общее состояние'),
     ],
     'interior': [
-      _MediaOption(id: 'front_seats', label: 'Передние сиденья'),
-      _MediaOption(id: 'rear_seats', label: 'Задние сиденья'),
-      _MediaOption(id: 'door_cards', label: 'Дверные карты'),
-      _MediaOption(id: 'headliner', label: 'Потолок'),
-      _MediaOption(id: 'trunk_interior', label: 'Багажное отделение'),
-      _MediaOption(id: 'steering_wheel', label: 'Рулевое колесо'),
-      _MediaOption(id: 'dashboard_top', label: 'Торпедо'),
-      _MediaOption(id: 'instrument_cluster', label: 'Комбинация приборов'),
-      _MediaOption(id: 'center_display', label: 'Центральный экран'),
-      _MediaOption(id: 'climate_panel', label: 'Блок климата'),
-      _MediaOption(id: 'center_console', label: 'Центральная консоль'),
-      _MediaOption(id: 'gear_selector_area', label: 'Зона селектора КПП'),
-      _MediaOption(id: 'dashboard_buttons_left', label: 'Кнопки слева от руля'),
-      _MediaOption(id: 'interior_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'front_seats', label: 'Передние сиденья'),
+      SjMediaOption(id: 'rear_seats', label: 'Задние сиденья'),
+      SjMediaOption(id: 'door_cards', label: 'Дверные карты'),
+      SjMediaOption(id: 'headliner', label: 'Потолок'),
+      SjMediaOption(id: 'trunk_interior', label: 'Багажное отделение'),
+      SjMediaOption(id: 'steering_wheel', label: 'Рулевое колесо'),
+      SjMediaOption(id: 'dashboard_top', label: 'Торпедо'),
+      SjMediaOption(id: 'instrument_cluster', label: 'Комбинация приборов'),
+      SjMediaOption(id: 'center_display', label: 'Центральный экран'),
+      SjMediaOption(id: 'climate_panel', label: 'Блок климата'),
+      SjMediaOption(id: 'center_console', label: 'Центральная консоль'),
+      SjMediaOption(id: 'gear_selector_area', label: 'Зона селектора КПП'),
+      SjMediaOption(id: 'dashboard_buttons_left', label: 'Кнопки слева от руля'),
+      SjMediaOption(id: 'interior_general', label: 'Общее состояние'),
     ],
     'diagnostics': [
-      _MediaOption(id: 'diag_engine', label: 'Двигатель'),
-      _MediaOption(id: 'diag_transmission', label: 'Трансмиссия / АКПП / КПП'),
-      _MediaOption(id: 'diag_abs_esp', label: 'ABS / ESP / тормозные системы'),
-      _MediaOption(id: 'diag_srs_airbag', label: 'SRS / Airbag / подушки'),
-      _MediaOption(id: 'diag_electric', label: 'Электрика / бортовая сеть'),
-      _MediaOption(
+      SjMediaOption(id: 'diag_engine', label: 'Двигатель'),
+      SjMediaOption(id: 'diag_transmission', label: 'Трансмиссия / АКПП / КПП'),
+      SjMediaOption(id: 'diag_abs_esp', label: 'ABS / ESP / тормозные системы'),
+      SjMediaOption(id: 'diag_srs_airbag', label: 'SRS / Airbag / подушки'),
+      SjMediaOption(id: 'diag_electric', label: 'Электрика / бортовая сеть'),
+      SjMediaOption(
         id: 'diag_ecology',
         label: 'Экология / катализатор / EGR / лямбда',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'diag_body_comfort',
         label: 'Кузовная электроника / комфорт',
       ),
-      _MediaOption(
+      SjMediaOption(
         id: 'diag_steering_suspension',
         label: 'Рулевое управление / подвеска',
       ),
-      _MediaOption(id: 'diag_awd', label: 'Полный привод / AWD / 4WD'),
-      _MediaOption(id: 'diag_climate', label: 'Климат / кондиционер'),
-      _MediaOption(id: 'diag_immobilizer', label: 'Иммобилайзер / запуск'),
-      _MediaOption(id: 'diag_general', label: 'Общее состояние'),
+      SjMediaOption(id: 'diag_awd', label: 'Полный привод / AWD / 4WD'),
+      SjMediaOption(id: 'diag_climate', label: 'Климат / кондиционер'),
+      SjMediaOption(id: 'diag_immobilizer', label: 'Иммобилайзер / запуск'),
+      SjMediaOption(id: 'diag_general', label: 'Общее состояние'),
     ],
   };
   static const Map<String, List<String>> _mediaTagOptionsByGroup = {
@@ -843,96 +845,96 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     'diag_immobilizer': {'Ошибка системы', 'Неисправность'},
   };
 
-  static const List<_StepConfig> _steps = [
-    _StepConfig(
+  static const List<SjStepConfig> _steps = [
+    SjStepConfig(
       id: 'vehicle',
       title: 'Автомобиль',
       description:
           'VIN, госномер, марка/модель, пробег, владельцы и город осмотра',
     ),
-    _StepConfig(
+    SjStepConfig(
       id: 'params',
       title: 'Параметры',
       description: 'Двигатель, КПП, привод, цвет, комплектация',
     ),
-    _StepConfig(
+    SjStepConfig(
       id: 'docs_check',
       title: 'Сверка документов',
       description: 'Проверка совпадения владельца, VIN и модели двигателя',
     ),
-    _StepConfig(
+    SjStepConfig(
       id: 'legal',
       title: 'Юр. проверка',
       description: 'Юридический отчёт и загрузка файлов специалиста',
     ),
-    _StepConfig(
+    SjStepConfig(
       id: 'media',
       title: 'Осмотр',
       description: 'Заполните группы осмотра, заметки и ссылки на фото/видео',
     ),
-    _StepConfig(
+    SjStepConfig(
       id: 'test_drive',
       title: 'Тест-драйв',
       description: 'Проверка автомобиля на ходу',
     ),
-    _StepConfig(
+    SjStepConfig(
       id: 'summary',
       title: 'Итог',
       description: 'Итоговый вердикт, чеклист и заключение специалиста',
     ),
   ];
 
-  static const List<_MediaGroupConfig> _mediaGroupsConfig = [
-    _MediaGroupConfig(
+  static const List<SjMediaGroupConfig> _mediaGroupsConfig = [
+    SjMediaGroupConfig(
       key: 'body',
       title: 'Кузов',
       description: 'ЛКП, вмятины, царапины, дефекты элементов',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'structural',
       title: 'Силовые элементы кузова',
       description: 'Лонжероны, стойки, пороги, геометрия',
       required: false,
       severeIfIssue: true,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'glass',
       title: 'Остекление',
       description: 'Лобовое, боковые, заднее стекло',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'lighting',
       title: 'Светотехника',
       description: 'Фары, фонари, ПТФ, корректоры',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'underhood',
       title: 'Подкапотное пространство',
       description: 'Течи, крепеж, ремни, агрегаты',
       required: false,
       severeIfIssue: true,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'interior',
       title: 'Салон',
       description: 'Износ, электроника, функции и опции',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'wheels',
       title: 'Колёса и тормозные механизмы',
       description: 'Резина, диски, тормоза, подвеска',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    SjMediaGroupConfig(
       key: 'diagnostics',
       title: 'Компьютерная диагностика',
       description: 'Ошибки блоков, коды, комментарии',
@@ -977,7 +979,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final String _createdAt;
   late final String _assignmentId;
 
-  late Map<String, _MediaGroupState> _mediaState;
+  late Map<String, SjMediaGroupState> _mediaState;
   Map<String, List<String>> _mediaCustomTagsByScope = {};
   Map<String, List<String>> _mediaCustomSeriousTagsByScope = {};
   Map<String, List<String>> _mediaDisabledDefaultTagsByScope = {};
@@ -1025,9 +1027,9 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _legalTimedOut = false;
   bool _legalPurchased = false;
   int _legalLoadToken = 0;
-  List<_UploadedItem> _legalFiles = const [];
-  List<_UploadedItem> _docsCommentAudioFiles = const [];
-  List<_UploadedItem> _legalCommentAudioFiles = const [];
+  List<SjUploadedItem> _legalFiles = const [];
+  List<SjUploadedItem> _docsCommentAudioFiles = const [];
+  List<SjUploadedItem> _legalCommentAudioFiles = const [];
   final AudioPlayer _sectionCommentAudioPlayer = AudioPlayer();
   StreamSubscription<void>? _sectionCommentAudioCompleteSub;
   final AudioRecorder _sectionCommentRecorder = AudioRecorder();
@@ -1066,9 +1068,9 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   final Map<String, String?> _tdManagingTagSeverityByScope = {};
   final Map<String, TextEditingController> _tdCustomTagControllersByScope = {};
   final Map<String, FocusNode> _tdCustomTagFocusNodesByScope = {};
-  List<_UploadedItem> _tdCommentAudioFiles = const [];
+  List<SjUploadedItem> _tdCommentAudioFiles = const [];
 
-  List<_UploadedItem> _expertAudioFiles = const [];
+  List<SjUploadedItem> _expertAudioFiles = const [];
   String? _accountBusinessType;
   String? _accountVerifiedInn;
   String _staffInviteLink = '';
@@ -1536,16 +1538,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _markDraftDirty();
   }
 
-  Map<String, _MediaGroupState> _initMediaState(Map<String, dynamic> draft) {
-    final byKey = <String, _MediaGroupState>{};
+  Map<String, SjMediaGroupState> _initMediaState(Map<String, dynamic> draft) {
+    final byKey = <String, SjMediaGroupState>{};
     final raw = draft['mediaGroupsState'];
 
     for (final config in _mediaGroupsConfig) {
       String note = '';
       String rawUrls = '';
       bool hasIssue = false;
-      var files = const <_UploadedItem>[];
-      _MediaPartInspection partInspection = const _MediaPartInspection();
+      var files = const <SjUploadedItem>[];
+      SjMediaPartInspection partInspection = const SjMediaPartInspection();
 
       if (raw is Map && raw[config.key] is Map) {
         final group = Map<String, dynamic>.from(raw[config.key] as Map);
@@ -1566,7 +1568,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         );
       }
 
-      byKey[config.key] = _MediaGroupState(
+      byKey[config.key] = SjMediaGroupState(
         config: config,
         hasIssue: hasIssue,
         note: note,
@@ -1621,7 +1623,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       return next;
     }
 
-    final nextLegalFiles = <_UploadedItem>[];
+    final nextLegalFiles = <SjUploadedItem>[];
     for (final file in _legalFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -1643,7 +1645,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       );
     }
 
-    final nextExpertAudioFiles = <_UploadedItem>[];
+    final nextExpertAudioFiles = <SjUploadedItem>[];
     for (final file in _expertAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -1653,7 +1655,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       nextExpertAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextDocsCommentAudioFiles = <_UploadedItem>[];
+    final nextDocsCommentAudioFiles = <SjUploadedItem>[];
     for (final file in _docsCommentAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -1663,7 +1665,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       nextDocsCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextLegalCommentAudioFiles = <_UploadedItem>[];
+    final nextLegalCommentAudioFiles = <SjUploadedItem>[];
     for (final file in _legalCommentAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -1673,7 +1675,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       nextLegalCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextTdCommentAudioFiles = <_UploadedItem>[];
+    final nextTdCommentAudioFiles = <SjUploadedItem>[];
     for (final file in _tdCommentAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -1683,12 +1685,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       nextTdCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextMediaState = <String, _MediaGroupState>{};
+    final nextMediaState = <String, SjMediaGroupState>{};
     for (final entry in _mediaState.entries) {
       final groupKey = entry.key;
       final state = entry.value;
       final sourceRemap = <String, String>{};
-      final nextFiles = <_UploadedItem>[];
+      final nextFiles = <SjUploadedItem>[];
 
       for (final file in state.files) {
         final nextSource = await compactSource(
@@ -2073,9 +2075,9 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return result;
   }
 
-  List<_UploadedItem> _readUploadedList(dynamic value) {
+  List<SjUploadedItem> _readUploadedList(dynamic value) {
     if (value is! List) return const [];
-    final items = <_UploadedItem>[];
+    final items = <SjUploadedItem>[];
     for (var index = 0; index < value.length; index++) {
       final entry = value[index];
       if (entry is! Map) continue;
@@ -2087,7 +2089,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           ? _read(map, 'id').trim()
           : 'legacy_${index}_${name.hashCode}_${dataUrl.hashCode}';
       items.add(
-        _UploadedItem(
+        SjUploadedItem(
           id: id,
           name: name,
           mimeType: _read(
@@ -2103,8 +2105,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return items;
   }
 
-  _MediaInspection _readMediaInspection(dynamic value) {
-    if (value is! Map) return const _MediaInspection();
+  SjMediaInspection _readMediaInspection(dynamic value) {
+    if (value is! Map) return const SjMediaInspection();
     final map = Map<String, dynamic>.from(value);
     double? paintFrom = _readNullableDouble(map, 'paintFrom');
     double? paintTo = _readNullableDouble(map, 'paintTo');
@@ -2114,7 +2116,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       paintFrom ??= _readNullableDouble(paintMap, 'from');
       paintTo ??= _readNullableDouble(paintMap, 'to');
     }
-    return _MediaInspection(
+    return SjMediaInspection(
       noDamage: _readBool(map, 'noDamage'),
       tags: _readStringList(map['tags']),
       note: _read(map, 'note'),
@@ -2126,8 +2128,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
-  _MediaPartInspection _readMediaPartInspection(dynamic value) {
-    if (value is! Map) return const _MediaPartInspection();
+  SjMediaPartInspection _readMediaPartInspection(dynamic value) {
+    if (value is! Map) return const SjMediaPartInspection();
     final map = Map<String, dynamic>.from(value);
     double? paintFrom = _readNullableDouble(map, 'paintFrom');
     double? paintTo = _readNullableDouble(map, 'paintTo');
@@ -2148,7 +2150,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         tagPhotos[key] = values;
       }
     }
-    return _MediaPartInspection(
+    return SjMediaPartInspection(
       noDamage: _readBool(map, 'noDamage'),
       tags: _readStringList(map['tags']),
       note: _read(map, 'note'),
@@ -2161,7 +2163,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
-  bool _mediaPartInspectionIsEmpty(_MediaPartInspection inspection) {
+  bool _mediaPartInspectionIsEmpty(SjMediaPartInspection inspection) {
     return !inspection.noDamage &&
         inspection.tags.isEmpty &&
         inspection.note.trim().isEmpty &&
@@ -2171,8 +2173,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         !(inspection.paintFrom != null && inspection.paintTo != null);
   }
 
-  _MediaPartInspection _deriveGroupPartInspection({
-    required List<_UploadedItem> files,
+  SjMediaPartInspection _deriveGroupPartInspection({
+    required List<SjUploadedItem> files,
     String fallbackNote = '',
   }) {
     final normalizedTags = <String, String>{};
@@ -2232,7 +2234,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     final tags = normalizedTags.values.toList();
     final noDamage = tags.isEmpty && anyNoDamage;
 
-    return _MediaPartInspection(
+    return SjMediaPartInspection(
       noDamage: noDamage,
       tags: tags,
       note: note,
@@ -2245,12 +2247,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
-  _MediaPartInspection _syncPartInspectionWithFiles({
-    required _MediaPartInspection partInspection,
-    required List<_UploadedItem> files,
+  SjMediaPartInspection _syncPartInspectionWithFiles({
+    required SjMediaPartInspection partInspection,
+    required List<SjUploadedItem> files,
     String fallbackNote = '',
   }) {
-    if (files.isEmpty) return const _MediaPartInspection();
+    if (files.isEmpty) return const SjMediaPartInspection();
     if (_mediaPartInspectionIsEmpty(partInspection)) {
       return _deriveGroupPartInspection(
         files: files,
@@ -2287,7 +2289,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
 
     if (partInspection.noDamage) {
-      return _MediaPartInspection(
+      return SjMediaPartInspection(
         noDamage: true,
         tags: const [],
         note: partInspection.note.trim().isEmpty
@@ -2312,7 +2314,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       }
     }
 
-    return _MediaPartInspection(
+    return SjMediaPartInspection(
       noDamage: false,
       tags: tags,
       note: partInspection.note.trim().isEmpty
@@ -2329,12 +2331,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
-  List<_UploadedItem> _applyPartInspectionToFiles({
-    required List<_UploadedItem> files,
-    required _MediaPartInspection partInspection,
+  List<SjUploadedItem> _applyPartInspectionToFiles({
+    required List<SjUploadedItem> files,
+    required SjMediaPartInspection partInspection,
     Set<String>? applyToFileUrls,
   }) {
-    if (files.isEmpty) return const <_UploadedItem>[];
+    if (files.isEmpty) return const <SjUploadedItem>[];
     final normalizedTargetUrls = applyToFileUrls
         ?.map((url) => url.trim())
         .where((url) => url.isNotEmpty)
@@ -2386,7 +2388,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       final nextNoDamage = tagsForFile.isEmpty
           ? (applyForFile ? partInspection.noDamage : previous.noDamage)
           : false;
-      final inspection = _MediaInspection(
+      final inspection = SjMediaInspection(
         noDamage: nextNoDamage,
         tags: tagsForFile,
         note: applyForFile ? normalizedNote : previous.note,
@@ -2404,7 +2406,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }).toList();
   }
 
-  List<Map<String, dynamic>> _uploadedToJson(List<_UploadedItem> items) {
+  List<Map<String, dynamic>> _uploadedToJson(List<SjUploadedItem> items) {
     return items.map((e) {
       return {
         'id': e.id,
@@ -2479,7 +2481,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Widget _uploadedImageWidget(
-    _UploadedItem item, {
+    SjUploadedItem item, {
     BoxFit fit = BoxFit.cover,
     Color errorColor = kGreyColor,
     double errorSize = 28,
@@ -2553,7 +2555,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Widget _uploadedMediaThumbWidget(
-    _UploadedItem item, {
+    SjUploadedItem item, {
     BoxFit fit = BoxFit.cover,
     int? cacheWidth,
     int? cacheHeight,
@@ -2609,7 +2611,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return output;
   }
 
-  Future<List<_UploadedItem>> _pickFiles({
+  Future<List<SjUploadedItem>> _pickFiles({
     required FileType type,
     List<String>? allowedExtensions,
     bool allowMultiple = true,
@@ -2623,7 +2625,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
     if (result == null || result.files.isEmpty) return const [];
 
-    final items = <_UploadedItem>[];
+    final items = <SjUploadedItem>[];
     var skippedBecauseNotPersisted = false;
     for (final file in result.files) {
       final fileName = file.name.trim().isEmpty ? 'picked_file' : file.name;
@@ -2660,7 +2662,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       }
 
       items.add(
-        _UploadedItem(
+        SjUploadedItem(
           id: _nextUploadedItemId(prefix: 'picked'),
           name: fileName,
           mimeType: mimeType,
@@ -2674,11 +2676,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return items;
   }
 
-  Future<List<_UploadedItem>> _uploadedItemsFromXFiles(
+  Future<List<SjUploadedItem>> _uploadedItemsFromXFiles(
     List<XFile> files, {
     String prefix = 'picked',
   }) async {
-    final items = <_UploadedItem>[];
+    final items = <SjUploadedItem>[];
     var skippedBecauseNotPersisted = false;
     for (final file in files) {
       final fileName = file.name.trim().isEmpty ? 'media_file' : file.name;
@@ -2709,7 +2711,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         continue;
       }
       items.add(
-        _UploadedItem(
+        SjUploadedItem(
           id: _nextUploadedItemId(prefix: prefix),
           name: fileName,
           mimeType: mimeType,
@@ -2723,7 +2725,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return items;
   }
 
-  Future<List<_UploadedItem>> _pickMediaFromDeviceGallery() async {
+  Future<List<SjUploadedItem>> _pickMediaFromDeviceGallery() async {
     final picker = ImagePicker();
     try {
       final picked = await picker.pickMultipleMedia();
@@ -2897,8 +2899,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
   Future<void> _stopSectionCommentRecording({
     required String key,
-    required List<_UploadedItem> files,
-    required ValueSetter<List<_UploadedItem>> setFiles,
+    required List<SjUploadedItem> files,
+    required ValueSetter<List<SjUploadedItem>> setFiles,
     bool keepResult = true,
   }) async {
     if (!_isCommentRecording(key)) return;
@@ -2931,7 +2933,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       if ((stored ?? '').trim().isNotEmpty) {
         nextFiles = [
           ...files,
-          _UploadedItem(
+          SjUploadedItem(
             id: _nextUploadedItemId(prefix: '${key}_comment_audio'),
             name: 'Голосовое сообщение ${files.length + 1}',
             mimeType: 'audio/wav',
@@ -3010,7 +3012,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Future<void> _toggleSharedCommentAudioPlayback({
-    required List<_UploadedItem> files,
+    required List<SjUploadedItem> files,
     required int index,
     required bool currentlyPlaying,
     required VoidCallback activateIndex,
@@ -3513,8 +3515,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         .toList();
   }
 
-  List<_MediaOption> _mediaElementOptions(String groupKey) {
-    return _mediaElementOptionsByGroup[groupKey] ?? const <_MediaOption>[];
+  List<SjMediaOption> _mediaElementOptions(String groupKey) {
+    return _mediaElementOptionsByGroup[groupKey] ?? const <SjMediaOption>[];
   }
 
   String _mediaTagSourceGroup(String groupKey, {String? elementType}) {
@@ -3540,7 +3542,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return sourceGroup;
   }
 
-  List<_MediaTagOption> _mediaTagOptions(
+  List<SjMediaTagOption> _mediaTagOptions(
     String groupKey, {
     String? elementType,
     Map<String, List<String>>? customTagsByScope,
@@ -3549,8 +3551,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     Map<String, List<String>>? tagOrderByScope,
     bool includeDisabledDefaults = false,
   }) {
-    List<_MediaTagOption> applyOrderingAndVisibility(
-      List<_MediaTagOption> source, {
+    List<SjMediaTagOption> applyOrderingAndVisibility(
+      List<SjMediaTagOption> source, {
       required String scopeKey,
       required Set<String> disabledDefaults,
     }) {
@@ -3561,11 +3563,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
       var result = source;
       if (order.isNotEmpty) {
-        final indexed = <String, _MediaTagOption>{};
+        final indexed = <String, SjMediaTagOption>{};
         for (final option in source) {
           indexed[option.label.toLowerCase()] = option;
         }
-        final sorted = <_MediaTagOption>[];
+        final sorted = <SjMediaTagOption>[];
         for (final key in order) {
           final option = indexed.remove(key);
           if (option != null) sorted.add(option);
@@ -3615,7 +3617,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       final dedup = options.toSet();
       var result = options
           .map(
-            (label) => _MediaTagOption(
+            (label) => SjMediaTagOption(
               label: label,
               severity: serious.contains(label) ? 'serious' : 'minor',
             ),
@@ -3625,7 +3627,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         if (dedup.contains(label)) continue;
         dedup.add(label);
         result.add(
-          _MediaTagOption(
+          SjMediaTagOption(
             label: label,
             severity: customSerious.contains(label.toLowerCase())
                 ? 'serious'
@@ -3663,7 +3665,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     final dedup = options.toSet();
     var result = options
         .map(
-          (label) => _MediaTagOption(
+          (label) => SjMediaTagOption(
             label: label,
             severity: serious.contains(label) ? 'serious' : 'minor',
           ),
@@ -3673,7 +3675,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       if (dedup.contains(label)) continue;
       dedup.add(label);
       result.add(
-        _MediaTagOption(
+        SjMediaTagOption(
           label: label,
           severity: customSerious.contains(label.toLowerCase())
               ? 'serious'
@@ -3689,7 +3691,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
-  List<_MediaTagGroup> _mediaTagGroups(
+  List<SjMediaTagGroup> _mediaTagGroups(
     String groupKey, {
     String? elementType,
     Map<String, List<String>>? customTagsByScope,
@@ -3707,7 +3709,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       tagOrderByScope: tagOrderByScope,
       includeDisabledDefaults: includeDisabledDefaults,
     );
-    if (options.isEmpty) return const <_MediaTagGroup>[];
+    if (options.isEmpty) return const <SjMediaTagGroup>[];
 
     final serious = options
         .where((option) => option.severity == 'serious')
@@ -3716,10 +3718,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         .where((option) => option.severity != 'serious')
         .toList();
 
-    final groups = <_MediaTagGroup>[];
+    final groups = <SjMediaTagGroup>[];
     if (serious.isNotEmpty) {
       groups.add(
-        _MediaTagGroup(
+        SjMediaTagGroup(
           title: 'Серьёзные',
           severity: 'serious',
           options: serious,
@@ -3728,7 +3730,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
     if (minor.isNotEmpty) {
       groups.add(
-        _MediaTagGroup(
+        SjMediaTagGroup(
           title: 'Незначительные',
           severity: 'minor',
           options: minor,
@@ -3754,7 +3756,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return kYellowColor;
   }
 
-  Color _mediaTagGroupTitleColor(_MediaTagGroup group) {
+  Color _mediaTagGroupTitleColor(SjMediaTagGroup group) {
     final hasSerious = group.options.any(
       (option) => option.severity == 'serious',
     );
@@ -3775,7 +3777,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return groupKey == 'body' || groupKey == 'structural';
   }
 
-  bool _mediaInspectionHasData(_MediaInspection inspection) {
+  bool _mediaInspectionHasData(SjMediaInspection inspection) {
     return inspection.noDamage ||
         inspection.tags.isNotEmpty ||
         inspection.note.trim().isNotEmpty ||
@@ -3784,7 +3786,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         (inspection.elementType ?? '').trim().isNotEmpty;
   }
 
-  bool _mediaPartInspectionHasData(_MediaPartInspection inspection) {
+  bool _mediaPartInspectionHasData(SjMediaPartInspection inspection) {
     return inspection.noDamage ||
         inspection.tags.isNotEmpty ||
         inspection.note.trim().isNotEmpty ||
@@ -3794,14 +3796,14 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         (inspection.elementType ?? '').trim().isNotEmpty;
   }
 
-  bool _mediaItemHasIssue(_UploadedItem item) {
+  bool _mediaItemHasIssue(SjUploadedItem item) {
     final inspection = item.inspection;
     if (inspection.isDraft) return false;
     if (inspection.noDamage) return false;
     return inspection.tags.isNotEmpty;
   }
 
-  bool _groupHasIssue(_MediaGroupState state) {
+  bool _groupHasIssue(SjMediaGroupState state) {
     if (state.files.any(_mediaItemHasIssue)) return true;
     final partInspection = state.partInspection;
     if (!partInspection.isDraft &&
@@ -3812,15 +3814,15 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return state.hasIssue;
   }
 
-  bool _groupHasCoverage(_MediaGroupState state) {
+  bool _groupHasCoverage(SjMediaGroupState state) {
     return _parseUrls(state.rawUrls).isNotEmpty || state.files.isNotEmpty;
   }
 
-  List<_MediaGroupConfig> _requiredMediaGroups() {
+  List<SjMediaGroupConfig> _requiredMediaGroups() {
     return _mediaGroupsConfig.where((config) => config.required).toList();
   }
 
-  List<_MediaGroupConfig> _missingRequiredMediaGroups() {
+  List<SjMediaGroupConfig> _missingRequiredMediaGroups() {
     return _requiredMediaGroups().where((config) {
       final state = _mediaState[config.key];
       return state == null || !_groupHasCoverage(state);
@@ -3837,7 +3839,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return true;
   }
 
-  _CalculatedSummary _calculateSummary() {
+  SjCalculatedSummary _calculateSummary() {
     var penalty = 0;
     final sections = <Map<String, dynamic>>[];
     final checklist = <String>[];
@@ -4236,7 +4238,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
           : 'Покупка не рекомендуется без устранения рисков.',
     );
 
-    return _CalculatedSummary(
+    return SjCalculatedSummary(
       score: score,
       verdict: verdict,
       verdictLabel: verdictLabel,
@@ -4265,7 +4267,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Map<String, dynamic>? _summarySectionByTitle(
-    _CalculatedSummary summary,
+    SjCalculatedSummary summary,
     String title,
   ) {
     for (final section in summary.sections) {
@@ -4415,7 +4417,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return '${items.sublist(0, items.length - 1).join(', ')} и ${items.last}';
   }
 
-  String _summaryTemplate(_CalculatedSummary summary) {
+  String _summaryTemplate(SjCalculatedSummary summary) {
     final lines = <String>[];
     var hasMeaningfulBlocks = false;
 
@@ -5991,10 +5993,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       return left.trim().toLowerCase() == right.trim().toLowerCase();
     }
 
-    _CarCatalogBrand? selectedBrand;
-    _CarCatalogModel? selectedModel;
-    _CarCatalogGeneration? selectedGeneration;
-    _CarPickerStep step = _CarPickerStep.brand;
+    SjCarCatalogBrand? selectedBrand;
+    SjCarCatalogModel? selectedModel;
+    SjCarCatalogGeneration? selectedGeneration;
+    SjCarPickerStep step = SjCarPickerStep.brand;
     var search = '';
 
     final savedBrand = _brandController.text.trim();
@@ -6019,24 +6021,24 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
 
     if (selectedBrand != null) {
-      step = _CarPickerStep.model;
+      step = SjCarPickerStep.model;
     }
     if (selectedModel != null) {
-      step = _CarPickerStep.generation;
+      step = SjCarPickerStep.generation;
     }
     if (selectedGeneration != null && savedRestyling.isNotEmpty) {
-      step = _CarPickerStep.restyling;
+      step = SjCarPickerStep.restyling;
     }
 
-    String titleForStep(_CarPickerStep value) {
+    String titleForStep(SjCarPickerStep value) {
       switch (value) {
-        case _CarPickerStep.brand:
+        case SjCarPickerStep.brand:
           return 'Выберите марку';
-        case _CarPickerStep.model:
+        case SjCarPickerStep.model:
           return 'Выберите модель';
-        case _CarPickerStep.generation:
+        case SjCarPickerStep.generation:
           return 'Выберите поколение';
-        case _CarPickerStep.restyling:
+        case SjCarPickerStep.restyling:
           return 'Выберите рестайлинг';
       }
     }
@@ -6045,19 +6047,19 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       final parts = <String>[
         if (selectedBrand != null) selectedBrand!.name,
         if (selectedModel != null) selectedModel!.name,
-        if (selectedGeneration != null && step == _CarPickerStep.restyling)
+        if (selectedGeneration != null && step == SjCarPickerStep.restyling)
           'Пок. ${selectedGeneration!.name}',
       ];
       return parts.join(' -> ');
     }
 
-    _CarPickerSelection? buildSelection(_CarCatalogRestyling restyling) {
+    SjCarPickerSelection? buildSelection(SjCarCatalogRestyling restyling) {
       if (selectedBrand == null ||
           selectedModel == null ||
           selectedGeneration == null) {
         return null;
       }
-      return _CarPickerSelection(
+      return SjCarPickerSelection(
         brand: selectedBrand!.name,
         model: selectedModel!.name,
         generation: selectedGeneration!.name,
@@ -6067,48 +6069,48 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       );
     }
 
-    final selection = await showDialog<_CarPickerSelection>(
+    final selection = await showDialog<SjCarPickerSelection>(
       context: context,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setLocalState) {
             final showSearch =
-                step == _CarPickerStep.brand || step == _CarPickerStep.model;
-            final searchHint = step == _CarPickerStep.brand
+                step == SjCarPickerStep.brand || step == SjCarPickerStep.model;
+            final searchHint = step == SjCarPickerStep.brand
                 ? 'Поиск марки...'
                 : 'Поиск модели...';
             final currentBreadcrumb = breadcrumb();
 
             void goBack() {
-              if (step == _CarPickerStep.brand) {
+              if (step == SjCarPickerStep.brand) {
                 Navigator.of(context).pop();
                 return;
               }
               setLocalState(() {
-                if (step == _CarPickerStep.model) {
-                  step = _CarPickerStep.brand;
+                if (step == SjCarPickerStep.model) {
+                  step = SjCarPickerStep.brand;
                   selectedBrand = null;
                   selectedModel = null;
                   selectedGeneration = null;
                   search = '';
                   return;
                 }
-                if (step == _CarPickerStep.generation) {
-                  step = _CarPickerStep.model;
+                if (step == SjCarPickerStep.generation) {
+                  step = SjCarPickerStep.model;
                   selectedModel = null;
                   selectedGeneration = null;
                   search = '';
                   return;
                 }
-                if (step == _CarPickerStep.restyling) {
-                  step = _CarPickerStep.generation;
+                if (step == SjCarPickerStep.restyling) {
+                  step = SjCarPickerStep.generation;
                   search = '';
                 }
               });
             }
 
             Widget listContent() {
-              if (step == _CarPickerStep.brand) {
+              if (step == SjCarPickerStep.brand) {
                 final brands = _carCatalog
                     .where(
                       (brand) => search.trim().isEmpty
@@ -6137,7 +6139,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                           selectedBrand = brand;
                           selectedModel = null;
                           selectedGeneration = null;
-                          step = _CarPickerStep.model;
+                          step = SjCarPickerStep.model;
                           search = '';
                         });
                       },
@@ -6146,9 +6148,9 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                 );
               }
 
-              if (step == _CarPickerStep.model) {
+              if (step == SjCarPickerStep.model) {
                 final models =
-                    (selectedBrand?.models ?? const <_CarCatalogModel>[])
+                    (selectedBrand?.models ?? const <SjCarCatalogModel>[])
                         .where(
                           (model) => search.trim().isEmpty
                               ? true
@@ -6175,7 +6177,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                         setLocalState(() {
                           selectedModel = model;
                           selectedGeneration = null;
-                          step = _CarPickerStep.generation;
+                          step = SjCarPickerStep.generation;
                           search = '';
                         });
                       },
@@ -6184,10 +6186,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                 );
               }
 
-              if (step == _CarPickerStep.generation) {
+              if (step == SjCarPickerStep.generation) {
                 final generations =
                     selectedModel?.generations ??
-                    const <_CarCatalogGeneration>[];
+                    const <SjCarCatalogGeneration>[];
                 if (generations.isEmpty) {
                   return const Center(child: Text('Нет поколений'));
                 }
@@ -6205,7 +6207,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                       onTap: () {
                         setLocalState(() {
                           selectedGeneration = generation;
-                          step = _CarPickerStep.restyling;
+                          step = SjCarPickerStep.restyling;
                           search = '';
                         });
                       },
@@ -6216,7 +6218,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
               final restylings =
                   selectedGeneration?.restylings ??
-                  const <_CarCatalogRestyling>[];
+                  const <SjCarCatalogRestyling>[];
               if (restylings.isEmpty) {
                 return const Center(child: Text('Нет рестайлингов'));
               }
@@ -6560,7 +6562,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     return _tdCustomTagFocusNodesByScope.putIfAbsent(key, () => FocusNode());
   }
 
-  List<_MediaTagGroup> _testDriveTagGroups(
+  List<SjMediaTagGroup> _testDriveTagGroups(
     String scopeKey, {
     bool includeDisabledDefaults = false,
   }) {
@@ -6579,7 +6581,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         .map((tag) => tag.toLowerCase())
         .toList();
 
-    final options = <_MediaTagOption>[];
+    final options = <SjMediaTagOption>[];
     final addedLower = <String>{};
 
     void addOption(
@@ -6598,7 +6600,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       }
       addedLower.add(lower);
       options.add(
-        _MediaTagOption(label: trimmed, severity: severity, isCustom: isCustom),
+        SjMediaTagOption(label: trimmed, severity: severity, isCustom: isCustom),
       );
     }
 
@@ -6620,11 +6622,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
 
     if (order.isNotEmpty && options.isNotEmpty) {
-      final indexed = <String, _MediaTagOption>{};
+      final indexed = <String, SjMediaTagOption>{};
       for (final option in options) {
         indexed[option.label.toLowerCase()] = option;
       }
-      final sorted = <_MediaTagOption>[];
+      final sorted = <SjMediaTagOption>[];
       for (final key in order) {
         final option = indexed.remove(key);
         if (option != null) sorted.add(option);
@@ -6648,10 +6650,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         .where((option) => option.severity != 'serious')
         .toList();
 
-    final groups = <_MediaTagGroup>[];
+    final groups = <SjMediaTagGroup>[];
     if (serious.isNotEmpty) {
       groups.add(
-        _MediaTagGroup(
+        SjMediaTagGroup(
           title: 'Серьёзные',
           severity: 'serious',
           options: serious,
@@ -6660,7 +6662,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
     if (minor.isNotEmpty) {
       groups.add(
-        _MediaTagGroup(
+        SjMediaTagGroup(
           title: 'Незначительные',
           severity: 'minor',
           options: minor,
@@ -8216,7 +8218,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Widget _commentAudioFilesBlock({
-    required List<_UploadedItem> files,
+    required List<SjUploadedItem> files,
     required int playingIndex,
     required bool isRecording,
     required String recordingLabel,
@@ -9866,8 +9868,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                   });
                 }
 
-                _MediaTagGroup? findGroupBySeverity(
-                  List<_MediaTagGroup> groups,
+                SjMediaTagGroup? findGroupBySeverity(
+                  List<SjMediaTagGroup> groups,
                   String severity,
                 ) {
                   for (final group in groups) {
@@ -10112,7 +10114,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
                                                 );
                                             final visibleOptions =
                                                 visibleGroup?.options ??
-                                                const <_MediaTagOption>[];
+                                                const <SjMediaTagOption>[];
                                             final isManaging =
                                                 managingTagSeverity ==
                                                 group.severity;
@@ -11134,7 +11136,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       }
     }
 
-    final partInspection = _MediaPartInspection(
+    final partInspection = SjMediaPartInspection(
       noDamage: noDamage,
       tags: noDamage ? const [] : nextTagPhotos.keys.toList(),
       note: noteValue,
@@ -11213,7 +11215,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       final current = _mediaState[groupKey];
       if (current == null || current.files.isEmpty) return;
       final toDelete = indexes.toSet();
-      final next = <_UploadedItem>[];
+      final next = <SjUploadedItem>[];
       for (var i = 0; i < current.files.length; i++) {
         if (!toDelete.contains(i)) {
           next.add(current.files[i]);
@@ -11297,7 +11299,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     }
 
     Future<void> prepareVideo(
-      _UploadedItem file,
+      SjUploadedItem file,
       StateSetter setLocalState,
     ) async {
       if (!file.isVideo) {
@@ -11834,7 +11836,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     await _openMediaInspectionEditor(groupKey: groupKey, index: editIndex);
   }
 
-  bool _groupFullyMarked(_MediaGroupState state) {
+  bool _groupFullyMarked(SjMediaGroupState state) {
     if (state.files.isEmpty) return false;
     return state.files.every((file) {
       final inspection = file.inspection;
@@ -11930,7 +11932,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     );
   }
 
-  Widget _mediaGroupListRow(_MediaGroupState state) {
+  Widget _mediaGroupListRow(SjMediaGroupState state) {
     final groupKey = state.config.key;
     final fileCount = state.files.length;
     final hasFiles = fileCount > 0;
@@ -12753,7 +12755,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
         value.startsWith('/');
   }
 
-  _SummaryAttachmentStats _summaryAttachmentStats() {
+  SjSummaryAttachmentStats _summaryAttachmentStats() {
     var images = 0;
     var videos = 0;
     var audios = 0;
@@ -12761,7 +12763,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     var broken = 0;
     var total = 0;
 
-    void consume(_UploadedItem item) {
+    void consume(SjUploadedItem item) {
       total += 1;
       if (item.isImage) {
         images += 1;
@@ -12798,7 +12800,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       consume(item);
     }
 
-    return _SummaryAttachmentStats(
+    return SjSummaryAttachmentStats(
       total: total,
       imageCount: images,
       videoCount: videos,
@@ -12898,7 +12900,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     if (groupKey == null) return const SizedBox.shrink();
 
     final state = _mediaState[groupKey];
-    final files = state?.files ?? const <_UploadedItem>[];
+    final files = state?.files ?? const <SjUploadedItem>[];
     if (files.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -12988,7 +12990,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
             spacing: 6,
             runSpacing: 6,
             children: cleanItems.map((entry) {
-              final file = entry['file'] as _UploadedItem;
+              final file = entry['file'] as SjUploadedItem;
               final groupKey = (entry['groupKey'] ?? '').toString();
               final index = entry['index'] as int? ?? 0;
               return ClipRRect(
@@ -13201,7 +13203,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 
   Widget _summarySectionsList(
-    _CalculatedSummary summary, {
+    SjCalculatedSummary summary, {
     required Set<String> attentionStepIds,
     required Set<String> attentionGroupKeys,
   }) {
@@ -13734,10 +13736,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   }
 }
 
-enum _CarPickerStep { brand, model, generation, restyling }
+enum SjCarPickerStep { brand, model, generation, restyling }
 
-class _CarPickerSelection {
-  const _CarPickerSelection({
+class SjCarPickerSelection {
+  const SjCarPickerSelection({
     required this.brand,
     required this.model,
     required this.generation,
@@ -13754,29 +13756,29 @@ class _CarPickerSelection {
   final String photoUrl;
 }
 
-class _CarCatalogBrand {
-  const _CarCatalogBrand({required this.name, required this.models});
+class SjCarCatalogBrand {
+  const SjCarCatalogBrand({required this.name, required this.models});
 
   final String name;
-  final List<_CarCatalogModel> models;
+  final List<SjCarCatalogModel> models;
 }
 
-class _CarCatalogModel {
-  const _CarCatalogModel({required this.name, required this.generations});
+class SjCarCatalogModel {
+  const SjCarCatalogModel({required this.name, required this.generations});
 
   final String name;
-  final List<_CarCatalogGeneration> generations;
+  final List<SjCarCatalogGeneration> generations;
 }
 
-class _CarCatalogGeneration {
-  const _CarCatalogGeneration({required this.name, required this.restylings});
+class SjCarCatalogGeneration {
+  const SjCarCatalogGeneration({required this.name, required this.restylings});
 
   final String name;
-  final List<_CarCatalogRestyling> restylings;
+  final List<SjCarCatalogRestyling> restylings;
 }
 
-class _CarCatalogRestyling {
-  const _CarCatalogRestyling({
+class SjCarCatalogRestyling {
+  const SjCarCatalogRestyling({
     required this.label,
     required this.frames,
     required this.photoUrl,
@@ -14127,291 +14129,3 @@ class _SparkJoyVideoThumbnailState extends State<_SparkJoyVideoThumbnail> {
   }
 }
 
-class _StepConfig {
-  const _StepConfig({
-    required this.id,
-    required this.title,
-    required this.description,
-  });
-
-  final String id;
-  final String title;
-  final String description;
-}
-
-class _MediaGroupConfig {
-  const _MediaGroupConfig({
-    required this.key,
-    required this.title,
-    required this.description,
-    required this.required,
-    required this.severeIfIssue,
-  });
-
-  final String key;
-  final String title;
-  final String description;
-  final bool required;
-  final bool severeIfIssue;
-}
-
-class _MediaGroupState {
-  const _MediaGroupState({
-    required this.config,
-    required this.hasIssue,
-    required this.note,
-    required this.rawUrls,
-    required this.files,
-    this.partInspection = const _MediaPartInspection(),
-  });
-
-  final _MediaGroupConfig config;
-  final bool hasIssue;
-  final String note;
-  final String rawUrls;
-  final List<_UploadedItem> files;
-  final _MediaPartInspection partInspection;
-
-  _MediaGroupState copyWith({
-    bool? hasIssue,
-    String? note,
-    String? rawUrls,
-    List<_UploadedItem>? files,
-    _MediaPartInspection? partInspection,
-  }) {
-    return _MediaGroupState(
-      config: config,
-      hasIssue: hasIssue ?? this.hasIssue,
-      note: note ?? this.note,
-      rawUrls: rawUrls ?? this.rawUrls,
-      files: files ?? this.files,
-      partInspection: partInspection ?? this.partInspection,
-    );
-  }
-}
-
-class _MediaOption {
-  const _MediaOption({required this.id, required this.label});
-
-  final String id;
-  final String label;
-}
-
-class _MediaTagOption {
-  const _MediaTagOption({
-    required this.label,
-    required this.severity,
-    this.isCustom = false,
-  });
-
-  final String label;
-  final String severity;
-  final bool isCustom;
-}
-
-class _MediaTagGroup {
-  const _MediaTagGroup({
-    required this.title,
-    required this.severity,
-    required this.options,
-  });
-
-  final String title;
-  final String severity;
-  final List<_MediaTagOption> options;
-}
-
-class _MediaPartInspection {
-  const _MediaPartInspection({
-    this.noDamage = false,
-    this.tags = const [],
-    this.note = '',
-    this.elementType,
-    this.audioRecordings = const [],
-    this.paintFrom,
-    this.paintTo,
-    this.tagPhotos = const {},
-    this.isDraft = true,
-  });
-
-  final bool noDamage;
-  final List<String> tags;
-  final String note;
-  final String? elementType;
-  final List<String> audioRecordings;
-  final double? paintFrom;
-  final double? paintTo;
-  final Map<String, List<String>> tagPhotos;
-  final bool isDraft;
-
-  _MediaPartInspection copyWith({
-    bool? noDamage,
-    List<String>? tags,
-    String? note,
-    String? elementType,
-    List<String>? audioRecordings,
-    double? paintFrom,
-    double? paintTo,
-    Map<String, List<String>>? tagPhotos,
-    bool? isDraft,
-  }) {
-    return _MediaPartInspection(
-      noDamage: noDamage ?? this.noDamage,
-      tags: tags ?? this.tags,
-      note: note ?? this.note,
-      elementType: elementType ?? this.elementType,
-      audioRecordings: audioRecordings ?? this.audioRecordings,
-      paintFrom: paintFrom ?? this.paintFrom,
-      paintTo: paintTo ?? this.paintTo,
-      tagPhotos: tagPhotos ?? this.tagPhotos,
-      isDraft: isDraft ?? this.isDraft,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'noDamage': noDamage,
-      'tags': tags,
-      'note': note,
-      'elementType': elementType,
-      'audioRecordings': audioRecordings,
-      'paintFrom': paintFrom,
-      'paintTo': paintTo,
-      'tagPhotos': tagPhotos,
-      if (paintFrom != null && paintTo != null)
-        'paintThickness': {'from': paintFrom, 'to': paintTo},
-      'isDraft': isDraft,
-    };
-  }
-}
-
-class _MediaInspection {
-  const _MediaInspection({
-    this.noDamage = false,
-    this.tags = const [],
-    this.note = '',
-    this.elementType,
-    this.audioRecordings = const [],
-    this.paintFrom,
-    this.paintTo,
-    this.isDraft = false,
-  });
-
-  final bool noDamage;
-  final List<String> tags;
-  final String note;
-  final String? elementType;
-  final List<String> audioRecordings;
-  final double? paintFrom;
-  final double? paintTo;
-  final bool isDraft;
-
-  _MediaInspection copyWith({
-    bool? noDamage,
-    List<String>? tags,
-    String? note,
-    String? elementType,
-    List<String>? audioRecordings,
-    double? paintFrom,
-    double? paintTo,
-    bool? isDraft,
-  }) {
-    return _MediaInspection(
-      noDamage: noDamage ?? this.noDamage,
-      tags: tags ?? this.tags,
-      note: note ?? this.note,
-      elementType: elementType ?? this.elementType,
-      audioRecordings: audioRecordings ?? this.audioRecordings,
-      paintFrom: paintFrom ?? this.paintFrom,
-      paintTo: paintTo ?? this.paintTo,
-      isDraft: isDraft ?? this.isDraft,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'noDamage': noDamage,
-      'tags': tags,
-      'note': note,
-      'elementType': elementType,
-      'audioRecordings': audioRecordings,
-      'paintFrom': paintFrom,
-      'paintTo': paintTo,
-      if (paintFrom != null && paintTo != null)
-        'paintThickness': {'from': paintFrom, 'to': paintTo},
-      'isDraft': isDraft,
-    };
-  }
-}
-
-class _UploadedItem {
-  const _UploadedItem({
-    required this.id,
-    required this.name,
-    required this.mimeType,
-    required this.dataUrl,
-    this.inspection = const _MediaInspection(),
-  });
-
-  final String id;
-  final String name;
-  final String mimeType;
-  final String dataUrl;
-  final _MediaInspection inspection;
-
-  _UploadedItem copyWith({
-    String? id,
-    String? name,
-    String? mimeType,
-    String? dataUrl,
-    _MediaInspection? inspection,
-  }) {
-    return _UploadedItem(
-      id: id ?? this.id,
-      name: name ?? this.name,
-      mimeType: mimeType ?? this.mimeType,
-      dataUrl: dataUrl ?? this.dataUrl,
-      inspection: inspection ?? this.inspection,
-    );
-  }
-
-  bool get isImage => mimeType.startsWith('image/');
-  bool get isVideo => mimeType.startsWith('video/');
-  bool get isAudio => mimeType.startsWith('audio/');
-}
-
-class _SummaryAttachmentStats {
-  const _SummaryAttachmentStats({
-    required this.total,
-    required this.imageCount,
-    required this.videoCount,
-    required this.audioCount,
-    required this.fileCount,
-    required this.brokenCount,
-  });
-
-  final int total;
-  final int imageCount;
-  final int videoCount;
-  final int audioCount;
-  final int fileCount;
-  final int brokenCount;
-}
-
-class _CalculatedSummary {
-  const _CalculatedSummary({
-    required this.score,
-    required this.verdict,
-    required this.verdictLabel,
-    required this.sections,
-    required this.checklist,
-    required this.fullInspection,
-  });
-
-  final int score;
-  final String verdict;
-  final String verdictLabel;
-  final List<Map<String, dynamic>> sections;
-  final List<String> checklist;
-  final bool fullInspection;
-}
