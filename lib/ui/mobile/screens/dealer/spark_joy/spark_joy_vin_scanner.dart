@@ -163,8 +163,8 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
     Timer? focusPointTimer;
     Timer? focusAssistPulseTimer;
     var liveCaptureInFlight = false;
-    dynamic lastFlutterPreviewSize;
-    dynamic lastPixelPreviewSize;
+    cam_pigeon.PreviewSize? lastFlutterPreviewSize;
+    cam_pigeon.PreviewSize? lastPixelPreviewSize;
 
     void safeSetLocalState(StateSetter setLocalState, VoidCallback fn) {
       if (!mounted || !dialogActive) return;
@@ -212,73 +212,79 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
       });
     }
 
+    /// Attempts to focus on a specific [point] using known preview sizes.
+    /// Falls back to generic autofocus if sizes are unknown or the call fails.
+    Future<void> focusAt({
+      required cam.PhotoCameraState cameraState,
+      Offset? point,
+    }) async {
+      if (!dialogActive || !cameraLive) return;
+      final flutterPreview = lastFlutterPreviewSize;
+      final pixelPreview = lastPixelPreviewSize;
+
+      // Try point-based focus only if we have valid sizes.
+      if (flutterPreview != null &&
+          pixelPreview != null &&
+          flutterPreview.width > 10 &&
+          flutterPreview.height > 10 &&
+          pixelPreview.width > 10 &&
+          pixelPreview.height > 10) {
+        final target = point ??
+            Offset(
+              flutterPreview.width / 2,
+              flutterPreview.height * 0.50,
+            );
+        final safeTarget = Offset(
+          target.dx.clamp(1.0, flutterPreview.width - 1),
+          target.dy.clamp(1.0, flutterPreview.height - 1),
+        );
+        try {
+          await cameraState.focusOnPoint(
+            flutterPosition: safeTarget,
+            pixelPreviewSize: pixelPreview,
+            flutterPreviewSize: flutterPreview,
+          );
+          return;
+        } catch (e) {
+          debugPrint('VIN focusOnPoint error: $e');
+        }
+      }
+
+      // Fallback: trigger generic autofocus (no coordinates needed).
+      try {
+        cameraState.focus();
+      } catch (e) {
+        debugPrint('VIN generic focus error: $e');
+      }
+    }
+
     Future<void> startFocusAssist(StateSetter setLocalState) async {
       if (!cameraLive || processing) return;
       final state = liveCameraState;
       if (state is! cam.PhotoCameraState) return;
 
-      Future<void> focusAt({
-        required cam.PhotoCameraState cameraState,
-        Offset? point,
-      }) async {
-        final flutterPreview = lastFlutterPreviewSize;
-        final pixelPreview = lastPixelPreviewSize;
-        final previewWidth = ((flutterPreview?.width as num?) ?? 0).toDouble();
-        final previewHeight =
-            ((flutterPreview?.height as num?) ?? 0).toDouble();
-        if (flutterPreview != null &&
-            pixelPreview != null &&
-            previewWidth > 0 &&
-            previewHeight > 0) {
-          final target = point ?? Offset(previewWidth / 2, previewHeight / 2);
-          final safeTarget = Offset(
-            target.dx.clamp(0.0, previewWidth),
-            target.dy.clamp(0.0, previewHeight),
-          );
-          try {
-            await cameraState.focusOnPoint(
-              flutterPosition: safeTarget,
-              pixelPreviewSize: pixelPreview,
-              flutterPreviewSize: flutterPreview,
-            );
-            return;
-          } catch (_) {}
-        }
-
-        try {
-          final preview = await cameraState.previewSize(0);
-          final previewW = ((preview.width as num?) ?? 0).toDouble();
-          final previewH = ((preview.height as num?) ?? 0).toDouble();
-          if (previewW > 0 && previewH > 0) {
-            await cameraState.focusOnPoint(
-              flutterPosition: Offset(previewW / 2, previewH / 2),
-              pixelPreviewSize: preview,
-              flutterPreviewSize: preview,
-            );
-            return;
-          }
-        } catch (_) {}
-
-        try {
-          cameraState.focus();
-        } catch (_) {}
-      }
-
       safeSetLocalState(setLocalState, () {
         focusAdjusting = true;
       });
       focusAssistPulseTimer?.cancel();
-      await focusAt(cameraState: state);
-      focusAssistPulseTimer = Timer.periodic(const Duration(milliseconds: 450), (
-        _,
-      ) {
-        if (!dialogActive || !cameraLive || processing) return;
-        final nextState = liveCameraState;
-        if (nextState is! cam.PhotoCameraState) return;
-        unawaited(focusAt(cameraState: nextState));
-      });
+
+      // Initial focus — use generic autofocus (safe, no sizes needed).
+      try {
+        state.focus();
+      } catch (_) {}
+
+      // Periodic re-focus with point-based focus once sizes are known.
+      focusAssistPulseTimer = Timer.periodic(
+        const Duration(milliseconds: 2000),
+        (_) {
+          if (!dialogActive || !cameraLive || processing) return;
+          final nextState = liveCameraState;
+          if (nextState is! cam.PhotoCameraState) return;
+          unawaited(focusAt(cameraState: nextState));
+        },
+      );
       if (!dialogActive) return;
-      await Future<void>.delayed(const Duration(milliseconds: 420));
+      await Future<void>.delayed(const Duration(milliseconds: 600));
     }
 
     Future<void> stopFocusAssist(StateSetter setLocalState) async {
@@ -449,8 +455,14 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
       liveCaptureInFlight = true;
       try {
         if (focusBeforeShot) {
-          await startFocusAssist(setLocalState);
-          await Future<void>.delayed(const Duration(milliseconds: 420));
+          // Stop periodic timer, do a single focus before the shot.
+          focusAssistPulseTimer?.cancel();
+          focusAssistPulseTimer = null;
+          safeSetLocalState(setLocalState, () {
+            focusAdjusting = true;
+          });
+          await focusAt(cameraState: live);
+          await Future<void>.delayed(const Duration(milliseconds: 500));
         }
         final shotRequest = await live.takePhoto();
         final shotPath = shotRequest.path;
@@ -619,6 +631,13 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                                           is! cam.PhotoCameraState) {
                                                         return;
                                                       }
+                                                      // Stop continuous
+                                                      // autofocus — user took
+                                                      // manual control.
+                                                      focusAssistPulseTimer
+                                                          ?.cancel();
+                                                      focusAssistPulseTimer =
+                                                          null;
                                                       showFocusPoint(
                                                         setLocalState,
                                                         position,
@@ -677,6 +696,32 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                               },
                                               builder: (state, preview) {
                                                 liveCameraState = state;
+                                                // Capture preview sizes for
+                                                // focus on every build — the
+                                                // preview may resize.
+                                                if (preview.previewSize !=
+                                                        Size.zero &&
+                                                    preview.nativePreviewSize !=
+                                                        Size.zero) {
+                                                  lastFlutterPreviewSize =
+                                                      cam_pigeon.PreviewSize(
+                                                        width: preview
+                                                            .previewSize.width,
+                                                        height: preview
+                                                            .previewSize.height,
+                                                      );
+                                                  lastPixelPreviewSize =
+                                                      cam_pigeon.PreviewSize(
+                                                        width:
+                                                            preview
+                                                                .nativePreviewSize
+                                                                .width,
+                                                        height:
+                                                            preview
+                                                                .nativePreviewSize
+                                                                .height,
+                                                      );
+                                                }
                                                 if (!cameraReady) {
                                                   WidgetsBinding.instance
                                                       .addPostFrameCallback((
@@ -691,14 +736,25 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                                             resetCameraWatchdog();
                                                           },
                                                         );
+                                                        // Start continuous
+                                                        // autofocus after a
+                                                        // short delay to let
+                                                        // the camera stabilize.
                                                         if (state
                                                             is cam.PhotoCameraState) {
                                                           unawaited(() async {
                                                             try {
-                                                              await startFocusAssist(
-                                                                setLocalState,
+                                                              await Future<void>.delayed(
+                                                                const Duration(
+                                                                  milliseconds:
+                                                                      800,
+                                                                ),
                                                               );
-                                                              await stopFocusAssist(
+                                                              if (!dialogActive ||
+                                                                  !cameraLive) {
+                                                                return;
+                                                              }
+                                                              await startFocusAssist(
                                                                 setLocalState,
                                                               );
                                                             } catch (_) {}

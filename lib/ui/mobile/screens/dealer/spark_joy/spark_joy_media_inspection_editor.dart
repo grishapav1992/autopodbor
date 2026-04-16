@@ -387,6 +387,15 @@ extension _SparkJoyMediaInspectionEditorMethods
                   final input = customTagController.text.trim();
                   if (input.isEmpty) return;
 
+                  // Sync the custom tag to the server (fire-and-forget).
+                  unawaited(
+                    _syncInspectionCustomTag(
+                      groupKey: groupKey,
+                      tagName: input,
+                      severity: severity,
+                    ),
+                  );
+
                   final next = customTagsByScope[scopeKey] != null
                       ? [...customTagsByScope[scopeKey]!]
                       : <String>[];

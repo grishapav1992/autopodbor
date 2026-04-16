@@ -221,6 +221,11 @@ extension _SparkJoyTestDriveRulesMethods on _SparkJoyCreateReportScreenState {
       }
     }
 
+    // Sync the custom tag to the server (fire-and-forget).
+    unawaited(
+      _syncTestDriveCustomTag(tagName: raw, severity: severity),
+    );
+
     _setStateSafely(() {
       final custom = [
         ...(_mediaCustomTagsByScope[scopeKey] ?? const <String>[]),

@@ -1,6 +1,173 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
+  // ──────────────────────────────────────────────────────────────────
+  //  Tag ID resolution — GetUserTags / AddUserTag integration
+  // ──────────────────────────────────────────────────────────────────
+
+  /// Maps media group keys to the API `section` parameter used by
+  /// `Storage.GetUserTags` / `Storage.AddUserTag`.
+  static const Map<String, String> _groupKeyToApiSection = {
+    'body': 'body',
+    'structural': 'body_reinforcement',
+    'glass': 'glass',
+    'interior': 'interior',
+    'underhood': 'under_hood',
+    'wheels': 'wheels_and_brakes',
+    'lighting': 'lightning',
+    'diagnostics': 'computer_diagnostics',
+  };
+
+  /// Loads all user tags from the server for inspection and testdrive steps
+  /// and populates [_tagNameToId] mapping for payload serialization.
+  Future<void> _loadTagIdsFromServer() async {
+    try {
+      final steps = ['inspection', 'testdrive'];
+      final futures = steps.map(
+        (step) => storage_api.StorageApi.getUserTags(step: step),
+      );
+      final results = await Future.wait(futures);
+      for (final tags in results) {
+        for (final tag in tags) {
+          final key = tag.name.trim().toLowerCase();
+          if (key.isNotEmpty && tag.id > 0) {
+            _tagNameToId[key] = tag.id;
+          }
+        }
+      }
+    } catch (_) {
+      // Tags may not be available; payload builder will fall back gracefully.
+    }
+  }
+
+  /// Creates a custom tag on the server and caches its ID in [_tagNameToId].
+  ///
+  /// [step] — `inspection` or `testdrive`.
+  /// [tagName] — the user-entered tag name.
+  /// [section] — API section for inspection tags (e.g. `body`), null for
+  ///   testdrive.
+  /// [type] — `serious` or `nonserious`.
+  ///
+  /// Returns the server-assigned tag ID, or `null` on failure.
+  Future<int?> _syncCustomTagToServer({
+    required String step,
+    required String tagName,
+    String? section,
+    String? type,
+  }) async {
+    final key = tagName.trim().toLowerCase();
+    // Already cached — no need to call the server again.
+    final existing = _tagNameToId[key];
+    if (existing != null && existing > 0) return existing;
+
+    try {
+      final tag = await storage_api.StorageApi.addUserTag(
+        step: step,
+        name: tagName.trim(),
+        section: section,
+        type: type,
+      );
+      if (tag.id > 0) {
+        _tagNameToId[key] = tag.id;
+        return tag.id;
+      }
+    } catch (_) {
+      // Best-effort: the tag will still be usable locally; it just won't
+      // have an ID until the next _loadTagIdsFromServer() or retry.
+    }
+    return null;
+  }
+
+  /// Convenience wrapper: sync a custom tag added in the inspection editor.
+  Future<int?> _syncInspectionCustomTag({
+    required String groupKey,
+    required String tagName,
+    required String severity,
+  }) {
+    return _syncCustomTagToServer(
+      step: 'inspection',
+      tagName: tagName,
+      section: _groupKeyToApiSection[groupKey],
+      type: severity == 'serious' ? 'serious' : 'nonserious',
+    );
+  }
+
+  /// Convenience wrapper: sync a custom tag added on the test-drive step.
+  Future<int?> _syncTestDriveCustomTag({
+    required String tagName,
+    required String severity,
+  }) {
+    return _syncCustomTagToServer(
+      step: 'testdrive',
+      tagName: tagName,
+      type: severity == 'serious' ? 'serious' : 'nonserious',
+    );
+  }
+
+  /// Ensures every tag name in the report payload has an ID in
+  /// [_tagNameToId]. Calls [_syncCustomTagToServer] for any missing ones.
+  /// Should be awaited once before building the final PrepareSpecialistReport
+  /// payload.
+  Future<void> _ensureAllTagIdsResolved() async {
+    // Collect all tag names currently used in the report.
+    final allTagNames = <String>{};
+
+    // Inspection tags from media files.
+    for (final entry in _mediaState.entries) {
+      final state = entry.value;
+      for (final file in state.files) {
+        for (final tag in file.inspection.tags) {
+          allTagNames.add(tag.trim());
+        }
+      }
+      for (final tag in state.partInspection.tags) {
+        allTagNames.add(tag.trim());
+      }
+    }
+
+    // Test-drive tags.
+    allTagNames.addAll(_tdEngineTags);
+    allTagNames.addAll(_tdGearboxTags);
+    allTagNames.addAll(_tdSteeringTags);
+    allTagNames.addAll(_tdRideTags);
+    allTagNames.addAll(_tdBrakeTags);
+
+    // Find names without IDs.
+    final unresolved = allTagNames.where((name) {
+      final key = name.toLowerCase();
+      return key.isNotEmpty && (_tagNameToId[key] == null);
+    }).toList();
+
+    if (unresolved.isEmpty) return;
+
+    // Try to resolve by re-fetching from server first.
+    await _loadTagIdsFromServer();
+
+    // Any still missing — create them.
+    for (final name in unresolved) {
+      final key = name.toLowerCase();
+      if (_tagNameToId[key] != null) continue;
+      // Best-effort: we don't know the exact step/section here, so use
+      // a generic call. The server will match or create.
+      await _syncCustomTagToServer(step: 'inspection', tagName: name);
+    }
+  }
+
+  /// Resolves a list of tag names to their integer IDs using [_tagNameToId].
+  /// Unknown tags are silently skipped — they should have been created via
+  /// [_syncCustomTagToServer] or [_ensureAllTagIdsResolved] before this point.
+  List<int> _resolveTagIds(List<String> tagNames) {
+    final ids = <int>[];
+    for (final name in tagNames) {
+      final key = name.trim().toLowerCase();
+      final id = _tagNameToId[key];
+      if (id != null && id > 0) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }
+
   bool _isDataUrl(String source) {
     return source.trimLeft().startsWith('data:');
   }
@@ -1203,8 +1370,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
             .map((tag) => tag.trim())
             .where((tag) => tag.isNotEmpty)
             .toList(growable: false);
-        final seriousTags = <String>[];
-        final nonSeriousTags = <String>[];
+        final seriousTagNames = <String>[];
+        final nonSeriousTagNames = <String>[];
         for (final tag in tags) {
           final severity = _mediaTagSeverity(
             group.key,
@@ -1212,11 +1379,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
             elementType: item.inspection.elementType,
           );
           if (severity == 'serious') {
-            seriousTags.add(tag);
+            seriousTagNames.add(tag);
           } else {
-            nonSeriousTags.add(tag);
+            nonSeriousTagNames.add(tag);
           }
         }
+        // Convert tag names to server-side integer IDs (API v2025-04-15).
+        final seriousTagIds = _resolveTagIds(seriousTagNames);
+        final nonSeriousTagIds = _resolveTagIds(nonSeriousTagNames);
         final note = item.inspection.note.trim();
         final paintFrom =
             (item.inspection.paintFrom ?? state.partInspection.paintFrom)
@@ -1235,8 +1405,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
             'paintworkThicknessFrom': paintFrom,
           if (includePaint && paintTo != null) 'paintworkThicknessTo': paintTo,
           'noDamage': noDamage,
-          'seriousDamageTags': seriousTags,
-          'noSeriousDamageTags': nonSeriousTags,
+          'seriousDamageTags': seriousTagIds,
+          'noSeriousDamageTags': nonSeriousTagIds,
           'note': note.isEmpty ? null : note,
           'audioNotes': const <String>[],
         };
@@ -1249,17 +1419,18 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
   Map<String, dynamic> _buildTestDriveStepPayload() {
     final conducted = _tdConductedValue() ?? false;
+    // Convert tag names → integer IDs (API v2025-04-15).
     return <String, dynamic>{
       'testDriveIsIncluded': conducted,
-      'testDriveEngineTags': List<String>.from(_tdEngineTags),
+      'testDriveEngineTags': _resolveTagIds(_tdEngineTags),
       'testDriveEngineIsWorkingProperly': _tdEngineOk,
-      'testDriveTransmissionTags': List<String>.from(_tdGearboxTags),
+      'testDriveTransmissionTags': _resolveTagIds(_tdGearboxTags),
       'testDriveTransmissionIsWorkingProperly': _tdGearboxOk,
-      'testDriveSteeringWheelTags': List<String>.from(_tdSteeringTags),
+      'testDriveSteeringWheelTags': _resolveTagIds(_tdSteeringTags),
       'testDriveSteeringWheelIsWorkingProperly': _tdSteeringOk,
-      'testDriveSuspensionInDriveTags': List<String>.from(_tdRideTags),
+      'testDriveSuspensionInDriveTags': _resolveTagIds(_tdRideTags),
       'testDriveSuspensionInDriveIsWorkingProperly': _tdRideOk,
-      'testDriveBrakesInDriveTags': List<String>.from(_tdBrakeTags),
+      'testDriveBrakesInDriveTags': _resolveTagIds(_tdBrakeTags),
       'testDriveBrakesInDriveIsWorkingProperly': _tdBrakeOk,
       'testDriveNote': _tdNoteController.text.trim(),
     };
@@ -2176,6 +2347,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         totalParts: 0,
       );
       _setBackendUploadFilesProgress(const []);
+      // Ensure all custom tags have server IDs before building payload.
+      await _ensureAllTagIdsResolved();
+
       final previousReportNumber = _uploadStateText(
         _backendUploadState,
         'reportNumber',

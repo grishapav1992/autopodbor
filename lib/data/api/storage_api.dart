@@ -125,6 +125,26 @@ class CreateRequestResult {
   const CreateRequestResult({required this.id, required this.requestNumber});
 }
 
+class UserTag {
+  final int id;
+  final String step;
+  final String section;
+  final String name;
+  final String slug;
+  final String type;
+
+  const UserTag({
+    required this.id,
+    required this.step,
+    required this.section,
+    required this.name,
+    required this.slug,
+    required this.type,
+  });
+
+  bool get isSerious => type == 'serious';
+}
+
 class PrepareSpecialistReportResult {
   final String reportNumber;
   final int? reportId;
@@ -1495,6 +1515,77 @@ class StorageApi {
     return const <String>[];
   }
 
+  /// Returns user tags for a specific report step.
+  ///
+  /// [step] — required: car, characteristics, documentreconciliation,
+  /// legalreview, inspection, testdrive, result.
+  /// [section] — only for step=inspection: body, body_reinforcement, glass,
+  /// interior, under_hood, wheels_and_brakes, lightning, computer_diagnostics.
+  /// [selectedTagIds] — optional int[] for relevance sorting.
+  static Future<List<UserTag>> getUserTags({
+    required String step,
+    String? section,
+    List<int>? selectedTagIds,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final params = <String, dynamic>{'step': step};
+    if (section != null) params['section'] = section;
+    if (selectedTagIds != null && selectedTagIds.isNotEmpty) {
+      params['selectedTagIds'] = selectedTagIds;
+    }
+    final data = await _postRpc(
+      method: 'Storage.GetUserTags',
+      params: params,
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is! List) return const <UserTag>[];
+    return result.whereType<Map>().map((item) {
+      return UserTag(
+        id: _asInt(item['id']) ?? 0,
+        step: (item['step'] ?? '').toString(),
+        section: (item['section'] ?? '').toString(),
+        name: (item['name'] ?? '').toString(),
+        slug: (item['slug'] ?? '').toString(),
+        type: (item['type'] ?? '').toString(),
+      );
+    }).toList();
+  }
+
+  /// Creates a user tag for a specific report step.
+  ///
+  /// [step] — required: car, characteristics, documentreconciliation,
+  /// legalreview, inspection, testdrive, result.
+  /// [name] — tag name (max 255 chars).
+  /// [section] — only for step=inspection.
+  /// [type] — serious or nonserious.
+  /// Returns the created (or existing) tag.
+  static Future<UserTag> addUserTag({
+    required String step,
+    required String name,
+    String? section,
+    String? type,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final params = <String, dynamic>{'step': step, 'name': name};
+    if (section != null) params['section'] = section;
+    if (type != null) params['type'] = type;
+    final data = await _postRpc(
+      method: 'Storage.AddUserTag',
+      params: params,
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    return UserTag(
+      id: _asInt(result['id']) ?? 0,
+      step: (result['step'] ?? '').toString(),
+      section: (result['section'] ?? '').toString(),
+      name: (result['name'] ?? '').toString(),
+      slug: (result['slug'] ?? '').toString(),
+      type: (result['type'] ?? '').toString(),
+    );
+  }
+
   static Future<BrandCatalog> fetchBrandCatalog({
     String search = '',
     Duration timeout = const Duration(seconds: 8),
@@ -1697,5 +1788,304 @@ class StorageApi {
       );
     }
     return items;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tag management
+  // ---------------------------------------------------------------------------
+
+  /// Removes a user tag from a report (unlinks it).
+  static Future<void> removeUserTag({
+    required int tagId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    await _postRpc(
+      method: 'Storage.RemoveUserTag',
+      params: {'tagId': tagId},
+      timeout: timeout,
+    );
+  }
+
+  /// Permanently deletes a user tag.
+  static Future<void> deleteUserTag({
+    required int tagId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    await _postRpc(
+      method: 'Storage.DeleteUserTag',
+      params: {'tagId': tagId},
+      timeout: timeout,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Specialist reports (list variant)
+  // ---------------------------------------------------------------------------
+
+  /// Returns a list of specialist reports (server-side list endpoint).
+  static Future<List<Map<String, dynamic>>> getSpecialistReports({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetSpecialistReports',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is List) {
+      return result.whereType<Map>().map((e) => _asMap(e)).toList();
+    }
+    if (result is Map) {
+      final map = _asMap(result);
+      final list =
+          map['items'] ?? map['reports'] ?? map['data'] ?? map['list'];
+      if (list is List) {
+        return list.whereType<Map>().map((e) => _asMap(e)).toList();
+      }
+    }
+    return [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Legal check
+  // ---------------------------------------------------------------------------
+
+  /// Purchases a legal check for the given VIN.
+  static Future<Map<String, dynamic>> purchaseLegalCheck({
+    required String vin,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.PurchaseLegalCheck',
+      params: {'vin': vin.trim()},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Returns legal information for the given VIN.
+  static Future<Map<String, dynamic>> getLegalInfo({
+    required String vin,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetLegalInfo',
+      params: {'vin': vin.trim()},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Balance & payments
+  // ---------------------------------------------------------------------------
+
+  /// Returns the current user balance.
+  static Future<Map<String, dynamic>> getBalance({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetBalance',
+      params: const {},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Returns a list of user transactions.
+  static Future<List<Map<String, dynamic>>> getTransactions({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetTransactions',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is List) {
+      return result.whereType<Map>().map((e) => _asMap(e)).toList();
+    }
+    if (result is Map) {
+      final map = _asMap(result);
+      final list =
+          map['items'] ?? map['transactions'] ?? map['data'] ?? map['list'];
+      if (list is List) {
+        return list.whereType<Map>().map((e) => _asMap(e)).toList();
+      }
+    }
+    return [];
+  }
+
+  /// Creates a payment for the given amount and returns payment info (URL, etc).
+  static Future<Map<String, dynamic>> createPayment({
+    required int amount,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.CreatePayment',
+      params: {'amount': amount},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Company specialists
+  // ---------------------------------------------------------------------------
+
+  /// Returns a list of company specialists.
+  static Future<List<Map<String, dynamic>>> getCompanySpecialists({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetCompanySpecialists',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is List) {
+      return result.whereType<Map>().map((e) => _asMap(e)).toList();
+    }
+    if (result is Map) {
+      final map = _asMap(result);
+      final list =
+          map['items'] ?? map['specialists'] ?? map['data'] ?? map['list'];
+      if (list is List) {
+        return list.whereType<Map>().map((e) => _asMap(e)).toList();
+      }
+    }
+    return [];
+  }
+
+  /// Updates a company specialist record.
+  static Future<Map<String, dynamic>> updateCompanySpecialist({
+    required String specialistId,
+    required Map<String, dynamic> data,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final resp = await _postRpc(
+      method: 'Storage.UpdateCompanySpecialist',
+      params: {'specialistId': specialistId, ...data},
+      timeout: timeout,
+    );
+    return _asMap(resp['result']);
+  }
+
+  /// Creates an invite link for staff members.
+  static Future<String> createStaffInviteLink({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.CreateStaffInviteLink',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    return _extractString(result, ['url', 'link', 'inviteUrl', 'inviteLink']);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Assignments
+  // ---------------------------------------------------------------------------
+
+  /// Creates a new assignment.
+  static Future<Map<String, dynamic>> createAssignment({
+    required Map<String, dynamic> assignment,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.CreateAssignment',
+      params: assignment,
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Returns a list of assignments.
+  static Future<List<Map<String, dynamic>>> getAssignments({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetAssignments',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = data['result'];
+    if (result is List) {
+      return result.whereType<Map>().map((e) => _asMap(e)).toList();
+    }
+    if (result is Map) {
+      final map = _asMap(result);
+      final list =
+          map['items'] ?? map['assignments'] ?? map['data'] ?? map['list'];
+      if (list is List) {
+        return list.whereType<Map>().map((e) => _asMap(e)).toList();
+      }
+    }
+    return [];
+  }
+
+  /// Updates an existing assignment.
+  static Future<Map<String, dynamic>> updateAssignment({
+    required String assignmentId,
+    required Map<String, dynamic> data,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final resp = await _postRpc(
+      method: 'Storage.UpdateAssignment',
+      params: {'assignmentId': assignmentId, ...data},
+      timeout: timeout,
+    );
+    return _asMap(resp['result']);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Profile
+  // ---------------------------------------------------------------------------
+
+  /// Returns the current user profile.
+  static Future<Map<String, dynamic>> getProfile({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetProfile',
+      params: const {},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Updates the current user profile.
+  static Future<Map<String, dynamic>> updateProfile({
+    required Map<String, dynamic> profile,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.UpdateProfile',
+      params: profile,
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Promo
+  // ---------------------------------------------------------------------------
+
+  /// Retrieves promo information, optionally by code.
+  static Future<Map<String, dynamic>> getPromo({
+    String? code,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final params = <String, dynamic>{};
+    if (code != null && code.trim().isNotEmpty) {
+      params['code'] = code.trim();
+    }
+    final data = await _postRpc(
+      method: 'Storage.GetPromo',
+      params: params,
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
   }
 }

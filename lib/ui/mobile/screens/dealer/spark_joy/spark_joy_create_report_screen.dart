@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:camerawesome/camerawesome_plugin.dart' as cam;
+import 'package:camerawesome/pigeon.dart' as cam_pigeon;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -269,6 +270,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   int _uploadedItemIdCounter = 0;
   final Map<String, int> _localSavedFileNameUsages = <String, int>{};
 
+  /// Maps tag name (lowercased) → server-side integer ID.
+  /// Populated by [_loadTagIdsFromServer] during initialization.
+  final Map<String, int> _tagNameToId = <String, int>{};
+
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;
     return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$_uploadedItemIdCounter';
@@ -288,6 +293,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _loadDraftIntoState(draft: draft, assignment: assignment, now: now);
 
     _finalizeInitializationAfterDraftLoad();
+    unawaited(_loadTagIdsFromServer());
   }
 
   @override
