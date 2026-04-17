@@ -1,5 +1,21 @@
 part of 'spark_joy_create_report_screen.dart';
 
+/// Context required to create a missing user tag on the server in the correct
+/// step / section / severity bucket. Used by [_ensureAllTagIdsResolved].
+class _TagSyncContext {
+  final String name;
+  final String step;
+  final String? section;
+  final String type;
+
+  const _TagSyncContext({
+    required this.name,
+    required this.step,
+    required this.section,
+    required this.type,
+  });
+}
+
 extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   // ──────────────────────────────────────────────────────────────────
   //  Tag ID resolution — GetUserTags / AddUserTag integration
@@ -18,14 +34,26 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     'diagnostics': 'computer_diagnostics',
   };
 
-  /// Loads all user tags from the server for inspection and testdrive steps
-  /// and populates [_tagNameToId] mapping for payload serialization.
+  /// Loads all user tags from the server and populates [_tagNameToId]
+  /// mapping for payload serialization.
+  ///
+  /// Per OpenRPC Doc, `Storage.GetUserTags` returns section-specific tags
+  /// only when `section` is provided for `step=inspection`. Therefore we
+  /// fetch:
+  ///   • every inspection section explicitly (body, interior, …)
+  ///   • a generic inspection request (section=null) for shared tags
+  ///   • test_drive step (no sections)
   Future<void> _loadTagIdsFromServer() async {
     try {
-      final steps = ['inspection', 'testdrive'];
-      final futures = steps.map(
-        (step) => storage_api.StorageApi.getUserTags(step: step),
-      );
+      final futures = <Future<List<storage_api.UserTag>>>[
+        storage_api.StorageApi.getUserTags(step: 'inspection'),
+        storage_api.StorageApi.getUserTags(step: 'test_drive'),
+        for (final section in _groupKeyToApiSection.values)
+          storage_api.StorageApi.getUserTags(
+            step: 'inspection',
+            section: section,
+          ),
+      ];
       final results = await Future.wait(futures);
       for (final tags in results) {
         for (final tag in tags) {
@@ -42,10 +70,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
   /// Creates a custom tag on the server and caches its ID in [_tagNameToId].
   ///
-  /// [step] — `inspection` or `testdrive`.
+  /// [step] — `inspection` or `test_drive`.
   /// [tagName] — the user-entered tag name.
   /// [section] — API section for inspection tags (e.g. `body`), null for
-  ///   testdrive.
+  ///   test_drive.
   /// [type] — `serious` or `nonserious`.
   ///
   /// Returns the server-assigned tag ID, or `null` on failure.
@@ -98,58 +126,130 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     required String severity,
   }) {
     return _syncCustomTagToServer(
-      step: 'testdrive',
+      step: 'test_drive',
       tagName: tagName,
       type: severity == 'serious' ? 'serious' : 'nonserious',
     );
   }
 
   /// Ensures every tag name in the report payload has an ID in
-  /// [_tagNameToId]. Calls [_syncCustomTagToServer] for any missing ones.
-  /// Should be awaited once before building the final PrepareSpecialistReport
-  /// payload.
+  /// [_tagNameToId]. Calls [_syncCustomTagToServer] for any missing ones,
+  /// passing the correct `step` / `section` / `type` for each tag based on
+  /// where it appears in the report (inspection section vs. test-drive,
+  /// serious vs. non-serious).
+  ///
+  /// Should be awaited once before building the final
+  /// `Storage.PrepareSpecialistReport` payload.
   Future<void> _ensureAllTagIdsResolved() async {
-    // Collect all tag names currently used in the report.
-    final allTagNames = <String>{};
+    // Collect tag name → request context (step/section/type) from the actual
+    // usage sites. If the same tag name appears under multiple contexts, the
+    // first context wins (cache is keyed by normalized name anyway).
+    final contexts = <String, _TagSyncContext>{};
 
-    // Inspection tags from media files.
-    for (final entry in _mediaState.entries) {
-      final state = entry.value;
-      for (final file in state.files) {
-        for (final tag in file.inspection.tags) {
-          allTagNames.add(tag.trim());
-        }
-      }
-      for (final tag in state.partInspection.tags) {
-        allTagNames.add(tag.trim());
+    void registerInspection({
+      required String groupKey,
+      required String tagName,
+      required String severity,
+    }) {
+      final trimmed = tagName.trim();
+      if (trimmed.isEmpty) return;
+      final key = trimmed.toLowerCase();
+      if (_tagNameToId[key] != null) return;
+      contexts.putIfAbsent(
+        key,
+        () => _TagSyncContext(
+          name: trimmed,
+          step: 'inspection',
+          section: _groupKeyToApiSection[groupKey],
+          type: severity == 'serious' ? 'serious' : 'nonserious',
+        ),
+      );
+    }
+
+    void registerTestDrive(List<String> tags, String severityFallback) {
+      for (final raw in tags) {
+        final trimmed = raw.trim();
+        if (trimmed.isEmpty) continue;
+        final key = trimmed.toLowerCase();
+        if (_tagNameToId[key] != null) continue;
+        contexts.putIfAbsent(
+          key,
+          () => _TagSyncContext(
+            name: trimmed,
+            step: 'test_drive',
+            section: null,
+            type: severityFallback,
+          ),
+        );
       }
     }
 
-    // Test-drive tags.
-    allTagNames.addAll(_tdEngineTags);
-    allTagNames.addAll(_tdGearboxTags);
-    allTagNames.addAll(_tdSteeringTags);
-    allTagNames.addAll(_tdRideTags);
-    allTagNames.addAll(_tdBrakeTags);
+    // Inspection tags from media files (per-section, per-severity).
+    for (final entry in _mediaState.entries) {
+      final groupKey = entry.key;
+      final state = entry.value;
+      for (final file in state.files) {
+        for (final tag in file.inspection.tags) {
+          final severity = _mediaTagSeverity(
+            groupKey,
+            tag,
+            elementType: file.inspection.elementType,
+          );
+          registerInspection(
+            groupKey: groupKey,
+            tagName: tag,
+            severity: severity,
+          );
+        }
+      }
+      for (final tag in state.partInspection.tags) {
+        final severity = _mediaTagSeverity(
+          groupKey,
+          tag,
+          elementType: state.partInspection.elementType,
+        );
+        registerInspection(
+          groupKey: groupKey,
+          tagName: tag,
+          severity: severity,
+        );
+      }
+    }
 
-    // Find names without IDs.
-    final unresolved = allTagNames.where((name) {
-      final key = name.toLowerCase();
-      return key.isNotEmpty && (_tagNameToId[key] == null);
-    }).toList();
+    // Test-drive tags (default to nonserious; server-side preset tags already
+    // have a stored type — local creation only applies to custom entries).
+    registerTestDrive(_tdEngineTags, 'nonserious');
+    registerTestDrive(_tdGearboxTags, 'nonserious');
+    registerTestDrive(_tdSteeringTags, 'nonserious');
+    registerTestDrive(_tdRideTags, 'nonserious');
+    registerTestDrive(_tdBrakeTags, 'nonserious');
 
-    if (unresolved.isEmpty) return;
+    if (contexts.isEmpty) return;
 
-    // Try to resolve by re-fetching from server first.
+    // First try to resolve from server (may have been updated by another
+    // device / session). After that, anything still missing gets created
+    // with the correct step/section/type context.
     await _loadTagIdsFromServer();
 
-    // Any still missing — create them.
-    for (final name in unresolved) {
-      final key = name.toLowerCase();
-      if (_tagNameToId[key] != null) continue;
-      // Best-effort: we don't know the exact step/section here, so use
-      // a generic call. The server will match or create.
-      await _syncCustomTagToServer(step: 'inspection', tagName: name);
+    for (final ctx in contexts.values) {
+      if (_tagNameToId[ctx.name.toLowerCase()] != null) continue;
+      debugPrint(
+        '[TagSync] creating tag: name="${ctx.name}" '
+        'step=${ctx.step} section=${ctx.section} type=${ctx.type}',
+      );
+      await _syncCustomTagToServer(
+        step: ctx.step,
+        tagName: ctx.name,
+        section: ctx.section,
+        type: ctx.type,
+      );
+      final resolvedId = _tagNameToId[ctx.name.toLowerCase()];
+      if (resolvedId == null || resolvedId <= 0) {
+        debugPrint(
+          '[TagSync] FAILED to resolve after create: name="${ctx.name}" '
+          'step=${ctx.step} section=${ctx.section}',
+        );
+      }
     }
   }
 
@@ -158,12 +258,19 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   /// [_syncCustomTagToServer] or [_ensureAllTagIdsResolved] before this point.
   List<int> _resolveTagIds(List<String> tagNames) {
     final ids = <int>[];
+    final missing = <String>[];
     for (final name in tagNames) {
-      final key = name.trim().toLowerCase();
+      final trimmed = name.trim();
+      final key = trimmed.toLowerCase();
       final id = _tagNameToId[key];
       if (id != null && id > 0) {
         ids.add(id);
+      } else if (trimmed.isNotEmpty) {
+        missing.add(trimmed);
       }
+    }
+    if (missing.isNotEmpty) {
+      debugPrint('[TagSync] _resolveTagIds unresolved: $missing');
     }
     return ids;
   }
@@ -1393,7 +1500,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
                 ?.round();
         final paintTo =
             (item.inspection.paintTo ?? state.partInspection.paintTo)?.round();
-        final noDamage = tags.isEmpty && item.inspection.noDamage;
+        // Server rule: if noDamage=false, seriousDamageTags/noSeriousDamageTags
+        // must be non-empty. If the user added a photo but didn't pick any tag,
+        // we treat it as "no damage" so the backend doesn't reject the report.
+        final noDamage = tags.isEmpty;
         final payloadItem = <String, dynamic>{
           'file': <String, dynamic>{
             'filename': filename,

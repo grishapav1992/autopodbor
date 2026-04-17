@@ -13,22 +13,9 @@ Widget _buildSparkJoyStepTestDrive(
 }) {
   final tdConducted = s._tdConductedValue();
   final showSubsystemCards = tdConducted == true && s._tdMode != modeAllGood;
-  final okCount =
-      (s._tdEngineOk ? 1 : 0) +
-      (s._tdGearboxOk ? 1 : 0) +
-      (s._tdSteeringOk ? 1 : 0) +
-      (s._tdRideOk ? 1 : 0) +
-      (s._tdBrakeOk ? 1 : 0);
-  final tagsCount =
-      s._tdEngineTags.length +
-      s._tdGearboxTags.length +
-      s._tdSteeringTags.length +
-      s._tdRideTags.length +
-      s._tdBrakeTags.length;
 
   return Column(
     children: [
-      s._sectionHeading('Режим тест-драйва', icon: Icons.route_rounded),
       if (tdConducted == null) ...[
         const SparkHintCard(
           text: 'Сначала выберите режим тест-драйва.',
@@ -37,43 +24,6 @@ Widget _buildSparkJoyStepTestDrive(
         const SizedBox(height: SparkSpace.lg),
       ],
       s._testDriveConductedSelector(),
-      if (tdConducted == true) ...[
-        const SizedBox(height: SparkSpace.lg),
-        SparkCard(
-          radius: SparkRadius.md,
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xl,
-            vertical: SparkSpace.lg,
-          ),
-          child: Wrap(
-            spacing: SparkSpace.sm,
-            runSpacing: SparkSpace.sm,
-            children: [
-              SparkChip(
-                text: s._tdMode == modeAllGood
-                    ? 'Режим: без замечаний'
-                    : 'Режим: есть проблемы',
-                background:
-                    (s._tdMode == modeAllGood ? kGreenColor : kYellowColor)
-                        .withValues(alpha: 0.12),
-                color: s._tdMode == modeAllGood ? kGreenColor : kTertiaryColor,
-              ),
-              if (s._tdMode != modeAllGood) ...[
-                SparkChip(
-                  text: 'Исправно: $okCount/5',
-                  background: kSecondaryColor.withValues(alpha: 0.1),
-                  color: kSecondaryColor,
-                ),
-                SparkChip(
-                  text: 'Тегов: $tagsCount',
-                  background: kRedColor.withValues(alpha: 0.1),
-                  color: tagsCount > 0 ? kRedColor : kGreyColor,
-                ),
-              ],
-            ],
-          ),
-        ),
-      ],
       if (showSubsystemCards) ...[
         const SizedBox(height: SparkSpace.lg),
         s._sectionHeading(
@@ -204,11 +154,6 @@ Widget _buildSparkJoyStepTestDrive(
         ),
       ],
       if (tdConducted == false) ...[
-        const SizedBox(height: SparkSpace.lg),
-        const SparkHintCard(
-          text: 'Добавьте комментарий, почему тест-драйв не проводился.',
-          icon: Icons.comment_outlined,
-        ),
         const SizedBox(height: SparkSpace.lg),
         s._sectionHeading('Комментарий', icon: Icons.comment_outlined),
         s._testDriveNoteBlock('Причина отсутствия тест-драйва...'),

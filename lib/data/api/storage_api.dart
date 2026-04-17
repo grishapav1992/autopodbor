@@ -125,21 +125,29 @@ class CreateRequestResult {
   const CreateRequestResult({required this.id, required this.requestNumber});
 }
 
+/// User tag returned by `Storage.GetUserTags` / `Storage.AddUserTag`.
+///
+/// Per OpenRPC Doc (Doc method): `step`, `section` and `type` are nullable
+/// strings. `type` enum is `serious | nonserious | null`. `createdAt` is an
+/// ISO-8601 date-time string returned by the server (nullable for forward
+/// compatibility).
 class UserTag {
   final int id;
-  final String step;
-  final String section;
+  final String? step;
+  final String? section;
   final String name;
   final String slug;
-  final String type;
+  final String? type;
+  final String? createdAt;
 
   const UserTag({
     required this.id,
-    required this.step,
-    required this.section,
     required this.name,
     required this.slug,
-    required this.type,
+    this.step,
+    this.section,
+    this.type,
+    this.createdAt,
   });
 
   bool get isSerious => type == 'serious';
@@ -917,7 +925,7 @@ class StorageApi {
 
   static Future<PrepareSpecialistReportResult> prepareSpecialistReport({
     required Map<String, dynamic> report,
-    Duration timeout = const Duration(seconds: 20),
+    Duration timeout = const Duration(seconds: 90),
   }) async {
     final data = await _postRpc(
       method: 'Storage.PrepareSpecialistReport',
@@ -1517,8 +1525,8 @@ class StorageApi {
 
   /// Returns user tags for a specific report step.
   ///
-  /// [step] — required: car, characteristics, documentreconciliation,
-  /// legalreview, inspection, testdrive, result.
+  /// [step] — required: car, characteristics, document_reconciliation,
+  /// legal_review, inspection, test_drive, result.
   /// [section] — only for step=inspection: body, body_reinforcement, glass,
   /// interior, under_hood, wheels_and_brakes, lightning, computer_diagnostics.
   /// [selectedTagIds] — optional int[] for relevance sorting.
@@ -1540,22 +1548,33 @@ class StorageApi {
     );
     final result = data['result'];
     if (result is! List) return const <UserTag>[];
-    return result.whereType<Map>().map((item) {
-      return UserTag(
-        id: _asInt(item['id']) ?? 0,
-        step: (item['step'] ?? '').toString(),
-        section: (item['section'] ?? '').toString(),
-        name: (item['name'] ?? '').toString(),
-        slug: (item['slug'] ?? '').toString(),
-        type: (item['type'] ?? '').toString(),
-      );
-    }).toList();
+    return result.whereType<Map>().map(_userTagFromMap).toList();
+  }
+
+  /// Parses a single UserTag object per OpenRPC Doc schema.
+  /// Handles nullable step/section/type and optional createdAt.
+  static UserTag _userTagFromMap(Map item) {
+    String? nullableString(dynamic v) {
+      if (v == null) return null;
+      final s = v.toString();
+      return s.isEmpty ? null : s;
+    }
+
+    return UserTag(
+      id: _asInt(item['id']) ?? 0,
+      step: nullableString(item['step']),
+      section: nullableString(item['section']),
+      name: (item['name'] ?? '').toString(),
+      slug: (item['slug'] ?? '').toString(),
+      type: nullableString(item['type']),
+      createdAt: nullableString(item['createdAt']),
+    );
   }
 
   /// Creates a user tag for a specific report step.
   ///
-  /// [step] — required: car, characteristics, documentreconciliation,
-  /// legalreview, inspection, testdrive, result.
+  /// [step] — required: car, characteristics, document_reconciliation,
+  /// legal_review, inspection, test_drive, result.
   /// [name] — tag name (max 255 chars).
   /// [section] — only for step=inspection.
   /// [type] — serious or nonserious.
@@ -1576,14 +1595,7 @@ class StorageApi {
       timeout: timeout,
     );
     final result = _asMap(data['result']);
-    return UserTag(
-      id: _asInt(result['id']) ?? 0,
-      step: (result['step'] ?? '').toString(),
-      section: (result['section'] ?? '').toString(),
-      name: (result['name'] ?? '').toString(),
-      slug: (result['slug'] ?? '').toString(),
-      type: (result['type'] ?? '').toString(),
-    );
+    return _userTagFromMap(result);
   }
 
   static Future<BrandCatalog> fetchBrandCatalog({
@@ -1794,7 +1806,16 @@ class StorageApi {
   // Tag management
   // ---------------------------------------------------------------------------
 
+  // NOTE: `Storage.RemoveUserTag` and `Storage.DeleteUserTag` are not yet
+  // published in the OpenRPC Doc (as of 2026-04-17). The backend team confirmed
+  // these endpoints will be added later. The stubs below keep the call sites
+  // working and will start succeeding once the server exposes the methods;
+  // until then they surface a `methodNotFound` error that callers already
+  // swallow in best-effort blocks.
+
   /// Removes a user tag from a report (unlinks it).
+  ///
+  /// Pending backend support — not yet present in OpenRPC Doc.
   static Future<void> removeUserTag({
     required int tagId,
     Duration timeout = const Duration(seconds: 12),
@@ -1807,6 +1828,8 @@ class StorageApi {
   }
 
   /// Permanently deletes a user tag.
+  ///
+  /// Pending backend support — not yet present in OpenRPC Doc.
   static Future<void> deleteUserTag({
     required int tagId,
     Duration timeout = const Duration(seconds: 12),

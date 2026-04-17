@@ -6,16 +6,18 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       return left.trim().toLowerCase() == right.trim().toLowerCase();
     }
 
+    // Brand/model labels always use the English name. Russian variants are
+    // still used for search matching below, but never shown in UI.
     String brandLabel(storage_api.BrandItem brand) {
-      final rus = brand.nameRus.trim();
-      if (rus.isNotEmpty) return rus;
-      return brand.name.trim();
+      final name = brand.name.trim();
+      if (name.isNotEmpty) return name;
+      return brand.nameRus.trim();
     }
 
     String modelLabel(storage_api.ModelItem model) {
-      final rus = model.modelRus.trim();
-      if (rus.isNotEmpty) return rus;
-      return model.model.trim();
+      final name = model.model.trim();
+      if (name.isNotEmpty) return name;
+      return model.modelRus.trim();
     }
 
     _CarCatalogBrand? selectedBrand;
@@ -381,14 +383,8 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                     itemBuilder: (context, index) {
                       final brand = brands[index];
                       final title = brandLabel(brand);
-                      final subtitle =
-                          brand.nameRus.trim().isNotEmpty &&
-                              !same(brand.nameRus, brand.name)
-                          ? brand.name
-                          : null;
                       return ListTile(
                         title: Text(title),
-                        subtitle: subtitle == null ? null : Text(subtitle),
                         trailing: const Icon(Icons.chevron_right_rounded),
                         onTap: () async {
                           setLocalState(() {
@@ -504,14 +500,8 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                       itemBuilder: (context, index) {
                         final model = models[index];
                         final title = modelLabel(model);
-                        final subtitle =
-                            model.modelRus.trim().isNotEmpty &&
-                                !same(model.modelRus, model.model)
-                            ? model.model
-                            : null;
                         return ListTile(
                           title: Text(title),
-                          subtitle: subtitle == null ? null : Text(subtitle),
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: () async {
                             final dialogNavigator = Navigator.of(context);
