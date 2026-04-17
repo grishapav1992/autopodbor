@@ -1,5 +1,6 @@
 ﻿import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
+import 'package:flutter_application_1/core/constants/design_tokens.dart';
 import 'package:flutter_application_1/app/main.dart';
 import 'package:flutter_application_1/ui/common/widgets/common_image_view_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -15,11 +16,11 @@ class VehicleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(12),
-      margin: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(SparkSpace.xl),
+      margin: EdgeInsets.only(bottom: SparkSpace.xl),
       decoration: BoxDecoration(
         color: kWhiteColor,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
         border: Border.all(width: 1, color: kBorderColor),
       ),
       child: Column(
@@ -29,7 +30,7 @@ class VehicleCard extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(SparkRadius.sm),
                 child: SizedBox(
                   height: 204,
                   child: PageView.builder(
@@ -48,8 +49,8 @@ class VehicleCard extends StatelessWidget {
                 ),
               ),
               Positioned(
-                bottom: -20,
-                right: 16,
+                bottom: -SparkSize.iconLg,
+                right: SparkSpace.xxxl,
                 child: Container(
                   height: 46,
                   width: 46,
@@ -61,15 +62,15 @@ class VehicleCard extends StatelessWidget {
                   child: Center(
                     child: Image.asset(
                       isFavorite! ? Assets.imagesFavorite : Assets.imagesHeart,
-                      height: 24,
+                      height: SparkSize.iconXl,
                       color: kRedColor,
                     ),
                   ),
                 ),
               ),
               Positioned(
-                bottom: 16,
-                left: 16,
+                bottom: SparkSpace.xxxl,
+                left: SparkSpace.xxxl,
                 child: SmoothPageIndicator(
                   controller: _controller,
                   count: 3,
@@ -79,7 +80,7 @@ class VehicleCard extends StatelessWidget {
                     activeDotColor: kSecondaryColor,
                     dotColor: kWhiteColor,
                     expansionFactor: 5,
-                    spacing: 4,
+                    spacing: SparkSpace.xs,
                   ),
                 ),
               ),
@@ -89,14 +90,14 @@ class VehicleCard extends StatelessWidget {
           Wrap(
             alignment: WrapAlignment.spaceBetween,
             crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            runSpacing: 6,
+            spacing: SparkSpace.md,
+            runSpacing: SparkSpace.sm,
             children: [
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 220),
                 child: MyText(
                   text: 'Автосалон «Автоцентр»',
-                  size: 12,
+                  size: SparkTextSize.body,
                   color: kHintColor,
                   weight: FontWeight.w500,
                   maxLines: 1,
@@ -106,11 +107,11 @@ class VehicleCard extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset(Assets.imagesLocation, height: 16),
+                  Image.asset(Assets.imagesLocation, height: SparkSize.iconSm),
                   MyText(
-                    paddingLeft: 4,
+                    paddingLeft: SparkSpace.xs,
                     text: '3 256 км',
-                    size: 12,
+                    size: SparkTextSize.body,
                     color: kHintColor,
                     weight: FontWeight.w500,
                   ),
@@ -119,11 +120,11 @@ class VehicleCard extends StatelessWidget {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset(Assets.imagesReviews, height: 16),
+                  Image.asset(Assets.imagesReviews, height: SparkSize.iconSm),
                   MyText(
-                    paddingLeft: 4,
+                    paddingLeft: SparkSpace.xs,
                     text: '12[4]',
-                    size: 12,
+                    size: SparkTextSize.body,
                     color: kHintColor,
                     weight: FontWeight.w500,
                   ),
@@ -131,42 +132,42 @@ class VehicleCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 10),
+          SizedBox(height: SparkSpace.lg),
           Row(
             children: [
               Expanded(
                 child: MyText(
                   text: 'Тойота Камри',
-                  size: 22,
+                  size: SparkTextSize.pageTitle,
                   weight: FontWeight.w700,
                 ),
               ),
               MyText(
                 text: '₽ 899',
-                size: 22,
+                size: SparkTextSize.pageTitle,
                 color: kSecondaryColor,
                 weight: FontWeight.w700,
               ),
             ],
           ),
           MyText(
-            paddingTop: 12,
+            paddingTop: SparkSpace.xl,
             text: '2023 (Тойота Камри....₽123/мес.) ',
-            size: 12,
+            size: SparkTextSize.body,
             color: kHintColor,
             weight: FontWeight.w500,
-            paddingBottom: 12,
+            paddingBottom: SparkSpace.xl,
           ),
           Row(
             children: [
               Expanded(
                 child: Row(
                   children: [
-                    Image.asset(Assets.imagesMiles, height: 20),
+                    Image.asset(Assets.imagesMiles, height: SparkSize.iconLg),
                     MyText(
                       text: '32 518 км',
                       paddingLeft: 9,
-                      size: 12,
+                      size: SparkTextSize.body,
                       color: kHintColor,
                       weight: FontWeight.w500,
                     ),
@@ -176,11 +177,11 @@ class VehicleCard extends StatelessWidget {
               Expanded(
                 child: Row(
                   children: [
-                    Image.asset(Assets.imagesSpeed, height: 20),
+                    Image.asset(Assets.imagesSpeed, height: SparkSize.iconLg),
                     MyText(
                       text: 'Комплектация С',
                       paddingLeft: 9,
-                      size: 12,
+                      size: SparkTextSize.body,
                       color: kHintColor,
                       weight: FontWeight.w500,
                     ),
@@ -189,17 +190,17 @@ class VehicleCard extends StatelessWidget {
               ),
             ],
           ),
-          SizedBox(height: 8),
+          SizedBox(height: SparkSpace.md),
           Row(
             children: [
               Expanded(
                 child: Row(
                   children: [
-                    Image.asset(Assets.imagesDiesel, height: 20),
+                    Image.asset(Assets.imagesDiesel, height: SparkSize.iconLg),
                     MyText(
                       text: 'Дизель',
                       paddingLeft: 9,
-                      size: 12,
+                      size: SparkTextSize.body,
                       color: kHintColor,
                       weight: FontWeight.w500,
                     ),
@@ -209,11 +210,14 @@ class VehicleCard extends StatelessWidget {
               Expanded(
                 child: Row(
                   children: [
-                    Image.asset(Assets.imagesTransmission, height: 20),
+                    Image.asset(
+                      Assets.imagesTransmission,
+                      height: SparkSize.iconLg,
+                    ),
                     MyText(
                       text: 'Автомат',
                       paddingLeft: 9,
-                      size: 12,
+                      size: SparkTextSize.body,
                       color: kHintColor,
                       weight: FontWeight.w500,
                     ),

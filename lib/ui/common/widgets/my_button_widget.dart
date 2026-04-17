@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_responsive.dart';
+import 'package:flutter_application_1/core/constants/design_tokens.dart';
 import 'my_text_widget.dart';
 
 // ignore: must_be_immutable
@@ -31,17 +32,17 @@ class MyButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveHeight = AppResponsive.dp(
       context,
-      height ?? 48,
-      min: 44,
+      height ?? SparkSize.inputHeight,
+      min: SparkSize.actionHeight,
       max: 60,
     );
     final effectiveRadius = AppResponsive.dp(
       context,
-      radius ?? 8,
-      min: 6,
-      max: 14,
+      radius ?? SparkRadius.sm,
+      min: SparkRadius.xs,
+      max: SparkRadius.xxl,
     );
-    final effectiveTextSize = textSize ?? 16;
+    final effectiveTextSize = textSize ?? SparkTextSize.title;
     return Container(
       height: effectiveHeight,
       decoration: BoxDecoration(
@@ -96,17 +97,17 @@ class MyBorderButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveHeight = AppResponsive.dp(
       context,
-      height ?? 48,
-      min: 44,
+      height ?? SparkSize.inputHeight,
+      min: SparkSize.actionHeight,
       max: 60,
     );
     final effectiveRadius = AppResponsive.dp(
       context,
-      radius ?? 8,
-      min: 6,
-      max: 14,
+      radius ?? SparkRadius.sm,
+      min: SparkRadius.xs,
+      max: SparkRadius.xxl,
     );
-    final effectiveTextSize = textSize ?? 16;
+    final effectiveTextSize = textSize ?? SparkTextSize.title;
     return Container(
       height: effectiveHeight,
       decoration: BoxDecoration(
@@ -150,23 +151,33 @@ class NextButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveHeight = AppResponsive.dp(context, 48, min: 44, max: 60);
+    final effectiveHeight = AppResponsive.dp(
+      context,
+      SparkSize.inputHeight,
+      min: SparkSize.actionHeight,
+      max: 60,
+    );
     final effectiveHorizontalPadding = AppResponsive.dp(
       context,
       15,
-      min: 12,
-      max: 20,
+      min: SparkSpace.xl,
+      max: SparkSize.iconLg,
     );
-    final effectiveRadius = AppResponsive.dp(context, 8, min: 6, max: 14);
+    final effectiveRadius = AppResponsive.dp(
+      context,
+      SparkRadius.sm,
+      min: SparkRadius.xs,
+      max: SparkRadius.xxl,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (labelText != null)
           MyText(
             text: labelText ?? '',
-            size: 14,
+            size: SparkTextSize.label,
             color: kTertiaryColor,
-            paddingBottom: 6,
+            paddingBottom: SparkSpace.sm,
             weight: FontWeight.bold,
           ),
         GestureDetector(
@@ -187,12 +198,12 @@ class NextButton extends StatelessWidget {
                 Expanded(
                   child: MyText(
                     text: hint,
-                    size: 12,
+                    size: SparkTextSize.body,
                     weight: FontWeight.w500,
                     color: kTertiaryColor,
                   ),
                 ),
-                Image.asset(Assets.imagesArrowNext, height: 16),
+                Image.asset(Assets.imagesArrowNext, height: SparkSize.iconSm),
               ],
             ),
           ),

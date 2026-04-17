@@ -1,5 +1,6 @@
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
+import 'package:flutter_application_1/core/constants/design_tokens.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
@@ -60,25 +61,25 @@ class _CustomDropDownState extends State<CustomDropDown> {
     final effectiveValue = hasValue ? widget.selectedValue : null;
 
     return Padding(
-      padding: EdgeInsets.only(bottom: widget.marginBottom ?? 16),
+      padding: EdgeInsets.only(bottom: widget.marginBottom ?? SparkSpace.xxxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           if (widget.labelText != null)
             SizedBox(
-              height: 16,
+              height: SparkSize.iconSm,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: MyText(
                   text: widget.labelText ?? '',
-                  size: 12,
+                  size: SparkTextSize.body,
                   weight: FontWeight.bold,
                   maxLines: 1,
                   textOverflow: TextOverflow.ellipsis,
                 ),
               ),
             ),
-          if (widget.labelText != null) const SizedBox(height: 6),
+          if (widget.labelText != null) const SizedBox(height: SparkSpace.sm),
           DropdownButtonHideUnderline(
             child: DropdownButton2(
               items: safeItems
@@ -100,26 +101,33 @@ class _CustomDropDownState extends State<CustomDropDown> {
               dropdownSearchData: widget.enableSearch
                   ? DropdownSearchData(
                       searchController: _searchController,
-                      searchInnerWidgetHeight: 52,
+                      searchInnerWidgetHeight: SparkSize.inputHeightLg,
                       searchInnerWidget: Padding(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(SparkSpace.md),
                         child: TextField(
                           controller: _searchController,
                           decoration: InputDecoration(
                             hintText: widget.searchHint,
-                            prefixIcon: const Icon(Icons.search, size: 18),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              size: SparkSize.iconMd,
+                            ),
                             filled: true,
                             fillColor: kWhiteColor,
                             contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 10,
+                              horizontal: SparkSpace.lg,
+                              vertical: SparkSpace.lg,
                             ),
                             enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(
+                                SparkRadius.md,
+                              ),
                               borderSide: BorderSide(color: kBorderColor),
                             ),
                             focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(
+                                SparkRadius.md,
+                              ),
                               borderSide: BorderSide(color: kSecondaryColor),
                             ),
                           ),
@@ -142,12 +150,12 @@ class _CustomDropDownState extends State<CustomDropDown> {
                     }
                   : null,
               customButton: Container(
-                height: 48,
+                height: SparkSize.inputHeight,
                 padding: EdgeInsets.symmetric(horizontal: 15),
                 decoration: BoxDecoration(
                   color: kWhiteColor,
                   border: Border.all(width: 1.0, color: kBorderColor),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(SparkRadius.sm),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -159,7 +167,7 @@ class _CustomDropDownState extends State<CustomDropDown> {
                                 widget.selectedValue == widget.hint)
                             ? widget.hint
                             : widget.selectedValue,
-                        size: 12,
+                        size: SparkTextSize.body,
                         weight: FontWeight.w500,
                         color:
                             (effectiveValue == null ||
@@ -170,7 +178,10 @@ class _CustomDropDownState extends State<CustomDropDown> {
                     ),
                     RotatedBox(
                       quarterTurns: 1,
-                      child: Image.asset(Assets.imagesArrowNext, height: 16),
+                      child: Image.asset(
+                        Assets.imagesArrowNext,
+                        height: SparkSize.iconSm,
+                      ),
                     ),
                   ],
                 ),
@@ -181,7 +192,7 @@ class _CustomDropDownState extends State<CustomDropDown> {
                 maxHeight: 300,
                 offset: Offset(0, -5),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(SparkRadius.sm),
                   color: kWhiteColor,
                 ),
               ),
@@ -206,7 +217,7 @@ class _DropDownItem extends StatelessWidget {
       children: [
         if (url != null && url.isNotEmpty) ...[
           ClipRRect(
-            borderRadius: BorderRadius.circular(6),
+            borderRadius: BorderRadius.circular(SparkRadius.xs),
             child: Image.network(
               url,
               width: 28,
@@ -216,9 +227,9 @@ class _DropDownItem extends StatelessWidget {
                   Container(width: 28, height: 28, color: kBorderColor),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: SparkSpace.md),
         ],
-        Expanded(child: MyText(text: label, size: 12)),
+        Expanded(child: MyText(text: label, size: SparkTextSize.body)),
       ],
     );
   }
