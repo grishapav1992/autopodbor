@@ -19,3 +19,17 @@ const kRedColor2 = Color(0xffC62828);
 const kHintColor = Color(0xff6B7280);
 const kLightGreyColor = Color(0xffF6F7F8);
 const kGreyColor2 = Color(0xffEEF1F3);
+
+// ---------------------------------------------------------------------------
+// Status chip palette (assignments / staff workload).
+// Pastel background + accessible dark foreground. Kept as separate constants
+// so they can be reused from any chip/badge widget without re-declaring hex.
+// ---------------------------------------------------------------------------
+const kChipNewBg = Color(0xFFE8F1FF);
+const kChipNewFg = Color(0xFF245CBA);
+const kChipAssignedBg = Color(0xFFEFEAFF);
+const kChipAssignedFg = Color(0xFF5A35C8);
+const kChipInProgressBg = Color(0xFFFFF4D8);
+const kChipInProgressFg = Color(0xFFA87300);
+const kChipCompletedBg = Color(0xFFE8F6EC);
+const kChipCompletedFg = Color(0xFF1C7C3D);

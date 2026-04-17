@@ -142,8 +142,8 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
               ),
               SparkChip(
                 text: sjT('spark.status.confirmed', fallback: 'Подтверждён'),
-                background: const Color(0xFFE8F6EC),
-                color: const Color(0xFF1C7C3D),
+                background: kChipCompletedBg,
+                color: kChipCompletedFg,
               ),
             ],
           ),

@@ -327,8 +327,8 @@ class _SparkJoyCompanyStaffScreenState
               ),
               SparkChip(
                 text: sjT('spark.status.pending', fallback: 'Ожидает'),
-                background: const Color(0xFFFFF4D8),
-                color: const Color(0xFFA87300),
+                background: kChipInProgressBg,
+                color: kChipInProgressFg,
               ),
             ],
           ),

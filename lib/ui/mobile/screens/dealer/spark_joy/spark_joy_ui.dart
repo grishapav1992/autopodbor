@@ -49,13 +49,13 @@ String sjInitials(String name) {
 Color sparkAssignmentChipBackground(String status) {
   switch (status) {
     case 'new':
-      return const Color(0xFFE8F1FF);
+      return kChipNewBg;
     case 'assigned':
-      return const Color(0xFFEFEAFF);
+      return kChipAssignedBg;
     case 'in_progress':
-      return const Color(0xFFFFF4D8);
+      return kChipInProgressBg;
     case 'completed':
-      return const Color(0xFFE8F6EC);
+      return kChipCompletedBg;
     default:
       return kLightGreyColor;
   }
@@ -64,13 +64,13 @@ Color sparkAssignmentChipBackground(String status) {
 Color sparkAssignmentChipColor(String status) {
   switch (status) {
     case 'new':
-      return const Color(0xFF245CBA);
+      return kChipNewFg;
     case 'assigned':
-      return const Color(0xFF5A35C8);
+      return kChipAssignedFg;
     case 'in_progress':
-      return const Color(0xFFA87300);
+      return kChipInProgressFg;
     case 'completed':
-      return const Color(0xFF1C7C3D);
+      return kChipCompletedFg;
     default:
       return kGreyColor;
   }
