@@ -21,6 +21,42 @@ Future<void> _sparkOpenVinScannerDialog(
 }
 
 extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
+  /// Opens the native iOS/Android crop UI so the user can tightly select the
+  /// VIN plate area. Returns the cropped JPEG bytes, or `null` if the user
+  /// cancelled. On failure falls back to [fallbackBytes] (so OCR still runs
+  /// against the full uncropped photo).
+  Future<Uint8List?> _cropVinWithNativeCropper({
+    required String sourcePath,
+    required Uint8List fallbackBytes,
+  }) async {
+    try {
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: sourcePath,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 95,
+        uiSettings: [
+          IOSUiSettings(
+            title: 'Обрежьте VIN',
+            aspectRatioLockEnabled: false,
+            resetAspectRatioEnabled: true,
+            doneButtonTitle: 'Готово',
+            cancelButtonTitle: 'Отмена',
+          ),
+          AndroidUiSettings(
+            toolbarTitle: 'Обрежьте VIN',
+            lockAspectRatio: false,
+            hideBottomControls: false,
+          ),
+        ],
+      );
+      if (cropped == null) return null;
+      return await cropped.readAsBytes();
+    } catch (e) {
+      debugPrint('VIN cropper error: $e');
+      return fallbackBytes;
+    }
+  }
+
   Uint8List _runCropVinGuideArea(Uint8List bytes) {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return bytes;
@@ -155,7 +191,11 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
     var selectedSource = initialSource == ImageSource.gallery
         ? 'gallery'
         : 'camera';
-    final supportsLiveCameraPreview = !kIsWeb;
+    // Temporarily disabled: using the system camera (ImagePicker) gives access
+    // to iOS macro mode and auto-switching between lenses, which fixes close-up
+    // focus issues on VIN plates. Set back to `!kIsWeb` to re-enable the
+    // camerawesome live preview.
+    const supportsLiveCameraPreview = false;
     var dialogActive = true;
     var initialActionLaunched = false;
     var focusAdjusting = false;
@@ -385,8 +425,35 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
           });
           return;
         }
-        if (file == null) return;
-        bytes = await file.readAsBytes();
+        if (file == null) {
+          // User cancelled the system camera / gallery picker. If we had no
+          // prior photo in this dialog, there's nothing useful to show —
+          // close the whole VIN dialog so they return to the form, instead
+          // of leaving them on a stale "Запуск камеры..." screen.
+          if (previewBytes == null && mounted && dialogActive) {
+            Navigator.of(context).pop();
+          }
+          return;
+        }
+
+        // Let the user crop to just the VIN strip. A tight crop around the
+        // plate dramatically increases OCR recognition rate — MLKit doesn't
+        // get distracted by other dashboard/engine-bay text, and the VIN
+        // characters occupy a larger portion of the resized input.
+        final originalBytes = await file.readAsBytes();
+        final croppedBytes = await _cropVinWithNativeCropper(
+          sourcePath: file.path,
+          fallbackBytes: originalBytes,
+        );
+        if (croppedBytes == null) {
+          // User cancelled cropping. Same logic as camera cancel — if we
+          // have no previous photo to fall back to, close the dialog.
+          if (previewBytes == null && mounted && dialogActive) {
+            Navigator.of(context).pop();
+          }
+          return;
+        }
+        bytes = croppedBytes;
       }
       pendingOcrBytes = null;
       pendingOcrFallbackBytes = null;
@@ -903,10 +970,27 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                   if (previewBytes != null) ...[
                                     ClipRRect(
                                       borderRadius: BorderRadius.circular(12),
-                                      child: Image.memory(
-                                        previewBytes!,
-                                        height: 220,
-                                        fit: BoxFit.cover,
+                                      // Preserve the VIN crop's native aspect
+                                      // ratio so the user can visually compare
+                                      // the characters on the photo with the
+                                      // recognized VIN text below.
+                                      // BoxFit.contain + no fixed height lets
+                                      // wide/short crops render as a natural
+                                      // horizontal strip without distortion or
+                                      // center-cropping.
+                                      child: Container(
+                                        color: kLightGreyColor,
+                                        constraints: const BoxConstraints(
+                                          minHeight: 80,
+                                          maxHeight: 320,
+                                        ),
+                                        width: double.infinity,
+                                        alignment: Alignment.center,
+                                        child: Image.memory(
+                                          previewBytes!,
+                                          fit: BoxFit.contain,
+                                          width: double.infinity,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 10),

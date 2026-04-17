@@ -16,16 +16,6 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
     requiredGroups.length,
   );
   final hasRequiredGroups = requiredGroups.isNotEmpty;
-  final groupsWithFiles = s._mediaState.values
-      .where((state) => state.files.isNotEmpty)
-      .length;
-  final groupsWithIssues = s._mediaState.values.where(s._groupHasIssue).length;
-  final groupsWithNotes = s._mediaState.values.where((state) {
-    return state.files.any(
-      (file) => s._mediaInspectionHasData(file.inspection),
-    );
-  }).length;
-
   if (s._activeMediaGroupKey != null) {
     return s._mediaGroupEditor();
   }
@@ -45,38 +35,6 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
         ),
         const SizedBox(height: SparkSpace.lg),
       ],
-      SparkCard(
-        padding: const EdgeInsets.symmetric(
-          horizontal: SparkSpace.xl,
-          vertical: SparkSpace.xl,
-        ),
-        radius: SparkRadius.md,
-        child: Wrap(
-          spacing: SparkSpace.md,
-          runSpacing: SparkSpace.md,
-          children: [
-            SparkChip(
-              text: 'С файлами: $groupsWithFiles',
-              background: kSecondaryColor.withValues(alpha: 0.08),
-              color: kSecondaryColor,
-              icon: Icons.collections_outlined,
-            ),
-            SparkChip(
-              text: 'С заметками: $groupsWithNotes',
-              background: kGreenColor.withValues(alpha: 0.12),
-              color: kGreenColor,
-              icon: Icons.edit_note_rounded,
-            ),
-            SparkChip(
-              text: 'С замечаниями: $groupsWithIssues',
-              background: kRedColor.withValues(alpha: 0.12),
-              color: kRedColor,
-              icon: Icons.report_problem_outlined,
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: SparkSpace.lg),
       if (hasRequiredGroups)
         s._sectionHeading(
           'Обязательные · $requiredFilled/${requiredGroups.length}',

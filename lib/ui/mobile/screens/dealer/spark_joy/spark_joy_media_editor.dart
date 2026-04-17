@@ -832,95 +832,105 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
           ),
         ),
         const SizedBox(height: SparkSpace.lg),
-        if (_mediaGroupSelectMode && selectedCount > 0)
-          SparkCard(
-            radius: SparkRadius.md,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SparkChip(
-                  text: 'Выбрано: $selectedCount',
-                  background: kSecondaryColor.withValues(alpha: 0.1),
-                  color: kSecondaryColor,
-                ),
-                const SizedBox(height: SparkSpace.md),
-                Wrap(
-                  spacing: SparkSpace.md,
-                  runSpacing: SparkSpace.md,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: () => _applyInspectionToSelected(groupKey),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: kBorderColor),
-                        foregroundColor: kSecondaryColor,
-                        minimumSize: const Size(
-                          SparkSize.modalActionSecondaryWidth,
-                          SparkSize.actionHeightMd,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(SparkRadius.lg),
-                        ),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        // Unified swap slot: compact select toolbar in multi-select mode,
+        // otherwise the "long-press" hint (or nothing when only one file).
+        // AnimatedSize smooths height transitions, so switching modes doesn't
+        // make the grid jump.
+        AnimatedSize(
+          duration: SparkMotion.fast,
+          curve: Curves.easeOut,
+          alignment: Alignment.topCenter,
+          child: AnimatedSwitcher(
+            duration: SparkMotion.fast,
+            switchInCurve: Curves.easeOut,
+            switchOutCurve: Curves.easeIn,
+            child: (_mediaGroupSelectMode && selectedCount > 0)
+                ? Padding(
+                    key: const ValueKey('media-select-toolbar'),
+                    padding: const EdgeInsets.only(bottom: SparkSpace.lg),
+                    child: SparkCard(
+                      radius: SparkRadius.lg,
+                      backgroundColor: kSecondaryColor.withValues(alpha: 0.08),
+                      borderColor: kSecondaryColor.withValues(alpha: 0.35),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: SparkSpace.md,
+                        vertical: SparkSpace.sm,
                       ),
-                      icon: const Icon(
-                        Icons.assignment_turned_in_outlined,
-                        size: SparkTextSize.titleLg,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(
+                              color: kSecondaryColor,
+                              shape: BoxShape.circle,
+                            ),
+                            child: MyText(
+                              text: '$selectedCount',
+                              color: kWhiteColor,
+                              weight: FontWeight.w700,
+                              size: SparkTextSize.caption,
+                            ),
+                          ),
+                          const SizedBox(width: SparkSpace.md),
+                          const Expanded(
+                            child: MyText(
+                              text: 'Выбрано',
+                              size: SparkTextSize.body,
+                              color: kSecondaryColor,
+                              weight: FontWeight.w600,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Добавить заметку',
+                            onPressed: () =>
+                                _applyInspectionToSelected(groupKey),
+                            icon: const Icon(Icons.edit_note_rounded),
+                            color: kSecondaryColor,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          IconButton(
+                            tooltip: 'Удалить',
+                            onPressed: () => _deleteMediaInGroup(
+                              groupKey: groupKey,
+                              indexes: _mediaGroupSelectedIndexes.toList(),
+                            ),
+                            icon: const Icon(Icons.delete_outline_rounded),
+                            color: kRedColor,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          IconButton(
+                            tooltip: 'Отмена',
+                            onPressed: () {
+                              _setStateSafely(() {
+                                _mediaGroupSelectMode = false;
+                                _mediaGroupSelectedIndexes = <int>{};
+                              });
+                            },
+                            icon: const Icon(Icons.close_rounded),
+                            color: kGreyColor,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ],
                       ),
-                      label: const Text('Заметка'),
                     ),
-                    OutlinedButton.icon(
-                      onPressed: () => _deleteMediaInGroup(
-                        groupKey: groupKey,
-                        indexes: _mediaGroupSelectedIndexes.toList(),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: kRedColor),
-                        foregroundColor: kRedColor,
-                        minimumSize: const Size(
-                          SparkSize.modalActionSecondaryWidth,
-                          SparkSize.actionHeightMd,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(SparkRadius.lg),
-                        ),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      icon: const Icon(
-                        Icons.delete_outline_rounded,
-                        size: SparkTextSize.titleLg,
-                      ),
-                      label: const Text('Удалить'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        _setStateSafely(() {
-                          _mediaGroupSelectMode = false;
-                          _mediaGroupSelectedIndexes = <int>{};
-                        });
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: kGreyColor,
-                        minimumSize: const Size(
-                          SparkSize.modalActionSecondaryWidth,
-                          SparkSize.actionHeightMd,
-                        ),
-                      ),
-                      child: const Text('Отмена'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                  )
+                : (files.length > 1
+                      ? const Padding(
+                          key: ValueKey('media-select-hint'),
+                          padding: EdgeInsets.only(bottom: SparkSpace.lg),
+                          child: SparkHintCard(
+                            text:
+                                'Зажмите фото для выбора нескольких файлов.',
+                            icon: Icons.touch_app_outlined,
+                          ),
+                        )
+                      : const SizedBox.shrink(
+                          key: ValueKey('media-select-none'),
+                        )),
           ),
-        if (_mediaGroupSelectMode && selectedCount > 0)
-          const SizedBox(height: SparkSpace.lg),
-        if (!_mediaGroupSelectMode && files.length > 1) ...[
-          const SparkHintCard(
-            text: 'Зажмите фото для выбора нескольких файлов.',
-            icon: Icons.touch_app_outlined,
-          ),
-          const SizedBox(height: SparkSpace.lg),
-        ],
+        ),
         LayoutBuilder(
           builder: (context, constraints) {
             final maxWidth = constraints.maxWidth;
@@ -1034,11 +1044,16 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                                 ),
                                 child: Container(
                                   color: kLightGreyColor,
-                                  child: _uploadedMediaThumbWidget(
-                                    item,
-                                    fit: BoxFit.contain,
-                                    cacheWidth: 720,
-                                    cacheHeight: 720,
+                                  // BoxFit.cover fills the tile completely
+                                  // (slight crop) so photos/videos no longer
+                                  // appear stretched or letter-boxed.
+                                  child: SizedBox.expand(
+                                    child: _uploadedMediaThumbWidget(
+                                      item,
+                                      fit: BoxFit.cover,
+                                      cacheWidth: 720,
+                                      cacheHeight: 720,
+                                    ),
                                   ),
                                 ),
                               ),
