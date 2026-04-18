@@ -14,6 +14,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
@@ -272,9 +273,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   int _uploadedItemIdCounter = 0;
   final Map<String, int> _localSavedFileNameUsages = <String, int>{};
 
-  /// Maps tag name (lowercased) → server-side integer ID.
-  /// Populated by [_loadTagIdsFromServer] during initialization.
-  final Map<String, int> _tagNameToId = <String, int>{};
+  /// Tag RPC + cache layer. All reads/writes to the name → server-id map
+  /// go through this service; the spark_joy_storage_helpers extension
+  /// holds only thin wrappers that collect host-state context.
+  final SparkJoyTagService _tagService = SparkJoyTagService();
 
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;

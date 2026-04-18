@@ -1,97 +1,29 @@
 part of 'spark_joy_create_report_screen.dart';
 
-/// Context required to create a missing user tag on the server in the correct
-/// step / section / severity bucket. Used by [_ensureAllTagIdsResolved].
-class _TagSyncContext {
-  final String name;
-  final String step;
-  final String? section;
-  final String type;
-
-  const _TagSyncContext({
-    required this.name,
-    required this.step,
-    required this.section,
-    required this.type,
-  });
-}
-
 extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   // ──────────────────────────────────────────────────────────────────
   //  Tag ID resolution — GetUserTags / AddUserTag integration
+  //
+  //  Thin wrappers over [SparkJoyTagService]. The service owns the
+  //  name → server-id cache and all RPC calls; these helpers collect
+  //  host-state context (media state, test-drive tag lists) and delegate.
   // ──────────────────────────────────────────────────────────────────
 
-  /// Maps media group keys to the API `section` parameter used by
-  /// `Storage.GetUserTags` / `Storage.AddUserTag`.
-  static const Map<String, String> _groupKeyToApiSection = {
-    'body': 'body',
-    'structural': 'body_reinforcement',
-    'glass': 'glass',
-    'interior': 'interior',
-    'underhood': 'under_hood',
-    'wheels': 'wheels_and_brakes',
-    'lighting': 'lightning',
-    'diagnostics': 'computer_diagnostics',
-  };
-
-  /// Loads all user tags from the server and populates [_tagNameToId]
-  /// mapping for payload serialization.
-  ///
-  /// Per OpenRPC Doc, `Storage.GetUserTags` returns section-specific tags
-  /// only when `section` is provided for `step=inspection`. Therefore we
-  /// fetch:
-  ///   • every inspection section explicitly (body, interior, …)
-  ///   • a generic inspection request (section=null) for shared tags
-  ///   • test_drive step (no sections)
-  ///
-  /// When called after the user has already picked some tags (e.g. on reopen
-  /// or after an in-flight edit), we forward the currently-selected tag IDs
-  /// per scope via `selectedTagIds`. The server uses them to sort the result
-  /// by relevance: tags that are frequently used together with the selection
-  /// are surfaced first. The name→id cache itself is order-agnostic, but the
-  /// relevance hints also warm server-side co-occurrence statistics for the
-  /// next `PrepareSpecialistReport` call (per OpenRPC Doc changelog
-  /// 2026-04-15).
-  Future<void> _loadTagIdsFromServer() async {
-    try {
-      final inspectionSelectedTagIds = _collectSelectedTagIdsByApiSection();
-      final genericInspectionSelected = <int>{
-        for (final ids in inspectionSelectedTagIds.values) ...ids,
-      }.toList(growable: false);
-      final testDriveSelected = _resolveTagIds(_collectTestDriveTagNames());
-
-      final futures = <Future<List<storage_api.UserTag>>>[
-        storage_api.StorageApi.getUserTags(
-          step: 'inspection',
-          selectedTagIds: genericInspectionSelected.isEmpty
-              ? null
-              : genericInspectionSelected,
-        ),
-        storage_api.StorageApi.getUserTags(
-          step: 'test_drive',
-          selectedTagIds: testDriveSelected.isEmpty ? null : testDriveSelected,
-        ),
-        for (final section in _groupKeyToApiSection.values)
-          storage_api.StorageApi.getUserTags(
-            step: 'inspection',
-            section: section,
-            selectedTagIds: inspectionSelectedTagIds[section]?.isNotEmpty == true
-                ? inspectionSelectedTagIds[section]
-                : null,
-          ),
-      ];
-      final results = await Future.wait(futures);
-      for (final tags in results) {
-        for (final tag in tags) {
-          final key = tag.name.trim().toLowerCase();
-          if (key.isNotEmpty && tag.id > 0) {
-            _tagNameToId[key] = tag.id;
-          }
-        }
-      }
-    } catch (_) {
-      // Tags may not be available; payload builder will fall back gracefully.
-    }
+  /// Refreshes the tag cache from the server. Forwards already-picked
+  /// tag IDs so results come back sorted by relevance (changelog
+  /// 2026-04-15 — see SparkJoyTagService.loadTagIdsFromServer).
+  Future<void> _loadTagIdsFromServer() {
+    final inspectionSelected = _collectSelectedTagIdsByApiSection();
+    final genericInspection = <int>{
+      for (final ids in inspectionSelected.values) ...ids,
+    }.toList(growable: false);
+    return _tagService.loadTagIdsFromServer(
+      selectedInspectionIdsBySection: inspectionSelected,
+      genericInspectionSelectedIds: genericInspection,
+      testDriveSelectedIds: _tagService.resolveTagIds(
+        _collectTestDriveTagNames(),
+      ),
+    );
   }
 
   /// Collects already-picked inspection tag IDs grouped by API section
@@ -100,14 +32,16 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   Map<String, List<int>> _collectSelectedTagIdsByApiSection() {
     final result = <String, List<int>>{};
     for (final entry in _mediaState.entries) {
-      final section = _groupKeyToApiSection[entry.key];
+      final section = SparkJoyTagService.groupKeyToApiSection[entry.key];
       if (section == null) continue;
       final names = <String>{
         for (final item in entry.value.files)
-          ...item.inspection.tags.map((tag) => tag.trim()).where((t) => t.isNotEmpty),
+          ...item.inspection.tags
+              .map((tag) => tag.trim())
+              .where((t) => t.isNotEmpty),
       };
       if (names.isEmpty) continue;
-      final ids = _resolveTagIds(names.toList(growable: false));
+      final ids = _tagService.resolveTagIds(names);
       if (ids.isEmpty) continue;
       result[section] = ids;
     }
@@ -127,83 +61,57 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         .toList(growable: false);
   }
 
-  /// Creates a custom tag on the server and caches its ID in [_tagNameToId].
-  ///
-  /// [step] — `inspection` or `test_drive`.
-  /// [tagName] — the user-entered tag name.
-  /// [section] — API section for inspection tags (e.g. `body`), null for
-  ///   test_drive.
-  /// [type] — `serious` or `nonserious`.
-  ///
-  /// Returns the server-assigned tag ID, or `null` on failure.
-  Future<int?> _syncCustomTagToServer({
-    required String step,
-    required String tagName,
-    String? section,
-    String? type,
-  }) async {
-    final key = tagName.trim().toLowerCase();
-    // Already cached — no need to call the server again.
-    final existing = _tagNameToId[key];
-    if (existing != null && existing > 0) return existing;
-
-    try {
-      final tag = await storage_api.StorageApi.addUserTag(
-        step: step,
-        name: tagName.trim(),
-        section: section,
-        type: type,
-      );
-      if (tag.id > 0) {
-        _tagNameToId[key] = tag.id;
-        return tag.id;
-      }
-    } catch (_) {
-      // Best-effort: the tag will still be usable locally; it just won't
-      // have an ID until the next _loadTagIdsFromServer() or retry.
-    }
-    return null;
-  }
-
-  /// Convenience wrapper: sync a custom tag added in the inspection editor.
+  /// Sync wrapper used by the inspection editor (media group key → section).
   Future<int?> _syncInspectionCustomTag({
     required String groupKey,
     required String tagName,
     required String severity,
   }) {
-    return _syncCustomTagToServer(
-      step: 'inspection',
+    return _tagService.addInspectionTag(
+      groupKey: groupKey,
       tagName: tagName,
-      section: _groupKeyToApiSection[groupKey],
-      type: severity == 'serious' ? 'serious' : 'nonserious',
+      severity: severity,
     );
   }
 
-  /// Convenience wrapper: sync a custom tag added on the test-drive step.
+  /// Sync wrapper used by the test-drive step (no section).
   Future<int?> _syncTestDriveCustomTag({
     required String tagName,
     required String severity,
   }) {
-    return _syncCustomTagToServer(
-      step: 'test_drive',
+    return _tagService.addTestDriveTag(
       tagName: tagName,
-      type: severity == 'serious' ? 'serious' : 'nonserious',
+      severity: severity,
     );
   }
 
-  /// Ensures every tag name in the report payload has an ID in
-  /// [_tagNameToId]. Calls [_syncCustomTagToServer] for any missing ones,
-  /// passing the correct `step` / `section` / `type` for each tag based on
-  /// where it appears in the report (inspection section vs. test-drive,
-  /// serious vs. non-serious).
-  ///
-  /// Should be awaited once before building the final
-  /// `Storage.PrepareSpecialistReport` payload.
-  Future<void> _ensureAllTagIdsResolved() async {
-    // Collect tag name → request context (step/section/type) from the actual
-    // usage sites. If the same tag name appears under multiple contexts, the
-    // first context wins (cache is keyed by normalized name anyway).
-    final contexts = <String, _TagSyncContext>{};
+  /// Guarantees every tag name referenced by the current report has an ID
+  /// cached in [_tagService]. Must be awaited once before building the
+  /// final `Storage.PrepareSpecialistReport` payload.
+  Future<void> _ensureAllTagIdsResolved() {
+    final contexts = _collectTagSyncContexts();
+    if (contexts.isEmpty) return Future<void>.value();
+
+    final inspectionSelected = _collectSelectedTagIdsByApiSection();
+    final genericInspection = <int>{
+      for (final ids in inspectionSelected.values) ...ids,
+    }.toList(growable: false);
+
+    return _tagService.ensureAllTagIdsResolved(
+      contexts: contexts,
+      selectedInspectionIdsBySection: inspectionSelected,
+      genericInspectionSelectedIds: genericInspection,
+      testDriveSelectedIds: _tagService.resolveTagIds(
+        _collectTestDriveTagNames(),
+      ),
+    );
+  }
+
+  /// Builds the list of [TagSyncContext]s for every tag currently referenced
+  /// by the report. Pure host-state → contexts transformation; the actual
+  /// RPC work lives in [SparkJoyTagService.ensureAllTagIdsResolved].
+  List<TagSyncContext> _collectTagSyncContexts() {
+    final contexts = <String, TagSyncContext>{};
 
     void registerInspection({
       required String groupKey,
@@ -213,13 +121,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       final trimmed = tagName.trim();
       if (trimmed.isEmpty) return;
       final key = trimmed.toLowerCase();
-      if (_tagNameToId[key] != null) return;
+      if (_tagService.idFor(trimmed) != null) return;
       contexts.putIfAbsent(
         key,
-        () => _TagSyncContext(
+        () => TagSyncContext(
           name: trimmed,
           step: 'inspection',
-          section: _groupKeyToApiSection[groupKey],
+          section: SparkJoyTagService.groupKeyToApiSection[groupKey],
           type: severity == 'serious' ? 'serious' : 'nonserious',
         ),
       );
@@ -230,10 +138,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         final trimmed = raw.trim();
         if (trimmed.isEmpty) continue;
         final key = trimmed.toLowerCase();
-        if (_tagNameToId[key] != null) continue;
+        if (_tagService.idFor(trimmed) != null) continue;
         contexts.putIfAbsent(
           key,
-          () => _TagSyncContext(
+          () => TagSyncContext(
             name: trimmed,
             step: 'test_drive',
             section: null,
@@ -275,64 +183,21 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       }
     }
 
-    // Test-drive tags (default to nonserious; server-side preset tags already
-    // have a stored type — local creation only applies to custom entries).
+    // Test-drive tags (default to nonserious; server-side preset tags
+    // already carry a stored type — local creation only applies to
+    // custom entries).
     registerTestDrive(_tdEngineTags, 'nonserious');
     registerTestDrive(_tdGearboxTags, 'nonserious');
     registerTestDrive(_tdSteeringTags, 'nonserious');
     registerTestDrive(_tdRideTags, 'nonserious');
     registerTestDrive(_tdBrakeTags, 'nonserious');
 
-    if (contexts.isEmpty) return;
-
-    // First try to resolve from server (may have been updated by another
-    // device / session). After that, anything still missing gets created
-    // with the correct step/section/type context.
-    await _loadTagIdsFromServer();
-
-    for (final ctx in contexts.values) {
-      if (_tagNameToId[ctx.name.toLowerCase()] != null) continue;
-      debugPrint(
-        '[TagSync] creating tag: name="${ctx.name}" '
-        'step=${ctx.step} section=${ctx.section} type=${ctx.type}',
-      );
-      await _syncCustomTagToServer(
-        step: ctx.step,
-        tagName: ctx.name,
-        section: ctx.section,
-        type: ctx.type,
-      );
-      final resolvedId = _tagNameToId[ctx.name.toLowerCase()];
-      if (resolvedId == null || resolvedId <= 0) {
-        debugPrint(
-          '[TagSync] FAILED to resolve after create: name="${ctx.name}" '
-          'step=${ctx.step} section=${ctx.section}',
-        );
-      }
-    }
+    return contexts.values.toList(growable: false);
   }
 
-  /// Resolves a list of tag names to their integer IDs using [_tagNameToId].
-  /// Unknown tags are silently skipped — they should have been created via
-  /// [_syncCustomTagToServer] or [_ensureAllTagIdsResolved] before this point.
-  List<int> _resolveTagIds(List<String> tagNames) {
-    final ids = <int>[];
-    final missing = <String>[];
-    for (final name in tagNames) {
-      final trimmed = name.trim();
-      final key = trimmed.toLowerCase();
-      final id = _tagNameToId[key];
-      if (id != null && id > 0) {
-        ids.add(id);
-      } else if (trimmed.isNotEmpty) {
-        missing.add(trimmed);
-      }
-    }
-    if (missing.isNotEmpty) {
-      debugPrint('[TagSync] _resolveTagIds unresolved: $missing');
-    }
-    return ids;
-  }
+  /// Resolves tag names to their cached server IDs via [_tagService].
+  List<int> _resolveTagIds(List<String> tagNames) =>
+      _tagService.resolveTagIds(tagNames);
 
   bool _isDataUrl(String source) {
     return source.trimLeft().startsWith('data:');
