@@ -667,7 +667,12 @@ class StorageApi {
 
   static Future<PrepareSpecialistReportResult> prepareSpecialistReport({
     required Map<String, dynamic> report,
-    Duration timeout = const Duration(seconds: 90),
+    // Heavy endpoint: saves the full draft + generates presigned S3 URLs for
+    // every inspection file. Large reports with 20+ media items routinely
+    // need 60–150 s server-side; bumped from 90 s after timeouts surfaced
+    // on the device. Server is idempotent per reportNumber, so a fresh
+    // call with the same payload is safe if the caller decides to retry.
+    Duration timeout = const Duration(seconds: 180),
   }) async {
     final data = await _postRpc(
       method: 'Storage.PrepareSpecialistReport',
@@ -707,7 +712,10 @@ class StorageApi {
 
   static Future<SpecialistReportCompletionResult> completeSpecialistReport({
     required String reportNumber,
-    Duration timeout = const Duration(seconds: 20),
+    // Heavy endpoint: verifies checksums of every uploaded file against S3
+    // and flips `isDraft = false`. Bumped from 20 s after 90-s timeouts
+    // showed up in the field under slow tuna.am tunnels.
+    Duration timeout = const Duration(seconds: 120),
   }) async {
     final data = await _postRpc(
       method: 'Storage.CompleteSpecialistReport',
