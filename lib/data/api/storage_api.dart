@@ -1842,34 +1842,6 @@ class StorageApi {
   }
 
   // ---------------------------------------------------------------------------
-  // Specialist reports (list variant)
-  // ---------------------------------------------------------------------------
-
-  /// Returns a list of specialist reports (server-side list endpoint).
-  static Future<List<Map<String, dynamic>>> getSpecialistReports({
-    Duration timeout = const Duration(seconds: 12),
-  }) async {
-    final data = await _postRpc(
-      method: 'Storage.GetSpecialistReports',
-      params: const {},
-      timeout: timeout,
-    );
-    final result = data['result'];
-    if (result is List) {
-      return result.whereType<Map>().map((e) => _asMap(e)).toList();
-    }
-    if (result is Map) {
-      final map = _asMap(result);
-      final list =
-          map['items'] ?? map['reports'] ?? map['data'] ?? map['list'];
-      if (list is List) {
-        return list.whereType<Map>().map((e) => _asMap(e)).toList();
-      }
-    }
-    return [];
-  }
-
-  // ---------------------------------------------------------------------------
   // Legal check
   // ---------------------------------------------------------------------------
 

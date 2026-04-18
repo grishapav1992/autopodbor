@@ -43,15 +43,41 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   ///   • every inspection section explicitly (body, interior, …)
   ///   • a generic inspection request (section=null) for shared tags
   ///   • test_drive step (no sections)
+  ///
+  /// When called after the user has already picked some tags (e.g. on reopen
+  /// or after an in-flight edit), we forward the currently-selected tag IDs
+  /// per scope via `selectedTagIds`. The server uses them to sort the result
+  /// by relevance: tags that are frequently used together with the selection
+  /// are surfaced first. The name→id cache itself is order-agnostic, but the
+  /// relevance hints also warm server-side co-occurrence statistics for the
+  /// next `PrepareSpecialistReport` call (per OpenRPC Doc changelog
+  /// 2026-04-15).
   Future<void> _loadTagIdsFromServer() async {
     try {
+      final inspectionSelectedTagIds = _collectSelectedTagIdsByApiSection();
+      final genericInspectionSelected = <int>{
+        for (final ids in inspectionSelectedTagIds.values) ...ids,
+      }.toList(growable: false);
+      final testDriveSelected = _resolveTagIds(_collectTestDriveTagNames());
+
       final futures = <Future<List<storage_api.UserTag>>>[
-        storage_api.StorageApi.getUserTags(step: 'inspection'),
-        storage_api.StorageApi.getUserTags(step: 'test_drive'),
+        storage_api.StorageApi.getUserTags(
+          step: 'inspection',
+          selectedTagIds: genericInspectionSelected.isEmpty
+              ? null
+              : genericInspectionSelected,
+        ),
+        storage_api.StorageApi.getUserTags(
+          step: 'test_drive',
+          selectedTagIds: testDriveSelected.isEmpty ? null : testDriveSelected,
+        ),
         for (final section in _groupKeyToApiSection.values)
           storage_api.StorageApi.getUserTags(
             step: 'inspection',
             section: section,
+            selectedTagIds: inspectionSelectedTagIds[section]?.isNotEmpty == true
+                ? inspectionSelectedTagIds[section]
+                : null,
           ),
       ];
       final results = await Future.wait(futures);
@@ -66,6 +92,39 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     } catch (_) {
       // Tags may not be available; payload builder will fall back gracefully.
     }
+  }
+
+  /// Collects already-picked inspection tag IDs grouped by API section
+  /// (`body`, `interior`, …). Empty map if no tags have been picked yet or
+  /// if names cannot be resolved to IDs.
+  Map<String, List<int>> _collectSelectedTagIdsByApiSection() {
+    final result = <String, List<int>>{};
+    for (final entry in _mediaState.entries) {
+      final section = _groupKeyToApiSection[entry.key];
+      if (section == null) continue;
+      final names = <String>{
+        for (final item in entry.value.files)
+          ...item.inspection.tags.map((tag) => tag.trim()).where((t) => t.isNotEmpty),
+      };
+      if (names.isEmpty) continue;
+      final ids = _resolveTagIds(names.toList(growable: false));
+      if (ids.isEmpty) continue;
+      result[section] = ids;
+    }
+    return result;
+  }
+
+  /// Aggregates all test-drive tag names already picked by the user.
+  List<String> _collectTestDriveTagNames() {
+    final names = <String>{
+      ..._tdEngineTags,
+      ..._tdGearboxTags,
+      ..._tdSteeringTags,
+    };
+    return names
+        .map((tag) => tag.trim())
+        .where((tag) => tag.isNotEmpty)
+        .toList(growable: false);
   }
 
   /// Creates a custom tag on the server and caches its ID in [_tagNameToId].
