@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:audioplayers/audioplayers.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:camerawesome/camerawesome_plugin.dart' as cam;
 import 'package:camerawesome/pigeon.dart' as cam_pigeon;
 import 'package:file_picker/file_picker.dart';

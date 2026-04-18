@@ -805,17 +805,34 @@ class _ReportsList extends StatelessWidget {
   const _ReportsList({required this.reports});
   final List<Map<String, dynamic>> reports;
 
+  /// Stable key for a report card so that reorders / filter changes don't
+  /// rebuild intact cards. Falls back to list index only if the report has
+  /// no id / reportNumber.
+  Key _keyFor(int index, Map<String, dynamic> r) {
+    final id = (r['id'] ?? r['reportNumber'] ?? r['reportId'])?.toString();
+    if (id != null && id.isNotEmpty) return ValueKey('report_$id');
+    return ValueKey('report_idx_$index');
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: reports
-          .map(
-            (r) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: _ReportCard(data: r),
-            ),
-          )
-          .toList(),
+    // NOTE: this list lives inside an outer ListView, so we still materialize
+    // all children. The builder pattern avoids per-frame `.map().toList()`
+    // allocations, and the explicit keys stop Flutter from rebuilding
+    // unchanged cards when the user edits filters / search / sort order.
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: reports.length,
+      itemBuilder: (context, index) {
+        final r = reports[index];
+        return Padding(
+          key: _keyFor(index, r),
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _ReportCard(data: r),
+        );
+      },
     );
   }
 }

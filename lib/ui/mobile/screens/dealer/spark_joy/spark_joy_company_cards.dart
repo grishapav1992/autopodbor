@@ -212,12 +212,12 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
                         if (_carPhotoUrl.trim().isNotEmpty) ...[
                           ClipRRect(
                             borderRadius: BorderRadius.circular(SparkRadius.sm),
-                            child: Image.network(
-                              _carPhotoUrl.trim(),
+                            child: CachedNetworkImage(
+                              imageUrl: _carPhotoUrl.trim(),
                               width: double.infinity,
                               height: SparkSize.mediaCardThumb,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
+                              errorWidget: (context, url, error) {
                                 return Container(
                                   width: double.infinity,
                                   height: SparkSize.mediaCardThumb,

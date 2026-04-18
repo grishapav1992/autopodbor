@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cross_file/cross_file.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -1011,10 +1012,10 @@ class _ReportMediaLightboxState extends State<_ReportMediaLightbox> {
           // Image page
           return InteractiveViewer(
             child: Center(
-              child: Image.network(
-                item.url,
+              child: CachedNetworkImage(
+                imageUrl: item.url,
                 fit: BoxFit.contain,
-                errorBuilder: (_, _, _) => const Icon(
+                errorWidget: (_, _, _) => const Icon(
                   Icons.broken_image,
                   size: 48,
                   color: Colors.white54,

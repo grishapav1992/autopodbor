@@ -2522,6 +2522,9 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
         for (int i = 0; i < _cars.length; i++)
           _CarCard(
+            // Stable key so reordering / removing a car doesn't trigger a
+            // rebuild of every sibling _CarCard.
+            key: ValueKey('by_car_card_${_cars[i].id}'),
             item: _cars[i],
 
             index: i,
@@ -2607,6 +2610,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
 class _CarCard extends StatelessWidget {
   const _CarCard({
+    super.key,
     required this.item,
 
     required this.index,
