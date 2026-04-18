@@ -77,6 +77,36 @@ class SparkJoyReportController extends GetxController {
   final RxBool vinUnreadable = false.obs;
   final Rxn<bool> mileageMismatch = Rxn<bool>();
 
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 5 — Paintwork thickness ranges
+  //
+  // Two pairs of numeric ranges (micrometers) the user enters on the
+  // body and body-reinforcement sections. Defaults 80..200 match the
+  // server schema defaults in OpenRPC Doc.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxDouble bodyPaintFrom = 80.0.obs;
+  final RxDouble bodyPaintTo = 200.0.obs;
+  final RxDouble structPaintFrom = 80.0.obs;
+  final RxDouble structPaintTo = 200.0.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 6 — Legal-check step state + test-drive mode
+  //
+  // Drives the "Юридическая проверка" step UI and the summary widget:
+  //   • legalLoading / Loaded / TimedOut / Skipped / Purchased flags
+  //   • legalLoadToken — monotonic token to dedupe async retries
+  //   • tdMode — "included" | "excluded" | null (is test-drive done?)
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxBool legalLoading = false.obs;
+  final RxBool legalLoaded = false.obs;
+  final RxBool legalSkipped = false.obs;
+  final RxBool legalTimedOut = false.obs;
+  final RxBool legalPurchased = false.obs;
+  final RxInt legalLoadToken = 0.obs;
+  final Rxn<String> tdMode = Rxn<String>();
+
   /// Replaces the contents of [list] with [next] in one shot, keeping the
   /// same RxList instance (so listeners don't have to re-subscribe).
   static void _assignList(RxList<String> list, List<String> next) {

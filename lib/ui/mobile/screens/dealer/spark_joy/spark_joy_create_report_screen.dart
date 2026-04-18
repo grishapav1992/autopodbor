@@ -205,12 +205,33 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool? _docsVinMatch;
   bool? _docsEngineMatch;
 
-  bool _legalLoading = false;
-  bool _legalLoaded = false;
-  bool _legalSkipped = false;
-  bool _legalTimedOut = false;
-  bool _legalPurchased = false;
-  int _legalLoadToken = 0;
+  // ┌─ Phase 4.1 · Chunk 6: legal-check step state → controller ─────────────┐
+  // │ 7 fields (6 bool + 1 int) driving the "Юридическая проверка" UI.       │
+  // │ Together with _tdMode (below) these are 103 references across 11 files.│
+  // └────────────────────────────────────────────────────────────────────────┘
+  bool get _legalLoading => _reportController.legalLoading.value;
+  set _legalLoading(bool value) =>
+      _reportController.legalLoading.value = value;
+
+  bool get _legalLoaded => _reportController.legalLoaded.value;
+  set _legalLoaded(bool value) =>
+      _reportController.legalLoaded.value = value;
+
+  bool get _legalSkipped => _reportController.legalSkipped.value;
+  set _legalSkipped(bool value) =>
+      _reportController.legalSkipped.value = value;
+
+  bool get _legalTimedOut => _reportController.legalTimedOut.value;
+  set _legalTimedOut(bool value) =>
+      _reportController.legalTimedOut.value = value;
+
+  bool get _legalPurchased => _reportController.legalPurchased.value;
+  set _legalPurchased(bool value) =>
+      _reportController.legalPurchased.value = value;
+
+  int get _legalLoadToken => _reportController.legalLoadToken.value;
+  set _legalLoadToken(int value) =>
+      _reportController.legalLoadToken.value = value;
   List<_UploadedItem> _legalFiles = const [];
   List<_UploadedItem> _docsCommentAudioFiles = const [];
   List<_UploadedItem> _legalCommentAudioFiles = const [];
@@ -233,12 +254,26 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _expertIsDictating = false;
   bool _expertShouldDictate = false;
 
-  double _bodyPaintFrom = 80;
-  double _bodyPaintTo = 200;
-  double _structPaintFrom = 80;
-  double _structPaintTo = 200;
+  // ┌─ Phase 4.1 · Chunk 5: paintwork thickness ranges → controller ───────┐
+  // │ Body and body-reinforcement μm ranges, 24 refs across 4 files.       │
+  // └──────────────────────────────────────────────────────────────────────┘
+  double get _bodyPaintFrom => _reportController.bodyPaintFrom.value;
+  set _bodyPaintFrom(double value) =>
+      _reportController.bodyPaintFrom.value = value;
 
-  String? _tdMode;
+  double get _bodyPaintTo => _reportController.bodyPaintTo.value;
+  set _bodyPaintTo(double value) =>
+      _reportController.bodyPaintTo.value = value;
+  double get _structPaintFrom => _reportController.structPaintFrom.value;
+  set _structPaintFrom(double value) =>
+      _reportController.structPaintFrom.value = value;
+
+  double get _structPaintTo => _reportController.structPaintTo.value;
+  set _structPaintTo(double value) =>
+      _reportController.structPaintTo.value = value;
+
+  String? get _tdMode => _reportController.tdMode.value;
+  set _tdMode(String? value) => _reportController.tdMode.value = value;
   // ┌─ Phase 4.1 · Chunk 2: test-drive booleans moved to the controller ─────┐
   // │ 65 references across 7 files read/write these via the same `_tdXxxOk`  │
   // │ field names — the getter/setter pair keeps them compiling unchanged.   │
