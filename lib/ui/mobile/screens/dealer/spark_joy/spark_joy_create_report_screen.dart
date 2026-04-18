@@ -15,6 +15,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
+import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
@@ -234,11 +235,34 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _tdSteeringOk = false;
   bool _tdRideOk = false;
   bool _tdBrakeOk = false;
-  List<String> _tdEngineTags = const [];
-  List<String> _tdGearboxTags = const [];
-  List<String> _tdSteeringTags = const [];
-  List<String> _tdRideTags = const [];
-  List<String> _tdBrakeTags = const [];
+  // ┌─ Phase 4.1 · Chunk 1: test-drive tags moved to SparkJoyReportController ┐
+  // │ Old direct fields are now getter/setter proxies so the 73 existing     │
+  // │ `_tdEngineTags = ...` / reads across 7 files keep compiling unchanged. │
+  // │ Fresh `List<String>` copies are returned on read to preserve the       │
+  // │ previous `const []` / non-mutable invariant.                           │
+  // └────────────────────────────────────────────────────────────────────────┘
+  List<String> get _tdEngineTags => List<String>.of(_reportController.tdEngineTags);
+  set _tdEngineTags(List<String> value) =>
+      _reportController.setTdEngineTags(value);
+
+  List<String> get _tdGearboxTags =>
+      List<String>.of(_reportController.tdGearboxTags);
+  set _tdGearboxTags(List<String> value) =>
+      _reportController.setTdGearboxTags(value);
+
+  List<String> get _tdSteeringTags =>
+      List<String>.of(_reportController.tdSteeringTags);
+  set _tdSteeringTags(List<String> value) =>
+      _reportController.setTdSteeringTags(value);
+
+  List<String> get _tdRideTags => List<String>.of(_reportController.tdRideTags);
+  set _tdRideTags(List<String> value) =>
+      _reportController.setTdRideTags(value);
+
+  List<String> get _tdBrakeTags =>
+      List<String>.of(_reportController.tdBrakeTags);
+  set _tdBrakeTags(List<String> value) =>
+      _reportController.setTdBrakeTags(value);
   final Map<String, String?> _tdManagingTagSeverityByScope = {};
   final Map<String, TextEditingController> _tdCustomTagControllersByScope = {};
   final Map<String, FocusNode> _tdCustomTagFocusNodesByScope = {};
@@ -278,6 +302,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   /// holds only thin wrappers that collect host-state context.
   final SparkJoyTagService _tagService = SparkJoyTagService();
 
+  /// Reactive store for the report's domain state. Currently owns only the
+  /// five test-drive tag lists (Phase 4.1 · Chunk 1); further chunks will
+  /// migrate additional fields incrementally.
+  final SparkJoyReportController _reportController =
+      SparkJoyReportController();
+
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;
     return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$_uploadedItemIdCounter';
@@ -308,6 +338,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _detachAutosaveListeners();
     _disposeInputResources();
     _disposeRuntimeResources();
+    _reportController.onClose();
 
     super.dispose();
   }
