@@ -17,6 +17,47 @@ import 'spark_joy_ui.dart';
 // Mirrors the Summary ("Итог") step layout from the create-report flow.
 // ---------------------------------------------------------------------------
 
+/// Inspection section labels → icons mapping (mirrors summary step).
+///
+/// Used by the report detail UI to show an appropriate icon next to each
+/// section header, matching the create-report flow's summary step.
+// ignore: unused_element
+const Map<String, IconData> _sectionIcons = {
+  'Автомобиль': Icons.directions_car_outlined,
+  'Параметры': Icons.tune_outlined,
+  'Сверка документов': Icons.fact_check_outlined,
+  'Юр. проверка': Icons.gavel_outlined,
+  'Кузов': Icons.car_repair_outlined,
+  'Остекление': Icons.window_outlined,
+  'Силовые элементы кузова': Icons.build_outlined,
+  'Светотехника': Icons.lightbulb_outlined,
+  'Подкапотное пространство': Icons.settings_outlined,
+  'Салон': Icons.airline_seat_recline_normal_outlined,
+  'Колёса и тормозные механизмы': Icons.circle_outlined,
+  'Колёса и шины': Icons.circle_outlined,
+  'Компьютерная диагностика': Icons.computer_outlined,
+  'Диагностика': Icons.computer_outlined,
+  'Тест-драйв': Icons.speed_outlined,
+};
+
+/// Maps human-readable section titles to the JSON-RPC `inspectionStep`
+/// keys defined in the OpenRPC Doc schema. Used when the UI needs to
+/// drill from a section card into the underlying media array on the
+/// server payload (e.g. for rendering attached photos/videos).
+// ignore: unused_element
+const Map<String, String> _sectionToInspectionKey = {
+  'Кузов': 'bodySection',
+  'Силовые элементы кузова': 'bodyReinforcementElementsSection',
+  'Остекление': 'glassSection',
+  'Салон': 'interiorSection',
+  'Подкапотное пространство': 'underHoodSpaceSection',
+  'Колёса и тормозные механизмы': 'wheelsAndBrakesSection',
+  'Колёса и шины': 'wheelsAndBrakesSection',
+  'Светотехника': 'lightningSection',
+  'Компьютерная диагностика': 'computerDiagnosticsSection',
+  'Диагностика': 'computerDiagnosticsSection',
+};
+
 class SparkJoyReportDetailScreen extends StatefulWidget {
   const SparkJoyReportDetailScreen({super.key, required this.report});
 
