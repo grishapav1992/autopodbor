@@ -189,8 +189,17 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   final FocusNode _mileageFocusNode = FocusNode();
   final FocusNode _inspectionCityFocusNode = FocusNode();
 
-  bool? _mileageMismatch;
-  bool _vinUnreadable = false;
+  // ┌─ Phase 4.1 · Chunk 4: car-step non-controller flags → SparkJoyReportController ┐
+  // │ 34 references across 12 files use the old `_mileageMismatch` / `_vinUnreadable` │
+  // │ names, including draft init, summary rules, VIN actions, and LKP widgets.      │
+  // └─────────────────────────────────────────────────────────────────────────────────┘
+  bool? get _mileageMismatch => _reportController.mileageMismatch.value;
+  set _mileageMismatch(bool? value) =>
+      _reportController.mileageMismatch.value = value;
+
+  bool get _vinUnreadable => _reportController.vinUnreadable.value;
+  set _vinUnreadable(bool value) =>
+      _reportController.vinUnreadable.value = value;
 
   bool? _docsOwnerMatch;
   bool? _docsVinMatch;
@@ -230,11 +239,25 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   double _structPaintTo = 200;
 
   String? _tdMode;
-  bool _tdEngineOk = false;
-  bool _tdGearboxOk = false;
-  bool _tdSteeringOk = false;
-  bool _tdRideOk = false;
-  bool _tdBrakeOk = false;
+  // ┌─ Phase 4.1 · Chunk 2: test-drive booleans moved to the controller ─────┐
+  // │ 65 references across 7 files read/write these via the same `_tdXxxOk`  │
+  // │ field names — the getter/setter pair keeps them compiling unchanged.   │
+  // └────────────────────────────────────────────────────────────────────────┘
+  bool get _tdEngineOk => _reportController.tdEngineOk.value;
+  set _tdEngineOk(bool value) => _reportController.tdEngineOk.value = value;
+
+  bool get _tdGearboxOk => _reportController.tdGearboxOk.value;
+  set _tdGearboxOk(bool value) => _reportController.tdGearboxOk.value = value;
+
+  bool get _tdSteeringOk => _reportController.tdSteeringOk.value;
+  set _tdSteeringOk(bool value) =>
+      _reportController.tdSteeringOk.value = value;
+
+  bool get _tdRideOk => _reportController.tdRideOk.value;
+  set _tdRideOk(bool value) => _reportController.tdRideOk.value = value;
+
+  bool get _tdBrakeOk => _reportController.tdBrakeOk.value;
+  set _tdBrakeOk(bool value) => _reportController.tdBrakeOk.value = value;
   // ┌─ Phase 4.1 · Chunk 1: test-drive tags moved to SparkJoyReportController ┐
   // │ Old direct fields are now getter/setter proxies so the 73 existing     │
   // │ `_tdEngineTags = ...` / reads across 7 files keep compiling unchanged. │
@@ -269,10 +292,26 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   List<_UploadedItem> _tdCommentAudioFiles = const [];
 
   List<_UploadedItem> _expertAudioFiles = const [];
-  String? _accountBusinessType;
-  String? _accountVerifiedInn;
-  String _staffInviteLink = '';
-  bool _staffInviteLinkCreating = false;
+  // ┌─ Phase 4.1 · Chunk 3: business / staff-invite state moved to controller ┐
+  // │ 28 references across 5 files (including the `??=` assign-if-null usage  │
+  // │ in vehicle_business_helpers) keep working through these proxies.        │
+  // └─────────────────────────────────────────────────────────────────────────┘
+  String? get _accountBusinessType => _reportController.accountBusinessType.value;
+  set _accountBusinessType(String? value) =>
+      _reportController.accountBusinessType.value = value;
+
+  String? get _accountVerifiedInn => _reportController.accountVerifiedInn.value;
+  set _accountVerifiedInn(String? value) =>
+      _reportController.accountVerifiedInn.value = value;
+
+  String get _staffInviteLink => _reportController.staffInviteLink.value;
+  set _staffInviteLink(String value) =>
+      _reportController.staffInviteLink.value = value;
+
+  bool get _staffInviteLinkCreating =>
+      _reportController.staffInviteLinkCreating.value;
+  set _staffInviteLinkCreating(bool value) =>
+      _reportController.staffInviteLinkCreating.value = value;
 
   String? _activeMediaGroupKey;
   double? _mediaGroupListScrollOffset;

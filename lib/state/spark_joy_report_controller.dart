@@ -36,6 +36,47 @@ class SparkJoyReportController extends GetxController {
   final RxList<String> tdRideTags = <String>[].obs;
   final RxList<String> tdBrakeTags = <String>[].obs;
 
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 2 — Test-drive "was this subsystem OK" booleans
+  //
+  // Toggled by the test-drive step UI; false → there are issues (and
+  // tags are shown). The host screen exposes the old `_tdEngineOk …`
+  // field names as getter/setter proxies to avoid touching the 65
+  // references across 7 files.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxBool tdEngineOk = false.obs;
+  final RxBool tdGearboxOk = false.obs;
+  final RxBool tdSteeringOk = false.obs;
+  final RxBool tdRideOk = false.obs;
+  final RxBool tdBrakeOk = false.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 3 — Business / company-mode metadata
+  //
+  // Cached from SparkJoyStorage when the user enters the report as a
+  // business (ИП / company). Drives the staff-invite card visibility
+  // plus the business-tag displayed at the top of the form.
+  // ──────────────────────────────────────────────────────────────────
+
+  final Rxn<String> accountBusinessType = Rxn<String>();
+  final Rxn<String> accountVerifiedInn = Rxn<String>();
+  final RxString staffInviteLink = ''.obs;
+  final RxBool staffInviteLinkCreating = false.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 4 — Car-step declarations
+  //
+  // Two small flags from the "Автомобиль" step that don't belong to a
+  // TextEditingController but still shape the final payload:
+  //   • vinUnreadable     — "VIN нечитаемый" checkbox
+  //   • mileageMismatch   — tri-state ("есть/нет/пока неизвестно") for
+  //                         the "не совпадает с состоянием авто" flag.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxBool vinUnreadable = false.obs;
+  final Rxn<bool> mileageMismatch = Rxn<bool>();
+
   /// Replaces the contents of [list] with [next] in one shot, keeping the
   /// same RxList instance (so listeners don't have to re-subscribe).
   static void _assignList(RxList<String> list, List<String> next) {
