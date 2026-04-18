@@ -5,7 +5,12 @@ import 'package:flutter_application_1/core/constants/popular_cars_ru.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+// Auto-request feature is paused (backend not shipped, UI disabled in nav).
+// Keep the imports so restoring the tab and FAB is a 2-line flip; release
+// builds tree-shake the dead classes so APK size is not affected.
+// ignore: unused_import
 import 'package:flutter_application_1/ui/mobile/screens/user/auto_request/auto_request_screen.dart';
+// ignore: unused_import
 import 'package:flutter_application_1/ui/mobile/screens/user/auto_request/my_requests_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/reports/report_detail.dart';
 import 'package:flutter_application_1/ui/mobile/screens/user/u_drawer/u_drawer.dart';
@@ -27,10 +32,15 @@ class UserNavBar extends StatefulWidget {
 
 class _UserNavBarState extends State<UserNavBar> {
   int _currentIndex = 0;
+  // Auto-request feature is paused: 2 tabs (Reports + Purchased) instead
+  // of the original 3. To restore My-Requests, bump to 3 and put the tab
+  // back in `items` / `IndexedStack` below.
   final List<GlobalKey<NavigatorState>> _navigatorKeys = List.generate(
-    3,
+    2,
     (_) => GlobalKey<NavigatorState>(),
   );
+  // Kept for future restoration of the My-Requests tab refresh plumbing.
+  // ignore: unused_field
   final ValueNotifier<int> _requestsRefresh = ValueNotifier<int>(0);
 
   void _getCurrentIndex(int index) {
@@ -41,9 +51,6 @@ class _UserNavBarState extends State<UserNavBar> {
     setState(() {
       _currentIndex = index;
     });
-    if (index == 1) {
-      _requestsRefresh.value++;
-    }
   }
 
   final _key = GlobalKey<ScaffoldState>();
@@ -175,10 +182,11 @@ class _UserNavBarState extends State<UserNavBar> {
         'icon': Assets.imagesHome,
         'label': '\u041e\u0442\u0447\u0451\u0442\u044b',
       },
-      {
-        'icon': Assets.imagesCar,
-        'label': '\u041c\u043e\u0438 \u0437\u0430\u044f\u0432\u043a\u0438',
-      },
+      // ┌─ PAUSED: auto-request tab ─────────────────────────────────────┐
+      // │ Re-enable by inserting back here (keep index alignment with    │
+      // │ IndexedStack children and _navigatorKeys length = 3):          │
+      // │   { 'icon': Assets.imagesCar, 'label': 'Мои заявки' },         │
+      // └────────────────────────────────────────────────────────────────┘
       {
         'icon': Assets.imagesProfile,
         'label':
@@ -204,12 +212,15 @@ class _UserNavBarState extends State<UserNavBar> {
           index: _currentIndex,
           children: [
             _buildTabNavigator(0, (_) => _buildHome()),
+            // ┌─ PAUSED: MyRequestsScreen (auto-request flow) ───────────┐
+            // │ To restore: insert as index 1 and shift PurchasedReports │
+            // │ to index 2; also bump _navigatorKeys length = 3 above.   │
+            // │   _buildTabNavigator(                                    │
+            // │     1, (_) => MyRequestsScreen(refresh: _requestsRefresh)│
+            // │   ),                                                     │
+            // └──────────────────────────────────────────────────────────┘
             _buildTabNavigator(
               1,
-              (_) => MyRequestsScreen(refresh: _requestsRefresh),
-            ),
-            _buildTabNavigator(
-              2,
               (_) => PurchasedReportsScreen(
                 reports: const [],
                 onOpenReports: () => _getCurrentIndex(0),
@@ -365,34 +376,34 @@ class _UserNavBarState extends State<UserNavBar> {
               _ReportsList(reports: filteredReports),
             ],
           ),
-          Positioned(
-            right: 16,
-            bottom: 16,
-            child: FloatingActionButton.extended(
-              onPressed: () async {
-                final result = await Navigator.of(context).push<Object?>(
-                  MaterialPageRoute(builder: (_) => const AutoRequestScreen()),
-                );
-                final created =
-                    result == true ||
-                    (result is Map && result['created'] == true);
-                if (created) {
-                  _requestsRefresh.value++;
-                  if (mounted) {
-                    setState(() {
-                      _currentIndex = 1;
-                    });
-                  }
-                }
-              },
-              backgroundColor: kSecondaryColor,
-              icon: const Icon(Icons.add, size: 18, color: kWhiteColor),
-              label: const Text(
-                '\u041d\u043e\u0432\u0430\u044f \u0437\u0430\u044f\u0432\u043a\u0430',
-                style: TextStyle(color: kWhiteColor, fontSize: 12),
-              ),
-            ),
-          ),
+          // ┌─ PAUSED: "Новая заявка" FAB (auto-request flow) ───────────┐
+          // │ The button used to push AutoRequestScreen and switch to    │
+          // │ the My-Requests tab on success. Re-enable by restoring the │
+          // │ `Positioned(child: FloatingActionButton.extended(...))`    │
+          // │ along with the nav tab and _navigatorKeys length.          │
+          // │                                                            │
+          // │   Positioned(                                              │
+          // │     right: 16, bottom: 16,                                 │
+          // │     child: FloatingActionButton.extended(                  │
+          // │       onPressed: () async {                                │
+          // │         final result = await Navigator.of(context).push<Object?>( │
+          // │           MaterialPageRoute(                               │
+          // │             builder: (_) => const AutoRequestScreen(),     │
+          // │           ),                                               │
+          // │         );                                                 │
+          // │         final created = result == true ||                  │
+          // │             (result is Map && result['created'] == true);  │
+          // │         if (created) {                                     │
+          // │           _requestsRefresh.value++;                        │
+          // │           if (mounted) setState(() => _currentIndex = 1);  │
+          // │         }                                                  │
+          // │       },                                                   │
+          // │       backgroundColor: kSecondaryColor,                    │
+          // │       icon: const Icon(Icons.add, size: 18, color: kWhiteColor), │
+          // │       label: const Text('Новая заявка', style: ...),       │
+          // │     ),                                                     │
+          // │   ),                                                       │
+          // └────────────────────────────────────────────────────────────┘
         ],
       ),
     );
