@@ -261,99 +261,92 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       sjRead(draft, 'vin'),
     ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => 'Новый отчёт');
 
-    final step = int.tryParse(sjRead(draft, 'currentStep')) ?? 1;
+    final rawStep = int.tryParse(sjRead(draft, 'currentStep')) ?? 1;
     final total = int.tryParse(sjRead(draft, 'totalSteps')) ?? 7;
+    final step = rawStep.clamp(1, total);
+    final progress = total == 0 ? 0.0 : step / total;
+
+    final metaParts = <String>[
+      if (sjRead(draft, 'vin').isNotEmpty) sjRead(draft, 'vin'),
+      if (sjRead(draft, 'car').isNotEmpty && sjRead(draft, 'car') != title)
+        sjRead(draft, 'car'),
+      if (sjRead(draft, 'assignedSpecialistName').isNotEmpty)
+        sjRead(draft, 'assignedSpecialistName'),
+    ];
 
     return SparkListCard(
       onTap: () => _openDraft(draft),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MyText(
-                  text: title,
-                  size: SparkTextSize.bodyLg,
-                  weight: FontWeight.w700,
-                ),
-                if (sjRead(draft, 'car').isNotEmpty &&
-                    sjRead(draft, 'car') != title)
-                  MyText(
-                    text: sjRead(draft, 'car'),
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    paddingTop: SparkSpace.xxs,
-                  ),
-                if (sjRead(draft, 'vin').isNotEmpty)
-                  MyText(
-                    text: sjRead(draft, 'vin'),
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    paddingTop: SparkSpace.xxs,
-                  ),
-                MyText(
-                  text: 'Шаг $step из $total',
-                  size: SparkTextSize.caption,
-                  color: kGreyColor,
-                  paddingTop: SparkSpace.xs,
-                ),
-                if (sjRead(draft, 'assignedSpecialistName').isNotEmpty)
-                  MyText(
-                    text:
-                        'Исполнитель: ${sjRead(draft, 'assignedSpecialistName')}',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    paddingTop: SparkSpace.xxs,
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: SparkSpace.md),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MyText(
+                      text: title,
+                      size: SparkTextSize.bodyLg,
+                      weight: FontWeight.w700,
+                    ),
+                    if (metaParts.isNotEmpty)
+                      MyText(
+                        text: metaParts.join(' · '),
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxs,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  MyText(
+                    text: sjFormatDate(sjRead(draft, 'updatedAt')),
+                    size: SparkTextSize.chip,
+                    color: kGreyColor,
+                  ),
+                  const SizedBox(height: SparkSpace.xs),
+                  InkWell(
+                    onTap: () => _deleteDraft(sjRead(draft, 'id')),
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    child: Padding(
+                      padding: const EdgeInsets.all(SparkSpace.xs),
+                      child: Icon(
+                        Icons.delete_outline_rounded,
+                        size: SparkSize.iconMd,
+                        color: kGreyColor.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
+                    valueColor: AlwaysStoppedAnimation<Color>(kSecondaryColor),
+                  ),
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
               MyText(
-                text: sjFormatDate(sjRead(draft, 'updatedAt')),
+                text: 'Шаг $step из $total',
                 size: SparkTextSize.chip,
                 color: kGreyColor,
-              ),
-              const SizedBox(height: SparkSpace.xs),
-              SparkChip(
-                text: 'Продолжить',
-                background: kSecondaryColor.withValues(alpha: 0.1),
-                color: kSecondaryColor,
-              ),
-              const SizedBox(height: SparkSpace.md),
-              OutlinedButton.icon(
-                onPressed: () => _deleteDraft(sjRead(draft, 'id')),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(0, SparkSize.actionCompactHeight),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.lg,
-                    vertical: SparkSpace.xs,
-                  ),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  side: const BorderSide(color: kBorderColor),
-                  foregroundColor: kGreyColor,
-                  backgroundColor: kInputBgColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  ),
-                ),
-                icon: const Icon(
-                  Icons.delete_outline_rounded,
-                  size: SparkTextSize.title,
-                ),
-                label: const Text('Удалить'),
-              ),
-              const SizedBox(height: SparkSpace.xs),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: SparkSize.iconMd,
-                color: kGreyColor,
+                weight: FontWeight.w600,
               ),
             ],
           ),
@@ -373,17 +366,24 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
     final title = sjRead(report, 'reportName', fallback: car);
     final verdict = sjRead(report, 'verdict');
-    final reportId = _reportId(report);
-    final reportNumber = _reportNumber(report);
+    final score = sjRead(report, 'score');
     final reportKey = _reportIdentityKey(report);
     final shareLoading =
         reportKey.isNotEmpty && _sharingReportKeys.contains(reportKey);
+
+    final metaParts = <String>[
+      if (car != title && car.isNotEmpty) car,
+      if (sjRead(report, 'vin').isNotEmpty) sjRead(report, 'vin'),
+      if (sjRead(report, 'mileage').isNotEmpty)
+        sjFormatMileage(sjRead(report, 'mileage')),
+    ];
 
     return SparkListCard(
       onTap: () => _openCompleted(report),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header: title + meta on the left, date on the right.
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -396,33 +396,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                       size: SparkTextSize.bodyLg,
                       weight: FontWeight.w700,
                     ),
-                    if (car != title)
+                    if (metaParts.isNotEmpty)
                       MyText(
-                        text: car,
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                        paddingTop: SparkSpace.xxs,
-                      ),
-                    if (sjRead(report, 'vin').isNotEmpty)
-                      MyText(
-                        text: sjRead(report, 'vin'),
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                        paddingTop: SparkSpace.xxs,
-                      ),
-                    if (sjRead(report, 'mileage').isNotEmpty)
-                      MyText(
-                        text: sjFormatMileage(sjRead(report, 'mileage')),
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                        paddingTop: SparkSpace.xxs,
-                      ),
-                    if (reportId != null || reportNumber.isNotEmpty)
-                      MyText(
-                        text: [
-                          if (reportId != null) 'ID: $reportId',
-                          if (reportNumber.isNotEmpty) '№ $reportNumber',
-                        ].join(' • '),
+                        text: metaParts.join(' · '),
                         size: SparkTextSize.caption,
                         color: kGreyColor,
                         paddingTop: SparkSpace.xxs,
@@ -431,70 +407,59 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                 ),
               ),
               const SizedBox(width: SparkSpace.md),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  MyText(
-                    text: sjFormatDate(sjRead(report, 'createdAt')),
-                    size: SparkTextSize.chip,
-                    color: kGreyColor,
-                  ),
-                  const SizedBox(height: SparkSpace.sm),
-                  OutlinedButton.icon(
-                    onPressed: shareLoading
-                        ? null
-                        : () => _createAndCopyReportShareLink(report),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size(0, SparkSize.actionCompactHeight),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: SparkSpace.lg,
-                        vertical: SparkSpace.xs,
-                      ),
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                      side: const BorderSide(color: kBorderColor),
-                      foregroundColor: kSecondaryColor,
-                      backgroundColor: kInputBgColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(SparkRadius.pill),
-                      ),
-                    ),
-                    icon: shareLoading
-                        ? const SizedBox(
-                            width: SparkSize.iconXs,
-                            height: SparkSize.iconXs,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(
-                            Icons.share_outlined,
-                            size: SparkTextSize.title,
-                          ),
-                    label: Text(shareLoading ? 'Генерация...' : 'Поделиться'),
-                  ),
-                  const SizedBox(height: SparkSpace.sm),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    size: SparkSize.iconMd,
-                    color: kGreyColor,
-                  ),
-                ],
+              MyText(
+                text: sjFormatDate(sjRead(report, 'createdAt')),
+                size: SparkTextSize.chip,
+                color: kGreyColor,
               ),
             ],
           ),
           const SizedBox(height: SparkSpace.md),
-          Wrap(
-            spacing: SparkSpace.md,
-            runSpacing: SparkSpace.md,
+          // Verdict + score chips on the left, share button on the right.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SparkChip(
-                text: sjRead(report, 'score', fallback: '—'),
-                background: kSecondaryColor.withValues(alpha: 0.08),
-                color: kSecondaryColor,
+              Expanded(
+                child: Wrap(
+                  spacing: SparkSpace.sm,
+                  runSpacing: SparkSpace.xs,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    SparkChip(
+                      text: sparkVerdictLabel(verdict),
+                      background:
+                          sparkVerdictColor(verdict).withValues(alpha: 0.12),
+                      color: sparkVerdictColor(verdict),
+                    ),
+                    if (score.isNotEmpty && score != '—')
+                      SparkChip(
+                        text: score,
+                        background: kSecondaryColor.withValues(alpha: 0.08),
+                        color: kSecondaryColor,
+                      ),
+                  ],
+                ),
               ),
-              SparkChip(
-                text: sparkVerdictLabel(verdict),
-                background: sparkVerdictColor(verdict).withValues(alpha: 0.12),
-                color: sparkVerdictColor(verdict),
+              const SizedBox(width: SparkSpace.md),
+              InkWell(
+                onTap: shareLoading
+                    ? null
+                    : () => _createAndCopyReportShareLink(report),
+                borderRadius: BorderRadius.circular(SparkRadius.pill),
+                child: Padding(
+                  padding: const EdgeInsets.all(SparkSpace.sm),
+                  child: shareLoading
+                      ? const SizedBox(
+                          width: SparkSize.iconSm,
+                          height: SparkSize.iconSm,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          Icons.share_outlined,
+                          size: SparkSize.iconMd,
+                          color: kSecondaryColor,
+                        ),
+                ),
               ),
             ],
           ),
