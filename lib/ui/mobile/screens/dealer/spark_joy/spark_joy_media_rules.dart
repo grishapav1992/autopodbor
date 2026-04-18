@@ -302,7 +302,7 @@ extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
     return groupKey == 'body' || groupKey == 'structural';
   }
 
-  bool _mediaInspectionHasData(_MediaInspection inspection) {
+  bool _mediaInspectionHasData(MediaInspection inspection) {
     return inspection.noDamage ||
         inspection.tags.isNotEmpty ||
         inspection.note.trim().isNotEmpty ||
@@ -321,7 +321,7 @@ extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
         (inspection.elementType ?? '').trim().isNotEmpty;
   }
 
-  bool _mediaItemHasIssue(_UploadedItem item) {
+  bool _mediaItemHasIssue(UploadedItem item) {
     final inspection = item.inspection;
     if (inspection.isDraft) return false;
     if (inspection.noDamage) return false;

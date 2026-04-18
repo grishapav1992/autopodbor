@@ -33,7 +33,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     }
 
     Future<void> prepareVideo(
-      _UploadedItem file,
+      UploadedItem file,
       StateSetter setLocalState,
     ) async {
       if (!file.isVideo) {

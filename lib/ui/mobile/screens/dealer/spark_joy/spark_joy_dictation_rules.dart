@@ -267,7 +267,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
   }
 
   Widget _commentAudioFilesBlock({
-    required List<_UploadedItem> files,
+    required List<UploadedItem> files,
     required int playingIndex,
     required bool isRecording,
     required String recordingLabel,

@@ -9,7 +9,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       String note = '';
       String rawUrls = '';
       bool hasIssue = false;
-      var files = const <_UploadedItem>[];
+      var files = const <UploadedItem>[];
       _MediaPartInspection partInspection = const _MediaPartInspection();
 
       if (raw is Map && raw[config.key] is Map) {
@@ -86,7 +86,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       return next;
     }
 
-    final nextLegalFiles = <_UploadedItem>[];
+    final nextLegalFiles = <UploadedItem>[];
     for (final file in _legalFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -108,7 +108,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       );
     }
 
-    final nextExpertAudioFiles = <_UploadedItem>[];
+    final nextExpertAudioFiles = <UploadedItem>[];
     for (final file in _expertAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -118,7 +118,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       nextExpertAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextDocsCommentAudioFiles = <_UploadedItem>[];
+    final nextDocsCommentAudioFiles = <UploadedItem>[];
     for (final file in _docsCommentAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -128,7 +128,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       nextDocsCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextLegalCommentAudioFiles = <_UploadedItem>[];
+    final nextLegalCommentAudioFiles = <UploadedItem>[];
     for (final file in _legalCommentAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -138,7 +138,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       nextLegalCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextTdCommentAudioFiles = <_UploadedItem>[];
+    final nextTdCommentAudioFiles = <UploadedItem>[];
     for (final file in _tdCommentAudioFiles) {
       final nextSource = await compactSource(
         file.dataUrl,
@@ -153,7 +153,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       final groupKey = entry.key;
       final state = entry.value;
       final sourceRemap = <String, String>{};
-      final nextFiles = <_UploadedItem>[];
+      final nextFiles = <UploadedItem>[];
 
       for (final file in state.files) {
         final nextSource = await compactSource(

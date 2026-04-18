@@ -43,7 +43,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
               const Duration(seconds: 30),
               onTimeout: () {
                 timedOut = true;
-                return const <_UploadedItem>[];
+                return const <UploadedItem>[];
               },
             )
           : await _pickFiles(
@@ -63,7 +63,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
               const Duration(seconds: 30),
               onTimeout: () {
                 timedOut = true;
-                return const <_UploadedItem>[];
+                return const <UploadedItem>[];
               },
             );
       if (timedOut) {
@@ -648,7 +648,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Widget _runMediaOverlayTypeBadge(_UploadedItem item) {
+  Widget _runMediaOverlayTypeBadge(UploadedItem item) {
     final isVideo = item.isVideo;
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1236,7 +1236,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
       final current = _mediaState[groupKey];
       if (current == null || current.files.isEmpty) return;
       final toDelete = indexes.toSet();
-      final next = <_UploadedItem>[];
+      final next = <UploadedItem>[];
       for (var i = 0; i < current.files.length; i++) {
         if (!toDelete.contains(i)) {
           next.add(current.files[i]);

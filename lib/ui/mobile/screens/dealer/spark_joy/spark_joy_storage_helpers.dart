@@ -453,10 +453,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
-  List<_UploadedItem> _collectUniqueUploadItems() {
-    final bySource = <String, _UploadedItem>{};
+  List<UploadedItem> _collectUniqueUploadItems() {
+    final bySource = <String, UploadedItem>{};
 
-    void consume(_UploadedItem item) {
+    void consume(UploadedItem item) {
       final source = item.dataUrl.trim();
       if (source.isEmpty) return;
       if (!_isAttachmentSourceLikelyValid(source)) return;
@@ -486,11 +486,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return bySource.values.toList(growable: false);
   }
 
-  String _preferredUploadFileNameForItem(_UploadedItem item, int index) {
+  String _preferredUploadFileNameForItem(UploadedItem item, int index) {
     return item.name.trim();
   }
 
-  Future<Uint8List?> _readUploadBytesFromSource(_UploadedItem item) async {
+  Future<Uint8List?> _readUploadBytesFromSource(UploadedItem item) async {
     final source = item.dataUrl.trim();
     if (source.isEmpty) return null;
 
@@ -624,19 +624,19 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
-  String _backendUploadProgressSourceKey(_UploadedItem item, int index) {
+  String _backendUploadProgressSourceKey(UploadedItem item, int index) {
     final source = item.dataUrl.trim();
     if (source.isNotEmpty) return source;
     return 'idx:$index:${item.id}';
   }
 
-  String _backendUploadDisplayName(_UploadedItem item, int index) {
+  String _backendUploadDisplayName(UploadedItem item, int index) {
     final name = item.name.trim();
     if (name.isNotEmpty) return name;
     return 'Файл ${index + 1}';
   }
 
-  void _setBackendUploadFilesProgress(List<_BackendUploadFileProgress> files) {
+  void _setBackendUploadFilesProgress(List<BackendUploadFileProgress> files) {
     void apply() {
       _backendUploadFilesProgress = files;
     }
@@ -649,13 +649,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   void _initializeBackendUploadFilesProgress({
-    required List<_UploadedItem> items,
+    required List<UploadedItem> items,
   }) {
-    final next = <_BackendUploadFileProgress>[];
+    final next = <BackendUploadFileProgress>[];
     for (var i = 0; i < items.length; i++) {
       final item = items[i];
       next.add(
-        _BackendUploadFileProgress(
+        BackendUploadFileProgress(
           sourceKey: _backendUploadProgressSourceKey(item, i),
           fileName: _backendUploadDisplayName(item, i),
           index: i + 1,
@@ -667,14 +667,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   void _updateBackendUploadFileProgress({
-    required _UploadedItem item,
+    required UploadedItem item,
     required int index,
     required int totalItems,
     String? fileName,
     double? progress,
     int? uploadedParts,
     int? totalParts,
-    _BackendUploadFileStatus? status,
+    BackendUploadFileStatus? status,
     String? errorText,
   }) {
     final sourceKey = _backendUploadProgressSourceKey(item, index);
@@ -697,7 +697,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       status: status ?? previous.status,
       errorText: errorText ?? previous.errorText,
     );
-    final next = List<_BackendUploadFileProgress>.from(current);
+    final next = List<BackendUploadFileProgress>.from(current);
     next[itemIndex] = nextItem;
     _setBackendUploadFilesProgress(next);
   }
@@ -1599,7 +1599,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
   Future<bool> _uploadItemWithMultipart({
     required String reportNumber,
-    required _UploadedItem item,
+    required UploadedItem item,
     required int index,
     required int totalItems,
   }) async {
@@ -1613,7 +1613,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           index: index,
           totalItems: totalItems,
           fileName: item.name,
-          status: _BackendUploadFileStatus.failed,
+          status: BackendUploadFileStatus.failed,
           progress: 0,
           errorText: _backendUploadErrorText,
         );
@@ -1629,7 +1629,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           index: index,
           totalItems: totalItems,
           fileName: item.name,
-          status: _BackendUploadFileStatus.failed,
+          status: BackendUploadFileStatus.failed,
           progress: 0,
           errorText: _backendUploadErrorText,
         );
@@ -1648,7 +1648,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           index: index,
           totalItems: totalItems,
           fileName: _uploadStateText(fileState, 'filename'),
-          status: _BackendUploadFileStatus.uploaded,
+          status: BackendUploadFileStatus.uploaded,
           progress: 1,
           errorText: '',
         );
@@ -1677,7 +1677,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           index: index,
           totalItems: totalItems,
           fileName: item.name,
-          status: _BackendUploadFileStatus.failed,
+          status: BackendUploadFileStatus.failed,
           progress: 0,
           errorText: _backendUploadErrorText,
         );
@@ -1702,7 +1702,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         index: index,
         totalItems: totalItems,
         fileName: filename,
-        status: _BackendUploadFileStatus.uploading,
+        status: BackendUploadFileStatus.uploading,
         progress: partCount <= 0 ? 0 : etagsByPart.length / partCount,
         uploadedParts: etagsByPart.length,
         totalParts: partCount,
@@ -1759,7 +1759,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
               index: index,
               totalItems: totalItems,
               fileName: filename,
-              status: _BackendUploadFileStatus.uploading,
+              status: BackendUploadFileStatus.uploading,
               progress: partCount <= 0 ? 0 : partNumber / partCount,
               uploadedParts: partNumber,
               totalParts: partCount,
@@ -1805,7 +1805,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
               index: index,
               totalItems: totalItems,
               fileName: filename,
-              status: _BackendUploadFileStatus.uploading,
+              status: BackendUploadFileStatus.uploading,
               progress: partCount <= 0 ? 0 : partNumber / partCount,
               uploadedParts: partNumber,
               totalParts: partCount,
@@ -1872,7 +1872,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           index: index,
           totalItems: totalItems,
           fileName: filename,
-          status: _BackendUploadFileStatus.uploaded,
+          status: BackendUploadFileStatus.uploaded,
           progress: 1,
           uploadedParts: partCount,
           totalParts: partCount,
@@ -1896,7 +1896,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           index: index,
           totalItems: totalItems,
           fileName: fileState['filename']?.toString() ?? item.name,
-          status: _BackendUploadFileStatus.failed,
+          status: BackendUploadFileStatus.failed,
           progress: partCount <= 0 ? 0 : etagsByPart.length / partCount,
           uploadedParts: etagsByPart.length,
           totalParts: partCount,

@@ -101,8 +101,8 @@ extension _SparkJoyCommentAudioHelpers on _SparkJoyCreateReportScreenState {
 
   Future<void> _stopSectionCommentRecording({
     required String key,
-    required List<_UploadedItem> files,
-    required ValueSetter<List<_UploadedItem>> setFiles,
+    required List<UploadedItem> files,
+    required ValueSetter<List<UploadedItem>> setFiles,
     bool keepResult = true,
   }) async {
     if (!_isCommentRecording(key)) return;
@@ -135,7 +135,7 @@ extension _SparkJoyCommentAudioHelpers on _SparkJoyCreateReportScreenState {
       if ((stored ?? '').trim().isNotEmpty) {
         nextFiles = [
           ...files,
-          _UploadedItem(
+          UploadedItem(
             id: _nextUploadedItemId(prefix: '${key}_comment_audio'),
             name: 'Голосовое сообщение ${files.length + 1}',
             mimeType: 'audio/wav',
@@ -214,7 +214,7 @@ extension _SparkJoyCommentAudioHelpers on _SparkJoyCreateReportScreenState {
   }
 
   Future<void> _toggleSharedCommentAudioPlayback({
-    required List<_UploadedItem> files,
+    required List<UploadedItem> files,
     required int index,
     required bool currentlyPlaying,
     required VoidCallback activateIndex,

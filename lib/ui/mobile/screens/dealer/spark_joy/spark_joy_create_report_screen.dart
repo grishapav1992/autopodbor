@@ -297,9 +297,23 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   int get _legalLoadToken => _reportController.legalLoadToken.value;
   set _legalLoadToken(int value) =>
       _reportController.legalLoadToken.value = value;
-  List<_UploadedItem> _legalFiles = const [];
-  List<_UploadedItem> _docsCommentAudioFiles = const [];
-  List<_UploadedItem> _legalCommentAudioFiles = const [];
+  // ┌─ Phase 4.1 · Chunk 13: uploaded file lists → controller ──────────────┐
+  // │ `_UploadedItem` was renamed to `UploadedItem` so the controller can   │
+  // │ type them without living in this `part of` library.                   │
+  // └───────────────────────────────────────────────────────────────────────┘
+  List<UploadedItem> get _legalFiles => _reportController.legalFiles.value;
+  set _legalFiles(List<UploadedItem> value) =>
+      _reportController.legalFiles.value = value;
+
+  List<UploadedItem> get _docsCommentAudioFiles =>
+      _reportController.docsCommentAudioFiles.value;
+  set _docsCommentAudioFiles(List<UploadedItem> value) =>
+      _reportController.docsCommentAudioFiles.value = value;
+
+  List<UploadedItem> get _legalCommentAudioFiles =>
+      _reportController.legalCommentAudioFiles.value;
+  set _legalCommentAudioFiles(List<UploadedItem> value) =>
+      _reportController.legalCommentAudioFiles.value = value;
   final AudioPlayer _sectionCommentAudioPlayer = AudioPlayer();
   StreamSubscription<void>? _sectionCommentAudioCompleteSub;
   final AudioRecorder _sectionCommentRecorder = AudioRecorder();
@@ -426,9 +440,15 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   final Map<String, String?> _tdManagingTagSeverityByScope = {};
   final Map<String, TextEditingController> _tdCustomTagControllersByScope = {};
   final Map<String, FocusNode> _tdCustomTagFocusNodesByScope = {};
-  List<_UploadedItem> _tdCommentAudioFiles = const [];
+  List<UploadedItem> get _tdCommentAudioFiles =>
+      _reportController.tdCommentAudioFiles.value;
+  set _tdCommentAudioFiles(List<UploadedItem> value) =>
+      _reportController.tdCommentAudioFiles.value = value;
 
-  List<_UploadedItem> _expertAudioFiles = const [];
+  List<UploadedItem> get _expertAudioFiles =>
+      _reportController.expertAudioFiles.value;
+  set _expertAudioFiles(List<UploadedItem> value) =>
+      _reportController.expertAudioFiles.value = value;
   // ┌─ Phase 4.1 · Chunk 3: business / staff-invite state moved to controller ┐
   // │ 28 references across 5 files (including the `??=` assign-if-null usage  │
   // │ in vehicle_business_helpers) keep working through these proxies.        │
@@ -459,17 +479,64 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   DateTime? _mediaPickerStartedAt;
   int? _mediaGroupPressedIndex;
   String? _mediaListPressedGroupKey;
-  Map<String, dynamic> _backendUploadState = {};
-  bool _backendUploadInProgress = false;
-  bool _backendUploadFailed = false;
-  String _backendUploadStatusText = '';
-  String _backendUploadErrorText = '';
-  int _backendUploadCurrentFile = 0;
-  int _backendUploadTotalFiles = 0;
-  int _backendUploadCurrentPart = 0;
-  int _backendUploadTotalParts = 0;
-  List<_BackendUploadFileProgress> _backendUploadFilesProgress = const [];
-  bool _backendFileUploadLocked = false;
+  // ┌─ Phase 4.1 · Chunk 12: backend S3 upload progress → controller ──────┐
+  // │ 75 refs across 5 files. Typed List<BackendUploadFileProgress>       │
+  // │ stays in the host until the item class is made public (chunk 13).   │
+  // └──────────────────────────────────────────────────────────────────────┘
+  Map<String, dynamic> get _backendUploadState =>
+      _reportController.backendUploadState.value;
+  set _backendUploadState(Map<String, dynamic> value) =>
+      _reportController.backendUploadState.value = value;
+
+  bool get _backendUploadInProgress =>
+      _reportController.backendUploadInProgress.value;
+  set _backendUploadInProgress(bool value) =>
+      _reportController.backendUploadInProgress.value = value;
+
+  bool get _backendUploadFailed =>
+      _reportController.backendUploadFailed.value;
+  set _backendUploadFailed(bool value) =>
+      _reportController.backendUploadFailed.value = value;
+
+  String get _backendUploadStatusText =>
+      _reportController.backendUploadStatusText.value;
+  set _backendUploadStatusText(String value) =>
+      _reportController.backendUploadStatusText.value = value;
+
+  String get _backendUploadErrorText =>
+      _reportController.backendUploadErrorText.value;
+  set _backendUploadErrorText(String value) =>
+      _reportController.backendUploadErrorText.value = value;
+
+  int get _backendUploadCurrentFile =>
+      _reportController.backendUploadCurrentFile.value;
+  set _backendUploadCurrentFile(int value) =>
+      _reportController.backendUploadCurrentFile.value = value;
+
+  int get _backendUploadTotalFiles =>
+      _reportController.backendUploadTotalFiles.value;
+  set _backendUploadTotalFiles(int value) =>
+      _reportController.backendUploadTotalFiles.value = value;
+
+  int get _backendUploadCurrentPart =>
+      _reportController.backendUploadCurrentPart.value;
+  set _backendUploadCurrentPart(int value) =>
+      _reportController.backendUploadCurrentPart.value = value;
+
+  int get _backendUploadTotalParts =>
+      _reportController.backendUploadTotalParts.value;
+  set _backendUploadTotalParts(int value) =>
+      _reportController.backendUploadTotalParts.value = value;
+
+  List<BackendUploadFileProgress> get _backendUploadFilesProgress =>
+      _reportController.backendUploadFilesProgress.value;
+  set _backendUploadFilesProgress(List<BackendUploadFileProgress> value) =>
+      _reportController.backendUploadFilesProgress.value = value;
+
+  bool get _backendFileUploadLocked =>
+      _reportController.backendFileUploadLocked.value;
+  set _backendFileUploadLocked(bool value) =>
+      _reportController.backendFileUploadLocked.value = value;
   int _uploadedItemIdCounter = 0;
   final Map<String, int> _localSavedFileNameUsages = <String, int>{};
 

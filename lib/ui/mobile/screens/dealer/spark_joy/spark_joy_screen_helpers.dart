@@ -224,7 +224,7 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
     var broken = 0;
     var total = 0;
 
-    void consume(_UploadedItem item) {
+    void consume(UploadedItem item) {
       total += 1;
       if (item.isImage) {
         images += 1;

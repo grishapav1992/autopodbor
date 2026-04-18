@@ -222,14 +222,14 @@ class _MediaGroupState {
   final bool hasIssue;
   final String note;
   final String rawUrls;
-  final List<_UploadedItem> files;
+  final List<UploadedItem> files;
   final _MediaPartInspection partInspection;
 
   _MediaGroupState copyWith({
     bool? hasIssue,
     String? note,
     String? rawUrls,
-    List<_UploadedItem>? files,
+    List<UploadedItem>? files,
     _MediaPartInspection? partInspection,
   }) {
     return _MediaGroupState(
@@ -338,8 +338,8 @@ class _MediaPartInspection {
   }
 }
 
-class _MediaInspection {
-  const _MediaInspection({
+class MediaInspection {
+  const MediaInspection({
     this.noDamage = false,
     this.tags = const [],
     this.note = '',
@@ -359,7 +359,7 @@ class _MediaInspection {
   final double? paintTo;
   final bool isDraft;
 
-  _MediaInspection copyWith({
+  MediaInspection copyWith({
     bool? noDamage,
     List<String>? tags,
     String? note,
@@ -369,7 +369,7 @@ class _MediaInspection {
     double? paintTo,
     bool? isDraft,
   }) {
-    return _MediaInspection(
+    return MediaInspection(
       noDamage: noDamage ?? this.noDamage,
       tags: tags ?? this.tags,
       note: note ?? this.note,
@@ -397,29 +397,29 @@ class _MediaInspection {
   }
 }
 
-class _UploadedItem {
-  const _UploadedItem({
+class UploadedItem {
+  const UploadedItem({
     required this.id,
     required this.name,
     required this.mimeType,
     required this.dataUrl,
-    this.inspection = const _MediaInspection(),
+    this.inspection = const MediaInspection(),
   });
 
   final String id;
   final String name;
   final String mimeType;
   final String dataUrl;
-  final _MediaInspection inspection;
+  final MediaInspection inspection;
 
-  _UploadedItem copyWith({
+  UploadedItem copyWith({
     String? id,
     String? name,
     String? mimeType,
     String? dataUrl,
-    _MediaInspection? inspection,
+    MediaInspection? inspection,
   }) {
-    return _UploadedItem(
+    return UploadedItem(
       id: id ?? this.id,
       name: name ?? this.name,
       mimeType: mimeType ?? this.mimeType,
@@ -433,16 +433,16 @@ class _UploadedItem {
   bool get isAudio => mimeType.startsWith('audio/');
 }
 
-enum _BackendUploadFileStatus { pending, uploading, uploaded, failed }
+enum BackendUploadFileStatus { pending, uploading, uploaded, failed }
 
-class _BackendUploadFileProgress {
-  const _BackendUploadFileProgress({
+class BackendUploadFileProgress {
+  const BackendUploadFileProgress({
     required this.sourceKey,
     required this.fileName,
     required this.index,
     required this.total,
     this.progress = 0,
-    this.status = _BackendUploadFileStatus.pending,
+    this.status = BackendUploadFileStatus.pending,
     this.uploadedParts = 0,
     this.totalParts = 0,
     this.errorText = '',
@@ -453,23 +453,23 @@ class _BackendUploadFileProgress {
   final int index;
   final int total;
   final double progress;
-  final _BackendUploadFileStatus status;
+  final BackendUploadFileStatus status;
   final int uploadedParts;
   final int totalParts;
   final String errorText;
 
-  _BackendUploadFileProgress copyWith({
+  BackendUploadFileProgress copyWith({
     String? sourceKey,
     String? fileName,
     int? index,
     int? total,
     double? progress,
-    _BackendUploadFileStatus? status,
+    BackendUploadFileStatus? status,
     int? uploadedParts,
     int? totalParts,
     String? errorText,
   }) {
-    return _BackendUploadFileProgress(
+    return BackendUploadFileProgress(
       sourceKey: sourceKey ?? this.sourceKey,
       fileName: fileName ?? this.fileName,
       index: index ?? this.index,

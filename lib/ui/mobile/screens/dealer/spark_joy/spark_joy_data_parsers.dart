@@ -104,9 +104,9 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
     return result;
   }
 
-  List<_UploadedItem> _readUploadedList(dynamic value) {
+  List<UploadedItem> _readUploadedList(dynamic value) {
     if (value is! List) return const [];
-    final items = <_UploadedItem>[];
+    final items = <UploadedItem>[];
     for (var index = 0; index < value.length; index++) {
       final entry = value[index];
       if (entry is! Map) continue;
@@ -118,7 +118,7 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
           ? _read(map, 'id').trim()
           : 'legacy_${index}_${name.hashCode}_${dataUrl.hashCode}';
       items.add(
-        _UploadedItem(
+        UploadedItem(
           id: id,
           name: name,
           mimeType: _read(
@@ -134,8 +134,8 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
     return items;
   }
 
-  _MediaInspection _readMediaInspection(dynamic value) {
-    if (value is! Map) return const _MediaInspection();
+  MediaInspection _readMediaInspection(dynamic value) {
+    if (value is! Map) return const MediaInspection();
     final map = Map<String, dynamic>.from(value);
     double? paintFrom = _readNullableDouble(map, 'paintFrom');
     double? paintTo = _readNullableDouble(map, 'paintTo');
@@ -145,7 +145,7 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
       paintFrom ??= _readNullableDouble(paintMap, 'from');
       paintTo ??= _readNullableDouble(paintMap, 'to');
     }
-    return _MediaInspection(
+    return MediaInspection(
       noDamage: _readBool(map, 'noDamage'),
       tags: _readStringList(map['tags']),
       note: _read(map, 'note'),

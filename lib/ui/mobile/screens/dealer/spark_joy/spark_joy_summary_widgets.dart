@@ -102,7 +102,7 @@ Widget _buildSparkSummarySectionMediaPreview(
   if (groupKey == null) return const SizedBox.shrink();
 
   final state = s._mediaState[groupKey];
-  final files = state?.files ?? const <_UploadedItem>[];
+  final files = state?.files ?? const <UploadedItem>[];
   if (files.isEmpty) return const SizedBox.shrink();
 
   return Padding(
@@ -193,7 +193,7 @@ Widget _buildSparkSummaryNoDamageMediaCard(_SparkJoyCreateReportScreenState s) {
           spacing: SparkSpace.sm,
           runSpacing: SparkSpace.sm,
           children: cleanItems.map((entry) {
-            final file = entry['file'] as _UploadedItem;
+            final file = entry['file'] as UploadedItem;
             final groupKey = (entry['groupKey'] ?? '').toString();
             final index = entry['index'] as int? ?? 0;
             return ClipRRect(

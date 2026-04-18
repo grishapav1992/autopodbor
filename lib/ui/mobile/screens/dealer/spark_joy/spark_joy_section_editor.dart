@@ -70,52 +70,52 @@ Widget _buildSparkJoyValidationHint(String text) {
   );
 }
 
-Color _sparkJoyUploadStatusColor(_BackendUploadFileStatus status) {
+Color _sparkJoyUploadStatusColor(BackendUploadFileStatus status) {
   switch (status) {
-    case _BackendUploadFileStatus.uploaded:
+    case BackendUploadFileStatus.uploaded:
       return kGreenColor;
-    case _BackendUploadFileStatus.failed:
+    case BackendUploadFileStatus.failed:
       return kRedColor;
-    case _BackendUploadFileStatus.uploading:
+    case BackendUploadFileStatus.uploading:
       return kSecondaryColor;
-    case _BackendUploadFileStatus.pending:
+    case BackendUploadFileStatus.pending:
       return kGreyColor;
   }
 }
 
-IconData _sparkJoyUploadStatusIcon(_BackendUploadFileStatus status) {
+IconData _sparkJoyUploadStatusIcon(BackendUploadFileStatus status) {
   switch (status) {
-    case _BackendUploadFileStatus.uploaded:
+    case BackendUploadFileStatus.uploaded:
       return Icons.check_circle_rounded;
-    case _BackendUploadFileStatus.failed:
+    case BackendUploadFileStatus.failed:
       return Icons.error_rounded;
-    case _BackendUploadFileStatus.uploading:
+    case BackendUploadFileStatus.uploading:
       return Icons.cloud_upload_rounded;
-    case _BackendUploadFileStatus.pending:
+    case BackendUploadFileStatus.pending:
       return Icons.schedule_rounded;
   }
 }
 
-String _sparkJoyUploadStatusText(_BackendUploadFileProgress file) {
+String _sparkJoyUploadStatusText(BackendUploadFileProgress file) {
   switch (file.status) {
-    case _BackendUploadFileStatus.uploaded:
+    case BackendUploadFileStatus.uploaded:
       return 'Загружен';
-    case _BackendUploadFileStatus.failed:
+    case BackendUploadFileStatus.failed:
       return 'Ошибка';
-    case _BackendUploadFileStatus.uploading:
+    case BackendUploadFileStatus.uploading:
       final percent = (file.progress * 100).round().clamp(0, 100);
       return '$percent%';
-    case _BackendUploadFileStatus.pending:
+    case BackendUploadFileStatus.pending:
       return 'Ожидание';
   }
 }
 
-Widget _buildSparkJoyUploadFileRow(_BackendUploadFileProgress file) {
+Widget _buildSparkJoyUploadFileRow(BackendUploadFileProgress file) {
   final statusColor = _sparkJoyUploadStatusColor(file.status);
   final statusText = _sparkJoyUploadStatusText(file);
   final showProgress =
-      file.status == _BackendUploadFileStatus.uploading ||
-      (file.status == _BackendUploadFileStatus.failed && file.progress > 0);
+      file.status == BackendUploadFileStatus.uploading ||
+      (file.status == BackendUploadFileStatus.failed && file.progress > 0);
   return Container(
     padding: const EdgeInsets.symmetric(
       horizontal: SparkSpace.md,
@@ -188,7 +188,7 @@ Widget _buildSparkJoyUploadFileRow(_BackendUploadFileProgress file) {
 Widget _buildSparkJoyUploadHint(
   String text, {
   required double progress,
-  required List<_BackendUploadFileProgress> files,
+  required List<BackendUploadFileProgress> files,
 }) {
   return SparkCard(
     padding: const EdgeInsets.symmetric(

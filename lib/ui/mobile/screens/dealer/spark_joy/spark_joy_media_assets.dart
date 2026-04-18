@@ -2,7 +2,7 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
   _MediaPartInspection _deriveGroupPartInspection({
-    required List<_UploadedItem> files,
+    required List<UploadedItem> files,
     String fallbackNote = '',
   }) {
     final normalizedTags = <String, String>{};
@@ -77,7 +77,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
 
   _MediaPartInspection _syncPartInspectionWithFiles({
     required _MediaPartInspection partInspection,
-    required List<_UploadedItem> files,
+    required List<UploadedItem> files,
     String fallbackNote = '',
   }) {
     if (files.isEmpty) return const _MediaPartInspection();
@@ -159,12 +159,12 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     );
   }
 
-  List<_UploadedItem> _applyPartInspectionToFiles({
-    required List<_UploadedItem> files,
+  List<UploadedItem> _applyPartInspectionToFiles({
+    required List<UploadedItem> files,
     required _MediaPartInspection partInspection,
     Set<String>? applyToFileUrls,
   }) {
-    if (files.isEmpty) return const <_UploadedItem>[];
+    if (files.isEmpty) return const <UploadedItem>[];
     final normalizedTargetUrls = applyToFileUrls
         ?.map((url) => url.trim())
         .where((url) => url.isNotEmpty)
@@ -216,7 +216,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       final nextNoDamage = tagsForFile.isEmpty
           ? (applyForFile ? partInspection.noDamage : previous.noDamage)
           : false;
-      final inspection = _MediaInspection(
+      final inspection = MediaInspection(
         noDamage: nextNoDamage,
         tags: tagsForFile,
         note: applyForFile ? normalizedNote : previous.note,
@@ -234,7 +234,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     }).toList();
   }
 
-  List<Map<String, dynamic>> _uploadedToJson(List<_UploadedItem> items) {
+  List<Map<String, dynamic>> _uploadedToJson(List<UploadedItem> items) {
     return items.map((e) {
       return {
         'id': e.id,
@@ -309,7 +309,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
   }
 
   Widget _uploadedImageWidget(
-    _UploadedItem item, {
+    UploadedItem item, {
     BoxFit fit = BoxFit.cover,
     Color errorColor = kGreyColor,
     double errorSize = 28,
@@ -383,7 +383,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
   }
 
   Widget _uploadedMediaThumbWidget(
-    _UploadedItem item, {
+    UploadedItem item, {
     BoxFit fit = BoxFit.cover,
     int? cacheWidth,
     int? cacheHeight,

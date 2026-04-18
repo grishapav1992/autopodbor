@@ -1,7 +1,7 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
-  Future<List<_UploadedItem>> _pickFiles({
+  Future<List<UploadedItem>> _pickFiles({
     required FileType type,
     List<String>? allowedExtensions,
     bool allowMultiple = true,
@@ -15,7 +15,7 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
     );
     if (result == null || result.files.isEmpty) return const [];
 
-    final items = <_UploadedItem>[];
+    final items = <UploadedItem>[];
     var skippedBecauseNotPersisted = false;
     for (final file in result.files) {
       final fileName = file.name.trim().isEmpty ? 'picked_file' : file.name;
@@ -53,7 +53,7 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
       }
 
       items.add(
-        _UploadedItem(
+        UploadedItem(
           id: _nextUploadedItemId(prefix: 'picked'),
           name: fileName,
           mimeType: mimeType,
@@ -67,11 +67,11 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
     return items;
   }
 
-  Future<List<_UploadedItem>> _uploadedItemsFromXFiles(
+  Future<List<UploadedItem>> _uploadedItemsFromXFiles(
     List<XFile> files, {
     String prefix = 'picked',
   }) async {
-    final items = <_UploadedItem>[];
+    final items = <UploadedItem>[];
     var skippedBecauseNotPersisted = false;
     for (final file in files) {
       final fileName = file.name.trim().isEmpty ? 'media_file' : file.name;
@@ -103,7 +103,7 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
         continue;
       }
       items.add(
-        _UploadedItem(
+        UploadedItem(
           id: _nextUploadedItemId(prefix: prefix),
           name: fileName,
           mimeType: mimeType,
@@ -117,7 +117,7 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
     return items;
   }
 
-  Future<List<_UploadedItem>> _pickMediaFromDeviceGallery() async {
+  Future<List<UploadedItem>> _pickMediaFromDeviceGallery() async {
     final picker = ImagePicker();
     try {
       final picked = await picker.pickMultipleMedia();

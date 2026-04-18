@@ -1,5 +1,8 @@
 import 'package:get/get.dart';
 
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_create_report_screen.dart'
+    show UploadedItem, BackendUploadFileProgress;
+
 /// Owns the reactive state of a single spark_joy specialist report.
 ///
 /// ## Migration strategy (Phase 4.1)
@@ -187,6 +190,51 @@ class SparkJoyReportController extends GetxController {
       Rx<Map<String, List<String>>>(<String, List<String>>{});
   final Rx<Map<String, List<String>>> mediaTagOrderByScope =
       Rx<Map<String, List<String>>>(<String, List<String>>{});
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 12 — Backend multipart upload progress
+  //
+  // Drives the "upload to S3" overlay shown after PrepareSpecialist-
+  // Report returns presigned URLs. These ten fields are scalars /
+  // strings / a free-form map; the typed progress LIST stays in the
+  // host for now because its `BackendUploadFileProgress` item class
+  // is library-private and would need a rename first (see chunk 13).
+  // ──────────────────────────────────────────────────────────────────
+
+  final Rx<Map<String, dynamic>> backendUploadState =
+      Rx<Map<String, dynamic>>(<String, dynamic>{});
+  final RxBool backendUploadInProgress = false.obs;
+  final RxBool backendUploadFailed = false.obs;
+  final RxString backendUploadStatusText = ''.obs;
+  final RxString backendUploadErrorText = ''.obs;
+  final RxInt backendUploadCurrentFile = 0.obs;
+  final RxInt backendUploadTotalFiles = 0.obs;
+  final RxInt backendUploadCurrentPart = 0.obs;
+  final RxInt backendUploadTotalParts = 0.obs;
+  final RxBool backendFileUploadLocked = false.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 13 — Uploaded file lists + per-file upload progress list
+  //
+  // These lists all carry `UploadedItem` / `BackendUploadFileProgress`
+  // — classes that used to be private (`_UploadedItem`, etc.) and got
+  // renamed in this chunk so the controller can reference them without
+  // living in the same `part of` library.
+  // ──────────────────────────────────────────────────────────────────
+
+  final Rx<List<UploadedItem>> legalFiles =
+      Rx<List<UploadedItem>>(const <UploadedItem>[]);
+  final Rx<List<UploadedItem>> docsCommentAudioFiles =
+      Rx<List<UploadedItem>>(const <UploadedItem>[]);
+  final Rx<List<UploadedItem>> legalCommentAudioFiles =
+      Rx<List<UploadedItem>>(const <UploadedItem>[]);
+  final Rx<List<UploadedItem>> tdCommentAudioFiles =
+      Rx<List<UploadedItem>>(const <UploadedItem>[]);
+  final Rx<List<UploadedItem>> expertAudioFiles =
+      Rx<List<UploadedItem>>(const <UploadedItem>[]);
+
+  final Rx<List<BackendUploadFileProgress>> backendUploadFilesProgress =
+      Rx<List<BackendUploadFileProgress>>(const <BackendUploadFileProgress>[]);
 
   /// Replaces the contents of [list] with [next] in one shot, keeping the
   /// same RxList instance (so listeners don't have to re-subscribe).
