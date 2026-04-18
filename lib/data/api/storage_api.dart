@@ -244,6 +244,28 @@ class StorageApi {
     return !nowUtc.isBefore(expUtc);
   }
 
+  static int _rpcSeq = 0;
+
+  /// Emits a structured RPC trace line visible in Console.app / `flutter
+  /// logs` (filter by name "StorageApi.rpc"). Runs in every build mode —
+  /// release / profile / debug — because we need device-side diagnostics
+  /// for production timeouts. The payload itself is never logged, only
+  /// metadata (method, byte size, auth state, timing, status, error
+  /// class).
+  static void _rpcLog(
+    String stage, {
+    required int seq,
+    required String method,
+    String extra = '',
+  }) {
+    final now = DateTime.now().toIso8601String();
+    final suffix = extra.trim().isEmpty ? '' : ' $extra';
+    developer.log(
+      '[rpc][$now][#$seq][$stage][$method]$suffix',
+      name: 'StorageApi.rpc',
+    );
+  }
+
   static Future<Map<String, dynamic>> _postRpc({
     required String method,
     required Map<String, dynamic> params,
@@ -251,6 +273,8 @@ class StorageApi {
     bool includeAuth = true,
     bool allowRefresh = true,
   }) async {
+    final seq = ++_rpcSeq;
+    final stopwatch = Stopwatch()..start();
     final requestParams = Map<String, dynamic>.from(params);
     final payload = <String, dynamic>{
       'jsonrpc': '2.0',
@@ -264,12 +288,14 @@ class StorageApi {
       'Content-Type': 'application/json',
       'Content-Length': bytes.length.toString(),
     };
+    var hasAuth = false;
     if (includeAuth) {
       var accessToken = await UserSimplePreferences.getAccessToken();
       if (allowRefresh &&
           accessToken != null &&
           accessToken.isNotEmpty &&
           _isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
+        _rpcLog('refresh-before-send', seq: seq, method: method);
         final refreshed = await _tryRefreshTokens();
         if (refreshed) {
           accessToken = await UserSimplePreferences.getAccessToken();
@@ -277,12 +303,50 @@ class StorageApi {
       }
       if (accessToken != null && accessToken.isNotEmpty) {
         headers['Authorization'] = 'Bearer $accessToken';
+        hasAuth = true;
       }
     }
-    final response = await http
-        .post(Uri.parse(_endpoint), headers: headers, body: bytes)
-        .timeout(timeout);
+    _rpcLog(
+      'send',
+      seq: seq,
+      method: method,
+      extra:
+          'bytes=${bytes.length} timeout=${timeout.inSeconds}s auth=$hasAuth',
+    );
+    http.Response response;
+    try {
+      response = await http
+          .post(Uri.parse(_endpoint), headers: headers, body: bytes)
+          .timeout(timeout);
+    } on TimeoutException catch (e) {
+      _rpcLog(
+        'timeout',
+        seq: seq,
+        method: method,
+        extra: 'elapsed=${stopwatch.elapsedMilliseconds}ms',
+      );
+      throw Exception(
+        'Timeout on $method after ${timeout.inSeconds}s '
+        '(elapsed=${stopwatch.elapsedMilliseconds}ms): $e',
+      );
+    } catch (e) {
+      _rpcLog(
+        'transport-error',
+        seq: seq,
+        method: method,
+        extra: 'elapsed=${stopwatch.elapsedMilliseconds}ms err=$e',
+      );
+      rethrow;
+    }
+    _rpcLog(
+      'recv',
+      seq: seq,
+      method: method,
+      extra:
+          'status=${response.statusCode} bytes=${response.contentLength ?? response.bodyBytes.length} elapsed=${stopwatch.elapsedMilliseconds}ms',
+    );
     if (response.statusCode == 401 && includeAuth && allowRefresh) {
+      _rpcLog('http-401-retry', seq: seq, method: method);
       final refreshed = await _tryRefreshTokens();
       if (refreshed) {
         return _postRpc(
@@ -297,6 +361,12 @@ class StorageApi {
     if (response.statusCode != 200) {
       final body = response.body.trim();
       final shortBody = body.length > 400 ? '${body.substring(0, 400)}…' : body;
+      _rpcLog(
+        'http-error',
+        seq: seq,
+        method: method,
+        extra: 'status=${response.statusCode} body=$shortBody',
+      );
       if (shortBody.isNotEmpty) {
         throw Exception('HTTP ${response.statusCode} from $method: $shortBody');
       }
@@ -304,12 +374,19 @@ class StorageApi {
     }
     final rawBody = response.body.trim();
     if (rawBody.isEmpty) {
+      _rpcLog('empty-body', seq: seq, method: method);
       throw Exception('Empty response body from $method');
     }
     Map<String, dynamic> data;
     try {
       data = _asMap(json.decode(rawBody));
     } catch (_) {
+      _rpcLog(
+        'bad-json',
+        seq: seq,
+        method: method,
+        extra: 'body=${rawBody.length > 200 ? '${rawBody.substring(0, 200)}…' : rawBody}',
+      );
       throw Exception('Invalid JSON response from $method: $rawBody');
     }
     final responseFlag = data['response']?.toString().toLowerCase() ?? '';
@@ -317,6 +394,7 @@ class StorageApi {
       if (includeAuth &&
           allowRefresh &&
           _isUnauthorizedResponse(data, responseFlag)) {
+        _rpcLog('rpc-401-retry', seq: seq, method: method);
         final refreshed = await _tryRefreshTokens();
         if (refreshed) {
           return _postRpc(
@@ -329,6 +407,13 @@ class StorageApi {
         }
       }
       final errors = _extractErrorsText(data);
+      _rpcLog(
+        'rpc-error',
+        seq: seq,
+        method: method,
+        extra:
+            'response=$responseFlag errors=${errors.isEmpty ? '(none)' : errors}',
+      );
       if (errors.isNotEmpty) {
         throw Exception(
           'Bad response from $method (response=$responseFlag): $errors',
@@ -336,6 +421,13 @@ class StorageApi {
       }
       throw Exception('Bad response from $method (response=$responseFlag)');
     }
+    _rpcLog(
+      'ok',
+      seq: seq,
+      method: method,
+      extra:
+          'elapsed=${stopwatch.elapsedMilliseconds}ms bytes=${rawBody.length}',
+    );
     return data;
   }
 
