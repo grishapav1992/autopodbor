@@ -1,8 +1,51 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'spark_joy_data.dart';
+
+// ─── Isolate helpers ──────────────────────────────────────────────────────
+// `compute()` spawns a fresh isolate (~20–50 ms on first call) + round-trips
+// its arguments/results via SendPort, so using it blindly for every JSON
+// op is a net loss for small data. We gate by `_jsonIsolateThresholdItems`
+// and `_jsonIsolateThresholdBytes`: if the payload is trivially small we
+// do the work sync, otherwise we offload to keep the UI at 60 fps while
+// inspection-heavy drafts (50+ KB) are encoded/decoded.
+
+const int _jsonIsolateThresholdItems = 4;
+const int _jsonIsolateThresholdBytes = 16 * 1024; // ~16 KB
+
+/// Top-level function (required by `compute()`) — encodes a list of report
+/// drafts into `SharedPreferences`-ready strings.
+List<String> _encodeListForPrefs(List<Map<String, dynamic>> values) {
+  return values.map(jsonEncode).toList(growable: false);
+}
+
+/// Top-level function (required by `compute()`) — decodes a string list
+/// from `SharedPreferences`. Malformed entries are silently skipped so a
+/// single corrupt draft can't bring down the whole list.
+List<Map<String, dynamic>> _decodeListFromPrefs(List<String> raw) {
+  final result = <Map<String, dynamic>>[];
+  for (final item in raw) {
+    try {
+      final decoded = jsonDecode(item);
+      if (decoded is Map<String, dynamic>) {
+        result.add(decoded);
+      }
+    } catch (_) {}
+  }
+  return result;
+}
+
+int _estimateRawBytes(List<String> raw) {
+  var total = 0;
+  for (final item in raw) {
+    total += item.length;
+    if (total >= _jsonIsolateThresholdBytes) return total;
+  }
+  return total;
+}
 
 class SparkJoyStorage {
   SparkJoyStorage._();
@@ -305,16 +348,14 @@ class SparkJoyStorage {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return [];
     final raw = pref.getStringList(key) ?? <String>[];
-    final result = <Map<String, dynamic>>[];
-    for (final item in raw) {
-      try {
-        final decoded = jsonDecode(item);
-        if (decoded is Map<String, dynamic>) {
-          result.add(decoded);
-        }
-      } catch (_) {}
+    if (raw.isEmpty) return [];
+    // Offload decoding to a background isolate only for non-trivial lists —
+    // tiny lists finish in <1 ms sync and would pay a net cost under compute.
+    if (raw.length >= _jsonIsolateThresholdItems ||
+        _estimateRawBytes(raw) >= _jsonIsolateThresholdBytes) {
+      return compute(_decodeListFromPrefs, raw);
     }
-    return result;
+    return _decodeListFromPrefs(raw);
   }
 
   static Future<void> _writeList(
@@ -323,7 +364,16 @@ class SparkJoyStorage {
   ) async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
-    await pref.setStringList(key, values.map(jsonEncode).toList());
+    // Same rationale as _readList: only use an isolate for meaningful
+    // payloads. For small drafts the sync path is faster and keeps the
+    // storage API synchronous up to the SharedPreferences boundary.
+    final List<String> encoded;
+    if (values.length >= _jsonIsolateThresholdItems) {
+      encoded = await compute(_encodeListForPrefs, values);
+    } else {
+      encoded = _encodeListForPrefs(values);
+    }
+    await pref.setStringList(key, encoded);
   }
 
   static Future<void> clearCompletedCache() async {

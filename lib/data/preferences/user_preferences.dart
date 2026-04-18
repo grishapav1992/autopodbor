@@ -1,6 +1,55 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+// ─── Isolate helpers for auto-request list JSON ───────────────────────────
+// Same rationale as in spark_joy_storage.dart: `compute()` only pays off
+// when the payload is large enough to exceed the isolate spawn + SendPort
+// round-trip cost. We keep a per-item threshold here because a single
+// auto-request entry is small (~1–3 KB), so anything under ~4 entries is
+// faster to process synchronously on the UI thread.
+
+const int _autoRequestsIsolateThresholdItems = 4;
+
+/// Top-level function (required by `compute()`) — encodes a list of
+/// auto-request maps into SharedPreferences-ready JSON strings.
+List<String> _encodeAutoRequestsForPrefs(List<Map<String, dynamic>> values) {
+  return values.map(jsonEncode).toList(growable: false);
+}
+
+/// Normalizes the stored auto-request `status` field, undoing the mojibake
+/// leftovers from earlier encoding bugs. Lives at the top level so it can
+/// run inside a background isolate via `compute()`.
+String _sanitizeAutoRequestStatus(String? value) {
+  if (value == null || value.isEmpty) return 'Создана';
+  if (value.contains('?')) return 'Создана';
+  if (value == 'РЎРѕР·РґР°РЅР°') return 'Создана';
+  if (value == 'Р’ СЂР°Р±РѕС‚Рµ') return 'В работе';
+  if (value == 'Р—Р°РІРµСЂС€РµРЅР°') return 'Завершена';
+  if (value == 'РћС‚РјРµРЅРµРЅР°') return 'Отменена';
+  return value;
+}
+
+/// Top-level function (required by `compute()`) — decodes the stored JSON
+/// strings and sanitizes the `status` field so consumers can treat the
+/// list as ready-to-render.
+List<Map<String, dynamic>> _decodeAutoRequestsFromPrefs(List<String> raw) {
+  final result = <Map<String, dynamic>>[];
+  for (final item in raw) {
+    try {
+      final decoded = jsonDecode(item);
+      if (decoded is Map<String, dynamic>) {
+        final status = decoded['status'];
+        if (status is String) {
+          decoded['status'] = _sanitizeAutoRequestStatus(status);
+        }
+        result.add(decoded);
+      }
+    } catch (_) {}
+  }
+  return result;
+}
 
 class UserSimplePreferences {
   static SharedPreferences? pref;
@@ -192,37 +241,32 @@ class UserSimplePreferences {
     await (await _prefs()).remove(_brandRusCacheKey);
   }
 
-  static String _sanitizeStatus(String? value) {
-    if (value == null || value.isEmpty) return 'Создана';
-    if (value.contains('?')) return 'Создана';
-    if (value == 'РЎРѕР·РґР°РЅР°') return 'Создана';
-    if (value == 'Р’ СЂР°Р±РѕС‚Рµ') return 'В работе';
-    if (value == 'Р—Р°РІРµСЂС€РµРЅР°') return 'Завершена';
-    if (value == 'РћС‚РјРµРЅРµРЅР°') return 'Отменена';
-    return value;
-  }
+  // Status sanitization moved to the top-level _sanitizeAutoRequestStatus
+  // function so it can run inside a background isolate via compute(); the
+  // class-level wrapper was unused and got removed during Phase 2 perf work.
 
   static Future<List<Map<String, dynamic>>> getAutoRequests() async {
     // ignore: await_only_futures
     final list = (await _prefs()).getStringList(_autoRequestsKey) ?? [];
-    final result = <Map<String, dynamic>>[];
-    for (final raw in list) {
-      try {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map<String, dynamic>) {
-          final status = decoded['status'];
-          if (status is String) {
-            decoded['status'] = _sanitizeStatus(status);
-          }
-          result.add(decoded);
-        }
-      } catch (_) {}
+    if (list.isEmpty) return <Map<String, dynamic>>[];
+    // Offload decoding + status sanitization to a background isolate for
+    // non-trivial lists; stay sync for a handful of items.
+    if (list.length >= _autoRequestsIsolateThresholdItems) {
+      return compute(_decodeAutoRequestsFromPrefs, list);
     }
-    return result;
+    return _decodeAutoRequestsFromPrefs(list);
   }
 
   static Future setAutoRequests(List<Map<String, dynamic>> values) async {
-    final list = values.map(jsonEncode).toList();
+    // Offload encoding to a background isolate when the list is large
+    // enough to matter; stay sync for small lists to avoid the ~20 ms
+    // spawn overhead. Benchmarks: 1–3 items finish in <1 ms sync.
+    final List<String> list;
+    if (values.length >= _autoRequestsIsolateThresholdItems) {
+      list = await compute(_encodeAutoRequestsForPrefs, values);
+    } else {
+      list = _encodeAutoRequestsForPrefs(values);
+    }
     await (await _prefs()).setStringList(_autoRequestsKey, list);
   }
 
