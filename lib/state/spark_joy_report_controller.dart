@@ -1,7 +1,7 @@
 import 'package:get/get.dart';
 
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_create_report_screen.dart'
-    show UploadedItem, BackendUploadFileProgress;
+    show UploadedItem, BackendUploadFileProgress, MediaGroupState;
 
 /// Owns the reactive state of a single spark_joy specialist report.
 ///
@@ -235,6 +235,24 @@ class SparkJoyReportController extends GetxController {
 
   final Rx<List<BackendUploadFileProgress>> backendUploadFilesProgress =
       Rx<List<BackendUploadFileProgress>>(const <BackendUploadFileProgress>[]);
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 14 — Main media / inspection state map
+  //
+  // The big one: `_mediaState` in the host widget was a
+  // `late Map<String, MediaGroupState>` (previously _MediaGroupState —
+  // renamed to public in this chunk along with _MediaGroupConfig /
+  // _MediaPartInspection). It holds every section of the inspection
+  // step: files, notes, hasIssue flags, tag photos, element types.
+  //
+  // Host code freely does `_mediaState[key] = newState` — so we expose
+  // a RxMap directly. The getter returns the same underlying
+  // RxMap instance every time (RxMap implements Map), so key-assign
+  // operations work transparently.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxMap<String, MediaGroupState> mediaState =
+      <String, MediaGroupState>{}.obs;
 
   /// Replaces the contents of [list] with [next] in one shot, keeping the
   /// same RxList instance (so listeners don't have to re-subscribe).

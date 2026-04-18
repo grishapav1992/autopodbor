@@ -74,7 +74,7 @@ extension _SparkJoyMediaHelpersMethods on _SparkJoyCreateReportScreenState {
     initialIndex: initialIndex,
   );
 
-  Widget _mediaGroupListRow(_MediaGroupState state) =>
+  Widget _mediaGroupListRow(MediaGroupState state) =>
       _runMediaGroupListRow(state);
 
   Widget _mediaMetaPill({

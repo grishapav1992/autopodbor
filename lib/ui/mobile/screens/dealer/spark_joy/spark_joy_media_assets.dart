@@ -1,7 +1,7 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
-  _MediaPartInspection _deriveGroupPartInspection({
+  MediaPartInspection _deriveGroupPartInspection({
     required List<UploadedItem> files,
     String fallbackNote = '',
   }) {
@@ -62,7 +62,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     final tags = normalizedTags.values.toList();
     final noDamage = tags.isEmpty && anyNoDamage;
 
-    return _MediaPartInspection(
+    return MediaPartInspection(
       noDamage: noDamage,
       tags: tags,
       note: note,
@@ -75,12 +75,12 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     );
   }
 
-  _MediaPartInspection _syncPartInspectionWithFiles({
-    required _MediaPartInspection partInspection,
+  MediaPartInspection _syncPartInspectionWithFiles({
+    required MediaPartInspection partInspection,
     required List<UploadedItem> files,
     String fallbackNote = '',
   }) {
-    if (files.isEmpty) return const _MediaPartInspection();
+    if (files.isEmpty) return const MediaPartInspection();
     if (_mediaPartInspectionIsEmpty(partInspection)) {
       return _deriveGroupPartInspection(
         files: files,
@@ -117,7 +117,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     }
 
     if (partInspection.noDamage) {
-      return _MediaPartInspection(
+      return MediaPartInspection(
         noDamage: true,
         tags: const [],
         note: partInspection.note.trim().isEmpty
@@ -142,7 +142,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       }
     }
 
-    return _MediaPartInspection(
+    return MediaPartInspection(
       noDamage: false,
       tags: tags,
       note: partInspection.note.trim().isEmpty
@@ -161,7 +161,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
 
   List<UploadedItem> _applyPartInspectionToFiles({
     required List<UploadedItem> files,
-    required _MediaPartInspection partInspection,
+    required MediaPartInspection partInspection,
     Set<String>? applyToFileUrls,
   }) {
     if (files.isEmpty) return const <UploadedItem>[];

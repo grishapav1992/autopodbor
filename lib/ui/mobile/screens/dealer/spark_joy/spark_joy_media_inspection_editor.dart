@@ -1483,7 +1483,7 @@ extension _SparkJoyMediaInspectionEditorMethods
       }
     }
 
-    final partInspection = _MediaPartInspection(
+    final partInspection = MediaPartInspection(
       noDamage: noDamage,
       tags: noDamage ? const [] : nextTagPhotos.keys.toList(),
       note: noteValue,

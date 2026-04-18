@@ -155,7 +155,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  bool _runGroupFullyMarked(_MediaGroupState state) {
+  bool _runGroupFullyMarked(MediaGroupState state) {
     if (state.files.isEmpty) return false;
     return state.files.every((file) {
       final inspection = file.inspection;
@@ -264,7 +264,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Widget _runMediaGroupListRow(_MediaGroupState state) {
+  Widget _runMediaGroupListRow(MediaGroupState state) {
     final groupKey = state.config.key;
     final isPressed = _mediaListPressedGroupKey == groupKey;
     final fileCount = state.files.length;

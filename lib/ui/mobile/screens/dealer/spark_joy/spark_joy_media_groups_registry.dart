@@ -12,57 +12,57 @@ class _SparkJoyMediaGroupRegistry {
   static const String keyWheels = 'wheels';
   static const String keyDiagnostics = 'diagnostics';
 
-  static const List<_MediaGroupConfig> groups = [
-    _MediaGroupConfig(
+  static const List<MediaGroupConfig> groups = [
+    MediaGroupConfig(
       key: keyBody,
       title: 'Кузов',
       description: 'ЛКП, вмятины, царапины, дефекты элементов',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyStructural,
       title: 'Силовые элементы кузова',
       description: 'Лонжероны, стойки, пороги, геометрия',
       required: false,
       severeIfIssue: true,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyGlass,
       title: 'Остекление',
       description: 'Лобовое, боковые, заднее стекло',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyLighting,
       title: 'Светотехника',
       description: 'Фары, фонари, ПТФ, корректоры',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyUnderhood,
       title: 'Подкапотное пространство',
       description: 'Течи, крепеж, ремни, агрегаты',
       required: false,
       severeIfIssue: true,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyInterior,
       title: 'Салон',
       description: 'Износ, электроника, функции и опции',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyWheels,
       title: 'Колёса и тормозные механизмы',
       description: 'Резина, диски, тормоза, подвеска',
       required: false,
       severeIfIssue: false,
     ),
-    _MediaGroupConfig(
+    MediaGroupConfig(
       key: keyDiagnostics,
       title: 'Компьютерная диагностика',
       description: 'Ошибки блоков, коды, комментарии',

@@ -157,8 +157,8 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
     );
   }
 
-  _MediaPartInspection _readMediaPartInspection(dynamic value) {
-    if (value is! Map) return const _MediaPartInspection();
+  MediaPartInspection _readMediaPartInspection(dynamic value) {
+    if (value is! Map) return const MediaPartInspection();
     final map = Map<String, dynamic>.from(value);
     double? paintFrom = _readNullableDouble(map, 'paintFrom');
     double? paintTo = _readNullableDouble(map, 'paintTo');
@@ -179,7 +179,7 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
         tagPhotos[key] = values;
       }
     }
-    return _MediaPartInspection(
+    return MediaPartInspection(
       noDamage: _readBool(map, 'noDamage'),
       tags: _readStringList(map['tags']),
       note: _read(map, 'note'),
@@ -192,7 +192,7 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
     );
   }
 
-  bool _mediaPartInspectionIsEmpty(_MediaPartInspection inspection) {
+  bool _mediaPartInspectionIsEmpty(MediaPartInspection inspection) {
     return !inspection.noDamage &&
         inspection.tags.isEmpty &&
         inspection.note.trim().isEmpty &&

@@ -1,8 +1,8 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
-  Map<String, _MediaGroupState> _initMediaState(Map<String, dynamic> draft) {
-    final byKey = <String, _MediaGroupState>{};
+  Map<String, MediaGroupState> _initMediaState(Map<String, dynamic> draft) {
+    final byKey = <String, MediaGroupState>{};
     final raw = draft['mediaGroupsState'];
 
     for (final config in _SparkJoyMediaGroupRegistry.groups) {
@@ -10,7 +10,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       String rawUrls = '';
       bool hasIssue = false;
       var files = const <UploadedItem>[];
-      _MediaPartInspection partInspection = const _MediaPartInspection();
+      MediaPartInspection partInspection = const MediaPartInspection();
 
       if (raw is Map && raw[config.key] is Map) {
         final group = Map<String, dynamic>.from(raw[config.key] as Map);
@@ -31,7 +31,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
         );
       }
 
-      byKey[config.key] = _MediaGroupState(
+      byKey[config.key] = MediaGroupState(
         config: config,
         hasIssue: hasIssue,
         note: note,
@@ -148,7 +148,7 @@ extension _SparkJoyMediaStateHelpers on _SparkJoyCreateReportScreenState {
       nextTdCommentAudioFiles.add(file.copyWith(dataUrl: nextSource));
     }
 
-    final nextMediaState = <String, _MediaGroupState>{};
+    final nextMediaState = <String, MediaGroupState>{};
     for (final entry in _mediaState.entries) {
       final groupKey = entry.key;
       final state = entry.value;

@@ -192,8 +192,8 @@ class _StepConfig {
   final String description;
 }
 
-class _MediaGroupConfig {
-  const _MediaGroupConfig({
+class MediaGroupConfig {
+  const MediaGroupConfig({
     required this.key,
     required this.title,
     required this.description,
@@ -208,31 +208,31 @@ class _MediaGroupConfig {
   final bool severeIfIssue;
 }
 
-class _MediaGroupState {
-  const _MediaGroupState({
+class MediaGroupState {
+  const MediaGroupState({
     required this.config,
     required this.hasIssue,
     required this.note,
     required this.rawUrls,
     required this.files,
-    this.partInspection = const _MediaPartInspection(),
+    this.partInspection = const MediaPartInspection(),
   });
 
-  final _MediaGroupConfig config;
+  final MediaGroupConfig config;
   final bool hasIssue;
   final String note;
   final String rawUrls;
   final List<UploadedItem> files;
-  final _MediaPartInspection partInspection;
+  final MediaPartInspection partInspection;
 
-  _MediaGroupState copyWith({
+  MediaGroupState copyWith({
     bool? hasIssue,
     String? note,
     String? rawUrls,
     List<UploadedItem>? files,
-    _MediaPartInspection? partInspection,
+    MediaPartInspection? partInspection,
   }) {
-    return _MediaGroupState(
+    return MediaGroupState(
       config: config,
       hasIssue: hasIssue ?? this.hasIssue,
       note: note ?? this.note,
@@ -274,8 +274,8 @@ class _MediaTagGroup {
   final List<_MediaTagOption> options;
 }
 
-class _MediaPartInspection {
-  const _MediaPartInspection({
+class MediaPartInspection {
+  const MediaPartInspection({
     this.noDamage = false,
     this.tags = const [],
     this.note = '',
@@ -297,7 +297,7 @@ class _MediaPartInspection {
   final Map<String, List<String>> tagPhotos;
   final bool isDraft;
 
-  _MediaPartInspection copyWith({
+  MediaPartInspection copyWith({
     bool? noDamage,
     List<String>? tags,
     String? note,
@@ -308,7 +308,7 @@ class _MediaPartInspection {
     Map<String, List<String>>? tagPhotos,
     bool? isDraft,
   }) {
-    return _MediaPartInspection(
+    return MediaPartInspection(
       noDamage: noDamage ?? this.noDamage,
       tags: tags ?? this.tags,
       note: note ?? this.note,

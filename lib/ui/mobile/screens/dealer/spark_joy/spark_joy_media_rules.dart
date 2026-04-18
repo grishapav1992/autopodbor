@@ -1,17 +1,17 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
-  bool _groupHasCoverage(_MediaGroupState state) {
+  bool _groupHasCoverage(MediaGroupState state) {
     return _parseUrls(state.rawUrls).isNotEmpty || state.files.isNotEmpty;
   }
 
-  List<_MediaGroupConfig> _requiredMediaGroups() {
+  List<MediaGroupConfig> _requiredMediaGroups() {
     return _SparkJoyMediaGroupRegistry.groups
         .where((config) => config.required)
         .toList();
   }
 
-  List<_MediaGroupConfig> _missingRequiredMediaGroups() {
+  List<MediaGroupConfig> _missingRequiredMediaGroups() {
     return _requiredMediaGroups().where((config) {
       final state = _mediaState[config.key];
       return state == null || !_groupHasCoverage(state);
@@ -311,7 +311,7 @@ extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
         (inspection.elementType ?? '').trim().isNotEmpty;
   }
 
-  bool _mediaPartInspectionHasData(_MediaPartInspection inspection) {
+  bool _mediaPartInspectionHasData(MediaPartInspection inspection) {
     return inspection.noDamage ||
         inspection.tags.isNotEmpty ||
         inspection.note.trim().isNotEmpty ||
@@ -328,7 +328,7 @@ extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
     return inspection.tags.isNotEmpty;
   }
 
-  bool _groupHasIssue(_MediaGroupState state) {
+  bool _groupHasIssue(MediaGroupState state) {
     if (state.files.any(_mediaItemHasIssue)) return true;
     final partInspection = state.partInspection;
     if (!partInspection.isDraft &&

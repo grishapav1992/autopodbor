@@ -149,7 +149,18 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final String _createdAt;
   late final String _assignmentId;
 
-  late Map<String, _MediaGroupState> _mediaState;
+  // ┌─ Phase 4.1 · Chunk 14: main media / inspection state map → controller ┐
+  // │ 40 refs across the whole spark_joy module. Exposes the underlying     │
+  // │ RxMap by reference so `_mediaState[key] = ...` keeps working; full    │
+  // │ reassignment via setter goes through clear+addAll to preserve the     │
+  // │ same RxMap instance (so any future Obx listeners stay subscribed).    │
+  // └───────────────────────────────────────────────────────────────────────┘
+  Map<String, MediaGroupState> get _mediaState => _reportController.mediaState;
+  set _mediaState(Map<String, MediaGroupState> value) {
+    _reportController.mediaState
+      ..clear()
+      ..addAll(value);
+  }
   // ┌─ Phase 4.1 · Chunk 11: media-editor tag customization → controller ───┐
   // │ 53 references across 7 files. All usages are wholesale reassignment   │
   // │ (confirmed by grep) so proxying is safe.                              │
