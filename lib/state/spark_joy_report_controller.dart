@@ -107,6 +107,87 @@ class SparkJoyReportController extends GetxController {
   final RxInt legalLoadToken = 0.obs;
   final Rxn<String> tdMode = Rxn<String>();
 
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 7 — Draft autosave meta-state
+  //
+  // Tracks the state of the background autosave pipeline. Timers and
+  // the actual debounce logic stay in the host widget — only the
+  // status flags that other helpers want to *read* live here.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxBool draftSaveInProgress = false.obs;
+  final RxBool draftSaveFailed = false.obs;
+  final RxBool hasUnsavedDraftChanges = false.obs;
+  final RxBool autosaveRequestedWhileSaving = false.obs;
+  final RxBool appPauseHandlingInProgress = false.obs;
+  final Rxn<DateTime> lastDraftSavedAt = Rxn<DateTime>();
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 8 — Permissions + speech availability
+  //
+  // Runtime microphone / speech-recognition permission states, plus
+  // the current availability of the SpeechToText engine.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxBool microphonePermissionGranted = false.obs;
+  final RxBool speechPermissionGranted = false.obs;
+  final RxBool tdSpeechInitializing = false.obs;
+  final RxBool tdSpeechAvailable = false.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 9 — Dictation state per step
+  //
+  // The test-drive, documents, legal and expert steps each expose a
+  // "hold to dictate" button. isDictating = recognizer is currently
+  // listening. shouldDictate = user wants dictation on next opening.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxBool tdIsDictating = false.obs;
+  final RxBool tdShouldDictate = false.obs;
+  final RxBool docsIsDictating = false.obs;
+  final RxBool docsShouldDictate = false.obs;
+  final RxBool legalIsDictating = false.obs;
+  final RxBool legalShouldDictate = false.obs;
+  final RxBool expertIsDictating = false.obs;
+  final RxBool expertShouldDictate = false.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 10 — Currently-playing audio index per comment list
+  //
+  // -1 means "nothing playing". Exactly one non-negative value across
+  // these four lists at any time (the host widget enforces it).
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxInt docsCommentPlayingAudioIndex = (-1).obs;
+  final RxInt legalCommentPlayingAudioIndex = (-1).obs;
+  final RxInt tdCommentPlayingAudioIndex = (-1).obs;
+  final RxInt expertCommentPlayingAudioIndex = (-1).obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 11 — Media-editor tag customization by scope
+  //
+  // The inspection editor lets the user override the default tag set
+  // per (section, element) scope:
+  //   • customTagsByScope          — user-added non-serious tags
+  //   • customSeriousTagsByScope   — user-added serious tags
+  //   • disabledDefaultTagsByScope — hidden factory-default tags
+  //   • tagOrderByScope            — user-defined tag ordering
+  //
+  // Confirmed via grep: every usage is a wholesale reassignment
+  // (`_mediaCustomTagsByScope = newMap`) — no `[key] = ...` or
+  // `.putIfAbsent` patterns — so proxying through the controller's
+  // mutable maps is safe.
+  // ──────────────────────────────────────────────────────────────────
+
+  final Rx<Map<String, List<String>>> mediaCustomTagsByScope =
+      Rx<Map<String, List<String>>>(<String, List<String>>{});
+  final Rx<Map<String, List<String>>> mediaCustomSeriousTagsByScope =
+      Rx<Map<String, List<String>>>(<String, List<String>>{});
+  final Rx<Map<String, List<String>>> mediaDisabledDefaultTagsByScope =
+      Rx<Map<String, List<String>>>(<String, List<String>>{});
+  final Rx<Map<String, List<String>>> mediaTagOrderByScope =
+      Rx<Map<String, List<String>>>(<String, List<String>>{});
+
   /// Replaces the contents of [list] with [next] in one shot, keeping the
   /// same RxList instance (so listeners don't have to re-subscribe).
   static void _assignList(RxList<String> list, List<String> next) {

@@ -150,27 +150,92 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final String _assignmentId;
 
   late Map<String, _MediaGroupState> _mediaState;
-  Map<String, List<String>> _mediaCustomTagsByScope = {};
-  Map<String, List<String>> _mediaCustomSeriousTagsByScope = {};
-  Map<String, List<String>> _mediaDisabledDefaultTagsByScope = {};
-  Map<String, List<String>> _mediaTagOrderByScope = {};
+  // ┌─ Phase 4.1 · Chunk 11: media-editor tag customization → controller ───┐
+  // │ 53 references across 7 files. All usages are wholesale reassignment   │
+  // │ (confirmed by grep) so proxying is safe.                              │
+  // └───────────────────────────────────────────────────────────────────────┘
+  Map<String, List<String>> get _mediaCustomTagsByScope =>
+      _reportController.mediaCustomTagsByScope.value;
+  set _mediaCustomTagsByScope(Map<String, List<String>> value) =>
+      _reportController.mediaCustomTagsByScope.value = value;
+
+  Map<String, List<String>> get _mediaCustomSeriousTagsByScope =>
+      _reportController.mediaCustomSeriousTagsByScope.value;
+  set _mediaCustomSeriousTagsByScope(Map<String, List<String>> value) =>
+      _reportController.mediaCustomSeriousTagsByScope.value = value;
+
+  Map<String, List<String>> get _mediaDisabledDefaultTagsByScope =>
+      _reportController.mediaDisabledDefaultTagsByScope.value;
+  set _mediaDisabledDefaultTagsByScope(Map<String, List<String>> value) =>
+      _reportController.mediaDisabledDefaultTagsByScope.value = value;
+
+  Map<String, List<String>> get _mediaTagOrderByScope =>
+      _reportController.mediaTagOrderByScope.value;
+  set _mediaTagOrderByScope(Map<String, List<String>> value) =>
+      _reportController.mediaTagOrderByScope.value = value;
   final Map<String, Uint8List> _dataUrlImageBytesCache = {};
   final Map<String, String> _resolvedAudioPlaybackSources = {};
   String? _appDocumentsPath;
-  bool _microphonePermissionGranted = false;
-  bool _speechPermissionGranted = false;
+  // ┌─ Phase 4.1 · Chunks 8-9: permissions + TD dictation flags → controller ┐
+  // └─────────────────────────────────────────────────────────────────────────┘
+  bool get _microphonePermissionGranted =>
+      _reportController.microphonePermissionGranted.value;
+  set _microphonePermissionGranted(bool value) =>
+      _reportController.microphonePermissionGranted.value = value;
+
+  bool get _speechPermissionGranted =>
+      _reportController.speechPermissionGranted.value;
+  set _speechPermissionGranted(bool value) =>
+      _reportController.speechPermissionGranted.value = value;
+
   final SpeechToText _tdSpeechToText = SpeechToText();
-  bool _tdSpeechInitializing = false;
-  bool _tdSpeechAvailable = false;
-  bool _tdIsDictating = false;
-  bool _tdShouldDictate = false;
+
+  bool get _tdSpeechInitializing =>
+      _reportController.tdSpeechInitializing.value;
+  set _tdSpeechInitializing(bool value) =>
+      _reportController.tdSpeechInitializing.value = value;
+
+  bool get _tdSpeechAvailable => _reportController.tdSpeechAvailable.value;
+  set _tdSpeechAvailable(bool value) =>
+      _reportController.tdSpeechAvailable.value = value;
+
+  bool get _tdIsDictating => _reportController.tdIsDictating.value;
+  set _tdIsDictating(bool value) =>
+      _reportController.tdIsDictating.value = value;
+
+  bool get _tdShouldDictate => _reportController.tdShouldDictate.value;
+  set _tdShouldDictate(bool value) =>
+      _reportController.tdShouldDictate.value = value;
   Timer? _draftAutosaveDebounce;
-  bool _draftSaveInProgress = false;
-  bool _draftSaveFailed = false;
-  bool _hasUnsavedDraftChanges = false;
-  bool _autosaveRequestedWhileSaving = false;
-  bool _appPauseHandlingInProgress = false;
-  DateTime? _lastDraftSavedAt;
+  // ┌─ Phase 4.1 · Chunk 7: draft autosave meta-state → controller ─────────┐
+  // │ 43 references across 4 files. Timers + debounce logic remain in the   │
+  // │ host widget; only the status flags move.                              │
+  // └───────────────────────────────────────────────────────────────────────┘
+  bool get _draftSaveInProgress => _reportController.draftSaveInProgress.value;
+  set _draftSaveInProgress(bool value) =>
+      _reportController.draftSaveInProgress.value = value;
+
+  bool get _draftSaveFailed => _reportController.draftSaveFailed.value;
+  set _draftSaveFailed(bool value) =>
+      _reportController.draftSaveFailed.value = value;
+
+  bool get _hasUnsavedDraftChanges =>
+      _reportController.hasUnsavedDraftChanges.value;
+  set _hasUnsavedDraftChanges(bool value) =>
+      _reportController.hasUnsavedDraftChanges.value = value;
+
+  bool get _autosaveRequestedWhileSaving =>
+      _reportController.autosaveRequestedWhileSaving.value;
+  set _autosaveRequestedWhileSaving(bool value) =>
+      _reportController.autosaveRequestedWhileSaving.value = value;
+
+  bool get _appPauseHandlingInProgress =>
+      _reportController.appPauseHandlingInProgress.value;
+  set _appPauseHandlingInProgress(bool value) =>
+      _reportController.appPauseHandlingInProgress.value = value;
+  DateTime? get _lastDraftSavedAt => _reportController.lastDraftSavedAt.value;
+  set _lastDraftSavedAt(DateTime? value) =>
+      _reportController.lastDraftSavedAt.value = value;
   final List<TextEditingController> _autosaveControllers = [];
 
   late final _SparkJoyReportFlowController _reportFlowController;
@@ -243,16 +308,53 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   BytesBuilder? _sectionCommentRecordBuffer;
   String? _activeSectionCommentRecordingKey;
   final Map<String, int> _sectionCommentRecordingSeconds = {};
-  int _docsCommentPlayingAudioIndex = -1;
-  int _legalCommentPlayingAudioIndex = -1;
-  int _tdCommentPlayingAudioIndex = -1;
-  int _expertCommentPlayingAudioIndex = -1;
-  bool _docsIsDictating = false;
-  bool _docsShouldDictate = false;
-  bool _legalIsDictating = false;
-  bool _legalShouldDictate = false;
-  bool _expertIsDictating = false;
-  bool _expertShouldDictate = false;
+  // ┌─ Phase 4.1 · Chunk 10: currently-playing audio index per comment list ─┐
+  // └─────────────────────────────────────────────────────────────────────────┘
+  int get _docsCommentPlayingAudioIndex =>
+      _reportController.docsCommentPlayingAudioIndex.value;
+  set _docsCommentPlayingAudioIndex(int value) =>
+      _reportController.docsCommentPlayingAudioIndex.value = value;
+
+  int get _legalCommentPlayingAudioIndex =>
+      _reportController.legalCommentPlayingAudioIndex.value;
+  set _legalCommentPlayingAudioIndex(int value) =>
+      _reportController.legalCommentPlayingAudioIndex.value = value;
+
+  int get _tdCommentPlayingAudioIndex =>
+      _reportController.tdCommentPlayingAudioIndex.value;
+  set _tdCommentPlayingAudioIndex(int value) =>
+      _reportController.tdCommentPlayingAudioIndex.value = value;
+
+  int get _expertCommentPlayingAudioIndex =>
+      _reportController.expertCommentPlayingAudioIndex.value;
+  set _expertCommentPlayingAudioIndex(int value) =>
+      _reportController.expertCommentPlayingAudioIndex.value = value;
+
+  // ┌─ Phase 4.1 · Chunk 9: per-step dictation flags → controller ──────────┐
+  // └───────────────────────────────────────────────────────────────────────┘
+  bool get _docsIsDictating => _reportController.docsIsDictating.value;
+  set _docsIsDictating(bool value) =>
+      _reportController.docsIsDictating.value = value;
+
+  bool get _docsShouldDictate => _reportController.docsShouldDictate.value;
+  set _docsShouldDictate(bool value) =>
+      _reportController.docsShouldDictate.value = value;
+
+  bool get _legalIsDictating => _reportController.legalIsDictating.value;
+  set _legalIsDictating(bool value) =>
+      _reportController.legalIsDictating.value = value;
+
+  bool get _legalShouldDictate => _reportController.legalShouldDictate.value;
+  set _legalShouldDictate(bool value) =>
+      _reportController.legalShouldDictate.value = value;
+
+  bool get _expertIsDictating => _reportController.expertIsDictating.value;
+  set _expertIsDictating(bool value) =>
+      _reportController.expertIsDictating.value = value;
+
+  bool get _expertShouldDictate => _reportController.expertShouldDictate.value;
+  set _expertShouldDictate(bool value) =>
+      _reportController.expertShouldDictate.value = value;
 
   // ┌─ Phase 4.1 · Chunk 5: paintwork thickness ranges → controller ───────┐
   // │ Body and body-reinforcement μm ranges, 24 refs across 4 files.       │
