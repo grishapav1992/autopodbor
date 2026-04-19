@@ -577,11 +577,23 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     unawaited(_prepareStoragePaths());
     final draft = widget.draft ?? <String, dynamic>{};
     final assignment = widget.assignment ?? <String, dynamic>{};
+    final isNewDraft = widget.draft == null;
     final now = DateTime.now();
     _loadDraftIntoState(draft: draft, assignment: assignment, now: now);
 
     _finalizeInitializationAfterDraftLoad();
     unawaited(_loadTagIdsFromServer());
+
+    // Persist the draft immediately on new-report entry so it shows up in
+    // the "Черновики" list as soon as the user names it, even before any
+    // field is filled. Without this, the draft lives only in memory until
+    // the first _markDraftDirty call.
+    if (isNewDraft) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_saveDraft(showToast: false));
+      });
+    }
   }
 
   @override
