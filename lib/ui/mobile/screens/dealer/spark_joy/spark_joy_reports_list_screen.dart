@@ -329,12 +329,20 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     }
 
     return <_DraftSectionStatus>[
-      // 1) Авто — any base identity or inspection-context field counts.
+      // 1) Авто — any car-picker selection (brand/model/…) or any text
+      //    identity field counts. Picking a brand alone used to leave
+      //    the section marked empty because VIN wasn't typed yet.
       _DraftSectionStatus(
         label: 'Авто',
-        filled: hasText('vin') ||
+        filled: hasText('brand') ||
+            hasText('model') ||
+            hasText('generation') ||
+            hasText('restyling') ||
+            hasText('car') ||
+            hasText('vin') ||
             isTrue(draft['vinUnreadable']) ||
             hasText('plate') ||
+            hasText('adLink') ||
             hasText('mileage') ||
             hasText('inspectionCity') ||
             hasText('inspectionDate'),
