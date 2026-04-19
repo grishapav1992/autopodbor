@@ -1746,12 +1746,18 @@ class SparkScreenList extends StatelessWidget {
     this.controller,
     this.padding,
     this.bottomInset = SparkSize.listBottomInset,
+    this.onRefresh,
   });
 
   final List<Widget> children;
   final ScrollController? controller;
   final EdgeInsets? padding;
   final double bottomInset;
+
+  /// Optional pull-to-refresh handler. When non-null the ListView is wrapped
+  /// in a [RefreshIndicator] so callers can trigger a reload from the top of
+  /// the list without adding their own button.
+  final Future<void> Function()? onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -1765,15 +1771,28 @@ class SparkScreenList extends StatelessWidget {
       bottom: base.bottom + media.padding.bottom + bottomInset + shellBottom,
     );
 
+    Widget list = ListView(
+      controller: controller,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: effectivePadding,
+      physics: onRefresh != null
+          ? const AlwaysScrollableScrollPhysics()
+          : null,
+      children: children,
+    );
+    if (onRefresh != null) {
+      list = RefreshIndicator(
+        onRefresh: onRefresh!,
+        edgeOffset: shellTop,
+        color: kSecondaryColor,
+        child: list,
+      );
+    }
+
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-      child: ListView(
-        controller: controller,
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: effectivePadding,
-        children: children,
-      ),
+      child: list,
     );
   }
 }

@@ -670,6 +670,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
         return SparkScreenList(
           bottomInset: 56,
+          onRefresh: _load,
           children: [
             SparkPrimaryActionButton(
               label: 'Создать новый отчёт',
