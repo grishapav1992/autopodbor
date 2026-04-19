@@ -2,6 +2,7 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
@@ -329,6 +330,9 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               child: NavigationBar(
                 selectedIndex: index,
                 onDestinationSelected: (value) {
+                  if (value != index) {
+                    HapticFeedback.selectionClick();
+                  }
                   _scrolledUnder.value = false;
                   setState(() => _index = value);
                 },

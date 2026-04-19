@@ -490,7 +490,10 @@ class SparkSelectableChip extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(SparkRadius.pill),
         child: AnimatedContainer(
           duration: SparkMotion.fast,
@@ -589,7 +592,10 @@ class _SparkSegmentedTabButton extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
         borderRadius: BorderRadius.circular(SparkRadius.xl),
         child: AnimatedContainer(
           duration: SparkMotion.fast,
