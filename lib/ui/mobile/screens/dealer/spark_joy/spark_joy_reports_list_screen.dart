@@ -329,36 +329,74 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     }
 
     return <_DraftSectionStatus>[
+      // 1) Авто — any base identity or inspection-context field counts.
       _DraftSectionStatus(
         label: 'Авто',
-        filled: hasText('vin') || isTrue(draft['vinUnreadable']),
+        filled: hasText('vin') ||
+            isTrue(draft['vinUnreadable']) ||
+            hasText('plate') ||
+            hasText('mileage') ||
+            hasText('inspectionCity') ||
+            hasText('inspectionDate'),
       ),
+      // 2) Характеристики — any of the 6 powertrain / comfort fields.
       _DraftSectionStatus(
         label: 'Характеристики',
-        filled: hasText('engineVolume') || hasText('engineType'),
+        filled: hasText('engineVolume') ||
+            hasText('engineType') ||
+            hasText('gearboxType') ||
+            hasText('driveType') ||
+            hasText('color') ||
+            hasText('trim') ||
+            hasText('ownersCount'),
       ),
+      // 3) Документы — any tri-state toggled, any mismatch comment, or
+      //    any audio attachment. Previously only tri-states counted, so
+      //    a user who typed a comment saw the section as "empty".
       _DraftSectionStatus(
         label: 'Документы',
-        filled:
-            anyNonNull(['docsOwnerMatch', 'docsVinMatch', 'docsEngineMatch']),
+        filled: anyNonNull([
+              'docsOwnerMatch',
+              'docsVinMatch',
+              'docsEngineMatch',
+            ]) ||
+            hasText('docsMismatchComment') ||
+            hasUploadedList('docsCommentAudioFiles'),
       ),
+      // 4) Юр. проверка — explicit skip / purchase, any uploaded file,
+      //    any note typed, or an attached audio comment.
       _DraftSectionStatus(
         label: 'Юр. проверка',
         filled: isTrue(draft['legalSkipped']) ||
             isTrue(draft['legalPurchased']) ||
-            hasUploadedList('legalFiles'),
+            hasUploadedList('legalFiles') ||
+            hasText('legalNote') ||
+            hasUploadedList('legalCommentAudioFiles'),
       ),
+      // 5) Осмотр — at least one media group has an uploaded file.
       _DraftSectionStatus(
         label: 'Осмотр',
         filled: anyMediaHasFiles(),
       ),
+      // 6) Тест-драйв — user explicitly answered the "был ли тест-драйв"
+      //    question, or picked any tag / uploaded any comment audio.
       _DraftSectionStatus(
         label: 'Тест-драйв',
-        filled: draft['tdConducted'] != null,
+        filled: draft['tdConducted'] != null ||
+            hasUploadedList('tdEngineTags') ||
+            hasUploadedList('tdGearboxTags') ||
+            hasUploadedList('tdSteeringTags') ||
+            hasUploadedList('tdRideTags') ||
+            hasUploadedList('tdBrakeTags') ||
+            hasUploadedList('tdCommentAudioFiles'),
       ),
+      // 7) Итог — summary, verdict, or expert notes.
       _DraftSectionStatus(
         label: 'Итог',
-        filled: hasText('summary') || hasText('verdict'),
+        filled: hasText('summary') ||
+            hasText('verdict') ||
+            hasText('expertConclusion') ||
+            hasUploadedList('expertAudioFiles'),
       ),
     ];
   }

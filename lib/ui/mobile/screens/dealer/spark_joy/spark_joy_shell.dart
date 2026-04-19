@@ -4,6 +4,8 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
+import 'spark_joy_notifications_screen.dart';
+import 'spark_joy_notifications_storage.dart';
 import 'spark_joy_reports_list_screen.dart';
 import 'spark_joy_specialist_profile_screen.dart';
 import 'spark_joy_storage.dart';
@@ -33,6 +35,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
 
   Future<void> _bootstrap() async {
     await SparkJoyStorage.ensureSeedData();
+    await SparkJoyNotificationsStorage.ensureSeedData();
     final loggedIn = await SparkJoyStorage.isLoggedIn();
     final role = await SparkJoyStorage.currentRole();
     final businessType = await SparkJoyStorage.currentBusinessType();
@@ -79,33 +82,46 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     });
   }
 
+  /// Builds a "Уведомления" destination with a live unread-count badge.
+  /// The badge rebuilds via the storage's ValueNotifier so it refreshes
+  /// the moment any notification flips to read without a manual reload.
+  NavigationDestination _notificationsDestination() {
+    return const NavigationDestination(
+      icon: _NotificationNavIcon(icon: Icons.notifications_none_rounded),
+      selectedIcon: _NotificationNavIcon(icon: Icons.notifications_rounded),
+      label: 'Уведомления',
+    );
+  }
+
   List<NavigationDestination> _navDestinations() {
     if (_role == SparkJoyRole.specialist) {
-      return const [
-        NavigationDestination(
+      return [
+        const NavigationDestination(
           icon: Icon(Icons.description_outlined),
           selectedIcon: Icon(Icons.description_rounded),
           label: 'Отчёты',
         ),
-        NavigationDestination(
+        _notificationsDestination(),
+        const NavigationDestination(
           icon: Icon(Icons.person_outline),
           selectedIcon: Icon(Icons.person_rounded),
           label: 'Профиль',
         ),
       ];
     }
-    return const [
-      NavigationDestination(
+    return [
+      const NavigationDestination(
         icon: Icon(Icons.description_outlined),
         selectedIcon: Icon(Icons.description_rounded),
         label: 'Отчёты',
       ),
-      NavigationDestination(
+      const NavigationDestination(
         icon: Icon(Icons.groups_outlined),
         selectedIcon: Icon(Icons.groups_rounded),
         label: 'Сотрудники',
       ),
-      NavigationDestination(
+      _notificationsDestination(),
+      const NavigationDestination(
         icon: Icon(Icons.person_outline),
         selectedIcon: Icon(Icons.person_rounded),
         label: 'Профиль',
@@ -117,6 +133,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     if (_role == SparkJoyRole.specialist) {
       switch (_index) {
         case 1:
+          return 'Уведомления';
+        case 2:
           return 'Профиль';
         case 0:
         default:
@@ -127,6 +145,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       case 1:
         return 'Сотрудники';
       case 2:
+        return 'Уведомления';
+      case 3:
         return 'Профиль';
       case 0:
       default:
@@ -161,6 +181,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final tabs = _role == SparkJoyRole.specialist
         ? <Widget>[
             const SparkJoyReportsListScreen(companyMode: false),
+            const SparkJoyNotificationsScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
             ),
@@ -168,6 +189,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         : <Widget>[
             const SparkJoyReportsListScreen(companyMode: true),
             const SparkJoyCompanyStaffScreen(),
+            const SparkJoyNotificationsScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
             ),
@@ -317,6 +339,68 @@ class _SparkJoyLogin extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Nav-bar notifications icon with a live unread-count badge.
+///
+/// Wraps the standard bell icon in a Stack and overlays a small red
+/// circle with the count whenever there are unread notifications in
+/// [SparkJoyNotificationsStorage]. Rebuilds reactively via the storage's
+/// [ValueNotifier] so the badge vanishes the moment the user marks the
+/// last notification as read.
+class _NotificationNavIcon extends StatelessWidget {
+  const _NotificationNavIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: SparkJoyNotificationsStorage.notifier,
+      builder: (context, _, _) {
+        return FutureBuilder<int>(
+          future: SparkJoyNotificationsStorage.unreadCount(),
+          builder: (context, snapshot) {
+            final count = snapshot.data ?? 0;
+            final baseIcon = Icon(icon);
+            if (count <= 0) return baseIcon;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                baseIcon,
+                Positioned(
+                  top: -4,
+                  right: -6,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    decoration: BoxDecoration(
+                      color: kRedColor,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: kWhiteColor, width: 1.5),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      count > 99 ? '99+' : count.toString(),
+                      style: const TextStyle(
+                        color: kWhiteColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }
