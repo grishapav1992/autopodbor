@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -783,36 +784,56 @@ class SparkPrimaryActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(SparkRadius.lg);
     return SizedBox(
-      height: SparkSize.actionHeight,
-      child: FilledButton(
-        onPressed: onTap,
-        style: FilledButton.styleFrom(
-          backgroundColor: kSecondaryColor,
-          foregroundColor: kWhiteColor,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(SparkRadius.lg),
-            side: const BorderSide(color: kSecondaryColor),
+      height: SparkSize.inputHeightLg,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          gradient: const LinearGradient(
+            colors: [kSecondaryColor, kBlueColor],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
-          padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            if (showIcon) ...[
-              Icon(icon, color: kWhiteColor, size: SparkSize.iconLg),
-              const SizedBox(width: SparkSpace.sm),
-            ],
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: SparkTextSize.label,
-                fontWeight: FontWeight.w700,
-                color: kWhiteColor,
-              ),
+          boxShadow: const [
+            BoxShadow(
+              color: kShadowColor,
+              blurRadius: 16,
+              offset: Offset(0, 6),
+              spreadRadius: -4,
             ),
           ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: radius,
+            onTap: () {
+              HapticFeedback.mediumImpact();
+              onTap();
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (showIcon) ...[
+                    Icon(icon, color: kWhiteColor, size: SparkSize.iconLg),
+                    const SizedBox(width: SparkSpace.sm),
+                  ],
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: SparkTextSize.label,
+                      fontWeight: FontWeight.w700,
+                      color: kWhiteColor,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
