@@ -249,6 +249,90 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     }
   }
 
+  /// Diagnostic popup triggered by long-pressing the draft's progress
+  /// bar. Dumps per-section status plus the raw values of every field
+  /// the completion calculator inspects, so user-reported miscounts
+  /// can be traced to the actual stored draft state.
+  void _showDraftDebug(
+    Map<String, dynamic> draft,
+    List<_DraftSectionStatus> sections,
+  ) {
+    const inspectedKeys = <String>[
+      // Step 1 — Авто
+      'brand', 'model', 'generation', 'restyling', 'make', 'car',
+      'vin', 'vinUnreadable', 'plate', 'adLink',
+      'mileage', 'ownersCount', 'owners',
+      'inspectionCity', 'inspectionDate',
+      // Step 2 — Параметры
+      'engineVolume', 'engineType', 'engine',
+      'gearboxType', 'transmission', 'driveType', 'drive',
+      'color', 'trim',
+      // Step 3 — Документы
+      'docsOwnerMatch', 'docsVinMatch', 'docsEngineMatch',
+      'docsMismatchComment', 'docsCommentAudioFiles',
+      // Step 4 — Юр. проверка
+      'legalSkipped', 'legalPurchased', 'legalFiles',
+      'legalNote', 'legalCommentAudioFiles',
+      // Step 5 — Осмотр
+      'mediaGroupsState',
+      // Step 6 — Тест-драйв
+      'tdConducted', 'tdEngineTags', 'tdGearboxTags',
+      'tdSteeringTags', 'tdRideTags', 'tdBrakeTags',
+      'tdCommentAudioFiles',
+      // Step 7 — Итог
+      'summaryNote', 'expertConclusion', 'expertConclusionTouched',
+      'expertAudioFiles',
+    ];
+    String describe(Object? value) {
+      if (value == null) return '(null)';
+      if (value is String) return value.isEmpty ? '(пусто)' : '"$value"';
+      if (value is List) return 'List(${value.length})';
+      if (value is Map) return 'Map(${value.length})';
+      return value.toString();
+    }
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Diagnostic'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final s in sections)
+                  Text(
+                    '${s.filled ? '✓' : '✗'}  ${s.label}',
+                    style: TextStyle(
+                      color: s.filled ? kGreenColor : kRedColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                const Text(
+                  'draft keys:',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                ),
+                for (final key in inspectedKeys)
+                  Text(
+                    '$key = ${describe(draft[key])}',
+                    style: const TextStyle(fontSize: 11, height: 1.3),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _deleteDraft(String id) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -466,7 +550,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   padding: const EdgeInsets.only(top: SparkSpace.xs),
                   child: MyText(
                     text: title,
-                    size: SparkTextSize.bodyLg,
+                    size: SparkTextSize.title,
                     weight: FontWeight.w700,
                   ),
                 ),
@@ -501,29 +585,38 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
           const SizedBox(height: SparkSpace.md),
           // 4) Single-colour progress bar — just "filled / total" sections
           //    with no required/optional distinction.
-          Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      filled == total ? kGreenColor : kSecondaryColor,
+          //
+          //    Long-press opens a diagnostic dialog listing each section
+          //    and the draft field values used to decide "filled?". Lets
+          //    us debug user-reported miscounts without adding visible
+          //    clutter for everyone else.
+          GestureDetector(
+            onLongPress: () => _showDraftDebug(draft, sections),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        filled == total ? kGreenColor : kSecondaryColor,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              MyText(
-                text: 'Заполнено $filled из $total',
-                size: SparkTextSize.chip,
-                color: kGreyColor,
-                weight: FontWeight.w600,
-              ),
-            ],
+                const SizedBox(width: SparkSpace.md),
+                MyText(
+                  text: 'Заполнено $filled из $total',
+                  size: SparkTextSize.chip,
+                  color: kGreyColor,
+                  weight: FontWeight.w600,
+                ),
+              ],
+            ),
           ),
         ],
       ),
