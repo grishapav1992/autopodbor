@@ -507,30 +507,44 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
           const SizedBox(height: SparkSpace.md),
           // Single-colour progress bar — just "filled / total" sections with
           // no required/optional distinction.
-          Row(
-            children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      filled == total ? kGreenColor : kSecondaryColor,
+          //
+          // Wrapped in Semantics so VoiceOver / TalkBack announce the
+          // progress as a single coherent node ("Прогресс заполнения,
+          // заполнено X из Y, Z процентов") instead of reading the bare
+          // counter text next to a silent progress bar. `container: true`
+          // promotes this into its own a11y element; `excludeSemantics`
+          // on the children prevents the MyText counter from being read
+          // a second time.
+          Semantics(
+            container: true,
+            label: 'Прогресс заполнения отчёта',
+            value: 'Заполнено $filled из $total',
+            excludeSemantics: true,
+            child: Row(
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        filled == total ? kGreenColor : kSecondaryColor,
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              MyText(
-                text: 'Заполнено $filled из $total',
-                size: SparkTextSize.chip,
-                color: kGreyColor,
-                weight: FontWeight.w600,
-                tabularFigures: true,
-              ),
-            ],
+                const SizedBox(width: SparkSpace.md),
+                MyText(
+                  text: 'Заполнено $filled из $total',
+                  size: SparkTextSize.chip,
+                  color: kGreyColor,
+                  weight: FontWeight.w600,
+                  tabularFigures: true,
+                ),
+              ],
+            ),
           ),
         ],
       ),
