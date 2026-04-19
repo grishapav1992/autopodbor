@@ -82,46 +82,64 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     });
   }
 
-  /// Builds a "Уведомления" destination with a live unread-count badge.
-  /// The badge rebuilds via the storage's ValueNotifier so it refreshes
-  /// the moment any notification flips to read without a manual reload.
-  NavigationDestination _notificationsDestination() {
-    return const NavigationDestination(
-      icon: _NotificationNavIcon(icon: Icons.notifications_none_rounded),
-      selectedIcon: _NotificationNavIcon(icon: Icons.notifications_rounded),
-      label: 'Уведомления',
+  /// Pushes the notifications feed as a full-screen route.
+  /// Wrapping here (instead of giving [SparkJoyNotificationsScreen] its
+  /// own Scaffold) keeps the screen reusable as a tab body too if we
+  /// ever want to bring it back in-place.
+  void _openNotifications(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => Scaffold(
+          appBar: AppBar(
+            centerTitle: false,
+            titleSpacing: SparkSpace.md,
+            title: const Text(
+              'Уведомления',
+              style: TextStyle(
+                fontSize: SparkTextSize.titleLg,
+                fontWeight: FontWeight.w700,
+                color: kPrimaryColor,
+              ),
+            ),
+            bottom: PreferredSize(
+              preferredSize: const Size.fromHeight(SparkSpace.hairline),
+              child:
+                  Container(height: SparkSpace.hairline, color: kBorderColor),
+            ),
+          ),
+          body: const SparkJoyNotificationsScreen(),
+        ),
+      ),
     );
   }
 
   List<NavigationDestination> _navDestinations() {
     if (_role == SparkJoyRole.specialist) {
-      return [
-        const NavigationDestination(
+      return const [
+        NavigationDestination(
           icon: Icon(Icons.description_outlined),
           selectedIcon: Icon(Icons.description_rounded),
           label: 'Отчёты',
         ),
-        _notificationsDestination(),
-        const NavigationDestination(
+        NavigationDestination(
           icon: Icon(Icons.person_outline),
           selectedIcon: Icon(Icons.person_rounded),
           label: 'Профиль',
         ),
       ];
     }
-    return [
-      const NavigationDestination(
+    return const [
+      NavigationDestination(
         icon: Icon(Icons.description_outlined),
         selectedIcon: Icon(Icons.description_rounded),
         label: 'Отчёты',
       ),
-      const NavigationDestination(
+      NavigationDestination(
         icon: Icon(Icons.groups_outlined),
         selectedIcon: Icon(Icons.groups_rounded),
         label: 'Сотрудники',
       ),
-      _notificationsDestination(),
-      const NavigationDestination(
+      NavigationDestination(
         icon: Icon(Icons.person_outline),
         selectedIcon: Icon(Icons.person_rounded),
         label: 'Профиль',
@@ -133,8 +151,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     if (_role == SparkJoyRole.specialist) {
       switch (_index) {
         case 1:
-          return 'Уведомления';
-        case 2:
           return 'Профиль';
         case 0:
         default:
@@ -145,8 +161,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       case 1:
         return 'Сотрудники';
       case 2:
-        return 'Уведомления';
-      case 3:
         return 'Профиль';
       case 0:
       default:
@@ -181,7 +195,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final tabs = _role == SparkJoyRole.specialist
         ? <Widget>[
             const SparkJoyReportsListScreen(companyMode: false),
-            const SparkJoyNotificationsScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
             ),
@@ -189,7 +202,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         : <Widget>[
             const SparkJoyReportsListScreen(companyMode: true),
             const SparkJoyCompanyStaffScreen(),
-            const SparkJoyNotificationsScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
             ),
@@ -223,6 +235,13 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                   vertical: SparkSpace.sm,
                 ),
               ),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Уведомления',
+            onPressed: () => _openNotifications(context),
+            icon: const _NotificationNavIcon(
+              icon: Icons.notifications_none_rounded,
             ),
           ),
           IconButton(
