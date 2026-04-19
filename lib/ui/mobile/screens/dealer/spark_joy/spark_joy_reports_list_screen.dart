@@ -596,9 +596,16 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: _DraftProgressBar(
-                    value: progress,
-                    complete: filled == total,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    child: LinearProgressIndicator(
+                      value: progress,
+                      minHeight: 6,
+                      backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        filled == total ? kGreenColor : kSecondaryColor,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: SparkSpace.md),
@@ -1060,45 +1067,3 @@ class _DraftSectionStatus {
   final bool filled;
 }
 
-/// Gradient progress bar used in draft cards.
-///
-/// Replaces the stock [LinearProgressIndicator] so the fill can use a
-/// kAccentGlow → kAccentColor linear gradient (which the stock widget
-/// doesn't support). In the complete state it switches to solid
-/// kGreenColor so "done" still reads as a discrete signal.
-class _DraftProgressBar extends StatelessWidget {
-  const _DraftProgressBar({required this.value, required this.complete});
-
-  final double value;
-  final bool complete;
-
-  @override
-  Widget build(BuildContext context) {
-    final clamped = value.isNaN ? 0.0 : value.clamp(0.0, 1.0);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(SparkRadius.pill),
-      child: Container(
-        height: SparkSize.progress,
-        color: kSecondaryColor.withValues(alpha: 0.12),
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: FractionallySizedBox(
-            widthFactor: clamped,
-            heightFactor: 1,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: complete
-                    ? null
-                    : const LinearGradient(
-                        colors: [kAccentGlow, kAccentColor],
-                      ),
-                color: complete ? kGreenColor : null,
-              ),
-              child: const SizedBox.expand(),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

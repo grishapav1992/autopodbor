@@ -58,6 +58,11 @@ extension _SparkJoyFormHelpersMethods on _SparkJoyCreateReportScreenState {
         : null;
     return DropdownButtonFormField<String>(
       initialValue: selected,
+      // Cap the popup height so long option lists (e.g. 43 engine volumes
+      // from 0.8→7.0L) don't render near-full-screen. Short lists like
+      // engine type / gearbox sit well under this ceiling already, so
+      // their behaviour is unchanged.
+      menuMaxHeight: 320,
       decoration: _fieldDecoration(hint).copyWith(
         suffixIcon: clearable && selected != null
             ? IconButton(

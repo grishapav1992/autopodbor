@@ -20,6 +20,15 @@ void main() async {
   Get.put(LanguageController());
   Get.put(UserController());
   await UserSimplePreferences.init();
+  // DIAG (revert before merge): dump stored auth tokens to the
+  // device log so we can grab the current JWT via `flutter logs`
+  // without Xcode container extraction.
+  final diagAccess = await UserSimplePreferences.getAccessToken();
+  final diagRefresh = await UserSimplePreferences.getRefreshToken();
+  // ignore: avoid_print
+  print('DIAG_STORED_ACCESS_TOKEN=${diagAccess ?? ''}');
+  // ignore: avoid_print
+  print('DIAG_STORED_REFRESH_TOKEN=${diagRefresh ?? ''}');
   runApp(MyApp());
 }
 
