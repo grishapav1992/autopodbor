@@ -44,3 +44,8 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .vercel
+
+# Local dev artefacts — not part of the repo
+/tmp/
+/.claude/worktrees/
+/autopodbor_*.postman_collection.json
