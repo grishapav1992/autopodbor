@@ -1662,17 +1662,21 @@ class SparkEmptyState extends StatelessWidget {
     super.key,
     required this.icon,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     this.topPadding = SparkSize.stateTopEmpty,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
+
+  /// Optional supporting line under the title. Omit on tight surfaces
+  /// (e.g. picker dialogs) where a single-line empty state reads better.
+  final String? subtitle;
   final double topPadding;
 
   @override
   Widget build(BuildContext context) {
+    final trimmedSubtitle = subtitle?.trim() ?? '';
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
       child: Column(
@@ -1688,12 +1692,14 @@ class SparkEmptyState extends StatelessWidget {
             size: SparkTextSize.label,
             weight: FontWeight.w700,
           ),
-          const SizedBox(height: SparkSpace.xxxs),
-          MyText(
-            text: subtitle,
-            size: SparkTextSize.caption,
-            color: kGreyColor,
-          ),
+          if (trimmedSubtitle.isNotEmpty) ...[
+            const SizedBox(height: SparkSpace.xxxs),
+            MyText(
+              text: trimmedSubtitle,
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+          ],
         ],
       ),
     );

@@ -365,6 +365,15 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               });
             }
 
+            Widget pickerEmpty(IconData icon, String title) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: SparkSpace.xxxl),
+                child: Center(
+                  child: SparkEmptyState(icon: icon, title: title, topPadding: 0),
+                ),
+              );
+            }
+
             Widget listContent() {
               if (step == _CarPickerStep.brand) {
                 if (useRemoteCatalog) {
@@ -382,7 +391,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                       )
                       .toList();
                   if (brands.isEmpty) {
-                    return const Center(child: Text('Ничего не найдено'));
+                    return pickerEmpty(
+                      Icons.search_off_rounded,
+                      'Ничего не найдено',
+                    );
                   }
                   return ListView.separated(
                     keyboardDismissBehavior:
@@ -441,7 +453,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                     )
                     .toList();
                 if (brands.isEmpty) {
-                  return const Center(child: Text('Ничего не найдено'));
+                  return pickerEmpty(
+                    Icons.search_off_rounded,
+                    'Ничего не найдено',
+                  );
                 }
                 return ListView.separated(
                   keyboardDismissBehavior:
@@ -472,7 +487,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                 if (useRemoteCatalog) {
                   final remoteBrand = selectedRemoteBrand;
                   if (remoteBrand == null) {
-                    return const Center(child: Text('Выберите марку'));
+                    return pickerEmpty(
+                      Icons.arrow_upward_rounded,
+                      'Сначала выберите марку',
+                    );
                   }
 
                   final remoteModels =
@@ -499,7 +517,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                         )
                         .toList();
                     if (models.isEmpty) {
-                      return const Center(child: Text('Нет моделей'));
+                      return pickerEmpty(
+                        Icons.directions_car_outlined,
+                        'Нет моделей',
+                      );
                     }
                     return ListView.separated(
                       keyboardDismissBehavior:
@@ -604,7 +625,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                     }
                   }
 
-                  return const Center(child: Text('Нет моделей'));
+                  return pickerEmpty(
+                    Icons.directions_car_outlined,
+                    'Нет моделей',
+                  );
                 }
 
                 final models =
@@ -618,7 +642,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                         )
                         .toList();
                 if (models.isEmpty) {
-                  return const Center(child: Text('Нет моделей'));
+                  return pickerEmpty(
+                    Icons.directions_car_outlined,
+                    'Нет моделей',
+                  );
                 }
                 return ListView.separated(
                   keyboardDismissBehavior:
@@ -661,11 +688,17 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   if (remoteGenerations.isNotEmpty) {
                     generations = remoteGenerations;
                   } else if (remoteGenerationsFailed && generations.isEmpty) {
-                    return const Center(child: Text('Нет поколений'));
+                    return pickerEmpty(
+                      Icons.layers_outlined,
+                      'Нет поколений',
+                    );
                   }
                 }
                 if (generations.isEmpty) {
-                  return const Center(child: Text('Нет поколений'));
+                  return pickerEmpty(
+                    Icons.layers_outlined,
+                    'Нет поколений',
+                  );
                 }
                 return ListView.separated(
                   keyboardDismissBehavior:
@@ -694,7 +727,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   selectedGeneration?.restylings ??
                   const <_CarCatalogRestyling>[];
               if (restylings.isEmpty) {
-                return const Center(child: Text('Нет рестайлингов'));
+                return pickerEmpty(
+                  Icons.tune_rounded,
+                  'Нет рестайлингов',
+                );
               }
               return ListView.separated(
                 keyboardDismissBehavior:
