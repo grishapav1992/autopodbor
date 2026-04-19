@@ -1084,6 +1084,7 @@ class _DraftProgressBar extends StatelessWidget {
           alignment: Alignment.centerLeft,
           child: FractionallySizedBox(
             widthFactor: clamped,
+            heightFactor: 1,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: complete
@@ -1093,6 +1094,7 @@ class _DraftProgressBar extends StatelessWidget {
                       ),
                 color: complete ? kGreenColor : null,
               ),
+              child: const SizedBox.expand(),
             ),
           ),
         ),

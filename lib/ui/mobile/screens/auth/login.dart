@@ -104,9 +104,12 @@ class _LoginState extends State<Login> {
         _statusText = 'Позвоните на номер выше. Проверка займет до 3 минут.';
       });
       unawaited(_startAutoVerify(phone, currentOp));
-    } catch (_) {
+    } catch (err, stack) {
       if (!mounted || currentOp != _opId) return;
-      _showError('Не удалось начать авторизацию. Попробуйте еще раз.');
+      // DIAG (revert before merge): surface the real error so we can
+      // tell apart network/ATS/backend issues instead of swallowing.
+      debugPrint('auth start failed: $err\n$stack');
+      _showError('Auth error: $err');
       setState(() {
         _statusText = '';
       });
