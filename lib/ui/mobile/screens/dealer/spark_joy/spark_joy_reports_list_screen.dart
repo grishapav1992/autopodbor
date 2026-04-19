@@ -332,32 +332,39 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       _DraftSectionStatus(
         label: 'Авто',
         filled: hasText('vin') || isTrue(draft['vinUnreadable']),
+        required: true, // VIN + base car info required by OpenRPC carStep.
       ),
       _DraftSectionStatus(
         label: 'Характеристики',
         filled: hasText('engineVolume') || hasText('engineType'),
+        required: true, // characteristicsStep lists these as required.
       ),
       _DraftSectionStatus(
         label: 'Документы',
         filled: anyNonNull(['docsOwnerMatch', 'docsVinMatch', 'docsEngineMatch']),
+        required: false, // Tri-state fields default to "matches" on server.
       ),
       _DraftSectionStatus(
         label: 'Юр. проверка',
         filled: isTrue(draft['legalSkipped']) ||
             isTrue(draft['legalPurchased']) ||
             hasUploadedList('legalFiles'),
+        required: false, // Has an explicit "skip" branch in the flow.
       ),
       _DraftSectionStatus(
         label: 'Осмотр',
         filled: anyMediaHasFiles(),
+        required: true, // The whole point of the inspection report.
       ),
       _DraftSectionStatus(
         label: 'Тест-драйв',
         filled: draft['tdConducted'] != null,
+        required: false, // Can be declared "not performed" explicitly.
       ),
       _DraftSectionStatus(
         label: 'Итог',
         filled: hasText('summary') || hasText('verdict'),
+        required: true, // Final verdict is what the buyer pays for.
       ),
     ];
   }
@@ -372,11 +379,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final sections = _computeDraftCompletion(draft);
     final filled = sections.where((s) => s.filled).length;
     final total = sections.length;
-    final progress = total == 0 ? 0.0 : filled / total;
-    final emptyLabels = sections
-        .where((s) => !s.filled)
-        .map((s) => s.label)
-        .toList(growable: false);
 
     return SparkListCard(
       onTap: () => _openDraft(draft),
@@ -440,42 +442,28 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             paddingTop: SparkSpace.xxs,
           ),
           const SizedBox(height: SparkSpace.md),
-          // 4) Real-fill progress: bar proportional to filled sections +
-          //    numeric "N из 7" label on the right.
+          // 4) Segmented progress bar: one segment per section, coloured
+          //    by status so the user sees what's done / missing without
+          //    any explanatory text underneath.
+          //
+          //      • blue    — filled
+          //      • red     — required & empty (must do)
+          //      • yellow  — optional & empty (can skip)
+          //
+          //    When every segment is blue, numeric label turns green to
+          //    echo the "ready to submit" state.
           Row(
             children: [
-              Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 6,
-                    backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      filled == total ? kGreenColor : kSecondaryColor,
-                    ),
-                  ),
-                ),
-              ),
+              Expanded(child: _DraftProgressBar(sections: sections)),
               const SizedBox(width: SparkSpace.md),
               MyText(
-                text: 'Заполнено $filled из $total',
+                text: '$filled из $total',
                 size: SparkTextSize.chip,
-                color: kGreyColor,
-                weight: FontWeight.w600,
+                color: filled == total ? kGreenColor : kGreyColor,
+                weight: FontWeight.w700,
               ),
             ],
           ),
-          // 4b) Surface the names of unfilled sections so users know what
-          //     is still missing at a glance.
-          if (emptyLabels.isNotEmpty) ...[
-            const SizedBox(height: SparkSpace.sm),
-            MyText(
-              text: 'Не заполнены: ${emptyLabels.join(', ')}',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-            ),
-          ],
         ],
       ),
     );
@@ -912,11 +900,74 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   }
 }
 
+/// Colour-coded segmented progress bar for a draft.
+///
+/// Each [_DraftSectionStatus] becomes one equal-width rounded segment.
+/// Colour encodes status at a glance — no accompanying "Не заполнены:"
+/// text needed:
+///   • filled        → kSecondaryColor (brand blue, "done")
+///   • required+empty → kRedColor       ("must fix")
+///   • optional+empty → kYellowColor    ("can skip")
+///
+/// Long-pressing a segment surfaces its label via a Tooltip so users can
+/// identify any red/yellow piece without opening the draft.
+class _DraftProgressBar extends StatelessWidget {
+  const _DraftProgressBar({required this.sections});
+
+  final List<_DraftSectionStatus> sections;
+
+  static const double _height = 6;
+  static const double _gap = 2;
+
+  Color _colorFor(_DraftSectionStatus s) {
+    if (s.filled) return kSecondaryColor;
+    return s.required ? kRedColor : kYellowColor;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (sections.isEmpty) {
+      return SizedBox(height: _height);
+    }
+    return SizedBox(
+      height: _height,
+      child: Row(
+        children: [
+          for (var i = 0; i < sections.length; i++) ...[
+            if (i > 0) const SizedBox(width: _gap),
+            Expanded(
+              child: Tooltip(
+                message: sections[i].label,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: _colorFor(sections[i]),
+                    borderRadius: BorderRadius.circular(_height / 2),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 /// Per-section status inside a draft — used by the draft card to render a
 /// real completion progress (not just the current step index).
+///
+/// `required` marks sections that must be filled for the report to be
+/// submittable (car, characteristics, inspection media, final verdict).
+/// Optional sections (documents, legal review, test-drive) can be skipped
+/// via explicit UI choices and render in a softer colour when empty.
 class _DraftSectionStatus {
-  const _DraftSectionStatus({required this.label, required this.filled});
+  const _DraftSectionStatus({
+    required this.label,
+    required this.filled,
+    required this.required,
+  });
 
   final String label;
   final bool filled;
+  final bool required;
 }
