@@ -721,6 +721,8 @@ class SparkReportEditorAppBar extends StatelessWidget
     required this.meta,
     required this.draftStatus,
     required this.draftStatusColor,
+    required this.draftStatusIcon,
+    required this.draftSaving,
     required this.onBack,
     required this.showEditAction,
     this.onEdit,
@@ -730,6 +732,8 @@ class SparkReportEditorAppBar extends StatelessWidget
   final String meta;
   final String draftStatus;
   final Color draftStatusColor;
+  final IconData draftStatusIcon;
+  final bool draftSaving;
   final VoidCallback onBack;
   final bool showEditAction;
   final VoidCallback? onEdit;
@@ -756,11 +760,12 @@ class SparkReportEditorAppBar extends StatelessWidget
           ),
           const SizedBox(height: SparkSpace.xxs),
           MyText(text: meta, size: SparkTextSize.body, color: kGreyColor),
-          const SizedBox(height: SparkSpace.xxs),
-          MyText(
+          const SizedBox(height: SparkSpace.xs),
+          _SparkDraftSaveBadge(
             text: draftStatus,
-            size: SparkTextSize.caption,
             color: draftStatusColor,
+            icon: draftStatusIcon,
+            saving: draftSaving,
           ),
         ],
       ),
@@ -772,6 +777,65 @@ class SparkReportEditorAppBar extends StatelessWidget
             tooltip: 'Переименовать',
           ),
       ],
+    );
+  }
+}
+
+/// Compact pill rendered under the report title in the editor AppBar.
+///
+/// Reads autosave state at a glance: a small spinner replaces the leading
+/// icon while a save is in flight, the pill tint matches the semantic
+/// state colour (green / yellow / red / secondary), and the chip is sized
+/// so it sits comfortably inside the two-line AppBar title without
+/// pushing the edit button off-screen.
+class _SparkDraftSaveBadge extends StatelessWidget {
+  const _SparkDraftSaveBadge({
+    required this.text,
+    required this.color,
+    required this.icon,
+    required this.saving,
+  });
+
+  final String text;
+  final Color color;
+  final IconData icon;
+  final bool saving;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget leading = saving
+        ? SizedBox(
+            width: SparkTextSize.chip,
+            height: SparkTextSize.chip,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+            ),
+          )
+        : Icon(icon, size: SparkSize.iconSm, color: color);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.md,
+        vertical: SparkSpace.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          leading,
+          const SizedBox(width: SparkSpace.xs),
+          MyText(
+            text: text,
+            size: SparkTextSize.chip,
+            weight: FontWeight.w700,
+            color: color,
+            tabularFigures: true,
+          ),
+        ],
+      ),
     );
   }
 }

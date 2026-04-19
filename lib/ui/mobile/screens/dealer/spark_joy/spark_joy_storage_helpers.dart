@@ -2095,14 +2095,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   String _draftSaveStatusText() {
-    if (_draftSaveInProgress) return 'Сохраняется локально...';
-    if (_draftSaveFailed) return 'Ошибка локального сохранения';
-    if (_hasUnsavedDraftChanges) return 'Есть несохранённые изменения';
+    if (_draftSaveInProgress) return 'Сохраняется';
+    if (_draftSaveFailed) return 'Ошибка сохранения';
+    if (_hasUnsavedDraftChanges) return 'Не сохранено';
     final lastSavedAt = _lastDraftSavedAt;
-    if (lastSavedAt == null) return 'Последнее сохранение: ещё не было';
+    if (lastSavedAt == null) return 'Сохранено';
     final hours = lastSavedAt.hour.toString().padLeft(2, '0');
     final minutes = lastSavedAt.minute.toString().padLeft(2, '0');
-    return 'Последнее сохранение: $hours:$minutes';
+    return 'Сохранено в $hours:$minutes';
   }
 
   Color _draftSaveStatusColor() {
@@ -2110,6 +2110,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     if (_draftSaveFailed) return kRedColor;
     if (_hasUnsavedDraftChanges) return kYellowColor;
     return kGreenColor;
+  }
+
+  IconData _draftSaveStatusIcon() {
+    // Saving uses a spinner (rendered separately by the AppBar badge) so
+    // this icon is only consulted when !_draftSaveInProgress.
+    if (_draftSaveFailed) return Icons.error_outline_rounded;
+    if (_hasUnsavedDraftChanges) return Icons.edit_note_rounded;
+    return Icons.cloud_done_rounded;
   }
 
   Future<void> _saveDraft({

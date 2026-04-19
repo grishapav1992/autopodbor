@@ -16,6 +16,8 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
           meta: sjFormatReportMeta(_currentReportCode(), _createdAt),
           draftStatus: _draftSaveStatusText(),
           draftStatusColor: _draftSaveStatusColor(),
+          draftStatusIcon: _draftSaveStatusIcon(),
+          draftSaving: _draftSaveInProgress,
           onBack: () => _handleEditorBack(context),
           showEditAction: !_editingSection,
           onEdit: _editReportTitle,
