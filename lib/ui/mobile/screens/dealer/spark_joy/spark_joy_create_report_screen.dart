@@ -218,6 +218,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _tdShouldDictate(bool value) =>
       _reportController.tdShouldDictate.value = value;
   Timer? _draftAutosaveDebounce;
+  // Re-entry guard for the brand/model picker — [`_openCarPickerDialog`] is
+  // async (awaits `fetchBrandCatalog` before calling `showDialog`), so
+  // mashing the "Выбрать автомобиль" tile during a slow network request used
+  // to kick off multiple catalogs and stack identical dialogs on top of
+  // each other. Flip this while the picker is loading/open.
+  bool _carPickerOpening = false;
   // ┌─ Phase 4.1 · Chunk 7: draft autosave meta-state → controller ─────────┐
   // │ 43 references across 4 files. Timers + debounce logic remain in the   │
   // │ host widget; only the status flags move.                              │

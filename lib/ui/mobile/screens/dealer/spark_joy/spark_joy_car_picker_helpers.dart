@@ -2,6 +2,16 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
   Future<void> _openCarPickerDialog() async {
+    if (_carPickerOpening) return;
+    _carPickerOpening = true;
+    try {
+      await _openCarPickerDialogBody();
+    } finally {
+      _carPickerOpening = false;
+    }
+  }
+
+  Future<void> _openCarPickerDialogBody() async {
     bool same(String left, String right) {
       return left.trim().toLowerCase() == right.trim().toLowerCase();
     }

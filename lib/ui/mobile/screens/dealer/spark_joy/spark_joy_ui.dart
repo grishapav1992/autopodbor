@@ -783,6 +783,7 @@ class SparkPrimaryActionButton extends StatelessWidget {
     required this.onTap,
     this.icon = Icons.add,
     this.showIcon = true,
+    this.busy = false,
   });
 
   final String label;
@@ -790,55 +791,76 @@ class SparkPrimaryActionButton extends StatelessWidget {
   final IconData icon;
   final bool showIcon;
 
+  /// When true the button becomes non-interactive, swaps the leading icon
+  /// for a spinner, and fades the gradient. Use this while the callback
+  /// kicks off async work (e.g. an RPC that opens a modal on return) so
+  /// successive taps don't queue up duplicate operations.
+  final bool busy;
+
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(SparkRadius.lg);
     return SizedBox(
       height: SparkSize.inputHeightLg,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: radius,
-          gradient: const LinearGradient(
-            colors: [kSecondaryColor, kBlueColor],
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-          ),
-          boxShadow: const [
-            BoxShadow(
-              color: kShadowColor,
-              blurRadius: 16,
-              offset: Offset(0, 6),
-              spreadRadius: -4,
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
+      child: Opacity(
+        opacity: busy ? 0.7 : 1,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
             borderRadius: radius,
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              onTap();
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (showIcon) ...[
-                    Icon(icon, color: kWhiteColor, size: SparkSize.iconLg),
-                    const SizedBox(width: SparkSpace.sm),
-                  ],
-                  Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: SparkTextSize.label,
-                      fontWeight: FontWeight.w700,
-                      color: kWhiteColor,
-                      letterSpacing: -0.2,
+            gradient: const LinearGradient(
+              colors: [kSecondaryColor, kBlueColor],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: kShadowColor,
+                blurRadius: 16,
+                offset: Offset(0, 6),
+                spreadRadius: -4,
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: radius,
+              onTap: busy
+                  ? null
+                  : () {
+                      HapticFeedback.mediumImpact();
+                      onTap();
+                    },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (busy) ...[
+                      const SizedBox(
+                        width: SparkSize.spinner,
+                        height: SparkSize.spinner,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(kWhiteColor),
+                        ),
+                      ),
+                      const SizedBox(width: SparkSpace.sm),
+                    ] else if (showIcon) ...[
+                      Icon(icon, color: kWhiteColor, size: SparkSize.iconLg),
+                      const SizedBox(width: SparkSpace.sm),
+                    ],
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: SparkTextSize.label,
+                        fontWeight: FontWeight.w700,
+                        color: kWhiteColor,
+                        letterSpacing: -0.2,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
