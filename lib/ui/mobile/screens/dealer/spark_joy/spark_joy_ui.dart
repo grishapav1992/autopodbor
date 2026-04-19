@@ -443,6 +443,14 @@ class SparkChip extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(SparkRadius.pill),
         color: background,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x80FFFFFF),
+            blurRadius: 1,
+            offset: Offset(0, 1),
+            spreadRadius: -1,
+          ),
+        ],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
