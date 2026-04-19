@@ -330,33 +330,44 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
     return <_DraftSectionStatus>[
       // 1) Авто — any car-picker selection (brand/model/…) or any text
-      //    identity field counts. Picking a brand alone used to leave
-      //    the section marked empty because VIN wasn't typed yet.
+      //    identity field counts. Per step description "VIN, госномер,
+      //    марка/модель, пробег, владельцы и город осмотра".
       _DraftSectionStatus(
         label: 'Авто',
         filled: hasText('brand') ||
             hasText('model') ||
             hasText('generation') ||
             hasText('restyling') ||
+            hasText('make') ||
             hasText('car') ||
             hasText('vin') ||
             isTrue(draft['vinUnreadable']) ||
             hasText('plate') ||
             hasText('adLink') ||
             hasText('mileage') ||
+            hasText('ownersCount') ||
+            hasText('owners') ||
             hasText('inspectionCity') ||
             hasText('inspectionDate'),
       ),
-      // 2) Характеристики — any of the 6 powertrain / comfort fields.
+      // 2) Параметры — powertrain / comfort fields. Drafts persist with
+      //    `engineVolume`, `engineType`, `gearboxType`, `driveType`,
+      //    `color`, `trim`, but the init helper also accepts legacy
+      //    aliases (`engine`, `transmission`, `drive`) for drafts
+      //    imported from completed reports. Match both sets so the
+      //    section doesn't get counted as empty when the data lives
+      //    under the legacy key.
       _DraftSectionStatus(
-        label: 'Характеристики',
+        label: 'Параметры',
         filled: hasText('engineVolume') ||
             hasText('engineType') ||
+            hasText('engine') ||
             hasText('gearboxType') ||
+            hasText('transmission') ||
             hasText('driveType') ||
+            hasText('drive') ||
             hasText('color') ||
-            hasText('trim') ||
-            hasText('ownersCount'),
+            hasText('trim'),
       ),
       // 3) Документы — any tri-state toggled, any mismatch comment, or
       //    any audio attachment. Previously only tri-states counted, so
@@ -398,12 +409,17 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             hasUploadedList('tdBrakeTags') ||
             hasUploadedList('tdCommentAudioFiles'),
       ),
-      // 7) Итог — summary, verdict, or expert notes.
+      // 7) Итог — user's summary text field, expert-conclusion text
+      //    field, or uploaded expert-comment audio. Drafts store these
+      //    as `summaryNote` and `expertConclusion`; the old bare
+      //    `summary` / `verdict` keys only exist on completed reports,
+      //    never in drafts — that's why this step was rendering empty
+      //    even when the user had typed a summary.
       _DraftSectionStatus(
         label: 'Итог',
-        filled: hasText('summary') ||
-            hasText('verdict') ||
+        filled: hasText('summaryNote') ||
             hasText('expertConclusion') ||
+            isTrue(draft['expertConclusionTouched']) ||
             hasUploadedList('expertAudioFiles'),
       ),
     ];
