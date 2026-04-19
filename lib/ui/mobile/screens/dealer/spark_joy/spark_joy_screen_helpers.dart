@@ -44,7 +44,9 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
                 const MyText(
                   text: 'Название отчета',
                   size: SparkTextSize.titleLg,
-                  weight: FontWeight.w700,
+                  weight: FontWeight.w800,
+                  lineHeight: 1.30,
+                  tracking: true,
                 ),
                 const SizedBox(height: SparkSpace.lg),
                 TextField(

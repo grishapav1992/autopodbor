@@ -25,6 +25,8 @@ class MyText extends StatelessWidget {
   final double? paddingRight;
   final double? paddingBottom;
   final double? letterSpacing;
+  final bool tracking;
+  final bool tabularFigures;
 
   const MyText({
     super.key,
@@ -45,6 +47,8 @@ class MyText extends StatelessWidget {
     this.paddingBottom = 0,
     this.onTap,
     this.fontStyle,
+    this.tracking = false,
+    this.tabularFigures = false,
   });
 
   @override
@@ -74,6 +78,10 @@ class MyText extends StatelessWidget {
       max: 48,
     );
     final scaledSize = size == null ? null : AppResponsive.sp(context, size!);
+    final resolvedLetterSpacing = letterSpacing ?? (tracking ? -0.4 : null);
+    final resolvedFeatures = tabularFigures
+        ? const [FontFeature.tabularFigures()]
+        : null;
     return Padding(
       padding: EdgeInsets.only(
         top: scaledTop,
@@ -101,7 +109,8 @@ class MyText extends StatelessWidget {
             ],
             height: lineHeight,
             fontStyle: fontStyle,
-            letterSpacing: letterSpacing,
+            letterSpacing: resolvedLetterSpacing,
+            fontFeatures: resolvedFeatures,
           ),
           textAlign: textAlign,
           maxLines: maxLines,

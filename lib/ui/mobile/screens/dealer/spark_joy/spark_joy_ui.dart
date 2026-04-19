@@ -673,7 +673,9 @@ class SparkPageHeader extends StatelessWidget {
         MyText(
           text: title,
           size: SparkTextSize.pageTitle,
-          weight: FontWeight.w700,
+          weight: FontWeight.w800,
+          lineHeight: 1.30,
+          tracking: true,
         ),
         MyText(
           text: subtitle,

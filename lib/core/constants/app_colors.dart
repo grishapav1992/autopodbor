@@ -6,8 +6,18 @@ const kTertiaryColor = Color(0xff1F2933);
 const kQuaternaryColor = Color(0xff111827);
 const kBlackColor = Color(0xff000000);
 const kWhiteColor = Color(0xffFFFFFF);
-const kBorderColor = Color(0xffE2E6E9);
+const kBorderColor = Color(0xffD7DCE2);
 const kInputBgColor = Color(0xffFFFFFF);
+
+// ---------------------------------------------------------------------------
+// A+ Frost Evolution accent palette.
+// Precision-blue accent used for progress, focus, and high-energy highlights
+// — kept distinct from kSecondaryColor (navigational brand anchor).
+// ---------------------------------------------------------------------------
+const kAccentColor = Color(0xff2F80FF);
+const kAccentGlow = Color(0xff4A9EFF);
+const kSurfaceTint = Color(0xffE8EFF7);
+const kShadowColor = Color.fromRGBO(15, 42, 68, 0.14);
 final kLightPurpleColor = Color(0xff0F2A44).withValues(alpha: 0.12);
 const kGreyColor = Color(0xff6B7280);
 const kRedColor = Color(0xffC62828);

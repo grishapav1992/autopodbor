@@ -328,7 +328,9 @@ class _SparkJoyLogin extends StatelessWidget {
                     const MyText(
                       text: 'AutoCheck',
                       size: SparkTextSize.hero,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w800,
+                      lineHeight: 1.30,
+                      tracking: true,
                       textAlign: TextAlign.center,
                     ),
                     const MyText(

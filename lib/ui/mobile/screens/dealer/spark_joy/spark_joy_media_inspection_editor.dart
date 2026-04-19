@@ -538,7 +538,9 @@ extension _SparkJoyMediaInspectionEditorMethods
                                 child: MyText(
                                   text: 'Заметка элемента',
                                   size: SparkTextSize.titleLg,
-                                  weight: FontWeight.w700,
+                                  weight: FontWeight.w800,
+                                  lineHeight: 1.30,
+                                  tracking: true,
                                 ),
                               ),
                             ],

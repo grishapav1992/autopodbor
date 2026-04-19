@@ -56,7 +56,9 @@ Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
                   child: MyText(
                     text: reportName.isEmpty ? 'Без названия' : reportName,
                     size: SparkTextSize.titleLg,
-                    weight: FontWeight.w700,
+                    weight: FontWeight.w800,
+                    lineHeight: 1.30,
+                    tracking: true,
                     maxLines: 2,
                     textOverflow: TextOverflow.ellipsis,
                   ),
