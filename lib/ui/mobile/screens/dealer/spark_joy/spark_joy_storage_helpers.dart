@@ -1039,25 +1039,26 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   Map<String, dynamic> _buildCharacteristicsStepPayload(
     Map<String, dynamic> payload,
   ) {
+    // Per Storage.PrepareSpecialistReport spec (docs/api/PrepareSpecialistReport.md,
+    // §characteristicsStep) every field in this step is nullable. Prefer `null`
+    // over filler strings like 'не указано' — if the backend ever enum-validates
+    // engineType / transmission / driveType the filler value would 400 the
+    // whole request. engineVolume also explicitly accepts null (number | null),
+    // so don't coerce an empty controller to 0.
+    String? orNull(String raw) {
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
     return <String, dynamic>{
       'modelGenerationRestylingFrameId':
           _resolveModelGenerationRestylingFrameId(payload),
-      'engineVolume': _parseDecimal(_engineVolumeController.text) ?? 0,
-      'engineType': _engineTypeController.text.trim().isEmpty
-          ? 'не указано'
-          : _engineTypeController.text.trim(),
-      'transmission': _gearboxTypeController.text.trim().isEmpty
-          ? 'не указано'
-          : _gearboxTypeController.text.trim(),
-      'driveType': _driveTypeController.text.trim().isEmpty
-          ? 'не указано'
-          : _driveTypeController.text.trim(),
-      'color': _colorController.text.trim().isEmpty
-          ? 'не указано'
-          : _colorController.text.trim(),
-      'equipment': _trimController.text.trim().isEmpty
-          ? 'не указано'
-          : _trimController.text.trim(),
+      'engineVolume': _parseDecimal(_engineVolumeController.text),
+      'engineType': orNull(_engineTypeController.text),
+      'transmission': orNull(_gearboxTypeController.text),
+      'driveType': orNull(_driveTypeController.text),
+      'color': orNull(_colorController.text),
+      'equipment': orNull(_trimController.text),
     };
   }
 
@@ -1429,11 +1430,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // we treat it as "no damage" so the backend doesn't reject the report.
         final noDamage = tags.isEmpty;
         final payloadItem = <String, dynamic>{
+          // Spec (docs/api/PrepareSpecialistReport.md, §FileObject) declares
+          // just {filename, type} on the request side; `key` and `stepType`
+          // live only on the response's uploadFiles[] and were echoed back
+          // here historically. Dropping them to avoid tripping any future
+          // strict schema validator.
           'file': <String, dynamic>{
             'filename': filename,
-            'key': null,
             'type': _prepareFileTypeFromMime(item.mimeType),
-            'stepType': null,
           },
           if (includePaint && paintFrom != null)
             'paintworkThicknessFrom': paintFrom,
