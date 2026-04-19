@@ -437,7 +437,13 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final total = sections.length;
     final progress = total == 0 ? 0.0 : filled / total;
 
-    return SparkListCard(
+    // Each draft card carries a shadow + a rounded clip (Stage 2 A+ token
+    // bump), both of which otherwise force the whole list layer to repaint
+    // on every scroll frame. The RepaintBoundary isolates each card into
+    // its own raster cache — scrolled cards stay static and only newly
+    // revealed ones actually get painted.
+    return RepaintBoundary(
+      child: SparkListCard(
       onTap: () => _openDraft(draft),
       padding: const EdgeInsets.symmetric(
         horizontal: SparkSpace.xl,
@@ -528,6 +534,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -554,7 +561,10 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         sjFormatMileage(sjRead(report, 'mileage')),
     ];
 
-    return SparkListCard(
+    // Same RepaintBoundary reasoning as _buildDraftCard — keeps scrolled
+    // completed cards out of the repaint queue.
+    return RepaintBoundary(
+      child: SparkListCard(
       onTap: () => _openCompleted(report),
       padding: const EdgeInsets.symmetric(
         horizontal: SparkSpace.xl,
@@ -646,6 +656,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 
