@@ -388,25 +388,56 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 1) Title + 2) last-modified date on the same row.
+          // 1) Title (left) + 3) icon-only delete button (top-right).
+          //
+          // Placement follows Material 3 ListTile.trailing + iOS cell
+          // accessory conventions: secondary destructive action sits in
+          // the top-right corner, well away from the primary "continue"
+          // tap target that covers the rest of the card. IconButton
+          // renders a 48×48 logical-px tap area by default, so the icon
+          // can stay visually small (22 pt) without shrinking the hit
+          // zone.
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: MyText(
-                  text: title,
-                  size: SparkTextSize.bodyLg,
-                  weight: FontWeight.w700,
+                child: Padding(
+                  // Nudge the title down so it visually aligns with the
+                  // centre of the 48-pt IconButton on the right.
+                  padding: const EdgeInsets.only(top: SparkSpace.xs),
+                  child: MyText(
+                    text: title,
+                    size: SparkTextSize.bodyLg,
+                    weight: FontWeight.w700,
+                  ),
                 ),
               ),
-              const SizedBox(width: SparkSpace.md),
-              MyText(
-                text:
-                    'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
-                size: SparkTextSize.chip,
-                color: kGreyColor,
+              const SizedBox(width: SparkSpace.sm),
+              IconButton(
+                onPressed: () => _deleteDraft(sjRead(draft, 'id')),
+                tooltip: 'Удалить черновик',
+                icon: const Icon(Icons.delete_outline_rounded),
+                color: kRedColor,
+                iconSize: 22,
+                visualDensity: VisualDensity.compact,
+                // Keep the IconButton tight to the card edge so it
+                // doesn't steal vertical height but still has the
+                // Material 48×48 minimum tap area via the default
+                // constraints.
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
               ),
             ],
+          ),
+          // 2) Last-modified date as a subtitle under the title.
+          MyText(
+            text: 'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+            paddingTop: SparkSpace.xxs,
           ),
           const SizedBox(height: SparkSpace.md),
           // 4) Real-fill progress: bar proportional to filled sections +
@@ -436,8 +467,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             ],
           ),
           // 4b) Surface the names of unfilled sections so users know what
-          //     is still missing at a glance (instead of the old lying
-          //     "Шаг 7 из 7" that treated navigation as completion).
+          //     is still missing at a glance.
           if (emptyLabels.isNotEmpty) ...[
             const SizedBox(height: SparkSpace.sm),
             MyText(
@@ -446,30 +476,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
               color: kGreyColor,
             ),
           ],
-          const SizedBox(height: SparkSpace.md),
-          // 3) Full-size, easy-to-tap delete button aligned to the right.
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => _deleteDraft(sjRead(draft, 'id')),
-              style: TextButton.styleFrom(
-                foregroundColor: kRedColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.lg,
-                  vertical: SparkSpace.sm,
-                ),
-                minimumSize: const Size(0, SparkSize.actionCompactHeight),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                ),
-              ),
-              icon: const Icon(Icons.delete_outline_rounded),
-              label: const Text(
-                'Удалить черновик',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ),
         ],
       ),
     );
