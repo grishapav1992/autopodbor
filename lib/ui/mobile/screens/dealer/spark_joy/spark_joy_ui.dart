@@ -113,6 +113,7 @@ class SparkCard extends StatelessWidget {
     this.backgroundColor = kWhiteColor,
     this.borderColor = kBorderColor,
     this.radius = SparkRadius.lg,
+    this.elevated = true,
   });
 
   final Widget child;
@@ -121,6 +122,16 @@ class SparkCard extends StatelessWidget {
   final Color backgroundColor;
   final Color borderColor;
   final double radius;
+  final bool elevated;
+
+  static const List<BoxShadow> _elevatedShadow = [
+    BoxShadow(
+      color: kShadowColor,
+      blurRadius: 24,
+      offset: Offset(0, 8),
+      spreadRadius: -4,
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -129,6 +140,7 @@ class SparkCard extends StatelessWidget {
         color: backgroundColor,
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(color: borderColor),
+        boxShadow: elevated ? _elevatedShadow : null,
       ),
       padding: padding,
       child: child,
@@ -157,6 +169,7 @@ class SparkListCard extends StatelessWidget {
     this.backgroundColor = kWhiteColor,
     this.borderColor = kBorderColor,
     this.radius = SparkRadius.lg,
+    this.elevated = true,
   });
 
   final Widget child;
@@ -166,6 +179,7 @@ class SparkListCard extends StatelessWidget {
   final Color backgroundColor;
   final Color borderColor;
   final double radius;
+  final bool elevated;
 
   @override
   Widget build(BuildContext context) {
@@ -177,6 +191,7 @@ class SparkListCard extends StatelessWidget {
         backgroundColor: backgroundColor,
         borderColor: borderColor,
         radius: radius,
+        elevated: elevated,
         child: child,
       ),
     );
