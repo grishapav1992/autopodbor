@@ -1,3 +1,6 @@
+import 'dart:ui' show ImageFilter;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -26,11 +29,27 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   SparkJoyRole _role = SparkJoyRole.specialist;
   String? _businessType;
   int _index = 0;
+  final ValueNotifier<bool> _scrolledUnder = ValueNotifier<bool>(false);
 
   @override
   void initState() {
     super.initState();
     _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _scrolledUnder.dispose();
+    super.dispose();
+  }
+
+  bool _onScroll(ScrollNotification n) {
+    if (n.depth != 0) return false;
+    final scrolled = n.metrics.pixels > 2;
+    if (_scrolledUnder.value != scrolled) {
+      _scrolledUnder.value = scrolled;
+    }
+    return false;
   }
 
   Future<void> _bootstrap() async {
@@ -209,17 +228,29 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final destinations = _navDestinations();
     final index = _index >= tabs.length ? 0 : _index;
 
+    final media = MediaQuery.of(context);
+    const navHeight = 72.0;
+
     return Scaffold(
+      extendBody: true,
+      extendBodyBehindAppBar: true,
+      backgroundColor: kPrimaryColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         centerTitle: false,
         titleSpacing: SparkSpace.section,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        flexibleSpace: _FrostedAppBarSurface(scrolledUnder: _scrolledUnder),
         title: Text(
           _currentTabTitle(),
           style: const TextStyle(
             fontSize: SparkTextSize.titleLg,
-            fontWeight: FontWeight.w700,
-            color: kPrimaryColor,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.2,
+            color: kSecondaryColor,
           ),
         ),
         actions: [
@@ -250,39 +281,113 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
             icon: const Icon(Icons.logout, size: SparkSize.iconLg),
           ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(SparkSpace.hairline),
-          child: Container(height: SparkSpace.hairline, color: kBorderColor),
+      ),
+      body: NotificationListener<ScrollNotification>(
+        onNotification: _onScroll,
+        child: SparkShellInsets(
+          topInset: media.padding.top + kToolbarHeight,
+          bottomInset: navHeight,
+          child: IndexedStack(index: index, children: tabs),
         ),
       ),
-      body: IndexedStack(index: index, children: tabs),
-      bottomNavigationBar: NavigationBarTheme(
-        data: NavigationBarThemeData(
-          backgroundColor: kWhiteColor,
-          height: 72,
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return TextStyle(
-              fontSize: SparkTextSize.caption,
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-              color: selected ? kSecondaryColor : kGreyColor,
-            );
-          }),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            final selected = states.contains(WidgetState.selected);
-            return IconThemeData(
-              size: SparkSize.iconSm,
-              color: selected ? kSecondaryColor : kGreyColor,
-            );
-          }),
-          indicatorColor: kSecondaryColor.withValues(alpha: 0.12),
-        ),
-        child: NavigationBar(
-          selectedIndex: index,
-          onDestinationSelected: (value) => setState(() => _index = value),
-          destinations: destinations,
+      bottomNavigationBar: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(
+            sigmaX: 8,
+            sigmaY: 8,
+            tileMode: TileMode.clamp,
+          ),
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
+              ),
+            ),
+            child: NavigationBarTheme(
+              data: NavigationBarThemeData(
+                backgroundColor: kWhiteColor.withValues(alpha: 0.78),
+                surfaceTintColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                height: navHeight,
+                labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return TextStyle(
+                    fontSize: SparkTextSize.caption,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: selected ? kSecondaryColor : kGreyColor,
+                  );
+                }),
+                iconTheme: WidgetStateProperty.resolveWith((states) {
+                  final selected = states.contains(WidgetState.selected);
+                  return IconThemeData(
+                    size: SparkSize.iconSm,
+                    color: selected ? kSecondaryColor : kGreyColor,
+                  );
+                }),
+                indicatorColor: kSecondaryColor.withValues(alpha: 0.12),
+              ),
+              child: NavigationBar(
+                selectedIndex: index,
+                onDestinationSelected: (value) {
+                  _scrolledUnder.value = false;
+                  setState(() => _index = value);
+                },
+                destinations: destinations,
+              ),
+            ),
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Paints the AppBar's background surface — opaque while idle, frosted blur
+/// only once the active tab has scrolled content passing under it.
+/// Sits in [AppBar.flexibleSpace] so the status bar + toolbar area share
+/// one surface and we never stack two BackdropFilters.
+class _FrostedAppBarSurface extends StatelessWidget {
+  const _FrostedAppBarSurface({required this.scrolledUnder});
+
+  final ValueListenable<bool> scrolledUnder;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: scrolledUnder,
+      builder: (context, scrolled, _) {
+        final surface = DecoratedBox(
+          decoration: BoxDecoration(
+            color: scrolled
+                ? kWhiteColor.withValues(alpha: 0.78)
+                : kPrimaryColor,
+            border: scrolled
+                ? const Border(
+                    bottom: BorderSide(
+                      color: kBorderColor,
+                      width: SparkSpace.hairline,
+                    ),
+                  )
+                : const Border(
+                    bottom: BorderSide(
+                      color: kBorderColor,
+                      width: SparkSpace.hairline,
+                    ),
+                  ),
+          ),
+        );
+        if (!scrolled) return surface;
+        return ClipRect(
+          child: BackdropFilter(
+            filter: ImageFilter.blur(
+              sigmaX: 8,
+              sigmaY: 8,
+              tileMode: TileMode.clamp,
+            ),
+            child: surface,
+          ),
+        );
+      },
     );
   }
 }

@@ -1683,6 +1683,32 @@ class SparkErrorState extends StatelessWidget {
   }
 }
 
+/// Inherited inset propagation for the SparkJoy shell.
+///
+/// When the Scaffold uses `extendBodyBehindAppBar` / `extendBody`, tab content
+/// needs extra padding so the first and last items sit under the AppBar and
+/// BottomNav frosted surfaces without being clipped. The shell publishes these
+/// insets here so any [SparkScreenList] or [SparkPageScaffold] descendant can
+/// apply them without the tab knowing about the shell.
+class SparkShellInsets extends InheritedWidget {
+  const SparkShellInsets({
+    super.key,
+    required this.topInset,
+    required this.bottomInset,
+    required super.child,
+  });
+
+  final double topInset;
+  final double bottomInset;
+
+  static SparkShellInsets? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<SparkShellInsets>();
+
+  @override
+  bool updateShouldNotify(SparkShellInsets old) =>
+      topInset != old.topInset || bottomInset != old.bottomInset;
+}
+
 class SparkScreenList extends StatelessWidget {
   const SparkScreenList({
     super.key,
@@ -1701,8 +1727,12 @@ class SparkScreenList extends StatelessWidget {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final base = padding ?? AppSizes.DEFAULT;
+    final shellInsets = SparkShellInsets.maybeOf(context);
+    final shellTop = shellInsets?.topInset ?? 0;
+    final shellBottom = shellInsets?.bottomInset ?? 0;
     final effectivePadding = base.copyWith(
-      bottom: base.bottom + media.padding.bottom + bottomInset,
+      top: base.top + shellTop,
+      bottom: base.bottom + media.padding.bottom + bottomInset + shellBottom,
     );
 
     return GestureDetector(
