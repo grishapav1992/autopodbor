@@ -1135,6 +1135,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   int _resolveModelGenerationRestylingFrameId(Map<String, dynamic> payload) {
+    final stateId = _modelGenerationRestylingFrameId;
+    if (stateId != null && stateId > 0) return stateId;
     final fromPayload = payload['characteristicsStep'];
     if (fromPayload is Map) {
       final id = _asIntFromDynamic(
@@ -2113,6 +2115,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'restyling': _restylingLabel.trim(),
       'carPhotoUrl': _carPhotoUrl.trim(),
       'carFrames': _carFrames.trim(),
+      if (_modelGenerationRestylingFrameId != null &&
+          _modelGenerationRestylingFrameId! > 0)
+        'modelGenerationRestylingFrameId': _modelGenerationRestylingFrameId,
       'vin': _vinController.text.trim(),
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),

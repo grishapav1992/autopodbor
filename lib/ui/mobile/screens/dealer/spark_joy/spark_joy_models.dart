@@ -10,6 +10,7 @@ class _CarPickerSelection {
     required this.restyling,
     required this.frames,
     required this.photoUrl,
+    this.frameId,
   });
 
   final String brand;
@@ -18,6 +19,12 @@ class _CarPickerSelection {
   final String restyling;
   final String frames;
   final String photoUrl;
+  /// Server id of the first `RestylingItem.frames[].id` entry (or null
+  /// when the catalog didn't carry one, e.g. local fallback data).
+  /// Used by the completed-report hydrator to restore brand/model/photo
+  /// from `Storage.ViewSpecialistReport` responses that only echo
+  /// `characteristicsStep.modelGenerationRestylingFrameId`.
+  final int? frameId;
 }
 
 class _CarCatalogBrand {
@@ -46,11 +53,16 @@ class _CarCatalogRestyling {
     required this.label,
     required this.frames,
     required this.photoUrl,
+    this.frameIds = const <int>[],
   });
 
   final String label;
   final String frames;
   final String photoUrl;
+  /// Server ids for every frame under this restyling (at least one when
+  /// sourced from `Storage.GetModelGeneration`). The first id is what
+  /// we use for persistence keyed on `modelGenerationRestylingFrameId`.
+  final List<int> frameIds;
 }
 
 class _SparkJoyVideoThumbnail extends StatefulWidget {

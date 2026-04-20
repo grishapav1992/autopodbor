@@ -67,6 +67,7 @@ class SparkJoyStorage {
   static const String _userTagsSyncedAtKey = 'spark_joy_user_tags_synced_at_v1';
   static const String _pendingTagDeletesKey =
       'spark_joy_pending_tag_deletes_v1';
+  static const String _frameCatalogKey = 'spark_joy_frame_catalog_v1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
@@ -372,6 +373,49 @@ class SparkJoyStorage {
     List<Map<String, dynamic>> items,
   ) async {
     await _writeList(_pendingTagDeletesKey, items);
+  }
+
+  /// Frame-id → picker metadata cache. Populated opportunistically when
+  /// the user selects a car via the car picker; consumed by the completed-
+  /// report hydrator to restore brand / model / generation / restyling /
+  /// photoUrl from a `modelGenerationRestylingFrameId` the server echoes.
+  ///
+  /// On a fresh install the cache is empty — brand/model fields render
+  /// as placeholders for reports completed on other devices. Walking the
+  /// entire catalog on demand would cost hundreds of RPCs, so we accept
+  /// the tradeoff rather than blocking the open.
+  static Future<Map<String, dynamic>?> loadFrameCatalogEntry(int frameId) async {
+    if (frameId <= 0) return null;
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_frameCatalogKey);
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final entry = decoded['$frameId'];
+      if (entry is Map) return Map<String, dynamic>.from(entry);
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<void> upsertFrameCatalogEntry({
+    required int frameId,
+    required Map<String, dynamic> entry,
+  }) async {
+    if (frameId <= 0) return;
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    Map<String, dynamic> store = <String, dynamic>{};
+    final raw = pref.getString(_frameCatalogKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) store = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    store['$frameId'] = entry;
+    await pref.setString(_frameCatalogKey, jsonEncode(store));
   }
 
   static Future<DateTime?> userTagsSyncedAt() async {

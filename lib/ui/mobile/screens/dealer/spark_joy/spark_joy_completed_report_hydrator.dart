@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 
 /// Transforms a `Storage.ViewSpecialistReport` response into the flat
 /// draft-shape map the `SparkJoyCreateReportScreen` editor reads.
@@ -37,6 +38,13 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   final inspectionStep = _asMap(server['inspectionStep']);
   final testDriveStep = _asMap(server['testDriveStep']);
   final legalReviewStep = _asMap(server['legalReviewStep']);
+  final characteristicsStep = _asMap(server['characteristicsStep']);
+  if (reportNumber.isEmpty) {
+    debugPrint(
+      '[CompletedReportHydrator] reportNumber missing — media URLs '
+      'cannot be resolved; view will render without images.',
+    );
+  }
 
   // 1. Walk every file-bearing node, collect filenames (unique).
   final filenames = <String>{};
@@ -128,9 +136,26 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
     tagService,
   );
 
-  // 6. Merge back into a single flat draft-shape map.
+  // 6. Resolve brand/model/generation/restyling/photoUrl from the
+  //    local frame catalog (populated by car picker selections). A
+  //    cache miss is expected on fresh installs or reports from
+  //    other users — the editor then renders placeholders.
+  final frameIdRaw = characteristicsStep['modelGenerationRestylingFrameId'];
+  final frameId = frameIdRaw is int
+      ? frameIdRaw
+      : (frameIdRaw is num
+            ? frameIdRaw.toInt()
+            : int.tryParse('${frameIdRaw ?? ''}'));
+  final frameMeta = (frameId != null && frameId > 0)
+      ? await SparkJoyStorage.loadFrameCatalogEntry(frameId)
+      : null;
+
+  // 7. Merge back into a single flat draft-shape map.
   final draft = <String, dynamic>{
     ...server,
+    if (frameMeta != null) ..._frameMetaToDraftKeys(frameMeta),
+    if (frameId != null && frameId > 0)
+      'modelGenerationRestylingFrameId': frameId,
     'mediaGroupsState': mediaGroupsState,
     if (legalFiles.isNotEmpty) 'legalFiles': legalFiles,
     'tdEngineTags': tdEngineTags,
@@ -142,6 +167,22 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
     'isDraft': false,
   };
   return draft;
+}
+
+Map<String, dynamic> _frameMetaToDraftKeys(Map<String, dynamic> meta) {
+  final out = <String, dynamic>{};
+  void put(String draftKey, String metaKey) {
+    final value = (meta[metaKey] ?? '').toString().trim();
+    if (value.isNotEmpty) out[draftKey] = value;
+  }
+
+  put('brand', 'brand');
+  put('model', 'model');
+  put('generation', 'generation');
+  put('restyling', 'restyling');
+  put('carPhotoUrl', 'photoUrl');
+  put('carFrames', 'frames');
+  return out;
 }
 
 /// Maps a server inspection-element `{id, elementType, file:{filename,

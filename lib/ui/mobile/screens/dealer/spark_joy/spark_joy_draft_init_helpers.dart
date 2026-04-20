@@ -85,6 +85,28 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _restylingLabel = _read(draft, 'restyling');
     _carPhotoUrl = _read(draft, 'carPhotoUrl');
     _carFrames = _read(draft, 'carFrames');
+    // Draft-shape key + fallback to the characteristicsStep.* path the
+    // server response uses. Lets hydrateCompletedReport piggy-back on
+    // `_normalizeSpecialistReportMap` without extra flattening.
+    final rawFrameId = draft['modelGenerationRestylingFrameId'];
+    final characteristics = draft['characteristicsStep'];
+    final frameIdFromCar = rawFrameId is int
+        ? rawFrameId
+        : (rawFrameId is num
+              ? rawFrameId.toInt()
+              : int.tryParse('${rawFrameId ?? ''}'));
+    final frameIdFromChar = characteristics is Map
+        ? (characteristics['modelGenerationRestylingFrameId'] is int
+              ? characteristics['modelGenerationRestylingFrameId'] as int
+              : int.tryParse(
+                  '${characteristics['modelGenerationRestylingFrameId'] ?? ''}',
+                ))
+        : null;
+    _modelGenerationRestylingFrameId = (frameIdFromCar != null && frameIdFromCar > 0)
+        ? frameIdFromCar
+        : ((frameIdFromChar != null && frameIdFromChar > 0)
+              ? frameIdFromChar
+              : null);
     _adLinkController = TextEditingController(
       text: _read(draft, 'adLink', fallback: _read(assignment, 'listingUrl')),
     );

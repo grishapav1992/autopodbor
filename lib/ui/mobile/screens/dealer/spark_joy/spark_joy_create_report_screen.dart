@@ -137,6 +137,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late String _restylingLabel;
   late String _carPhotoUrl;
   late String _carFrames;
+  int? _modelGenerationRestylingFrameId;
 
   late final TextEditingController _mileageController;
   late final TextEditingController _engineVolumeController;

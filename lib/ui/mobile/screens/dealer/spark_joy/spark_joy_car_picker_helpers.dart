@@ -114,6 +114,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
           if (restyling.yearEnd != null) restyling.yearEnd.toString(),
         ].join('-');
         final frames = restyling.frames.map((item) => item.frame).join(', ');
+        final frameIds = restyling.frames
+            .map((item) => item.id)
+            .where((id) => id > 0)
+            .toList(growable: false);
         final photo = restyling.photos.firstWhere(
           (item) =>
               item.urlX2.trim().isNotEmpty || item.urlX1.trim().isNotEmpty,
@@ -131,16 +135,22 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
           label: labelParts.isEmpty ? 'Рестайлинг' : labelParts.join(' · '),
           frames: frames,
           photoUrl: photoUrl,
+          frameIds: frameIds,
         );
       }).toList();
 
       if (restylings.isEmpty) {
         final frames = source.frames.map((item) => item.frame).join(', ');
+        final frameIds = source.frames
+            .map((item) => item.id)
+            .where((id) => id > 0)
+            .toList(growable: false);
         restylings.add(
           _CarCatalogRestyling(
             label: 'Базовая версия',
             frames: frames,
             photoUrl: '',
+            frameIds: frameIds,
           ),
         );
       }
@@ -298,6 +308,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
         restyling: restyling.label,
         frames: restyling.frames,
         photoUrl: restyling.photoUrl,
+        frameId: restyling.frameIds.isNotEmpty
+            ? restyling.frameIds.first
+            : null,
       );
     }
 
@@ -888,6 +901,28 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       _restylingLabel = selection.restyling;
       _carFrames = selection.frames;
       _carPhotoUrl = selection.photoUrl;
+      _modelGenerationRestylingFrameId = selection.frameId;
     });
+    // Persist a frame-id → metadata entry so the completed-report
+    // hydrator can restore brand/model/generation/restyling/photoUrl
+    // when the user (or another device owned by them) opens the same
+    // finalized report later. Fire-and-forget — a failure just means
+    // the hydrator will show placeholders.
+    final frameId = selection.frameId;
+    if (frameId != null && frameId > 0) {
+      unawaited(
+        SparkJoyStorage.upsertFrameCatalogEntry(
+          frameId: frameId,
+          entry: <String, dynamic>{
+            'brand': selection.brand,
+            'model': selection.model,
+            'generation': selection.generation,
+            'restyling': selection.restyling,
+            'frames': selection.frames,
+            'photoUrl': selection.photoUrl,
+          },
+        ),
+      );
+    }
   }
 }
