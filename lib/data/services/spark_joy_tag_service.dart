@@ -99,6 +99,29 @@ class SparkJoyTagService {
     required String name,
   }) => _idByKey[_composeKey(step: step, section: section, name: name)];
 
+  /// Reverse lookup: given a server tag id, return the human-readable
+  /// name. Used by the completed-report hydrator to turn `seriousDamageTags:
+  /// [int]` from the server back into UI tag labels. Linear scan — the
+  /// cache is small (hundreds, not thousands) so this is fine.
+  String? nameForId(int id) {
+    if (id <= 0) return null;
+    for (final entry in _idByKey.entries) {
+      if (entry.value != id) continue;
+      final parts = entry.key.split('|');
+      // Composite key is "step|section|name" — name is the last segment.
+      if (parts.isEmpty) continue;
+      return parts.last;
+    }
+    return null;
+  }
+
+  /// Returns every cached tag name (any bucket). Intended for the
+  /// completed-report hydrator when matching display names and for tests.
+  List<String> get allCachedNames => _idByKey.keys
+      .map((key) => key.split('|').last)
+      .toSet()
+      .toList(growable: false);
+
   /// Read-only view of the current cache. Keys are the composite
   /// `"step|section|name"` format — see [_composeKey]. Intended for tests.
   @visibleForTesting

@@ -51,39 +51,32 @@ void main() {
       expect(drafts.last['id'], 'd2');
     });
 
-    test(
-      'moveDraftToCompleted removes draft and does not keep completed locally',
-      () async {
+    test('purgeDraftAfterUpload removes the draft', () async {
       await SparkJoyStorage.upsertDraft(<String, dynamic>{
         'id': 'draft_42',
         'name': 'Черновик',
       });
 
-      await SparkJoyStorage.moveDraftToCompleted(
-        draftId: 'draft_42',
-        completedReport: <String, dynamic>{
-          'id': 'report_42',
-          'name': 'Готовый отчет',
-        },
-      );
+      await SparkJoyStorage.purgeDraftAfterUpload('draft_42');
 
       final drafts = await SparkJoyStorage.loadDrafts();
-      final completed = await SparkJoyStorage.loadCompleted();
       expect(drafts.where((d) => d['id'] == 'draft_42'), isEmpty);
-      expect(completed, isEmpty);
     });
 
-    test('ensureSeedData clears completed cache', () async {
+    test('migrateLegacyKeys removes the old completed cache', () async {
       final pref = UserSimplePreferences.pref!;
       await pref.setStringList('spark_joy_completed_v1', <String>[
-        jsonEncode(<String, dynamic>{'id': 'spark_report_seed_1', 'name': 'old'}),
-        jsonEncode(<String, dynamic>{'id': 'report_keep', 'name': 'keep'}),
+        jsonEncode(<String, dynamic>{'id': 'r1', 'name': 'old'}),
       ]);
+      await pref.setString(
+        'spark_joy_completed_synced_at_v1',
+        '2026-04-20T12:00:00.000Z',
+      );
 
-      await SparkJoyStorage.ensureSeedData();
-      final completed = await SparkJoyStorage.loadCompleted();
+      await SparkJoyStorage.migrateLegacyKeys();
 
-      expect(completed, isEmpty);
+      expect(pref.containsKey('spark_joy_completed_v1'), isFalse);
+      expect(pref.containsKey('spark_joy_completed_synced_at_v1'), isFalse);
     });
   });
 }

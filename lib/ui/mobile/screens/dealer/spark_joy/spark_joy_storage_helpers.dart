@@ -2485,6 +2485,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
 
     _ensureSummaryAutofill(force: true);
+    // Online-only: after finalizing on the server we don't persist a
+    // local copy — the list reloads via Storage.GetSpecialistReport and
+    // a tap opens via Storage.ViewSpecialistReport + ObjectStorage.
+    // GetTemporaryViewUrl. The payload still carries everything needed
+    // to build the PrepareSpecialistReport request.
     final completed = _buildCompletedReport();
     final uploaded = await _uploadReportToBackend(completed);
     if (!uploaded) {
@@ -2622,7 +2627,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         payload['reportId'] = backendReportId.toString();
         _backendUploadState['reportId'] = backendReportId.toString();
       }
-      await SparkJoyStorage.upsertCompleted(Map<String, dynamic>.from(payload));
+      // Online-only: we no longer persist a local copy of the completed
+      // report. The reports list will pick it up on the next
+      // Storage.GetSpecialistReport fetch.
       _backendUploadState = <String, dynamic>{};
       await _persistBackendUploadStateToDraft();
       _setBackendUploadProgress(

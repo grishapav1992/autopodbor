@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_data.dart';
@@ -83,12 +84,24 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   Future<void> _loadReportCounts() async {
+    // Drafts are local; completed is online-only now. If the network is
+    // down we just show 0 rather than stale cached numbers.
     final drafts = await SparkJoyStorage.loadDrafts();
-    final completed = await SparkJoyStorage.loadCompleted();
+    var completedCount = 0;
+    try {
+      final completed = await storage_api.StorageApi.getSpecialistReport(
+        page: 1,
+        limit: 100,
+        isDraft: false,
+      );
+      completedCount = completed.length;
+    } catch (_) {
+      completedCount = 0;
+    }
     if (!mounted) return;
     setState(() {
       _localDraftCount = drafts.length;
-      _localCompletedCount = completed.length;
+      _localCompletedCount = completedCount;
     });
   }
 

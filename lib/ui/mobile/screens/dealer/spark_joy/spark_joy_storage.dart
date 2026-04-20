@@ -58,8 +58,10 @@ class SparkJoyStorage {
   static const String _hiddenCompanyStaffIdsKey =
       'spark_joy_hidden_company_staff_ids_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
-  static const String _completedKey = 'spark_joy_completed_v1';
-  static const String _completedSyncedAtKey =
+  // Legacy keys kept only for the one-time migration in [migrateLegacyKeys].
+  // Completed reports are now online-only (Storage.GetSpecialistReport).
+  static const String _legacyCompletedKey = 'spark_joy_completed_v1';
+  static const String _legacyCompletedSyncedAtKey =
       'spark_joy_completed_synced_at_v1';
   static const String _userTagsKey = 'spark_joy_user_tags_v1';
   static const String _userTagsSyncedAtKey = 'spark_joy_user_tags_synced_at_v1';
@@ -265,35 +267,27 @@ class SparkJoyStorage {
   }
 
   static Future<void> ensureSeedData() async {
-    // Intentionally keep completed cache for fast first paint after app restart.
+    // Completed reports are online-only — clear any leftover cache
+    // from previous app versions so the "Завершённые" tab always
+    // reflects the server truth.
+    await migrateLegacyKeys();
   }
 
   static Future<List<Map<String, dynamic>>> loadDrafts() async {
     return _readList(_draftsKey);
   }
 
-  static Future<List<Map<String, dynamic>>> loadCompleted() async {
-    return _readList(_completedKey);
-  }
-
-  static Future<void> replaceCompleted(
-    List<Map<String, dynamic>> reports,
-  ) async {
-    await _writeList(_completedKey, reports);
+  /// Deletes any leftover local completed-reports cache from previous
+  /// versions of the app. Completed reports are online-only now.
+  static Future<void> migrateLegacyKeys() async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
-    await pref.setString(
-      _completedSyncedAtKey,
-      DateTime.now().toIso8601String(),
-    );
-  }
-
-  static Future<DateTime?> completedSyncedAt() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return null;
-    final raw = pref.getString(_completedSyncedAtKey);
-    if (raw == null || raw.trim().isEmpty) return null;
-    return DateTime.tryParse(raw);
+    if (pref.containsKey(_legacyCompletedKey)) {
+      await pref.remove(_legacyCompletedKey);
+    }
+    if (pref.containsKey(_legacyCompletedSyncedAtKey)) {
+      await pref.remove(_legacyCompletedSyncedAtKey);
+    }
   }
 
   static Future<void> upsertDraft(Map<String, dynamic> draft) async {
@@ -311,37 +305,6 @@ class SparkJoyStorage {
       _draftsKey,
       drafts.where((d) => d['id']?.toString() != id).toList(),
     );
-  }
-
-  static Future<void> upsertCompleted(Map<String, dynamic> report) async {
-    final completed = await loadCompleted();
-    final id = (report['id'] ?? report['reportId'] ?? '').toString();
-    if (id.isEmpty) return;
-    final filtered = completed.where((r) {
-      final rid = (r['id'] ?? r['reportId'] ?? '').toString();
-      return rid != id;
-    }).toList();
-    filtered.insert(0, report);
-    await replaceCompleted(filtered);
-  }
-
-  static Future<void> deleteCompleted(String id) async {
-    final normalized = id.trim();
-    if (normalized.isEmpty) return;
-    final completed = await loadCompleted();
-    final filtered = completed.where((r) {
-      final rid = (r['id'] ?? r['reportId'] ?? '').toString();
-      return rid != normalized;
-    }).toList();
-    await replaceCompleted(filtered);
-  }
-
-  static Future<void> moveDraftToCompleted({
-    required String draftId,
-    required Map<String, dynamic> completedReport,
-  }) async {
-    // Kept for backward compatibility: locally we now store drafts only.
-    await deleteDraft(draftId);
   }
 
   static Future<void> purgeDraftAfterUpload(String draftId) async {
@@ -419,10 +382,4 @@ class SparkJoyStorage {
     return DateTime.tryParse(raw);
   }
 
-  static Future<void> clearCompletedCache() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return;
-    await pref.remove(_completedKey);
-    await pref.remove(_completedSyncedAtKey);
-  }
 }

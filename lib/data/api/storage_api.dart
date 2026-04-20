@@ -853,6 +853,11 @@ class StorageApi {
     final base = <String, dynamic>{...source, ...report};
     final carStep = _asMap(base['carStep']);
     final characteristicsStep = _asMap(base['characteristicsStep']);
+    final documentReconciliationStep = _asMap(
+      base['documentReconciliationStep'],
+    );
+    final inspectionStep = _asMap(base['inspectionStep']);
+    final testDriveStep = _asMap(base['testDriveStep']);
     final resultStep = _asMap(base['resultStep']);
 
     final normalized = Map<String, dynamic>.from(base);
@@ -956,6 +961,100 @@ class StorageApi {
       'expertName',
     ]);
     if (inspector.isNotEmpty) normalized['inspector'] = inspector;
+
+    // ---- carStep → flat draft keys the editor hydration reads ----
+    if (carStep['unreadableVin'] is bool) {
+      normalized['vinUnreadable'] = carStep['unreadableVin'];
+    }
+    if (carStep['visuallyMileageNotMatchCondition'] is bool) {
+      normalized['mileageMismatch'] = carStep['visuallyMileageNotMatchCondition'];
+    }
+    final cityInspection = _extractString(carStep, ['cityInspection']);
+    if (cityInspection.isNotEmpty) {
+      normalized['inspectionCity'] = cityInspection;
+    }
+    final dateInspection2 = _extractString(carStep, ['dateInspection']);
+    if (dateInspection2.isNotEmpty) {
+      normalized['inspectionDate'] = dateInspection2;
+    }
+    final uriListing = _extractString(carStep, ['uriListing']);
+    if (uriListing.isNotEmpty) normalized['adLink'] = uriListing;
+
+    // ---- characteristicsStep → flat ----
+    final color = _extractString(characteristicsStep, ['color']);
+    if (color.isNotEmpty) normalized['color'] = color;
+    final equipment = _extractString(characteristicsStep, ['equipment']);
+    if (equipment.isNotEmpty) normalized['trim'] = equipment;
+    if (engineVolume.isNotEmpty) normalized['engineVolume'] = engineVolume;
+    if (engineType.isNotEmpty) normalized['engineType'] = engineType;
+    if (transmission.isNotEmpty) normalized['gearboxType'] = transmission;
+    if (drive.isNotEmpty) normalized['driveType'] = drive;
+
+    // ---- documentReconciliationStep → flat ----
+    final ownersCountRaw = documentReconciliationStep['ownersCount'];
+    if (ownersCountRaw != null) {
+      normalized['ownersCount'] = ownersCountRaw.toString();
+    }
+    if (documentReconciliationStep['ownerFullNameMatchWithPtsOrSts'] is bool) {
+      normalized['docsOwnerMatch'] =
+          documentReconciliationStep['ownerFullNameMatchWithPtsOrSts'];
+    }
+    if (documentReconciliationStep['vinOnBodyMatchWithPtsOrSts'] is bool) {
+      normalized['docsVinMatch'] =
+          documentReconciliationStep['vinOnBodyMatchWithPtsOrSts'];
+    }
+    if (documentReconciliationStep['engineModelMatchWithPtsOrSts'] is bool) {
+      normalized['docsEngineMatch'] =
+          documentReconciliationStep['engineModelMatchWithPtsOrSts'];
+    }
+
+    // ---- inspectionStep → paint thickness defaults ----
+    final bodyFrom = _asInt(inspectionStep['bodyPaintworkThicknessFrom']);
+    final bodyTo = _asInt(inspectionStep['bodyPaintworkThicknessTo']);
+    if (bodyFrom != null) normalized['bodyPaintFrom'] = bodyFrom;
+    if (bodyTo != null) normalized['bodyPaintTo'] = bodyTo;
+    final structFrom = _asInt(
+      inspectionStep['bodyReinforcementPaintworkThicknessFrom'],
+    );
+    final structTo = _asInt(
+      inspectionStep['bodyReinforcementPaintworkThicknessTo'],
+    );
+    if (structFrom != null) normalized['structPaintFrom'] = structFrom;
+    if (structTo != null) normalized['structPaintTo'] = structTo;
+
+    // ---- testDriveStep → flat ----
+    if (testDriveStep['testDriveEngineIsWorkingProperly'] is bool) {
+      normalized['tdEngineOk'] =
+          testDriveStep['testDriveEngineIsWorkingProperly'];
+    }
+    if (testDriveStep['testDriveTransmissionIsWorkingProperly'] is bool) {
+      normalized['tdGearboxOk'] =
+          testDriveStep['testDriveTransmissionIsWorkingProperly'];
+    }
+    if (testDriveStep['testDriveSteeringWheelIsWorkingProperly'] is bool) {
+      normalized['tdSteeringOk'] =
+          testDriveStep['testDriveSteeringWheelIsWorkingProperly'];
+    }
+    if (testDriveStep['testDriveSuspensionInDriveIsWorkingProperly'] is bool) {
+      normalized['tdRideOk'] =
+          testDriveStep['testDriveSuspensionInDriveIsWorkingProperly'];
+    }
+    if (testDriveStep['testDriveBrakesInDriveIsWorkingProperly'] is bool) {
+      normalized['tdBrakeOk'] =
+          testDriveStep['testDriveBrakesInDriveIsWorkingProperly'];
+    }
+    final tdNote = _extractString(testDriveStep, ['testDriveNote']);
+    if (tdNote.isNotEmpty) normalized['tdNote'] = tdNote;
+
+    // ---- resultStep → summary note ----
+    final summaryNote = _extractString(resultStep, [
+      'summaryInspectionNote',
+      'summary',
+    ]);
+    if (summaryNote.isNotEmpty) {
+      normalized['summaryNote'] = summaryNote;
+      normalized['summary'] = summaryNote;
+    }
 
     return normalized;
   }
@@ -1084,6 +1183,73 @@ class StorageApi {
     final result = _asMap(data['result']);
     final url = _extractString(result, ['url', 'shareUrl', 'link']);
     return SpecialistReportShareUrlResult(url: url, result: result);
+  }
+
+  /// Returns a presigned GET URL for viewing / downloading a file from S3.
+  /// Default TTL is 24 hours (server-side default). Empty string on failure.
+  static Future<String> getTemporaryViewUrl({
+    required String reportNumber,
+    required String filename,
+    int? expiresInSeconds,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    if (reportNumber.trim().isEmpty || filename.trim().isEmpty) return '';
+    final params = <String, dynamic>{
+      'reportNumber': reportNumber,
+      'filename': filename,
+      if (expiresInSeconds != null) 'expiresInSeconds': expiresInSeconds,
+    };
+    try {
+      final data = await _postRpc(
+        method: 'ObjectStorage.GetTemporaryViewUrl',
+        params: params,
+        timeout: timeout,
+      );
+      return _extractString(_asMap(data['result']), ['url', 'signedUrl']);
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// Resolves presigned view URLs for every `(reportNumber, filename)` pair
+  /// in parallel, capped at [concurrency] in-flight requests. Returns a
+  /// map keyed by filename; missing / failed entries are absent. Duplicate
+  /// filenames across different `reportNumber` values use the last winner.
+  static Future<Map<String, String>> getTemporaryViewUrlsBatch({
+    required String reportNumber,
+    required Iterable<String> filenames,
+    int concurrency = 6,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final unique = filenames
+        .map((f) => f.trim())
+        .where((f) => f.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
+    if (unique.isEmpty) return const <String, String>{};
+
+    final result = <String, String>{};
+    var cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        final idx = cursor;
+        if (idx >= unique.length) return;
+        cursor = idx + 1;
+        final filename = unique[idx];
+        final url = await getTemporaryViewUrl(
+          reportNumber: reportNumber,
+          filename: filename,
+          timeout: timeout,
+        );
+        if (url.isNotEmpty) result[filename] = url;
+      }
+    }
+
+    final workerCount = concurrency < unique.length
+        ? concurrency
+        : unique.length;
+    await Future.wait(List.generate(workerCount, (_) => worker()));
+    return result;
   }
 
   static Future<MultipartUploadSession> initiateMultipartUpload({

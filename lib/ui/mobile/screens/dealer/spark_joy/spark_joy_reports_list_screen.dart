@@ -8,6 +8,9 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
+
+import 'spark_joy_completed_report_hydrator.dart';
 import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_i18n.dart';
@@ -118,7 +121,14 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       if (remote.isEmpty) {
         throw StateError('empty payload');
       }
-      fetched = {...report, ...remote};
+      // Online-only path: server response is the source of truth. Hydrate
+      // into editor draft-shape with presigned view URLs + tag names.
+      final tagService = SparkJoyTagService();
+      await tagService.hydrateFromCache();
+      fetched = await hydrateCompletedReport(
+        server: remote,
+        tagService: tagService,
+      );
     } catch (_) {
       fetched = null;
     } finally {
@@ -166,8 +176,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       );
       if (resolved == null) return null;
       report['id'] = resolved.toString();
-      final updated = <String, dynamic>{...report, 'id': resolved.toString()};
-      await SparkJoyStorage.upsertCompleted(updated);
       return resolved;
     } catch (_) {
       return null;
@@ -308,7 +316,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         'shareUrl': url,
         'shareUrlCreatedAt': DateTime.now().toIso8601String(),
       };
-      await SparkJoyStorage.upsertCompleted(updated);
+      // Completed reports are online-only — keep the share URL in
+      // in-memory controller state only. A later pull-to-refresh or cold
+      // start will re-resolve via Storage.CreateSpecialistReportShareUrl.
       _controller.patchCompletedReportById(reportId, updated);
       if (!mounted) return;
       await _showShareLinkSheet(url);
@@ -990,26 +1000,19 @@ class _SparkJoyReportsListController extends ChangeNotifier {
     _completedSyncFailed = false;
     _safeNotify();
     try {
-      // Load drafts + the cached completed snapshot in parallel so the
-      // first paint is instant regardless of network state. Stale-while-
-      // revalidate: we show whatever the last successful server fetch
-      // wrote to [SparkJoyStorage.replaceCompleted] while
-      // [_refreshCompleted] re-checks the server in the background.
-      final results = await Future.wait([
-        SparkJoyStorage.loadDrafts(),
-        SparkJoyStorage.loadCompleted(),
-      ]);
+      // Drafts still live locally (they're work-in-progress). Completed
+      // reports are online-only now — no local cache fallback, no stale-
+      // while-revalidate. If the network is down the completed list is
+      // empty and the user gets a retry hint.
+      _drafts = (await SparkJoyStorage.loadDrafts())
+          .where(_isVisibleDraft)
+          .toList();
       if (_disposed || token != _loadToken) return;
-      final allDrafts = results[0];
-      final cachedCompleted = results[1];
-      _drafts = allDrafts.where(_isVisibleDraft).toList();
-      _completed = _sortCompleted(cachedCompleted);
+      _completed = const <Map<String, dynamic>>[];
       _loading = false;
       _loadError = null;
       _safeNotify();
 
-      // Fire the remote refresh but don't await it — the user can already
-      // see + interact with the cached list while we revalidate.
       unawaited(_refreshCompleted(token: token));
     } catch (_) {
       if (_disposed || token != _loadToken) return;
@@ -1053,14 +1056,12 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       _completedLoading = false;
       _completedSyncFailed = false;
       _safeNotify();
-      // Persist the server snapshot so the next cold start serves fresh
-      // data from cache and the profile's "Отчётов" counter stays in sync.
-      await SparkJoyStorage.replaceCompleted(_completed);
     } catch (_) {
       if (_disposed || effectiveToken != _loadToken) return;
-      // Keep the cached list — user can still open existing reports or
-      // generate share links while offline. Surface the failure via
-      // [_completedSyncFailed] so the UI can show a subtle retry hint.
+      // Online-only: no cached fallback. Clear the list so we don't show
+      // stale data from a prior run, and surface the failure via
+      // [_completedSyncFailed] so the UI can render a retry hint.
+      _completed = const <Map<String, dynamic>>[];
       _completedLoading = false;
       _completedSyncFailed = true;
       _safeNotify();

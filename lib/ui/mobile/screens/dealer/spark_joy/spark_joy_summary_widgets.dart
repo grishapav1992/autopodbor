@@ -614,9 +614,13 @@ Widget _buildSparkSummaryExpertConclusionCard(
   _SparkJoyCreateReportScreenState s, {
   bool needsAttention = false,
 }) {
+  final isReadOnly = s.widget.readOnly;
+  final conclusion = s._expertController.text.trim();
   return s._card(
-    borderColor: needsAttention ? kYellowColor.withValues(alpha: 0.6) : null,
-    backgroundColor: needsAttention
+    borderColor: !isReadOnly && needsAttention
+        ? kYellowColor.withValues(alpha: 0.6)
+        : null,
+    backgroundColor: !isReadOnly && needsAttention
         ? kYellowColor.withValues(alpha: 0.06)
         : null,
     child: Column(
@@ -625,48 +629,72 @@ Widget _buildSparkSummaryExpertConclusionCard(
         s._sectionHeading(
           'Итог специалиста',
           icon: Icons.rate_review_outlined,
-          subtitle: 'Финальный комментарий перед выгрузкой отчёта',
+          subtitle: isReadOnly
+              ? 'Финальный комментарий специалиста'
+              : 'Финальный комментарий перед выгрузкой отчёта',
         ),
-        s._commentInputPanel(
-          controller: s._expertController,
-          hint:
-              'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
-          isDictating: s._expertIsDictating,
-          onToggleDictation: () async {
-            if (s._expertIsDictating) {
-              await s._stopExpertDictation();
-            } else {
-              await s._startExpertDictation();
-            }
-          },
-          onAiFormat: () {
-            s._formatCommentWithAi(s._expertController);
-            s._markDraftDirty();
-            s._setStateSafely(() {});
-          },
-        ),
-        const SizedBox(height: SparkSpace.md),
-        s._commentAudioFilesBlock(
-          files: s._expertAudioFiles,
-          playingIndex: s._expertCommentPlayingAudioIndex,
-          isRecording: s._isCommentRecording('expert_comment'),
-          recordingLabel: s._commentRecordingLabel('expert_comment'),
-          onToggleRecording: s._toggleExpertCommentRecording,
-          onTogglePlay: s._toggleExpertCommentAudioPlayback,
-          onRemoveAt: (index) {
-            s._setStateSafely(() {
-              final next = [...s._expertAudioFiles]..removeAt(index);
-              s._expertAudioFiles = next;
-              if (s._expertCommentPlayingAudioIndex == index) {
-                s._expertCommentPlayingAudioIndex = -1;
-                unawaited(s._sectionCommentAudioPlayer.stop());
-              } else if (s._expertCommentPlayingAudioIndex > index) {
-                s._expertCommentPlayingAudioIndex -= 1;
+        if (isReadOnly)
+          // Completed reports are non-editable: render the conclusion as
+          // static text (mirrors the read-only treatment of the summary
+          // note card above). No dictation / AI format / audio controls.
+          SparkCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.lg,
+              vertical: SparkSpace.lg,
+            ),
+            radius: SparkRadius.md,
+            backgroundColor: kInputBgColor,
+            child: MyText(
+              text: conclusion.isEmpty
+                  ? 'Заключение не указано'
+                  : conclusion,
+              size: SparkTextSize.bodyLg,
+              color: conclusion.isEmpty ? kGreyColor : kTertiaryColor,
+              lineHeight: 1.35,
+            ),
+          )
+        else ...[
+          s._commentInputPanel(
+            controller: s._expertController,
+            hint:
+                'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
+            isDictating: s._expertIsDictating,
+            onToggleDictation: () async {
+              if (s._expertIsDictating) {
+                await s._stopExpertDictation();
+              } else {
+                await s._startExpertDictation();
               }
-            });
-            s._markDraftDirty();
-          },
-        ),
+            },
+            onAiFormat: () {
+              s._formatCommentWithAi(s._expertController);
+              s._markDraftDirty();
+              s._setStateSafely(() {});
+            },
+          ),
+          const SizedBox(height: SparkSpace.md),
+          s._commentAudioFilesBlock(
+            files: s._expertAudioFiles,
+            playingIndex: s._expertCommentPlayingAudioIndex,
+            isRecording: s._isCommentRecording('expert_comment'),
+            recordingLabel: s._commentRecordingLabel('expert_comment'),
+            onToggleRecording: s._toggleExpertCommentRecording,
+            onTogglePlay: s._toggleExpertCommentAudioPlayback,
+            onRemoveAt: (index) {
+              s._setStateSafely(() {
+                final next = [...s._expertAudioFiles]..removeAt(index);
+                s._expertAudioFiles = next;
+                if (s._expertCommentPlayingAudioIndex == index) {
+                  s._expertCommentPlayingAudioIndex = -1;
+                  unawaited(s._sectionCommentAudioPlayer.stop());
+                } else if (s._expertCommentPlayingAudioIndex > index) {
+                  s._expertCommentPlayingAudioIndex -= 1;
+                }
+              });
+              s._markDraftDirty();
+            },
+          ),
+        ],
       ],
     ),
   );
