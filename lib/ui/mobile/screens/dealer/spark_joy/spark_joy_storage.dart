@@ -100,6 +100,16 @@ class SparkJoyStorage {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
     await pref.setBool(_loggedInKey, false);
+    // Wipe every per-user cache so switching accounts on the same
+    // device (e.g. specialist → company staff sign-in) doesn't leak
+    // the previous owner's data. Drafts, the frame-id → car catalog,
+    // the user-tag snapshot, and the pending-deletes queue are all
+    // owned by whoever signed in and meaningless to the next user.
+    await pref.remove(_draftsKey);
+    await pref.remove(_frameCatalogKey);
+    await pref.remove(_userTagsKey);
+    await pref.remove(_userTagsSyncedAtKey);
+    await pref.remove(_pendingTagDeletesKey);
   }
 
   static Future<String?> currentBusinessType() async {

@@ -12,6 +12,8 @@
 // (`_CreateRequestCacheEntry`, `_TokenPair`) remain in storage_api.dart
 // because they are implementation details of the StorageApi class.
 
+import 'package:flutter/foundation.dart';
+
 class BrandCatalog {
   final List<BrandItem> items;
   final List<String> names;
@@ -203,6 +205,16 @@ enum UserTagType {
     // still map correctly.
     if (text == 'non_serious' || text == 'nonserious') {
       return UserTagType.nonSerious;
+    }
+    // Empty / null arrives for system tags that the server shipped
+    // without a stored severity. Treat those silently as nonSerious.
+    if (text.isNotEmpty) {
+      // Anything else is a contract violation — log so we notice
+      // server-side drift (new enum value, typo) before it stays
+      // mislabeled in the UI.
+      debugPrint(
+        '[UserTagType] unknown severity "$raw" — defaulting to nonSerious',
+      );
     }
     return UserTagType.nonSerious;
   }
