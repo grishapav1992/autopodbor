@@ -243,7 +243,11 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final destinations = _navDestinations();
     final index = _index >= tabs.length ? 0 : _index;
 
-    const navHeight = 72.0;
+    // Trimmed 72 → 60 based on user feedback — the frosted nav was
+    // visibly taller than iOS's native tab bar and read as "wasteful".
+    // Pairs with bigger icons/labels below so the bar feels denser
+    // even at reduced height.
+    const navHeight = 60.0;
 
     return Scaffold(
       // Keep extendBody for the frosted BottomNav (it floats over the
@@ -338,7 +342,9 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 labelTextStyle: WidgetStateProperty.resolveWith((states) {
                   final selected = states.contains(WidgetState.selected);
                   return TextStyle(
-                    fontSize: SparkTextSize.caption,
+                    // Bumped caption → body so labels are legible at
+                    // arm's length; weight pops for the selected item.
+                    fontSize: SparkTextSize.body,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                     color: selected ? kSecondaryColor : kGreyColor,
                   );
@@ -346,7 +352,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 iconTheme: WidgetStateProperty.resolveWith((states) {
                   final selected = states.contains(WidgetState.selected);
                   return IconThemeData(
-                    size: SparkSize.iconSm,
+                    // Bumped iconSm (16) → iconLg (20). Matches
+                    // standard Material NavigationBar metrics; the old
+                    // 16 looked "tiny" against the bar's width.
+                    size: SparkSize.iconLg,
                     color: selected ? kSecondaryColor : kGreyColor,
                   );
                 }),
