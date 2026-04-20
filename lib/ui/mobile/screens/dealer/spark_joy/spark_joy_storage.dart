@@ -61,6 +61,10 @@ class SparkJoyStorage {
   static const String _completedKey = 'spark_joy_completed_v1';
   static const String _completedSyncedAtKey =
       'spark_joy_completed_synced_at_v1';
+  static const String _userTagsKey = 'spark_joy_user_tags_v1';
+  static const String _userTagsSyncedAtKey = 'spark_joy_user_tags_synced_at_v1';
+  static const String _pendingTagDeletesKey =
+      'spark_joy_pending_tag_deletes_v1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
@@ -374,6 +378,45 @@ class SparkJoyStorage {
       encoded = _encodeListForPrefs(values);
     }
     await pref.setStringList(key, encoded);
+  }
+
+  /// Loads the cached user-tag catalog (id + name + step + section + type).
+  /// Populated by [replaceUserTags] after a successful `Storage.GetUserTags`
+  /// fan-out. Enables the report flow to resolve tag names → server IDs
+  /// offline and after app restarts.
+  static Future<List<Map<String, dynamic>>> loadUserTags() async {
+    return _readList(_userTagsKey);
+  }
+
+  static Future<void> replaceUserTags(List<Map<String, dynamic>> tags) async {
+    await _writeList(_userTagsKey, tags);
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    await pref.setString(
+      _userTagsSyncedAtKey,
+      DateTime.now().toIso8601String(),
+    );
+  }
+
+  /// Queue of tag deletions that failed offline. Each entry:
+  /// `{name, step, section}`. Flushed by [SparkJoyTagService] once the
+  /// network returns and the user-tag catalog is re-synced.
+  static Future<List<Map<String, dynamic>>> loadPendingTagDeletes() async {
+    return _readList(_pendingTagDeletesKey);
+  }
+
+  static Future<void> replacePendingTagDeletes(
+    List<Map<String, dynamic>> items,
+  ) async {
+    await _writeList(_pendingTagDeletesKey, items);
+  }
+
+  static Future<DateTime?> userTagsSyncedAt() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_userTagsSyncedAtKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    return DateTime.tryParse(raw);
   }
 
   static Future<void> clearCompletedCache() async {

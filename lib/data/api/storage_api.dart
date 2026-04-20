@@ -1648,37 +1648,26 @@ class StorageApi {
   // Tag management
   // ---------------------------------------------------------------------------
 
-  // NOTE: `Storage.RemoveUserTag` and `Storage.DeleteUserTag` are not yet
-  // published in the OpenRPC Doc (as of 2026-04-17). The backend team confirmed
-  // these endpoints will be added later. The stubs below keep the call sites
-  // working and will start succeeding once the server exposes the methods;
-  // until then they surface a `methodNotFound` error that callers already
-  // swallow in best-effort blocks.
-
-  /// Removes a user tag from a report (unlinks it).
+  /// Deletes a user-owned tag by id.
   ///
-  /// Pending backend support — not yet present in OpenRPC Doc.
+  /// Only tags owned by the caller can be removed; shared/system tags
+  /// (user_id = null) return an error.
+  ///
+  /// [id] — tag id (required, ≥1).
+  /// [step] — required: car, characteristics, document_reconciliation,
+  /// legal_review, inspection, test_drive, result.
+  /// [section] — only for step=inspection.
   static Future<void> removeUserTag({
-    required int tagId,
+    required int id,
+    required String step,
+    String? section,
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    final params = <String, dynamic>{'id': id, 'step': step};
+    if (section != null) params['section'] = section;
     await _postRpc(
       method: 'Storage.RemoveUserTag',
-      params: {'tagId': tagId},
-      timeout: timeout,
-    );
-  }
-
-  /// Permanently deletes a user tag.
-  ///
-  /// Pending backend support — not yet present in OpenRPC Doc.
-  static Future<void> deleteUserTag({
-    required int tagId,
-    Duration timeout = const Duration(seconds: 12),
-  }) async {
-    await _postRpc(
-      method: 'Storage.DeleteUserTag',
-      params: {'tagId': tagId},
+      params: params,
       timeout: timeout,
     );
   }

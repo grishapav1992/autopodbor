@@ -86,12 +86,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   /// Refreshes the tag cache from the server. Forwards already-picked
   /// tag IDs so results come back sorted by relevance (changelog
   /// 2026-04-15 — see SparkJoyTagService.loadTagIdsFromServer).
-  Future<void> _loadTagIdsFromServer() {
+  Future<void> _loadTagIdsFromServer() async {
+    // Seed from persisted catalog first — makes id resolution work offline
+    // and before the server fan-out completes.
+    await _tagService.hydrateFromCache();
     final inspectionSelected = _collectSelectedTagIdsByApiSection();
     final genericInspection = <int>{
       for (final ids in inspectionSelected.values) ...ids,
     }.toList(growable: false);
-    return _tagService.loadTagIdsFromServer(
+    await _tagService.loadTagIdsFromServer(
       selectedInspectionIdsBySection: inspectionSelected,
       genericInspectionSelectedIds: genericInspection,
       testDriveSelectedIds: _tagService.resolveTagIds(
@@ -156,6 +159,19 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return _tagService.addTestDriveTag(
       tagName: tagName,
       severity: severity,
+    );
+  }
+
+  /// Fire-and-forget delete for a user-created inspection tag. Called when
+  /// the user taps the X affordance in the inspection tag editor. The call
+  /// is best-effort: local UI state is updated regardless of server result.
+  Future<bool> _removeInspectionCustomTag({
+    required String groupKey,
+    required String tagName,
+  }) {
+    return _tagService.removeInspectionTag(
+      groupKey: groupKey,
+      tagName: tagName,
     );
   }
 

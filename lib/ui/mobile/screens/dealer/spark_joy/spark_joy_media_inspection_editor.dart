@@ -1025,6 +1025,12 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                               if (tag.isCustom)
                                                                 InkWell(
                                                                   onTap: () {
+                                                                    unawaited(
+                                                                      _removeInspectionCustomTag(
+                                                                        groupKey: groupKey,
+                                                                        tagName: tag.label,
+                                                                      ),
+                                                                    );
                                                                     setLocalState(() {
                                                                       final next =
                                                                           (customTagsByScope[scopeKey] ??

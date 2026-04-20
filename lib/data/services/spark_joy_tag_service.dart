@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 
 /// Metadata required to create a missing user tag on the server in the
 /// correct step / section / severity bucket.
@@ -23,7 +24,7 @@ class TagSyncContext {
 }
 
 /// Client-side cache and RPC wrapper for the `Storage.GetUserTags` /
-/// `Storage.AddUserTag` endpoints.
+/// `Storage.AddUserTag` / `Storage.RemoveUserTag` endpoints.
 ///
 /// The service owns a name → server id map that the spark_joy report flow
 /// uses to translate user-entered / selected tag names into the integer IDs
@@ -38,6 +39,26 @@ class SparkJoyTagService {
   /// Name (normalized: trimmed + lowercased) → server-assigned tag ID.
   /// Populated by [loadTagIdsFromServer] and [addTag] / its wrappers.
   final Map<String, int> _tagNameToId = <String, int>{};
+
+  /// Serializes every compound read-modify-write against the persisted
+  /// pending-delete queue and the persisted tag catalog. Without this,
+  /// two quick `removeInspectionTag` taps race at the `load → mutate →
+  /// write` boundary and can lose queue entries; the same applies to
+  /// [flushPendingDeletes] running while an enqueue is mid-flight.
+  Future<void> _storageLock = Future<void>.value();
+
+  Future<T> _withStorageLock<T>(Future<T> Function() op) {
+    final prior = _storageLock;
+    final gate = Completer<void>();
+    _storageLock = gate.future;
+    return prior.then((_) async {
+      try {
+        return await op();
+      } finally {
+        gate.complete();
+      }
+    });
+  }
 
   /// Maps media group keys (`body`, `structural`, …) used in the spark_joy
   /// UI to the API `section` parameter the backend expects on the
@@ -127,18 +148,56 @@ class SparkJoyTagService {
           ),
       ];
       final results = await Future.wait(futures);
+      // Deduplicate by id across section / generic fan-out results so we
+      // don't persist the same tag multiple times.
+      final byId = <int, storage_api.UserTag>{};
       for (final tags in results) {
         for (final tag in tags) {
           final key = tag.name.trim().toLowerCase();
           if (key.isNotEmpty && tag.id > 0) {
             _tagNameToId[key] = tag.id;
+            byId[tag.id] = tag;
           }
         }
       }
+      await SparkJoyStorage.replaceUserTags(
+        byId.values.map(_tagToMap).toList(growable: false),
+      );
+      // Fresh server catalog is loaded — a good time to drain any offline
+      // deletions the user did in a previous session.
+      await flushPendingDeletes();
     } catch (_) {
-      // Tags may not be available; payload builder falls back gracefully.
+      // Tags may not be available (offline, server down). The persistent
+      // cache populated on earlier runs is still in _tagNameToId after
+      // [hydrateFromCache], so payload builder falls back gracefully.
     }
   }
+
+  /// Loads the persisted tag catalog into [_tagNameToId]. Call once on
+  /// screen init, before [loadTagIdsFromServer]. Makes offline tag-id
+  /// resolution possible for reports saved earlier.
+  Future<void> hydrateFromCache() async {
+    final cached = await SparkJoyStorage.loadUserTags();
+    for (final raw in cached) {
+      final name = (raw['name'] ?? '').toString();
+      final idRaw = raw['id'];
+      final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
+      final key = name.trim().toLowerCase();
+      if (key.isNotEmpty && id > 0) {
+        _tagNameToId[key] = id;
+      }
+    }
+  }
+
+  static Map<String, dynamic> _tagToMap(storage_api.UserTag tag) => {
+    'id': tag.id,
+    'name': tag.name,
+    'slug': tag.slug,
+    'step': tag.step,
+    'section': tag.section,
+    'type': tag.type,
+    'createdAt': tag.createdAt,
+  };
 
   /// Low-level create: calls `Storage.AddUserTag` and caches the result.
   ///
@@ -203,6 +262,176 @@ class SparkJoyTagService {
       tagName: tagName,
       type: severity == 'serious' ? 'serious' : 'nonserious',
     );
+  }
+
+  /// Wrapper over `Storage.RemoveUserTag` for the inspection editor. Maps
+  /// a UI media group key to the matching API section, resolves the tag
+  /// name to its server id (querying the backend if the local cache misses),
+  /// and evicts the cache entry on success. Backend rejects deletion of
+  /// system tags (user_id = null), so callers should only invoke this for
+  /// user-owned (custom) tags.
+  ///
+  /// On any failure (network down, id unresolved, RPC error) the intent is
+  /// queued in [SparkJoyStorage.loadPendingTagDeletes] so [flushPendingDeletes]
+  /// — called after the next successful [loadTagIdsFromServer] — can retry.
+  Future<bool> removeInspectionTag({
+    required String groupKey,
+    required String tagName,
+  }) async {
+    final key = tagName.trim().toLowerCase();
+    final section = groupKeyToApiSection[groupKey];
+    var id = _tagNameToId[key];
+    if (id == null || id <= 0) {
+      // Cache miss — tag was added optimistically in this session, or the
+      // draft was reopened before loadTagIdsFromServer ran. Try to resolve.
+      try {
+        final tags = await storage_api.StorageApi.getUserTags(
+          step: 'inspection',
+          section: section,
+        );
+        for (final tag in tags) {
+          final tagKey = tag.name.trim().toLowerCase();
+          if (tagKey.isNotEmpty && tag.id > 0) {
+            _tagNameToId[tagKey] = tag.id;
+          }
+        }
+        id = _tagNameToId[key];
+      } catch (_) {
+        await _enqueuePendingDelete(name: tagName, section: section);
+        return false;
+      }
+      if (id == null || id <= 0) {
+        debugPrint(
+          '[TagSync] removeInspectionTag: id not resolved for "$tagName" in section=$section — enqueued',
+        );
+        await _enqueuePendingDelete(name: tagName, section: section);
+        return false;
+      }
+    }
+    try {
+      await storage_api.StorageApi.removeUserTag(
+        id: id,
+        step: 'inspection',
+        section: section,
+      );
+      _tagNameToId.remove(key);
+      await _persistCatalogSnapshot();
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[TagSync] removeInspectionTag rpc failed for "$tagName" id=$id: $e — enqueued',
+      );
+      await _enqueuePendingDelete(name: tagName, section: section);
+      return false;
+    }
+  }
+
+  /// Adds a pending deletion so [flushPendingDeletes] can retry later.
+  /// Dedupes by (nameKey, section). Serialized via [_withStorageLock] so
+  /// rapid successive X-taps don't lose entries at the read-write gap.
+  Future<void> _enqueuePendingDelete({
+    required String name,
+    required String? section,
+  }) {
+    return _withStorageLock(
+      () => _enqueuePendingDeleteImpl(name: name, section: section),
+    );
+  }
+
+  Future<void> _enqueuePendingDeleteImpl({
+    required String name,
+    required String? section,
+  }) async {
+    final normalized = name.trim();
+    if (normalized.isEmpty) return;
+    final queue = await SparkJoyStorage.loadPendingTagDeletes();
+    final key = normalized.toLowerCase();
+    final deduped = queue.where((item) {
+      final itemName = (item['name'] ?? '').toString().trim().toLowerCase();
+      final itemSection = item['section']?.toString();
+      return !(itemName == key && itemSection == section);
+    }).toList()
+      ..add({
+        'name': normalized,
+        'step': 'inspection',
+        'section': section,
+      });
+    await SparkJoyStorage.replacePendingTagDeletes(deduped);
+  }
+
+  /// Retries every queued pending deletion. Must be called **after** a
+  /// successful [loadTagIdsFromServer] so the fresh server catalog has
+  /// populated `_tagNameToId`; unresolved entries are then treated as
+  /// phantoms (already gone on the server) and dropped from the queue.
+  /// Failed RPCs (network / server error) stay queued for the next run.
+  ///
+  /// Re-entry safe via [_withStorageLock] — two overlapping
+  /// `loadTagIdsFromServer` calls won't double-send RemoveUserTag for
+  /// the same id.
+  Future<void> flushPendingDeletes() {
+    return _withStorageLock(_flushPendingDeletesImpl);
+  }
+
+  Future<void> _flushPendingDeletesImpl() async {
+    final queue = await SparkJoyStorage.loadPendingTagDeletes();
+    if (queue.isEmpty) return;
+    final survivors = <Map<String, dynamic>>[];
+    var mutated = false;
+    for (final item in queue) {
+      final name = (item['name'] ?? '').toString();
+      final section = item['section']?.toString();
+      final key = name.trim().toLowerCase();
+      final id = _tagNameToId[key];
+      if (id == null || id <= 0) {
+        // Phantom: after a fresh sync the tag isn't on the server.
+        // Either it was added + deleted entirely offline, or another
+        // client already removed it. Drop the queue entry.
+        debugPrint(
+          '[TagSync] flushPendingDeletes: dropping phantom "$name" (section=$section)',
+        );
+        continue;
+      }
+      try {
+        await storage_api.StorageApi.removeUserTag(
+          id: id,
+          step: 'inspection',
+          section: section,
+        );
+        _tagNameToId.remove(key);
+        mutated = true;
+      } catch (e) {
+        debugPrint(
+          '[TagSync] flushPendingDeletes: failed "$name" id=$id: $e — keeping queued',
+        );
+        survivors.add(item);
+      }
+    }
+    if (mutated) {
+      await _persistCatalogSnapshotImpl();
+    }
+    if (survivors.length != queue.length) {
+      await SparkJoyStorage.replacePendingTagDeletes(survivors);
+    }
+  }
+
+  /// Rewrites the persisted catalog from the current in-memory map. Used
+  /// after successful deletions so reopening the app doesn't resurrect
+  /// the ghost tag from the last full-fan-out snapshot.
+  Future<void> _persistCatalogSnapshot() {
+    return _withStorageLock(_persistCatalogSnapshotImpl);
+  }
+
+  Future<void> _persistCatalogSnapshotImpl() async {
+    final cached = await SparkJoyStorage.loadUserTags();
+    final keepIds = _tagNameToId.values.toSet();
+    final filtered = cached.where((raw) {
+      final idRaw = raw['id'];
+      final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
+      return keepIds.contains(id);
+    }).toList(growable: false);
+    if (filtered.length != cached.length) {
+      await SparkJoyStorage.replaceUserTags(filtered);
+    }
   }
 
   /// Guarantees every context in [contexts] has a cached ID.
