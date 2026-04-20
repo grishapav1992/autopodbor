@@ -243,11 +243,12 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final destinations = _navDestinations();
     final index = _index >= tabs.length ? 0 : _index;
 
-    // Trimmed 72 → 60 based on user feedback — the frosted nav was
-    // visibly taller than iOS's native tab bar and read as "wasteful".
-    // Pairs with bigger icons/labels below so the bar feels denser
-    // even at reduced height.
-    const navHeight = 60.0;
+    // Progressive trim: 72 → 60 (84d9f87) → 56. User still felt the
+    // bar ate too much screen. Pairs with labelBehavior.onlyShowSelected
+    // below — unselected tabs are icon-only, so less vertical real
+    // estate needed for stacked content, and the active tab still
+    // surfaces its label for orientation.
+    const navHeight = 56.0;
 
     return Scaffold(
       // Keep extendBody for the frosted BottomNav (it floats over the
@@ -363,6 +364,12 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               ),
               child: NavigationBar(
                 selectedIndex: index,
+                // Labels only under the active tab — unselected
+                // destinations stay as icon-only chips. Keeps the bar
+                // compact while the active tab still gets a label so
+                // the user can orient.
+                labelBehavior:
+                    NavigationDestinationLabelBehavior.onlyShowSelected,
                 onDestinationSelected: (value) {
                   if (value != index) {
                     HapticFeedback.selectionClick();
