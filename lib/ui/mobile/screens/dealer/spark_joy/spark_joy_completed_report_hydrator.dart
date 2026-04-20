@@ -163,12 +163,15 @@ Map<String, dynamic>? _elementToUploadedItemJson(
 
   final seriousIds = _asIntList(raw['seriousDamageTags']);
   final nonSeriousIds = _asIntList(raw['noSeriousDamageTags']);
-  final tags = <String>[
-    for (final id in seriousIds)
-      if (tagService.nameForId(id) is String) tagService.nameForId(id)!,
-    for (final id in nonSeriousIds)
-      if (tagService.nameForId(id) is String) tagService.nameForId(id)!,
-  ];
+  final tags = <String>[];
+  for (final id in seriousIds) {
+    final name = tagService.nameForId(id);
+    if (name != null && name.isNotEmpty) tags.add(name);
+  }
+  for (final id in nonSeriousIds) {
+    final name = tagService.nameForId(id);
+    if (name != null && name.isNotEmpty) tags.add(name);
+  }
 
   final audioNotes = _asStringList(raw['audioNotes']);
   final paintFromRaw = raw['paintworkThicknessFrom'];
@@ -227,7 +230,12 @@ List<Map<String, dynamic>> _buildLegalFiles(
   Map legalStep, {
   required Map<String, String> urls,
 }) {
+  // Dedupe by filename — the server may expose the same file under
+  // `legalReviewStep.files`, `legalReviewStep.otherLegalReviews`, and
+  // `legalReviewStep.legalReview.files`; listing them all would render
+  // duplicates in the editor's legal-files section.
   final collected = <Map<String, dynamic>>[];
+  final seenFilenames = <String>{};
   void consume(dynamic source, String prefix) {
     if (source is! List) return;
     for (var i = 0; i < source.length; i++) {
@@ -235,6 +243,7 @@ List<Map<String, dynamic>> _buildLegalFiles(
       if (raw is! Map) continue;
       final filename = (raw['filename'] ?? '').toString().trim();
       if (filename.isEmpty) continue;
+      if (!seenFilenames.add(filename.toLowerCase())) continue;
       final serverType = (raw['type'] ?? '').toString();
       collected.add(<String, dynamic>{
         'id': '${prefix}_${raw['id'] ?? i}',
