@@ -215,31 +215,43 @@ Widget _buildSparkSummaryNoDamageMediaCard(_SparkJoyCreateReportScreenState s) {
         Wrap(
           spacing: SparkSpace.sm,
           runSpacing: SparkSpace.sm,
-          children: cleanItems.map((entry) {
-            final file = entry['file'] as UploadedItem;
-            final groupKey = (entry['groupKey'] ?? '').toString();
-            final index = entry['index'] as int? ?? 0;
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(SparkRadius.sm),
-              child: InkWell(
-                onTap: () => s._openMediaGroupLightbox(
-                  groupKey: groupKey,
-                  initialIndex: index,
-                ),
-                child: Container(
-                  width: SparkSize.mediaThumb,
-                  height: SparkSize.mediaThumb,
-                  color: kLightGreyColor,
-                  child: s._uploadedMediaThumbWidget(
-                    file,
-                    fit: BoxFit.cover,
-                    cacheWidth: 220,
-                    cacheHeight: 220,
+          children: () {
+            // Flat-lightbox: swiping should flip across every clean
+            // file regardless of its source section. Build parallel
+            // files / groupKeys lists so the lightbox keeps per-item
+            // labels (element name, no-damage copy, tag colors) right.
+            final flatFiles = <UploadedItem>[
+              for (final entry in cleanItems) entry['file'] as UploadedItem,
+            ];
+            final flatGroupKeys = <String>[
+              for (final entry in cleanItems)
+                (entry['groupKey'] ?? '').toString(),
+            ];
+            return List<Widget>.generate(cleanItems.length, (flatIndex) {
+              final file = flatFiles[flatIndex];
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(SparkRadius.sm),
+                child: InkWell(
+                  onTap: () => s._openFlatMediaLightbox(
+                    files: flatFiles,
+                    groupKeyPerFile: flatGroupKeys,
+                    initialIndex: flatIndex,
+                  ),
+                  child: Container(
+                    width: SparkSize.mediaThumb,
+                    height: SparkSize.mediaThumb,
+                    color: kLightGreyColor,
+                    child: s._uploadedMediaThumbWidget(
+                      file,
+                      fit: BoxFit.cover,
+                      cacheWidth: 220,
+                      cacheHeight: 220,
+                    ),
                   ),
                 ),
-              ),
-            );
-          }).toList(),
+              );
+            });
+          }(),
         ),
       ],
     ),

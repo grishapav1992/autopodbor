@@ -4,11 +4,34 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
   Future<void> _runOpenMediaGroupLightbox({
     required String groupKey,
     required int initialIndex,
+    List<UploadedItem>? filesOverride,
+    List<String>? groupKeyPerFile,
   }) async {
-    final initialState = _mediaState[groupKey];
-    if (initialState == null || initialState.files.isEmpty) return;
+    // Two modes:
+    //   (a) Group mode (default): files come from _mediaState[groupKey];
+    //       element labels / no-damage copy / tag colors all reference
+    //       that single group; "Edit note" button jumps back to it.
+    //   (b) Flat mode: caller passes `filesOverride` (and optionally a
+    //       parallel `groupKeyPerFile` list). Used from "Обзор авто" on
+    //       the summary step where the thumbnail strip flattens several
+    //       sections — swiping must keep working across the whole set.
+    //       Edit-note is hidden (a flat list has no single group to
+    //       return to).
+    final isFlatMode = filesOverride != null;
+    final initialFiles = filesOverride ??
+        (_mediaState[groupKey]?.files ?? const <UploadedItem>[]);
+    if (initialFiles.isEmpty) return;
+    String groupKeyFor(int index) {
+      if (!isFlatMode) return groupKey;
+      if (groupKeyPerFile == null ||
+          index < 0 ||
+          index >= groupKeyPerFile.length) {
+        return groupKey;
+      }
+      return groupKeyPerFile[index];
+    }
 
-    var currentIndex = initialIndex.clamp(0, initialState.files.length - 1);
+    var currentIndex = initialIndex.clamp(0, initialFiles.length - 1);
     final controller = PageController(initialPage: currentIndex);
     final audioPlayer = AudioPlayer();
     StreamSubscription<void>? playerCompleteSubscription;
@@ -100,8 +123,14 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                     setLocalState(() => playingAudioIndex = -1);
                   });
 
-              final liveState = _mediaState[groupKey] ?? initialState;
-              final files = liveState.files;
+              // In flat mode we take the caller-supplied snapshot as a
+              // stable source of truth — editor mutations aren't possible
+              // so there's nothing to live-reconcile. In group mode we
+              // re-read _mediaState on every rebuild so removing / editing
+              // a file updates the lightbox instantly.
+              final files = isFlatMode
+                  ? initialFiles
+                  : (_mediaState[groupKey]?.files ?? initialFiles);
               if (files.isEmpty) {
                 return Dialog(
                   shape: RoundedRectangleBorder(
@@ -150,8 +179,9 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
 
               final item = files[currentIndex];
               final note = item.inspection.note.trim();
+              final itemGroupKey = groupKeyFor(currentIndex);
               final elementLabel = _mediaElementLabel(
-                groupKey,
+                itemGroupKey,
                 item.inspection.elementType,
               );
               final hasInspection = _mediaInspectionHasData(item.inspection);
@@ -186,27 +216,31 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                       style: const TextStyle(fontSize: SparkTextSize.label),
                     ),
                     actions: [
-                      TextButton.icon(
-                        onPressed: () async {
-                          await audioPlayer.stop();
-                          await disposeVideoController();
-                          if (!dialogContext.mounted) return;
-                          Navigator.of(dialogContext).pop(currentIndex);
-                        },
-                        icon: const Icon(
-                          Icons.edit_note_rounded,
-                          size: SparkTextSize.titleLg,
-                          color: kWhiteColor,
-                        ),
-                        label: Text(
-                          hasInspection ? 'Заметка' : 'Добавить заметку',
-                          style: const TextStyle(
+                      // Edit-note is only offered in group mode — a flat
+                      // list from "Обзор авто" has no single group to
+                      // open the inspection editor against.
+                      if (!isFlatMode)
+                        TextButton.icon(
+                          onPressed: () async {
+                            await audioPlayer.stop();
+                            await disposeVideoController();
+                            if (!dialogContext.mounted) return;
+                            Navigator.of(dialogContext).pop(currentIndex);
+                          },
+                          icon: const Icon(
+                            Icons.edit_note_rounded,
+                            size: SparkTextSize.titleLg,
                             color: kWhiteColor,
-                            fontSize: SparkTextSize.body,
-                            fontWeight: FontWeight.w600,
+                          ),
+                          label: Text(
+                            hasInspection ? 'Заметка' : 'Добавить заметку',
+                            style: const TextStyle(
+                              color: kWhiteColor,
+                              fontSize: SparkTextSize.body,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   body: PageView.builder(
@@ -441,7 +475,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                               ),
                             ),
                             child: Text(
-                              _mediaNoDamageLabel(groupKey),
+                              _mediaNoDamageLabel(itemGroupKey),
                               style: const TextStyle(
                                 color: kWhiteColor,
                                 fontSize: SparkTextSize.caption,
@@ -456,7 +490,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                             children: tags.map((tag) {
                               final color = _mediaTagColor(
                                 _mediaTagSeverity(
-                                  groupKey,
+                                  itemGroupKey,
                                   tag,
                                   elementType: item.inspection.elementType,
                                 ),
@@ -618,7 +652,9 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
       controller.dispose();
     }
 
-    if (editIndex == null || !mounted) return;
+    // Flat mode hides the edit button entirely, so editIndex is only
+    // ever non-null in group mode — safe to route back to the editor.
+    if (editIndex == null || isFlatMode || !mounted) return;
     await _openMediaInspectionEditor(groupKey: groupKey, index: editIndex);
   }
 }

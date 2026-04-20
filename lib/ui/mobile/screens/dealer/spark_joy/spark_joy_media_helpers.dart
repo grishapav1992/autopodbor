@@ -74,6 +74,22 @@ extension _SparkJoyMediaHelpersMethods on _SparkJoyCreateReportScreenState {
     initialIndex: initialIndex,
   );
 
+  /// Opens the lightbox with a pre-flattened list of files that may span
+  /// several media groups. Each `groupKeyPerFile[i]` provides the section
+  /// context used for element labels / no-damage copy / tag colors for
+  /// the i-th file. The edit-note affordance is hidden because a flat
+  /// list has no single group to route back to.
+  Future<void> _openFlatMediaLightbox({
+    required List<UploadedItem> files,
+    required List<String> groupKeyPerFile,
+    required int initialIndex,
+  }) => _runOpenMediaGroupLightbox(
+    groupKey: groupKeyPerFile.isNotEmpty ? groupKeyPerFile.first : '',
+    initialIndex: initialIndex,
+    filesOverride: files,
+    groupKeyPerFile: groupKeyPerFile,
+  );
+
   Widget _mediaGroupListRow(MediaGroupState state) =>
       _runMediaGroupListRow(state);
 
