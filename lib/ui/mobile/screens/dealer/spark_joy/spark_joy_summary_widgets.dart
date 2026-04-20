@@ -41,38 +41,59 @@ Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: () => unawaited(s._editReportTitle()),
-          borderRadius: BorderRadius.circular(SparkRadius.lg),
-          child: SparkCard(
+        // Read-only mode: the name isn't interactive — skip the InkWell
+        // wrapper and the trailing edit pencil so the card doesn't
+        // promise an affordance that doesn't exist.
+        if (s.widget.readOnly)
+          SparkCard(
             padding: const EdgeInsets.symmetric(
               horizontal: SparkSpace.xl,
               vertical: SparkSpace.xl,
             ),
             backgroundColor: kInputBgColor,
-            child: Row(
-              children: [
-                Expanded(
-                  child: MyText(
-                    text: reportName.isEmpty ? 'Без названия' : reportName,
-                    size: SparkTextSize.titleLg,
-                    weight: FontWeight.w800,
-                    lineHeight: 1.30,
-                    tracking: true,
-                    maxLines: 2,
-                    textOverflow: TextOverflow.ellipsis,
+            child: MyText(
+              text: reportName.isEmpty ? 'Без названия' : reportName,
+              size: SparkTextSize.titleLg,
+              weight: FontWeight.w800,
+              lineHeight: 1.30,
+              tracking: true,
+              maxLines: 2,
+              textOverflow: TextOverflow.ellipsis,
+            ),
+          )
+        else
+          InkWell(
+            onTap: () => unawaited(s._editReportTitle()),
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+            child: SparkCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SparkSpace.xl,
+                vertical: SparkSpace.xl,
+              ),
+              backgroundColor: kInputBgColor,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: reportName.isEmpty ? 'Без названия' : reportName,
+                      size: SparkTextSize.titleLg,
+                      weight: FontWeight.w800,
+                      lineHeight: 1.30,
+                      tracking: true,
+                      maxLines: 2,
+                      textOverflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-                const SizedBox(width: SparkSpace.md),
-                const Icon(
-                  Icons.edit_outlined,
-                  size: SparkSize.iconMd,
-                  color: kGreyColor,
-                ),
-              ],
+                  const SizedBox(width: SparkSpace.md),
+                  const Icon(
+                    Icons.edit_outlined,
+                    size: SparkSize.iconMd,
+                    color: kGreyColor,
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
         const SizedBox(height: SparkSpace.lg),
         Row(
           children: [

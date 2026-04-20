@@ -27,6 +27,12 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   late final _SparkJoyReportsListController _controller;
   final Set<String> _sharingReportKeys = <String>{};
 
+  // Completed-report tap is async (we fetch the full payload via
+  // Storage.ViewSpecialistReport before opening). Track the identity keys
+  // currently loading so the completed card can show a spinner and block
+  // duplicate taps — otherwise mashing the card spawns parallel RPCs.
+  final Set<String> _openingReportKeys = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -66,39 +72,49 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   }
 
   Future<void> _openCompleted(Map<String, dynamic> report) async {
-    // Prefer a fresh payload from Storage.ViewSpecialistReport so the
-    // read-only view reflects the server's current state (any re-generated
-    // media URLs, post-submission edits, etc.). Fall back to the locally
-    // cached `report` map when the RPC is unavailable — e.g. offline — so
-    // the screen still opens instead of silently dropping the tap.
+    final key = _reportIdentityKey(report);
+    if (key.isEmpty || _openingReportKeys.contains(key)) return;
+    setState(() => _openingReportKeys.add(key));
+
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
-    Map<String, dynamic> reportToOpen = report;
+    Map<String, dynamic>? fetched;
     try {
       final reportId = await _ensureReportId(report);
-      if (reportId != null) {
-        final remote = await storage_api.StorageApi.viewSpecialistReport(
-          reportId: reportId,
-        );
-        if (remote.isNotEmpty) {
-          reportToOpen = {...report, ...remote};
-        }
+      if (reportId == null) {
+        throw StateError('reportId missing');
       }
+      final remote = await storage_api.StorageApi.viewSpecialistReport(
+        reportId: reportId,
+      );
+      if (remote.isEmpty) {
+        throw StateError('empty payload');
+      }
+      fetched = {...report, ...remote};
     } catch (_) {
-      if (!mounted) return;
+      fetched = null;
+    } finally {
+      if (mounted) {
+        setState(() => _openingReportKeys.remove(key));
+      }
+    }
+
+    if (!mounted) return;
+    if (fetched == null) {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
-            'Не удалось обновить отчёт с сервера — показываем локальную копию',
+            'Не удалось загрузить отчёт с сервера. Проверьте соединение и повторите.',
           ),
         ),
       );
+      return;
     }
-    if (!mounted) return;
+
     await navigator.push<void>(
       MaterialPageRoute(
         builder: (_) => SparkJoyCreateReportScreen(
-          draft: reportToOpen,
+          draft: fetched,
           readOnly: true,
         ),
       ),
@@ -598,6 +614,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final reportKey = _reportIdentityKey(report);
     final shareLoading =
         reportKey.isNotEmpty && _sharingReportKeys.contains(reportKey);
+    final openLoading =
+        reportKey.isNotEmpty && _openingReportKeys.contains(reportKey);
 
     final metaParts = <String>[
       if (car != title && car.isNotEmpty) car,
@@ -610,7 +628,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     // completed cards out of the repaint queue.
     return RepaintBoundary(
       child: SparkListCard(
-      onTap: () => _openCompleted(report),
+      onTap: openLoading ? null : () => _openCompleted(report),
       padding: const EdgeInsets.symmetric(
         horizontal: SparkSpace.xl,
         vertical: SparkSpace.lg,
@@ -643,11 +661,18 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                 ),
               ),
               const SizedBox(width: SparkSpace.md),
-              MyText(
-                text: sjFormatDate(sjRead(report, 'createdAt')),
-                size: SparkTextSize.chip,
-                color: kGreyColor,
-              ),
+              if (openLoading)
+                const SizedBox(
+                  width: SparkSize.spinner,
+                  height: SparkSize.spinner,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else
+                MyText(
+                  text: sjFormatDate(sjRead(report, 'createdAt')),
+                  size: SparkTextSize.chip,
+                  color: kGreyColor,
+                ),
             ],
           ),
           const SizedBox(height: SparkSpace.md),
@@ -829,56 +854,6 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _completed = <Map<String, dynamic>>[];
 
-  String _completedIdentity(Map<String, dynamic> report) {
-    for (final key in const [
-      'id',
-      'reportId',
-      'report_id',
-      'reportNumber',
-      'number',
-      'reportCode',
-    ]) {
-      final value = report[key]?.toString().trim() ?? '';
-      if (value.isNotEmpty) return '$key:$value';
-    }
-    final name = sjRead(report, 'reportName');
-    final date = sjRead(report, 'createdAt', fallback: sjRead(report, 'date'));
-    if (name.isNotEmpty || date.isNotEmpty) {
-      return 'fallback:${name}_$date';
-    }
-    return '';
-  }
-
-  List<Map<String, dynamic>> _mergeCompletedReports({
-    required List<Map<String, dynamic>> cached,
-    required List<Map<String, dynamic>> remote,
-  }) {
-    final byKey = <String, Map<String, dynamic>>{};
-    for (final report in cached) {
-      final key = _completedIdentity(report);
-      if (key.isEmpty) continue;
-      byKey[key] = Map<String, dynamic>.from(report);
-    }
-    for (final report in remote) {
-      final key = _completedIdentity(report);
-      if (key.isEmpty) continue;
-      final previous = byKey[key];
-      byKey[key] = previous == null
-          ? Map<String, dynamic>.from(report)
-          : <String, dynamic>{...previous, ...report};
-    }
-    final merged = byKey.values.toList();
-    merged.sort((a, b) {
-      final ad = sjRead(a, 'updatedAt', fallback: sjRead(a, 'createdAt'));
-      final bd = sjRead(b, 'updatedAt', fallback: sjRead(b, 'createdAt'));
-      if (ad.isEmpty && bd.isEmpty) return 0;
-      if (ad.isEmpty) return 1;
-      if (bd.isEmpty) return -1;
-      return bd.compareTo(ad);
-    });
-    return merged;
-  }
-
   String get tab => _tab;
   bool get loading => _loading;
   String? get loadError => _loadError;
@@ -948,15 +923,16 @@ class _SparkJoyReportsListController extends ChangeNotifier {
     _completedSyncFailed = false;
     _safeNotify();
     try {
+      // Drafts still live only in local storage (they aren't submitted
+      // until the user finishes the flow), so those stay on the device.
       final allDrafts = await SparkJoyStorage.loadDrafts();
-      final cachedCompleted = await SparkJoyStorage.loadCompleted();
       if (_disposed || token != _loadToken) return;
       _drafts = allDrafts.where(_isVisibleDraft).toList();
-      _completed = cachedCompleted;
-      _loading = false;
-      _loadError = null;
       _safeNotify();
 
+      // Completed reports are the server's source of truth. We no longer
+      // seed them from the local cache — if the RPC fails the tab shows
+      // an empty state with retry rather than stale mock-like entries.
       try {
         final remoteCompleted =
             await storage_api.StorageApi.getSpecialistReport(
@@ -965,16 +941,18 @@ class _SparkJoyReportsListController extends ChangeNotifier {
               isDraft: false,
             );
         if (_disposed || token != _loadToken) return;
-        _completed = _mergeCompletedReports(
-          cached: cachedCompleted,
-          remote: remoteCompleted,
-        );
+        _completed = _sortCompleted(remoteCompleted);
+        _loading = false;
         _loadError = null;
         _completedSyncFailed = false;
         _safeNotify();
+        // Persist the server snapshot so the profile's "Отчётов" counter
+        // and any future offline read path keep only server-backed data.
         await SparkJoyStorage.replaceCompleted(_completed);
       } catch (_) {
         if (_disposed || token != _loadToken) return;
+        _completed = const <Map<String, dynamic>>[];
+        _loading = false;
         _completedSyncFailed = true;
         _safeNotify();
       }
@@ -984,10 +962,25 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       _loadError = sjT(
         'spark.state.error.reports',
         fallback:
-            'Не удалось загрузить отчёты. Проверьте локальные данные и повторите.',
+            'Не удалось загрузить отчёты. Проверьте соединение и повторите.',
       );
       _safeNotify();
     }
+  }
+
+  List<Map<String, dynamic>> _sortCompleted(
+    List<Map<String, dynamic>> reports,
+  ) {
+    final result = reports.map(Map<String, dynamic>.from).toList();
+    result.sort((a, b) {
+      final ad = sjRead(a, 'updatedAt', fallback: sjRead(a, 'createdAt'));
+      final bd = sjRead(b, 'updatedAt', fallback: sjRead(b, 'createdAt'));
+      if (ad.isEmpty && bd.isEmpty) return 0;
+      if (ad.isEmpty) return 1;
+      if (bd.isEmpty) return -1;
+      return bd.compareTo(ad);
+    });
+    return result;
   }
 
   bool _isVisibleDraft(Map<String, dynamic> draft) {
