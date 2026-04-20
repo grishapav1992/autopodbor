@@ -785,17 +785,21 @@ class _SparkJoySpecialistProfileScreenState
                           background: kSecondaryColor.withValues(alpha: 0.1),
                           color: kSecondaryColor,
                         ),
-                        SparkChip(
-                          text: sjRead(specialist, 'status') == 'active'
-                              ? 'Активен'
-                              : 'Неактивен',
-                          background: sjRead(specialist, 'status') == 'active'
-                              ? kGreenColor.withValues(alpha: 0.15)
-                              : kGreyColor.withValues(alpha: 0.15),
-                          color: sjRead(specialist, 'status') == 'active'
-                              ? kGreenColor
-                              : kGreyColor,
-                        ),
+                        // Status chip: грей-на-грей «Неактивен» в прошлом
+                        // варианте визуально тонул. Инактив — это реальная
+                        // проблема пользователя (заблокирован / выключен),
+                        // а не нейтральная декорация; даём red-tint так же
+                        // как делает green для активного статуса.
+                        () {
+                          final active = sjRead(specialist, 'status') == 'active';
+                          return SparkChip(
+                            text: active ? 'Активен' : 'Неактивен',
+                            background: active
+                                ? kGreenColor.withValues(alpha: 0.15)
+                                : kRedColor.withValues(alpha: 0.12),
+                            color: active ? kGreenColor : kRedColor,
+                          );
+                        }(),
                       ],
                     ),
                   ],
@@ -813,54 +817,75 @@ class _SparkJoySpecialistProfileScreenState
         Row(
           children: [
             Expanded(
-              child: SparkCard(
-                // Tap the "Отчётов" counter to jump back to the reports
-                // tab with the completed segment selected. Wired via the
-                // shell's onOpenCompletedReports callback; if the shell
-                // didn't wire it (e.g. in preview/tests) the card is
-                // just a static counter.
-                onTap: widget.onOpenCompletedReports == null
+              // Semantics container so VoiceOver/TalkBack announce the
+              // whole stat card as one focused element ("Отчётов, 42"),
+              // not two independent nodes (bare digits + bare word).
+              // Excludes child semantics for the same no-redundancy
+              // reason as the draft progress bar (92b0135).
+              child: Semantics(
+                container: true,
+                button: widget.onOpenCompletedReports != null,
+                label: 'Отчётов',
+                value: (_localCompletedCount ?? 0).toString(),
+                hint: widget.onOpenCompletedReports == null
                     ? null
-                    : () {
-                        HapticFeedback.selectionClick();
-                        widget.onOpenCompletedReports!();
-                      },
-                child: Column(
-                  children: [
-                    MyText(
-                      text: (_localCompletedCount ?? 0).toString(),
-                      size: SparkSize.iconXl,
-                      weight: FontWeight.w800,
-                      color: kSecondaryColor,
-                      tabularFigures: true,
-                    ),
-                    const MyText(
-                      text: 'Отчётов',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                    ),
-                  ],
+                    : 'Двойной тап открывает список завершённых отчётов',
+                excludeSemantics: true,
+                child: SparkCard(
+                  // Tap the "Отчётов" counter to jump back to the reports
+                  // tab with the completed segment selected. Wired via the
+                  // shell's onOpenCompletedReports callback; if the shell
+                  // didn't wire it (e.g. in preview/tests) the card is
+                  // just a static counter.
+                  onTap: widget.onOpenCompletedReports == null
+                      ? null
+                      : () {
+                          HapticFeedback.selectionClick();
+                          widget.onOpenCompletedReports!();
+                        },
+                  child: Column(
+                    children: [
+                      MyText(
+                        text: (_localCompletedCount ?? 0).toString(),
+                        size: SparkSize.iconXl,
+                        weight: FontWeight.w800,
+                        color: kSecondaryColor,
+                        tabularFigures: true,
+                      ),
+                      const MyText(
+                        text: 'Отчётов',
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
             const SizedBox(width: SparkSpace.lg),
             Expanded(
-              child: SparkCard(
-                child: Column(
-                  children: [
-                    MyText(
-                      text: (_localDraftCount ?? 0).toString(),
-                      size: SparkSize.iconXl,
-                      weight: FontWeight.w800,
-                      color: kSecondaryColor,
-                      tabularFigures: true,
-                    ),
-                    const MyText(
-                      text: 'Активных осмотров',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                    ),
-                  ],
+              child: Semantics(
+                container: true,
+                label: 'Активных осмотров',
+                value: (_localDraftCount ?? 0).toString(),
+                excludeSemantics: true,
+                child: SparkCard(
+                  child: Column(
+                    children: [
+                      MyText(
+                        text: (_localDraftCount ?? 0).toString(),
+                        size: SparkSize.iconXl,
+                        weight: FontWeight.w800,
+                        color: kSecondaryColor,
+                        tabularFigures: true,
+                      ),
+                      const MyText(
+                        text: 'Активных осмотров',
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
