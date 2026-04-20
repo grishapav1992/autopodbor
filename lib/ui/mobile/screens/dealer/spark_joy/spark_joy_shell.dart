@@ -243,12 +243,11 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final destinations = _navDestinations();
     final index = _index >= tabs.length ? 0 : _index;
 
-    // Progressive trim: 72 → 60 (84d9f87) → 56. User still felt the
-    // bar ate too much screen. Pairs with labelBehavior.onlyShowSelected
-    // below — unselected tabs are icon-only, so less vertical real
-    // estate needed for stacked content, and the active tab still
-    // surfaces its label for orientation.
-    const navHeight = 56.0;
+    // Progressive trim: 72 → 60 → 56 (89f65dd icon-only-inactive) →
+    // 64 here. User asked the inactive labels back; with always-show
+    // labels Material needs more vertical room, so bumped up 8px to
+    // 64 — still noticeably tighter than the original 72.
+    const navHeight = 64.0;
 
     return Scaffold(
       // Keep extendBody for the frosted BottomNav (it floats over the
@@ -364,12 +363,11 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               ),
               child: NavigationBar(
                 selectedIndex: index,
-                // Labels only under the active tab — unselected
-                // destinations stay as icon-only chips. Keeps the bar
-                // compact while the active tab still gets a label so
-                // the user can orient.
+                // Labels always visible — pulling them from inactive
+                // destinations read as mystery-meat icons. Height was
+                // bumped to compensate.
                 labelBehavior:
-                    NavigationDestinationLabelBehavior.onlyShowSelected,
+                    NavigationDestinationLabelBehavior.alwaysShow,
                 onDestinationSelected: (value) {
                   if (value != index) {
                     HapticFeedback.selectionClick();
