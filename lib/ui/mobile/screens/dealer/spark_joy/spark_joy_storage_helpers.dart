@@ -99,6 +99,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       genericInspectionSelectedIds: genericInspection,
       testDriveSelectedIds: _tagService.resolveTagIds(
         _collectTestDriveTagNames(),
+        step: 'test_drive',
       ),
     );
   }
@@ -118,7 +119,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
               .where((t) => t.isNotEmpty),
       };
       if (names.isEmpty) continue;
-      final ids = _tagService.resolveTagIds(names);
+      final ids = _tagService.resolveTagIds(
+        names,
+        step: 'inspection',
+        section: section,
+      );
       if (ids.isEmpty) continue;
       result[section] = ids;
     }
@@ -193,6 +198,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       genericInspectionSelectedIds: genericInspection,
       testDriveSelectedIds: _tagService.resolveTagIds(
         _collectTestDriveTagNames(),
+        step: 'test_drive',
       ),
     );
   }
@@ -201,7 +207,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   /// by the report. Pure host-state → contexts transformation; the actual
   /// RPC work lives in [SparkJoyTagService.ensureAllTagIdsResolved].
   List<TagSyncContext> _collectTagSyncContexts() {
+    // Dedupe key must include step + section — the same label in two
+    // sections resolves to different server tags and must be created twice.
     final contexts = <String, TagSyncContext>{};
+    String bucketKey(String step, String? section, String name) =>
+        '$step|${section ?? ''}|${name.toLowerCase()}';
 
     void registerInspection({
       required String groupKey,
@@ -210,14 +220,21 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }) {
       final trimmed = tagName.trim();
       if (trimmed.isEmpty) return;
-      final key = trimmed.toLowerCase();
-      if (_tagService.idFor(trimmed) != null) return;
+      final section = SparkJoyTagService.groupKeyToApiSection[groupKey];
+      if (_tagService.idFor(
+            step: 'inspection',
+            section: section,
+            name: trimmed,
+          ) !=
+          null) {
+        return;
+      }
       contexts.putIfAbsent(
-        key,
+        bucketKey('inspection', section, trimmed),
         () => TagSyncContext(
           name: trimmed,
           step: 'inspection',
-          section: SparkJoyTagService.groupKeyToApiSection[groupKey],
+          section: section,
           type: severity == 'serious' ? 'serious' : 'nonserious',
         ),
       );
@@ -227,10 +244,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       for (final raw in tags) {
         final trimmed = raw.trim();
         if (trimmed.isEmpty) continue;
-        final key = trimmed.toLowerCase();
-        if (_tagService.idFor(trimmed) != null) continue;
+        if (_tagService.idFor(step: 'test_drive', name: trimmed) != null) {
+          continue;
+        }
         contexts.putIfAbsent(
-          key,
+          bucketKey('test_drive', null, trimmed),
           () => TagSyncContext(
             name: trimmed,
             step: 'test_drive',
@@ -285,9 +303,17 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return contexts.values.toList(growable: false);
   }
 
-  /// Resolves tag names to their cached server IDs via [_tagService].
-  List<int> _resolveTagIds(List<String> tagNames) =>
-      _tagService.resolveTagIds(tagNames);
+  /// Resolves inspection-step tag names for a specific API section.
+  List<int> _resolveInspectionTagIds(List<String> tagNames, String section) =>
+      _tagService.resolveTagIds(
+        tagNames,
+        step: 'inspection',
+        section: section,
+      );
+
+  /// Resolves test-drive-step tag names (no section).
+  List<int> _resolveTestDriveTagIds(List<String> tagNames) =>
+      _tagService.resolveTagIds(tagNames, step: 'test_drive');
 
   bool _isDataUrl(String source) {
     return source.trimLeft().startsWith('data:');
@@ -1507,8 +1533,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           }
         }
         // Convert tag names to server-side integer IDs (API v2025-04-15).
-        final seriousTagIds = _resolveTagIds(seriousTagNames);
-        final nonSeriousTagIds = _resolveTagIds(nonSeriousTagNames);
+        // Resolution is section-scoped: same label in different sections
+        // has different server IDs — see SparkJoyTagService._composeKey.
+        final apiSection =
+            SparkJoyTagService.groupKeyToApiSection[group.key] ?? '';
+        final seriousTagIds =
+            _resolveInspectionTagIds(seriousTagNames, apiSection);
+        final nonSeriousTagIds =
+            _resolveInspectionTagIds(nonSeriousTagNames, apiSection);
         final note = item.inspection.note.trim();
         final paintFrom =
             (item.inspection.paintFrom ?? state.partInspection.paintFrom)
@@ -1550,15 +1582,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     // Convert tag names → integer IDs (API v2025-04-15).
     return <String, dynamic>{
       'testDriveIsIncluded': conducted,
-      'testDriveEngineTags': _resolveTagIds(_tdEngineTags),
+      'testDriveEngineTags': _resolveTestDriveTagIds(_tdEngineTags),
       'testDriveEngineIsWorkingProperly': _tdEngineOk,
-      'testDriveTransmissionTags': _resolveTagIds(_tdGearboxTags),
+      'testDriveTransmissionTags': _resolveTestDriveTagIds(_tdGearboxTags),
       'testDriveTransmissionIsWorkingProperly': _tdGearboxOk,
-      'testDriveSteeringWheelTags': _resolveTagIds(_tdSteeringTags),
+      'testDriveSteeringWheelTags': _resolveTestDriveTagIds(_tdSteeringTags),
       'testDriveSteeringWheelIsWorkingProperly': _tdSteeringOk,
-      'testDriveSuspensionInDriveTags': _resolveTagIds(_tdRideTags),
+      'testDriveSuspensionInDriveTags': _resolveTestDriveTagIds(_tdRideTags),
       'testDriveSuspensionInDriveIsWorkingProperly': _tdRideOk,
-      'testDriveBrakesInDriveTags': _resolveTagIds(_tdBrakeTags),
+      'testDriveBrakesInDriveTags': _resolveTestDriveTagIds(_tdBrakeTags),
       'testDriveBrakesInDriveIsWorkingProperly': _tdBrakeOk,
       'testDriveNote': _tdNoteController.text.trim(),
     };

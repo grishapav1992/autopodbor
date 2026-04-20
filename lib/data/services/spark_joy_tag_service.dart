@@ -36,9 +36,25 @@ class TagSyncContext {
 /// state, test-drive lists, …) and passing it in via method parameters.
 /// That keeps the service pure and trivially unit-testable.
 class SparkJoyTagService {
-  /// Name (normalized: trimmed + lowercased) → server-assigned tag ID.
-  /// Populated by [loadTagIdsFromServer] and [addTag] / its wrappers.
-  final Map<String, int> _tagNameToId = <String, int>{};
+  /// Composite key `"{step}|{section ?? ''}|{nameKey}"` → server-assigned
+  /// tag ID. Populated by [loadTagIdsFromServer] and [addTag] / wrappers.
+  ///
+  /// Keying on `(step, section, name)` instead of just `name` prevents
+  /// collisions when the same user-facing label exists in two different
+  /// inspection sections (e.g. "царапина" in `body` and in `interior`
+  /// have different server IDs and must not alias).
+  final Map<String, int> _idByKey = <String, int>{};
+
+  /// Builds the composite cache key. Normalizes name to
+  /// `trim().toLowerCase()`. `section` is nullable — for steps without
+  /// sections (car, test_drive, …) we store an empty string.
+  static String _composeKey({
+    required String step,
+    String? section,
+    required String name,
+  }) {
+    return '$step|${section ?? ''}|${name.trim().toLowerCase()}';
+  }
 
   /// Serializes every compound read-modify-write against the persisted
   /// pending-delete queue and the persisted tag catalog. Without this,
@@ -74,32 +90,48 @@ class SparkJoyTagService {
     'diagnostics': 'computer_diagnostics',
   };
 
-  /// Returns the cached server ID for [tagName], or `null` if not known.
-  int? idFor(String tagName) =>
-      _tagNameToId[tagName.trim().toLowerCase()];
+  /// Returns the cached server ID for a tag in the given step/section
+  /// bucket, or `null` if not known. `section` is null for steps without
+  /// sections (test_drive, car, …).
+  int? idFor({
+    required String step,
+    String? section,
+    required String name,
+  }) => _idByKey[_composeKey(step: step, section: section, name: name)];
 
-  /// Read-only view of the current name → id cache. Intended for tests.
+  /// Read-only view of the current cache. Keys are the composite
+  /// `"step|section|name"` format — see [_composeKey]. Intended for tests.
   @visibleForTesting
-  Map<String, int> get debugCacheSnapshot => Map.unmodifiable(_tagNameToId);
+  Map<String, int> get debugCacheSnapshot => Map.unmodifiable(_idByKey);
 
-  /// Resolves [tagNames] to server integer IDs via the local cache. Unknown
-  /// tags are silently skipped — they should have been created via [addTag]
-  /// or [ensureAllTagIdsResolved] before this point.
-  List<int> resolveTagIds(Iterable<String> tagNames) {
+  /// Resolves [tagNames] to server integer IDs within the given step /
+  /// section bucket. Unknown tags are silently skipped — they should have
+  /// been created via [addTag] or [ensureAllTagIdsResolved] first.
+  List<int> resolveTagIds(
+    Iterable<String> tagNames, {
+    required String step,
+    String? section,
+  }) {
     final ids = <int>[];
     final missing = <String>[];
     for (final name in tagNames) {
       final trimmed = name.trim();
-      final key = trimmed.toLowerCase();
-      final id = _tagNameToId[key];
+      if (trimmed.isEmpty) continue;
+      final id = _idByKey[_composeKey(
+        step: step,
+        section: section,
+        name: trimmed,
+      )];
       if (id != null && id > 0) {
         ids.add(id);
-      } else if (trimmed.isNotEmpty) {
+      } else {
         missing.add(trimmed);
       }
     }
     if (missing.isNotEmpty) {
-      debugPrint('[TagSync] resolveTagIds unresolved: $missing');
+      debugPrint(
+        '[TagSync] resolveTagIds unresolved (step=$step section=$section): $missing',
+      );
     }
     return ids;
   }
@@ -153,11 +185,16 @@ class SparkJoyTagService {
       final byId = <int, storage_api.UserTag>{};
       for (final tags in results) {
         for (final tag in tags) {
-          final key = tag.name.trim().toLowerCase();
-          if (key.isNotEmpty && tag.id > 0) {
-            _tagNameToId[key] = tag.id;
-            byId[tag.id] = tag;
-          }
+          if (tag.id <= 0 || tag.name.trim().isEmpty) continue;
+          // Each UserTag carries its own step + section; use them so
+          // identical names in different sections remain distinct.
+          final step = tag.step ?? 'inspection';
+          _idByKey[_composeKey(
+            step: step,
+            section: tag.section,
+            name: tag.name,
+          )] = tag.id;
+          byId[tag.id] = tag;
         }
       }
       await SparkJoyStorage.replaceUserTags(
@@ -173,19 +210,20 @@ class SparkJoyTagService {
     }
   }
 
-  /// Loads the persisted tag catalog into [_tagNameToId]. Call once on
+  /// Loads the persisted tag catalog into [_idByKey]. Call once on
   /// screen init, before [loadTagIdsFromServer]. Makes offline tag-id
   /// resolution possible for reports saved earlier.
   Future<void> hydrateFromCache() async {
     final cached = await SparkJoyStorage.loadUserTags();
     for (final raw in cached) {
       final name = (raw['name'] ?? '').toString();
+      if (name.trim().isEmpty) continue;
       final idRaw = raw['id'];
       final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
-      final key = name.trim().toLowerCase();
-      if (key.isNotEmpty && id > 0) {
-        _tagNameToId[key] = id;
-      }
+      if (id <= 0) continue;
+      final step = (raw['step'] as String?) ?? 'inspection';
+      final section = raw['section'] as String?;
+      _idByKey[_composeKey(step: step, section: section, name: name)] = id;
     }
   }
 
@@ -214,9 +252,9 @@ class SparkJoyTagService {
     String? section,
     String? type,
   }) async {
-    final key = tagName.trim().toLowerCase();
-    // Already cached — no need to call the server again.
-    final existing = _tagNameToId[key];
+    final cacheKey = _composeKey(step: step, section: section, name: tagName);
+    // Already cached for this exact bucket — no need to call the server.
+    final existing = _idByKey[cacheKey];
     if (existing != null && existing > 0) return existing;
 
     try {
@@ -227,7 +265,7 @@ class SparkJoyTagService {
         type: type,
       );
       if (tag.id > 0) {
-        _tagNameToId[key] = tag.id;
+        _idByKey[cacheKey] = tag.id;
         return tag.id;
       }
     } catch (_) {
@@ -278,24 +316,31 @@ class SparkJoyTagService {
     required String groupKey,
     required String tagName,
   }) async {
-    final key = tagName.trim().toLowerCase();
     final section = groupKeyToApiSection[groupKey];
-    var id = _tagNameToId[key];
+    final cacheKey = _composeKey(
+      step: 'inspection',
+      section: section,
+      name: tagName,
+    );
+    var id = _idByKey[cacheKey];
     if (id == null || id <= 0) {
       // Cache miss — tag was added optimistically in this session, or the
-      // draft was reopened before loadTagIdsFromServer ran. Try to resolve.
+      // draft was reopened before loadTagIdsFromServer ran. Try to resolve
+      // for just this section.
       try {
         final tags = await storage_api.StorageApi.getUserTags(
           step: 'inspection',
           section: section,
         );
         for (final tag in tags) {
-          final tagKey = tag.name.trim().toLowerCase();
-          if (tagKey.isNotEmpty && tag.id > 0) {
-            _tagNameToId[tagKey] = tag.id;
-          }
+          if (tag.id <= 0 || tag.name.trim().isEmpty) continue;
+          _idByKey[_composeKey(
+            step: tag.step ?? 'inspection',
+            section: tag.section ?? section,
+            name: tag.name,
+          )] = tag.id;
         }
-        id = _tagNameToId[key];
+        id = _idByKey[cacheKey];
       } catch (_) {
         await _enqueuePendingDelete(name: tagName, section: section);
         return false;
@@ -314,7 +359,7 @@ class SparkJoyTagService {
         step: 'inspection',
         section: section,
       );
-      _tagNameToId.remove(key);
+      _idByKey.remove(cacheKey);
       await _persistCatalogSnapshot();
       return true;
     } catch (e) {
@@ -380,24 +425,26 @@ class SparkJoyTagService {
     for (final item in queue) {
       final name = (item['name'] ?? '').toString();
       final section = item['section']?.toString();
-      final key = name.trim().toLowerCase();
-      final id = _tagNameToId[key];
+      final step = (item['step'] as String?) ?? 'inspection';
+      final cacheKey = _composeKey(step: step, section: section, name: name);
+      final id = _idByKey[cacheKey];
       if (id == null || id <= 0) {
         // Phantom: after a fresh sync the tag isn't on the server.
         // Either it was added + deleted entirely offline, or another
         // client already removed it. Drop the queue entry.
         debugPrint(
-          '[TagSync] flushPendingDeletes: dropping phantom "$name" (section=$section)',
+          '[TagSync] flushPendingDeletes: dropping phantom "$name" '
+          '(step=$step section=$section)',
         );
         continue;
       }
       try {
         await storage_api.StorageApi.removeUserTag(
           id: id,
-          step: 'inspection',
+          step: step,
           section: section,
         );
-        _tagNameToId.remove(key);
+        _idByKey.remove(cacheKey);
         mutated = true;
       } catch (e) {
         debugPrint(
@@ -423,7 +470,7 @@ class SparkJoyTagService {
 
   Future<void> _persistCatalogSnapshotImpl() async {
     final cached = await SparkJoyStorage.loadUserTags();
-    final keepIds = _tagNameToId.values.toSet();
+    final keepIds = _idByKey.values.toSet();
     final filtered = cached.where((raw) {
       final idRaw = raw['id'];
       final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
@@ -452,13 +499,17 @@ class SparkJoyTagService {
     List<int> genericInspectionSelectedIds = const <int>[],
     List<int> testDriveSelectedIds = const <int>[],
   }) async {
-    // Dedupe by normalized name + filter out already-cached entries.
+    // Dedupe by composite key + filter out already-cached entries.
     final pending = <String, TagSyncContext>{};
     for (final ctx in contexts) {
       final trimmed = ctx.name.trim();
       if (trimmed.isEmpty) continue;
-      final key = trimmed.toLowerCase();
-      if (_tagNameToId[key] != null) continue;
+      final key = _composeKey(
+        step: ctx.step,
+        section: ctx.section,
+        name: trimmed,
+      );
+      if (_idByKey[key] != null) continue;
       pending.putIfAbsent(key, () => ctx);
     }
 
@@ -471,9 +522,10 @@ class SparkJoyTagService {
       testDriveSelectedIds: testDriveSelectedIds,
     );
 
-    for (final ctx in pending.values) {
-      final key = ctx.name.toLowerCase();
-      if (_tagNameToId[key] != null) continue;
+    for (final entry in pending.entries) {
+      final cacheKey = entry.key;
+      final ctx = entry.value;
+      if (_idByKey[cacheKey] != null) continue;
       debugPrint(
         '[TagSync] creating tag: name="${ctx.name}" '
         'step=${ctx.step} section=${ctx.section} type=${ctx.type}',
@@ -484,7 +536,7 @@ class SparkJoyTagService {
         section: ctx.section,
         type: ctx.type,
       );
-      final resolvedId = _tagNameToId[key];
+      final resolvedId = _idByKey[cacheKey];
       if (resolvedId == null || resolvedId <= 0) {
         debugPrint(
           '[TagSync] FAILED to resolve after create: name="${ctx.name}" '

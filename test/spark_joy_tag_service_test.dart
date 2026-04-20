@@ -26,31 +26,43 @@ void main() {
   });
 
   group('SparkJoyTagService.resolveTagIds', () {
-    test('returns ids for cached names, skips unknowns silently', () {
+    test('returns empty list for unknown names, tolerates empty input', () {
       final service = SparkJoyTagService();
-      // Prime cache by side-effect through the test-only snapshot API —
-      // we cannot mutate the internal map directly, so simulate via a
-      // call that populates it. Since no network is reachable in unit
-      // tests, we use the fact that resolveTagIds tolerates unknowns.
-      expect(service.resolveTagIds(['Anything']), isEmpty);
-      expect(service.resolveTagIds(const <String>[]), isEmpty);
+      expect(
+        service.resolveTagIds(['Anything'], step: 'inspection', section: 'body'),
+        isEmpty,
+      );
+      expect(
+        service.resolveTagIds(const <String>[], step: 'inspection'),
+        isEmpty,
+      );
     });
 
-    test('trims names and matches case-insensitively', () {
+    test('trims names and skips blanks without throwing', () {
       final service = SparkJoyTagService();
-      // Without priming, all names are unknown — exercises the
-      // "silently skip" path and debugPrint shouldn't throw.
-      final ids = service.resolveTagIds(['  FOO  ', 'bar', '']);
+      final ids = service.resolveTagIds(
+        ['  FOO  ', 'bar', ''],
+        step: 'test_drive',
+      );
       expect(ids, isEmpty);
     });
   });
 
   group('SparkJoyTagService.idFor', () {
-    test('returns null when name not in cache', () {
+    test('returns null when bucket empty', () {
       final service = SparkJoyTagService();
-      expect(service.idFor('unknown'), isNull);
-      expect(service.idFor('  '), isNull);
-      expect(service.idFor(''), isNull);
+      expect(
+        service.idFor(step: 'inspection', section: 'body', name: 'unknown'),
+        isNull,
+      );
+      expect(
+        service.idFor(step: 'test_drive', name: '  '),
+        isNull,
+      );
+      expect(
+        service.idFor(step: 'inspection', section: 'interior', name: ''),
+        isNull,
+      );
     });
   });
 
