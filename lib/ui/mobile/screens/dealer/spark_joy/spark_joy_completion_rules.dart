@@ -87,6 +87,19 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     }
     if (!hasTestDrive) {
       reasons.add('Тест-драйв — отметьте проведение');
+    } else {
+      // Fold per-subsystem blockers from _testDriveMissingReasons so the
+      // "Завершить" button cannot fire Storage.PrepareSpecialistReport
+      // with IsWorkingProperly=false + empty tag list. The backend
+      // validates both sides and rejects the whole report otherwise.
+      // Skip the "Добавьте комментарий" entry — it's appended below
+      // under its own copy to match the existing wording.
+      final tdReasons = _testDriveMissingReasons().where(
+        (r) => !r.startsWith('Добавьте комментарий'),
+      );
+      for (final reason in tdReasons) {
+        reasons.add('Тест-драйв — ${_lowerFirst(reason)}');
+      }
     }
     if (_isTdCommentRequired() && _tdNoteController.text.trim().isEmpty) {
       reasons.add('Тест-драйв — добавьте комментарий');
@@ -108,5 +121,10 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
 
   String? _summaryReasonMediaGroupKey(String reason) {
     return _SparkJoySummaryRegistry.mediaGroupKeyByMissingReason(reason);
+  }
+
+  String _lowerFirst(String input) {
+    if (input.isEmpty) return input;
+    return input[0].toLowerCase() + input.substring(1);
   }
 }
