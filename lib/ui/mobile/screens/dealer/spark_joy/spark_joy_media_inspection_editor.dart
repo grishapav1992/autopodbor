@@ -17,6 +17,12 @@ extension _SparkJoyMediaInspectionEditorMethods
     List<int>? applyToIndexes,
     bool saveDraftOnClose = true,
   }) async {
+    // Defense in depth: the lightbox hides the edit-note entry point
+    // in read-only mode, but the editor may also be reached via other
+    // pathways (bulk-apply, deep-link, future shortcuts). Silently
+    // no-op — callers treat `false` as "nothing changed", which is the
+    // truthful answer for a finalized report.
+    if (widget.readOnly) return false;
     final group = _mediaState[groupKey];
     if (group == null || index < 0 || index >= group.files.length) return false;
 

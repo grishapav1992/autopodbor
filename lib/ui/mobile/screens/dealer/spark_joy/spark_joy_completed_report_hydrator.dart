@@ -151,11 +151,21 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
       : null;
 
   // 7. Merge back into a single flat draft-shape map.
+  //
+  // Note on expertConclusionTouched: the draft-time flag gates whether
+  // _normalizeInitialExpertConclusion returns the stored text or an
+  // empty string (the editor uses it to distinguish auto-generated
+  // placeholder vs. user input). For a completed report the text that
+  // came back from the server IS the user's own conclusion, so we pin
+  // the touched flag to `true` — otherwise read-only summary shows
+  // "Заключение не указано" even when the real value is present.
+  final serverExpert = (server['expertConclusion'] ?? '').toString().trim();
   final draft = <String, dynamic>{
     ...server,
     if (frameMeta != null) ..._frameMetaToDraftKeys(frameMeta),
     if (frameId != null && frameId > 0)
       'modelGenerationRestylingFrameId': frameId,
+    if (serverExpert.isNotEmpty) 'expertConclusionTouched': true,
     'mediaGroupsState': mediaGroupsState,
     if (legalFiles.isNotEmpty) 'legalFiles': legalFiles,
     'tdEngineTags': tdEngineTags,

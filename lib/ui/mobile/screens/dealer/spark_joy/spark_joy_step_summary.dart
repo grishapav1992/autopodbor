@@ -2,7 +2,12 @@ part of 'spark_joy_create_report_screen.dart';
 
 Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
   final summary = s._calculateSummary();
-  final missingReasons = s._summaryMissingReasons();
+  // Attention highlights are work-in-progress signals: they turn
+  // section cards yellow and drive the "Дополнить: N" chip. A
+  // read-only completed report must not show them — pretend every
+  // section is complete.
+  final isReadOnly = s.widget.readOnly;
+  final missingReasons = isReadOnly ? const <String>[] : s._summaryMissingReasons();
   final attentionStepIds = <String>{};
   final attentionGroupKeys = <String>{};
   var expertNeedsAttention = false;

@@ -218,8 +218,10 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                     actions: [
                       // Edit-note is only offered in group mode — a flat
                       // list from "Обзор авто" has no single group to
-                      // open the inspection editor against.
-                      if (!isFlatMode)
+                      // open the inspection editor against. Also hidden
+                      // in read-only: completed reports are viewable
+                      // only, mutations don't belong there.
+                      if (!isFlatMode && !widget.readOnly)
                         TextButton.icon(
                           onPressed: () async {
                             await audioPlayer.stop();

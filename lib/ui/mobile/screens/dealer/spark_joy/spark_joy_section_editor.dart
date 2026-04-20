@@ -336,13 +336,19 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
           'Добавьте фото: ${actionState.missingMediaGroups.join(', ')}',
         ),
       ],
-      if (!actionState.inMediaGroupEditor &&
+      // Completed reports are shown read-only: validation hints belong
+      // to the edit flow (block the user from continuing / submitting)
+      // and are noise when the report is finalized. The hidden-by-
+      // readOnly guard mirrors the step-action-bar suppression below.
+      if (!s.widget.readOnly &&
+          !actionState.inMediaGroupEditor &&
           actionState.isTestDriveStep &&
           !actionState.canTestDriveContinue) ...[
         const SizedBox(height: SparkSpace.md),
         _buildSparkJoyValidationHint(actionState.testDriveReasons.join(' · ')),
       ],
-      if (!actionState.inMediaGroupEditor &&
+      if (!s.widget.readOnly &&
+          !actionState.inMediaGroupEditor &&
           actionState.isSummaryStep &&
           !actionState.canSummaryFinish) ...[
         const SizedBox(height: SparkSpace.md),

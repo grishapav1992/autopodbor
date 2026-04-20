@@ -471,17 +471,24 @@ Widget _buildSparkSummarySectionsList(
   required Set<String> attentionStepIds,
   required Set<String> attentionGroupKeys,
 }) {
+  // Read-only mode = finalized report; "Заполнено: N / Дополнить: N"
+  // counters and per-section yellow highlights are work-in-progress
+  // signals, so pin everything to "complete" and hide the progress
+  // chip pair entirely.
+  final isReadOnly = s.widget.readOnly;
   final items = summary.sections.toList(growable: false);
   var attentionCount = 0;
-  for (final section in items) {
-    final title = (section['title'] ?? '').toString().trim();
-    final stepId = _SparkJoySummaryRegistry.titleToStepId[title];
-    final groupKey = _SparkJoySummaryRegistry.titleToGroupKey[title];
-    final needsAttention =
-        (stepId != null && attentionStepIds.contains(stepId)) ||
-        (groupKey != null && attentionGroupKeys.contains(groupKey));
-    if (needsAttention) {
-      attentionCount += 1;
+  if (!isReadOnly) {
+    for (final section in items) {
+      final title = (section['title'] ?? '').toString().trim();
+      final stepId = _SparkJoySummaryRegistry.titleToStepId[title];
+      final groupKey = _SparkJoySummaryRegistry.titleToGroupKey[title];
+      final needsAttention =
+          (stepId != null && attentionStepIds.contains(stepId)) ||
+          (groupKey != null && attentionGroupKeys.contains(groupKey));
+      if (needsAttention) {
+        attentionCount += 1;
+      }
     }
   }
 
@@ -535,35 +542,37 @@ Widget _buildSparkSummarySectionsList(
             ),
           ],
         ),
-        const SizedBox(height: SparkSpace.md),
-        Wrap(
-          spacing: SparkSpace.sm,
-          runSpacing: SparkSpace.sm,
-          children: [
-            SparkChip(
-              text: 'Заполнено: ${items.length - attentionCount}',
-              background: kGreenColor.withValues(alpha: 0.12),
-              color: kGreenColor,
-              textSize: SparkTextSize.caption,
-              padding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.md,
-                vertical: SparkSpace.xxxs,
+        if (!isReadOnly) ...[
+          const SizedBox(height: SparkSpace.md),
+          Wrap(
+            spacing: SparkSpace.sm,
+            runSpacing: SparkSpace.sm,
+            children: [
+              SparkChip(
+                text: 'Заполнено: ${items.length - attentionCount}',
+                background: kGreenColor.withValues(alpha: 0.12),
+                color: kGreenColor,
+                textSize: SparkTextSize.caption,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.xxxs,
+                ),
               ),
-            ),
-            SparkChip(
-              text: 'Дополнить: $attentionCount',
-              background: attentionCount > 0
-                  ? kYellowColor.withValues(alpha: 0.18)
-                  : kLightGreyColor,
-              color: attentionCount > 0 ? kTertiaryColor : kGreyColor,
-              textSize: SparkTextSize.caption,
-              padding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.md,
-                vertical: SparkSpace.xxxs,
+              SparkChip(
+                text: 'Дополнить: $attentionCount',
+                background: attentionCount > 0
+                    ? kYellowColor.withValues(alpha: 0.18)
+                    : kLightGreyColor,
+                color: attentionCount > 0 ? kTertiaryColor : kGreyColor,
+                textSize: SparkTextSize.caption,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.xxxs,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
         const SizedBox(height: SparkSpace.xl),
         ...items.asMap().entries.map((entry) {
           final index = entry.key;
