@@ -134,30 +134,78 @@ class CreateRequestResult {
 
 /// User tag returned by `Storage.GetUserTags` / `Storage.AddUserTag`.
 ///
-/// Per OpenRPC Doc (Doc method): `step`, `section` and `type` are nullable
-/// strings. `type` enum is `serious | nonserious | null`. `createdAt` is an
-/// ISO-8601 date-time string returned by the server (nullable for forward
-/// compatibility).
+/// Domain invariant: every tag has a severity. The server-side enum
+/// legally includes `null` and two underscore variants (`nonserious` on
+/// `AddUserTag` input, `non_serious` on responses) but that variance
+/// doesn't belong in the UI. The parser [UserTagType.normalize] folds
+/// everything into [UserTagType] so screens can switch on two values
+/// without null checks.
+///
+/// `step` / `section` stay nullable — their null carries meaning
+/// (system tags without an owning step), unlike `type`.
 class UserTag {
   final int id;
   final String? step;
   final String? section;
   final String name;
   final String slug;
-  final String? type;
+  final UserTagType type;
   final String? createdAt;
 
   const UserTag({
     required this.id,
     required this.name,
     required this.slug,
+    this.type = UserTagType.nonSerious,
     this.step,
     this.section,
-    this.type,
     this.createdAt,
   });
 
-  bool get isSerious => type == 'serious';
+  bool get isSerious => type == UserTagType.serious;
+}
+
+/// Two-value severity of a [UserTag]. No `null` variant — the boundary
+/// parser coerces server nulls and unknown strings into [nonSerious].
+enum UserTagType {
+  serious,
+  nonSerious;
+
+  /// Canonical form used internally + written to the persisted catalog.
+  /// Matches the server's `GetUserTags` response wire name.
+  String get wireName {
+    switch (this) {
+      case UserTagType.serious:
+        return 'serious';
+      case UserTagType.nonSerious:
+        return 'non_serious';
+    }
+  }
+
+  /// Form required by `Storage.AddUserTag` param enum (no underscore).
+  String get addUserTagWire {
+    switch (this) {
+      case UserTagType.serious:
+        return 'serious';
+      case UserTagType.nonSerious:
+        return 'nonserious';
+    }
+  }
+
+  /// Accepts every known server form + internal string and folds to
+  /// the canonical enum. Unknown / null / empty → [nonSerious].
+  static UserTagType normalize(Object? raw) {
+    if (raw is UserTagType) return raw;
+    final text = (raw ?? '').toString().trim().toLowerCase();
+    if (text == 'serious') return UserTagType.serious;
+    // Tolerate both `non_serious` (server response) and `nonserious`
+    // (AddUserTag input enum) so persisted caches from older builds
+    // still map correctly.
+    if (text == 'non_serious' || text == 'nonserious') {
+      return UserTagType.nonSerious;
+    }
+    return UserTagType.nonSerious;
+  }
 }
 
 class PrepareSpecialistReportResult {

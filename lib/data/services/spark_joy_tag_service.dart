@@ -279,7 +279,10 @@ class SparkJoyTagService {
     'slug': tag.slug,
     'step': tag.step,
     'section': tag.section,
-    'type': tag.type,
+    // Persist the canonical wire form so older caches written with
+    // `nonserious` / null stay readable after UserTagType.normalize
+    // on the way back in (hydrateFromCache).
+    'type': tag.type.wireName,
     'createdAt': tag.createdAt,
   };
 
@@ -289,14 +292,15 @@ class SparkJoyTagService {
   /// `legal_review`, `inspection`, `test_drive`, or `result`.
   /// [tagName] — the user-entered tag name (≤255 chars).
   /// [section] — only meaningful for `step=inspection`.
-  /// [type] — `serious` or `nonserious`.
+  /// [type] — domain severity; defaults to [UserTagType.nonSerious].
+  /// Accepts any form [UserTagType.normalize] understands.
   ///
   /// Returns the server-assigned tag ID, or `null` on failure.
   Future<int?> addTag({
     required String step,
     required String tagName,
     String? section,
-    String? type,
+    Object? type,
   }) async {
     final cacheKey = _composeKey(step: step, section: section, name: tagName);
     // Already cached for this exact bucket — no need to call the server.
@@ -332,7 +336,7 @@ class SparkJoyTagService {
       step: 'inspection',
       tagName: tagName,
       section: groupKeyToApiSection[groupKey],
-      type: severity == 'serious' ? 'serious' : 'nonserious',
+      type: storage_api.UserTagType.normalize(severity),
     );
   }
 
@@ -344,7 +348,7 @@ class SparkJoyTagService {
     return addTag(
       step: 'test_drive',
       tagName: tagName,
-      type: severity == 'serious' ? 'serious' : 'nonserious',
+      type: storage_api.UserTagType.normalize(severity),
     );
   }
 

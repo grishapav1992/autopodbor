@@ -1577,7 +1577,9 @@ class StorageApi {
   }
 
   /// Parses a single UserTag object per OpenRPC Doc schema.
-  /// Handles nullable step/section/type and optional createdAt.
+  /// Handles nullable step/section and normalizes the tri-state server
+  /// `type` (serious | non_serious | null) into the two-value domain
+  /// enum via [UserTagType.normalize].
   static UserTag _userTagFromMap(Map item) {
     String? nullableString(dynamic v) {
       if (v == null) return null;
@@ -1591,7 +1593,7 @@ class StorageApi {
       section: nullableString(item['section']),
       name: (item['name'] ?? '').toString(),
       slug: (item['slug'] ?? '').toString(),
-      type: nullableString(item['type']),
+      type: UserTagType.normalize(item['type']),
       createdAt: nullableString(item['createdAt']),
     );
   }
@@ -1602,21 +1604,27 @@ class StorageApi {
   /// legal_review, inspection, test_drive, result.
   /// [name] — tag name (max 255 chars).
   /// [section] — only for step=inspection.
-  /// [type] — serious or nonserious.
+  /// [type] — domain severity; always sent to the server. Accepts any
+  /// form understood by [UserTagType.normalize] (the enum itself,
+  /// `'serious'`, `'non_serious'`, `'nonserious'`, null → nonserious).
   /// Returns the created (or existing) tag.
   static Future<UserTag> addUserTag({
     required String step,
     required String name,
     String? section,
-    String? type,
+    Object? type,
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    final normalizedType = UserTagType.normalize(type);
     final params = <String, dynamic>{
       'step': _stepToWireEnum(step),
       'name': name,
+      // AddUserTag enum drops the underscore ('nonserious'), while
+      // responses echo 'non_serious'. UserTagType.addUserTagWire does
+      // the right thing for the input side.
+      'type': normalizedType.addUserTagWire,
     };
     if (section != null) params['section'] = section;
-    if (type != null) params['type'] = type;
     final data = await _postRpc(
       method: 'Storage.AddUserTag',
       params: params,
