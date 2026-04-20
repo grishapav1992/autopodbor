@@ -611,9 +611,13 @@ class _SparkSegmentedTabButton extends StatelessWidget {
           onTap();
         },
         borderRadius: BorderRadius.circular(SparkRadius.pill),
-        child: AnimatedContainer(
-          duration: SparkMotion.fast,
-          curve: Curves.easeOut,
+        // Snap instead of AnimatedContainer — the text colour on the
+        // two tabs updates synchronously via setState, so a 160ms pill
+        // fade produced a visible lag where the destination tab's
+        // text was already dark while its pill hadn't arrived yet.
+        // Instant swap feels more responsive and matches iOS's
+        // UISegmentedControl behaviour for inner tiles.
+        child: Container(
           padding: const EdgeInsets.symmetric(
             horizontal: SparkSpace.md,
           ),
