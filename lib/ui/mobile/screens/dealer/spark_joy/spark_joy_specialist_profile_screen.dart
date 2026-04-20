@@ -797,6 +797,57 @@ class _SparkJoySpecialistProfileScreenState
             ],
           ),
         ),
+        // Reordered: Stats before Info before Business. The old order
+        // (Info → Business → Stats at the very bottom) buried the
+        // glanceable counters under a 6-field form. Users read stats
+        // often and edit profile rarely, so the top-to-bottom ordering
+        // matches actual interaction frequency.
+        const SparkSectionTitle('Статистика', top: SparkSpace.xxl),
+        Row(
+          children: [
+            Expanded(
+              child: SparkCard(
+                child: Column(
+                  children: [
+                    MyText(
+                      text: (_localCompletedCount ?? 0).toString(),
+                      size: SparkSize.iconXl,
+                      weight: FontWeight.w800,
+                      color: kSecondaryColor,
+                      tabularFigures: true,
+                    ),
+                    const MyText(
+                      text: 'Отчётов',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: SparkSpace.lg),
+            Expanded(
+              child: SparkCard(
+                child: Column(
+                  children: [
+                    MyText(
+                      text: (_localDraftCount ?? 0).toString(),
+                      size: SparkSize.iconXl,
+                      weight: FontWeight.w800,
+                      color: kSecondaryColor,
+                      tabularFigures: true,
+                    ),
+                    const MyText(
+                      text: 'Активных осмотров',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
         const SparkSectionTitle('Информация', top: SparkSpace.xxl),
         SparkCard(
           child: _profileEditMode
@@ -872,52 +923,6 @@ class _SparkJoySpecialistProfileScreenState
               ],
             ],
           ),
-        ),
-        const SparkSectionTitle('Статистика', top: SparkSpace.xxl),
-        Row(
-          children: [
-            Expanded(
-              child: SparkCard(
-                child: Column(
-                  children: [
-                    MyText(
-                      text: (_localCompletedCount ?? 0).toString(),
-                      size: SparkSize.iconXl,
-                      weight: FontWeight.w800,
-                      color: kSecondaryColor,
-                      tabularFigures: true,
-                    ),
-                    const MyText(
-                      text: 'Отчётов',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: SparkSpace.lg),
-            Expanded(
-              child: SparkCard(
-                child: Column(
-                  children: [
-                    MyText(
-                      text: (_localDraftCount ?? 0).toString(),
-                      size: SparkSize.iconXl,
-                      weight: FontWeight.w800,
-                      color: kSecondaryColor,
-                      tabularFigures: true,
-                    ),
-                    const MyText(
-                      text: 'Активных осмотров',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );
