@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -916,6 +918,13 @@ class _SparkJoyReportsListController extends ChangeNotifier {
     if (_tab == value) return;
     _tab = value;
     _safeNotify();
+    // Refresh the completed list every time the user lands on its tab so
+    // they never see stale data. Draft-edit roundtrips already call load()
+    // via _openDraft, but bare tab switches used to skip the RPC — users
+    // would get different freshness depending on how they arrived.
+    if (value == 'completed' && !_completedLoading) {
+      unawaited(_refreshCompleted());
+    }
   }
 
   void patchCompletedReportById(int reportId, Map<String, dynamic> next) {
@@ -942,7 +951,7 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       // until the user finishes the flow), so those stay on the device.
       // Clear [_loading] right after they're in so the drafts tab paints
       // immediately — the slower remote completed fetch continues in the
-      // background tracked by [_completedLoading].
+      // background via [_refreshCompleted].
       final allDrafts = await SparkJoyStorage.loadDrafts();
       if (_disposed || token != _loadToken) return;
       _drafts = allDrafts.where(_isVisibleDraft).toList();
@@ -950,31 +959,7 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       _loadError = null;
       _safeNotify();
 
-      // Completed reports are the server's source of truth. We no longer
-      // seed them from the local cache — if the RPC fails the tab shows
-      // an empty state with retry rather than stale mock-like entries.
-      try {
-        final remoteCompleted =
-            await storage_api.StorageApi.getSpecialistReport(
-              page: 1,
-              limit: 100,
-              isDraft: false,
-            );
-        if (_disposed || token != _loadToken) return;
-        _completed = _sortCompleted(remoteCompleted);
-        _completedLoading = false;
-        _completedSyncFailed = false;
-        _safeNotify();
-        // Persist the server snapshot so the profile's "Отчётов" counter
-        // and any future offline read path keep only server-backed data.
-        await SparkJoyStorage.replaceCompleted(_completed);
-      } catch (_) {
-        if (_disposed || token != _loadToken) return;
-        _completed = const <Map<String, dynamic>>[];
-        _completedLoading = false;
-        _completedSyncFailed = true;
-        _safeNotify();
-      }
+      await _refreshCompleted(token: token);
     } catch (_) {
       if (_disposed || token != _loadToken) return;
       _loading = false;
@@ -984,6 +969,45 @@ class _SparkJoyReportsListController extends ChangeNotifier {
         fallback:
             'Не удалось загрузить отчёты. Проверьте соединение и повторите.',
       );
+      _safeNotify();
+    }
+  }
+
+  /// Re-fetches completed reports from Storage.GetSpecialistReport.
+  ///
+  /// Called from both the initial [load] and from [setTab] when the user
+  /// switches to the completed tab, so navigating directly into that tab
+  /// from a cold start yields the same freshness as returning to it after
+  /// editing a draft. Pass [token] to piggy-back the outer [load] cycle;
+  /// omit it for a standalone refresh that uses a fresh [_loadToken].
+  Future<void> _refreshCompleted({int? token}) async {
+    final effectiveToken = token ?? ++_loadToken;
+    if (token == null) {
+      // Standalone invocation (e.g. tab switch) — keep drafts untouched
+      // and only drive the completed-specific indicators.
+      _completedLoading = true;
+      _completedSyncFailed = false;
+      _safeNotify();
+    }
+    try {
+      final remoteCompleted = await storage_api.StorageApi.getSpecialistReport(
+        page: 1,
+        limit: 100,
+        isDraft: false,
+      );
+      if (_disposed || effectiveToken != _loadToken) return;
+      _completed = _sortCompleted(remoteCompleted);
+      _completedLoading = false;
+      _completedSyncFailed = false;
+      _safeNotify();
+      // Persist the server snapshot so the profile's "Отчётов" counter
+      // and any future offline read path keep only server-backed data.
+      await SparkJoyStorage.replaceCompleted(_completed);
+    } catch (_) {
+      if (_disposed || effectiveToken != _loadToken) return;
+      _completed = const <Map<String, dynamic>>[];
+      _completedLoading = false;
+      _completedSyncFailed = true;
       _safeNotify();
     }
   }
