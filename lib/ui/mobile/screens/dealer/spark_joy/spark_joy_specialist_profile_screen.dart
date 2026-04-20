@@ -252,6 +252,7 @@ class _SparkJoySpecialistProfileScreenState
       return;
     }
 
+    HapticFeedback.mediumImpact();
     setState(() => _isVerifying = true);
     await Future<void>.delayed(const Duration(milliseconds: 700));
     final businessType = await SparkJoyStorage.verifyInnAndPromote(
@@ -336,6 +337,7 @@ class _SparkJoySpecialistProfileScreenState
     final isValid = _profileFormKey.currentState?.validate() ?? false;
     if (!isValid) return;
 
+    HapticFeedback.mediumImpact();
     setState(() => _isSavingProfile = true);
     final current = _specialist();
     final next = {
@@ -536,7 +538,9 @@ class _SparkJoySpecialistProfileScreenState
                     MyText(
                       text: profileName,
                       size: SparkTextSize.title,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w800,
+                      lineHeight: 1.30,
+                      tracking: true,
                     ),
                     const SizedBox(height: SparkSpace.xs),
                     Wrap(
@@ -710,8 +714,9 @@ class _SparkJoySpecialistProfileScreenState
                     MyText(
                       text: sjRead(specialist, 'reportCount', fallback: '0'),
                       size: SparkSize.iconXl,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w800,
                       color: kSecondaryColor,
+                      tabularFigures: true,
                     ),
                     const MyText(
                       text: 'Отчётов',
@@ -734,8 +739,9 @@ class _SparkJoySpecialistProfileScreenState
                         fallback: '0',
                       ),
                       size: SparkSize.iconXl,
-                      weight: FontWeight.w700,
+                      weight: FontWeight.w800,
                       color: kSecondaryColor,
+                      tabularFigures: true,
                     ),
                     const MyText(
                       text: 'Активных осмотров',
