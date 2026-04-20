@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -16,9 +17,19 @@ import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyReportsListScreen extends StatefulWidget {
-  const SparkJoyReportsListScreen({super.key, this.companyMode = false});
+  const SparkJoyReportsListScreen({
+    super.key,
+    this.companyMode = false,
+    this.tabRequest,
+  });
 
   final bool companyMode;
+
+  /// Optional external trigger the shell can push into to switch the
+  /// segmented tab (e.g. profile deep-link to "Завершённые"). The
+  /// request is consumed exactly once per emitted value — the listener
+  /// resets it back to null so the same request can fire again later.
+  final ValueListenable<String?>? tabRequest;
 
   @override
   State<SparkJoyReportsListScreen> createState() =>
@@ -42,12 +53,27 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       companyMode: widget.companyMode,
     );
     _controller.load();
+    widget.tabRequest?.addListener(_handleExternalTabRequest);
   }
 
   @override
   void dispose() {
+    widget.tabRequest?.removeListener(_handleExternalTabRequest);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleExternalTabRequest() {
+    final requested = widget.tabRequest?.value;
+    if (requested == null || requested.isEmpty) return;
+    _controller.setTab(requested);
+    // Reset the notifier so an identical request later (e.g. user taps
+    // "Отчётов" again after a manual tab switch) still triggers the
+    // listener. Only the shell owns the notifier so this is safe.
+    final notifier = widget.tabRequest;
+    if (notifier is ValueNotifier<String?>) {
+      notifier.value = null;
+    }
   }
 
   Future<void> _load() => _controller.load();

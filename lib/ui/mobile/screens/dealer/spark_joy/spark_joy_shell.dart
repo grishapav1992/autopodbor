@@ -32,6 +32,14 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   int _index = 0;
   final ValueNotifier<bool> _scrolledUnder = ValueNotifier<bool>(false);
 
+  // Lets other tabs ask the reports screen to switch its inner segmented
+  // tab — profile's "Отчётов" stat card taps this to deep-link straight
+  // to the завершённые list. The reports screen listens, reacts once,
+  // and resets the value back to null.
+  final ValueNotifier<String?> _requestedReportsTab = ValueNotifier<String?>(
+    null,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -41,6 +49,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   @override
   void dispose() {
     _scrolledUnder.dispose();
+    _requestedReportsTab.dispose();
     super.dispose();
   }
 
@@ -212,18 +221,35 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       return _SparkJoyLogin(onLogin: _login);
     }
 
+    void openCompletedReports() {
+      if (!mounted) return;
+      setState(() => _index = 0);
+      // The reports list is already mounted inside the IndexedStack so a
+      // plain index flip doesn't rebuild it — push the tab request
+      // through the notifier so its controller reacts.
+      _requestedReportsTab.value = 'completed';
+    }
+
     final tabs = _role == SparkJoyRole.specialist
         ? <Widget>[
-            const SparkJoyReportsListScreen(companyMode: false),
+            SparkJoyReportsListScreen(
+              companyMode: false,
+              tabRequest: _requestedReportsTab,
+            ),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
+              onOpenCompletedReports: openCompletedReports,
             ),
           ]
         : <Widget>[
-            const SparkJoyReportsListScreen(companyMode: true),
+            SparkJoyReportsListScreen(
+              companyMode: true,
+              tabRequest: _requestedReportsTab,
+            ),
             const SparkJoyCompanyStaffScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
+              onOpenCompletedReports: openCompletedReports,
             ),
           ];
     final destinations = _navDestinations();

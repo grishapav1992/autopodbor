@@ -12,9 +12,16 @@ class SparkJoySpecialistProfileScreen extends StatefulWidget {
   const SparkJoySpecialistProfileScreen({
     super.key,
     this.onBusinessStatusChanged,
+    this.onOpenCompletedReports,
   });
 
   final ValueChanged<String?>? onBusinessStatusChanged;
+
+  /// Optional callback the shell wires in so that tapping the
+  /// "Отчётов" stat card on the profile can jump back to the reports
+  /// tab and switch the segmented control to "Завершённые". Without a
+  /// wiring shell the tap becomes a no-op (stat card stays static).
+  final VoidCallback? onOpenCompletedReports;
 
   @override
   State<SparkJoySpecialistProfileScreen> createState() =>
@@ -807,6 +814,17 @@ class _SparkJoySpecialistProfileScreenState
           children: [
             Expanded(
               child: SparkCard(
+                // Tap the "Отчётов" counter to jump back to the reports
+                // tab with the completed segment selected. Wired via the
+                // shell's onOpenCompletedReports callback; if the shell
+                // didn't wire it (e.g. in preview/tests) the card is
+                // just a static counter.
+                onTap: widget.onOpenCompletedReports == null
+                    ? null
+                    : () {
+                        HapticFeedback.selectionClick();
+                        widget.onOpenCompletedReports!();
+                      },
                 child: Column(
                   children: [
                     MyText(
