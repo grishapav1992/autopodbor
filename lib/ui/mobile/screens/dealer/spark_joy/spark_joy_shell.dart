@@ -1,6 +1,5 @@
 import 'dart:ui' show ImageFilter;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -30,7 +29,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   SparkJoyRole _role = SparkJoyRole.specialist;
   String? _businessType;
   int _index = 0;
-  final ValueNotifier<bool> _scrolledUnder = ValueNotifier<bool>(false);
 
   // Lets other tabs ask the reports screen to switch its inner segmented
   // tab — profile's "Отчётов" stat card taps this to deep-link straight
@@ -48,18 +46,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
 
   @override
   void dispose() {
-    _scrolledUnder.dispose();
     _requestedReportsTab.dispose();
     super.dispose();
-  }
-
-  bool _onScroll(ScrollNotification n) {
-    if (n.depth != 0) return false;
-    final scrolled = n.metrics.pixels > 2;
-    if (_scrolledUnder.value != scrolled) {
-      _scrolledUnder.value = scrolled;
-    }
-    return false;
   }
 
   Future<void> _bootstrap() async {
@@ -255,22 +243,32 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     final destinations = _navDestinations();
     final index = _index >= tabs.length ? 0 : _index;
 
-    final media = MediaQuery.of(context);
     const navHeight = 72.0;
 
     return Scaffold(
+      // Keep extendBody for the frosted BottomNav (it floats over the
+      // tail of scroll content, which reads nicely). But the AppBar is
+      // pinned opaquely — the earlier extendBodyBehindAppBar + frosted
+      // flexibleSpace experiment made the top feel like content was
+      // swimming under a translucent surface, especially when the body
+      // background shared kPrimaryColor with the AppBar. Users asked
+      // for the same solid, fixed top we use in the report editor.
       extendBody: true,
-      extendBodyBehindAppBar: true,
       backgroundColor: kPrimaryColor,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         centerTitle: false,
         titleSpacing: SparkSpace.section,
-        backgroundColor: Colors.transparent,
+        backgroundColor: kPrimaryColor,
         elevation: 0,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        flexibleSpace: _FrostedAppBarSurface(scrolledUnder: _scrolledUnder),
+        shape: const Border(
+          bottom: BorderSide(
+            color: kBorderColor,
+            width: SparkSpace.hairline,
+          ),
+        ),
         title: Text(
           _currentTabTitle(),
           style: const TextStyle(
@@ -309,13 +307,14 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           ),
         ],
       ),
-      body: NotificationListener<ScrollNotification>(
-        onNotification: _onScroll,
-        child: SparkShellInsets(
-          topInset: media.padding.top + kToolbarHeight,
-          bottomInset: navHeight,
-          child: IndexedStack(index: index, children: tabs),
-        ),
+      body: SparkShellInsets(
+        // Pinned AppBar — content starts below the AppBar naturally
+        // (Scaffold handles the top inset), so shellTop is 0.
+        // Keeps bottomInset so tab content reserves space for the
+        // still-extendBody frosted nav.
+        topInset: 0,
+        bottomInset: navHeight,
+        child: IndexedStack(index: index, children: tabs),
       ),
       bottomNavigationBar: ClipRect(
         child: BackdropFilter(
@@ -359,7 +358,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                   if (value != index) {
                     HapticFeedback.selectionClick();
                   }
-                  _scrolledUnder.value = false;
                   setState(() => _index = value);
                 },
                 destinations: destinations,
@@ -368,56 +366,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Paints the AppBar's background surface — opaque while idle, frosted blur
-/// only once the active tab has scrolled content passing under it.
-/// Sits in [AppBar.flexibleSpace] so the status bar + toolbar area share
-/// one surface and we never stack two BackdropFilters.
-class _FrostedAppBarSurface extends StatelessWidget {
-  const _FrostedAppBarSurface({required this.scrolledUnder});
-
-  final ValueListenable<bool> scrolledUnder;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: scrolledUnder,
-      builder: (context, scrolled, _) {
-        final surface = DecoratedBox(
-          decoration: BoxDecoration(
-            color: scrolled
-                ? kWhiteColor.withValues(alpha: 0.78)
-                : kPrimaryColor,
-            border: scrolled
-                ? const Border(
-                    bottom: BorderSide(
-                      color: kBorderColor,
-                      width: SparkSpace.hairline,
-                    ),
-                  )
-                : const Border(
-                    bottom: BorderSide(
-                      color: kBorderColor,
-                      width: SparkSpace.hairline,
-                    ),
-                  ),
-          ),
-        );
-        if (!scrolled) return surface;
-        return ClipRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 8,
-              sigmaY: 8,
-              tileMode: TileMode.clamp,
-            ),
-            child: surface,
-          ),
-        );
-      },
     );
   }
 }

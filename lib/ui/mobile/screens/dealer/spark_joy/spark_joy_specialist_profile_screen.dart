@@ -400,6 +400,113 @@ class _SparkJoySpecialistProfileScreenState
     ).showSnackBar(const SnackBar(content: Text('Профиль сохранен')));
   }
 
+  // «Проверка компании» — verified state.
+  //
+  // Cleaner than the previous mixed layout (info-rows + still-visible
+  // input + retry button): we commit to a success card that shows the
+  // result and a single subtle "Сбросить" link. If the user needs to
+  // re-verify they tap reset first, which clears state and switches
+  // this card to the unverified layout.
+  Widget _buildBusinessVerified() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.verified_rounded,
+              size: SparkSize.iconMd,
+              color: kGreenColor,
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            Expanded(
+              child: MyText(
+                text: 'Статус «${_businessTypeLabel()}» подтверждён',
+                size: SparkTextSize.body,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.md),
+        SparkInfoRow(label: 'ИНН', value: _verifiedInn ?? ''),
+        const SizedBox(height: SparkSpace.md),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            onPressed: _resetBusinessStatus,
+            style: TextButton.styleFrom(
+              foregroundColor: kRedColor,
+              padding: const EdgeInsets.symmetric(
+                horizontal: SparkSpace.md,
+                vertical: SparkSpace.xs,
+              ),
+              visualDensity: const VisualDensity(
+                horizontal: -2,
+                vertical: -2,
+              ),
+            ),
+            child: const Text('Сбросить статус'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // «Проверка компании» — unverified state.
+  //
+  // Focused mini-form: prompt → labelled input → single primary button.
+  // Layout mirrors _profileTextField so the ИНН field reads as part of
+  // the same visual system, not a standalone oddity.
+  Widget _buildBusinessUnverified() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const MyText(
+          text:
+              'Подтвердите ИНН, чтобы открыть функции компании или ИП. Данные уйдут в тех. проверку.',
+          size: SparkTextSize.body,
+          color: kGreyColor,
+        ),
+        const SizedBox(height: SparkSpace.lg),
+        const MyText(
+          text: 'ИНН',
+          size: SparkTextSize.body,
+          color: kGreyColor,
+          paddingBottom: SparkSpace.sm,
+        ),
+        TextField(
+          controller: _innController,
+          keyboardType: TextInputType.number,
+          textInputAction: TextInputAction.done,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(12),
+          ],
+          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+          onChanged: (_) {
+            if (_innError != null) {
+              setState(() => _innError = null);
+            }
+          },
+          decoration: sparkInputDecoration(
+            '10 или 12 цифр',
+            errorText: _innError,
+          ),
+        ),
+        const SizedBox(height: SparkSpace.lg),
+        SizedBox(
+          width: double.infinity,
+          height: SparkSize.actionHeight,
+          child: OutlinedButton(
+            onPressed: _isVerifying ? null : _verifyInn,
+            child: Text(_isVerifying ? 'Проверяем...' : 'Проверить ИНН'),
+          ),
+        ),
+      ],
+    );
+  }
+
   void _cancelProfileEdit() {
     final specialist = _specialist();
     _applyProfileToControllers(specialist);
@@ -900,80 +1007,9 @@ class _SparkJoySpecialistProfileScreenState
         ),
         const SparkSectionTitle('Проверка компании', top: SparkSpace.xxl),
         SparkCard(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (hasVerifiedBusiness) ...[
-                SparkInfoRow(label: 'Статус', value: _businessTypeLabel()),
-                SparkInfoRow(label: 'Подтвержденный ИНН', value: _verifiedInn!),
-                const SizedBox(height: SparkSpace.md),
-              ] else
-                const MyText(
-                  text:
-                      'Добавьте ИНН для тех. проверки статуса компании или ИП',
-                  size: SparkTextSize.body,
-                  color: kGreyColor,
-                  paddingBottom: SparkSpace.md,
-                ),
-              const MyText(
-                text: 'ИНН',
-                size: SparkTextSize.body,
-                color: kGreyColor,
-                paddingBottom: SparkSpace.sm,
-              ),
-              TextField(
-                controller: _innController,
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(12),
-                ],
-                onTapOutside: (_) =>
-                    FocusManager.instance.primaryFocus?.unfocus(),
-                onChanged: (_) {
-                  if (_innError != null) {
-                    setState(() => _innError = null);
-                  }
-                },
-                decoration: sparkInputDecoration(
-                  '10 или 12 цифр',
-                  errorText: _innError,
-                ),
-              ),
-              const SizedBox(height: SparkSpace.lg),
-              // Business verification is an *occasional* action on this
-              // screen — demoting from FilledButton to OutlinedButton
-              // leaves a single primary (Информация → «Сохранить» in
-              // edit mode) and stops these two buttons from fighting for
-              // visual weight. Also bumps height to actionHeight (44pt)
-              // so the tap target matches iOS/Android minimums.
-              SizedBox(
-                height: SparkSize.actionHeight,
-                child: OutlinedButton(
-                  onPressed: _isVerifying ? null : _verifyInn,
-                  child: Text(
-                    _isVerifying
-                        ? 'Проверяем...'
-                        : hasVerifiedBusiness
-                        ? 'Проверить снова'
-                        : 'Проверить ИНН',
-                  ),
-                ),
-              ),
-              if (hasVerifiedBusiness) ...[
-                const SizedBox(height: SparkSpace.md),
-                SizedBox(
-                  height: SparkSize.actionHeight,
-                  child: TextButton(
-                    onPressed: _resetBusinessStatus,
-                    style: TextButton.styleFrom(foregroundColor: kRedColor),
-                    child: const Text('Сбросить статус до специалиста'),
-                  ),
-                ),
-              ],
-            ],
-          ),
+          child: hasVerifiedBusiness
+              ? _buildBusinessVerified()
+              : _buildBusinessUnverified(),
         ),
       ],
     );
