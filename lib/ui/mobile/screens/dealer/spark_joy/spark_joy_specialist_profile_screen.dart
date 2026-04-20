@@ -898,9 +898,15 @@ class _SparkJoySpecialistProfileScreenState
                 ),
               ),
               const SizedBox(height: SparkSpace.lg),
+              // Business verification is an *occasional* action on this
+              // screen — demoting from FilledButton to OutlinedButton
+              // leaves a single primary (Информация → «Сохранить» in
+              // edit mode) and stops these two buttons from fighting for
+              // visual weight. Also bumps height to actionHeight (44pt)
+              // so the tap target matches iOS/Android minimums.
               SizedBox(
-                height: SparkSize.actionHeightMd,
-                child: FilledButton(
+                height: SparkSize.actionHeight,
+                child: OutlinedButton(
                   onPressed: _isVerifying ? null : _verifyInn,
                   child: Text(
                     _isVerifying
@@ -914,9 +920,10 @@ class _SparkJoySpecialistProfileScreenState
               if (hasVerifiedBusiness) ...[
                 const SizedBox(height: SparkSpace.md),
                 SizedBox(
-                  height: SparkSize.actionHeightMd,
-                  child: OutlinedButton(
+                  height: SparkSize.actionHeight,
+                  child: TextButton(
                     onPressed: _resetBusinessStatus,
+                    style: TextButton.styleFrom(foregroundColor: kRedColor),
                     child: const Text('Сбросить статус до специалиста'),
                   ),
                 ),
