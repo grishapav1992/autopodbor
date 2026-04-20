@@ -469,12 +469,10 @@ class _SparkJoySpecialistProfileScreenState
           color: kGreyColor,
         ),
         const SizedBox(height: SparkSpace.lg),
-        const MyText(
-          text: 'ИНН',
-          size: SparkTextSize.body,
-          color: kGreyColor,
-          paddingBottom: SparkSpace.sm,
-        ),
+        // Dropped the separate "ИНН" label — the input hint
+        // ("10 или 12 цифр") + section title "Проверка компании"
+        // already tell the user what this field is. One less layer of
+        // grey text to parse.
         TextField(
           controller: _innController,
           keyboardType: TextInputType.number,
@@ -490,18 +488,24 @@ class _SparkJoySpecialistProfileScreenState
             }
           },
           decoration: sparkInputDecoration(
-            '10 или 12 цифр',
+            'ИНН — 10 или 12 цифр',
             errorText: _innError,
           ),
         ),
         const SizedBox(height: SparkSpace.lg),
-        SizedBox(
-          width: double.infinity,
-          height: SparkSize.actionHeight,
-          child: OutlinedButton(
-            onPressed: _isVerifying ? null : _verifyInn,
-            child: Text(_isVerifying ? 'Проверяем...' : 'Проверить ИНН'),
-          ),
+        // Promoted to full-width gradient primary (SparkPrimaryActionButton)
+        // so this CTA reads clearly as THE action of the card. The
+        // previous OutlinedButton got lost next to the input. There's
+        // no competing primary on this screen right now — Save lives
+        // inside the Information edit-mode card only when editing.
+        SparkPrimaryActionButton(
+          label: _isVerifying ? 'Проверяем...' : 'Проверить ИНН',
+          icon: Icons.verified_outlined,
+          onTap: () {
+            if (_isVerifying) return;
+            _verifyInn();
+          },
+          busy: _isVerifying,
         ),
       ],
     );
