@@ -97,6 +97,8 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
     this.initialStaffInviteLink,
     this.draft,
     this.assignment,
+    this.readOnly = false,
+    this.initialStepIndex,
   });
 
   final String? initialReportName;
@@ -105,6 +107,18 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
   final String? initialStaffInviteLink;
   final Map<String, dynamic>? draft;
   final Map<String, dynamic>? assignment;
+
+  /// When true the screen renders an already-submitted report without any
+  /// editing affordances — inputs are read-only, autosave + dirty-flag
+  /// plumbing is skipped, the action bar exposes only «Закрыть» and a
+  /// share link action. Used by the reports list to surface completed
+  /// reports with the exact same layout as the editor's "Итог" step.
+  final bool readOnly;
+
+  /// Optional starting step. When [readOnly] is true this defaults to the
+  /// summary step so the completed report opens directly at the recap
+  /// layout. Otherwise the usual "first unfilled step" flow applies.
+  final int? initialStepIndex;
 
   @override
   State<SparkJoyCreateReportScreen> createState() =>
@@ -224,6 +238,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // to kick off multiple catalogs and stack identical dialogs on top of
   // each other. Flip this while the picker is loading/open.
   bool _carPickerOpening = false;
+
+  // True while a share-link RPC is in flight on the read-only view — keeps
+  // the AppBar share icon disabled + spinning so users don't double-tap
+  // into duplicate `Storage.CreateSpecialistReportShareUrl` calls.
+  bool _shareInProgress = false;
   // ┌─ Phase 4.1 · Chunk 7: draft autosave meta-state → controller ─────────┐
   // │ 43 references across 4 files. Timers + debounce logic remain in the   │
   // │ host widget; only the status flags move.                              │
@@ -590,11 +609,28 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _finalizeInitializationAfterDraftLoad();
     unawaited(_loadTagIdsFromServer());
 
+    // Jump straight to the summary step for read-only views of completed
+    // reports — opening a completed report from the list should land on
+    // the recap layout, not the first unfilled step of the edit flow.
+    if (widget.readOnly) {
+      final summaryIndex = _SparkJoyStepRegistry.indexById(
+        _SparkJoyStepRegistry.idSummary,
+      );
+      final target = widget.initialStepIndex ?? summaryIndex;
+      if (target >= 0 && target < _SparkJoyStepRegistry.steps.length) {
+        _reportFlowController.openSection(
+          target,
+          totalSteps: _SparkJoyStepRegistry.steps.length,
+        );
+      }
+    }
+
     // Persist the draft immediately on new-report entry so it shows up in
     // the "Черновики" list as soon as the user names it, even before any
     // field is filled. Without this, the draft lives only in memory until
-    // the first _markDraftDirty call.
-    if (isNewDraft) {
+    // the first _markDraftDirty call. Skip in read-only mode — no mutation
+    // should ever reach storage when viewing a completed report.
+    if (isNewDraft && !widget.readOnly) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_saveDraft(showToast: false));

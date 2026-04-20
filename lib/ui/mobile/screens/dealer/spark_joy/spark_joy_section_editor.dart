@@ -348,7 +348,11 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
         const SizedBox(height: SparkSpace.md),
         _buildSparkJoyValidationHint(actionState.summaryReasons.join(' · ')),
       ],
-      if (!actionState.inMediaGroupEditor) ...[
+      // In read-only mode the section editor renders a completed report
+      // for inspection only — upload hints and the step action bar
+      // (which control edit-flow navigation / submission) don't belong
+      // here. The AppBar already exposes back + share actions.
+      if (!actionState.inMediaGroupEditor && !s.widget.readOnly) ...[
         const SizedBox(height: SparkSpace.xl),
         if (uploadInSummary) ...[
           _buildSparkJoyUploadHint(

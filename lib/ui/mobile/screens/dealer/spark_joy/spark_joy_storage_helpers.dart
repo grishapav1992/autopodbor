@@ -2,6 +2,80 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   // ──────────────────────────────────────────────────────────────────
+  //  Read-only completed-report actions
+  // ──────────────────────────────────────────────────────────────────
+
+  /// Generates a shareable URL for the completed report currently being
+  /// viewed in read-only mode, copies it to the clipboard, and surfaces a
+  /// SnackBar confirming the action. The reportId is resolved from the
+  /// draft payload passed into the screen; if the local payload lacks a
+  /// numeric id we fall back to [StorageApi.resolveSpecialistReportId].
+  Future<void> _shareCompletedReport(BuildContext context) async {
+    if (_shareInProgress) return;
+    final report = widget.draft ?? const <String, dynamic>{};
+    _setStateSafely(() => _shareInProgress = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      var reportId = _readIntField(report, const [
+        'id',
+        'reportId',
+        'report_id',
+      ]);
+      reportId ??= await storage_api.StorageApi.resolveSpecialistReportId(
+        report: report,
+      );
+      if (reportId == null) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Не удалось определить ID отчёта')),
+        );
+        return;
+      }
+      final generated = await storage_api.StorageApi
+          .createSpecialistReportShareUrl(reportId: reportId);
+      final url = generated.url.trim();
+      if (url.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Ссылка не была сгенерирована')),
+        );
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: url));
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Ссылка скопирована: $url'),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Не удалось сгенерировать ссылку')),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _shareInProgress = false);
+      } else {
+        _shareInProgress = false;
+      }
+    }
+  }
+
+  int? _readIntField(Map<String, dynamic> map, List<String> keys) {
+    for (final key in keys) {
+      final raw = map[key];
+      if (raw == null) continue;
+      if (raw is int) return raw;
+      if (raw is String) {
+        final parsed = int.tryParse(raw.trim());
+        if (parsed != null) return parsed;
+      }
+      if (raw is num) return raw.toInt();
+    }
+    return null;
+  }
+
+  // ──────────────────────────────────────────────────────────────────
   //  Tag ID resolution — GetUserTags / AddUserTag integration
   //
   //  Thin wrappers over [SparkJoyTagService]. The service owns the
@@ -2066,6 +2140,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   void _markDraftDirty({bool scheduleAutosave = true}) {
+    // Read-only views never dirty the draft — they render a submitted
+    // report and must not leak any accidental mutation through the
+    // autosave pipeline.
+    if (widget.readOnly) return;
     if (_hasUnsavedDraftChanges && !_draftSaveFailed) {
       if (scheduleAutosave) {
         _scheduleDraftAutosave();
@@ -2124,6 +2202,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     bool showToast = true,
     bool fromAutosave = false,
   }) async {
+    // Guardrail for the read-only path — nothing should ever call this
+    // when viewing a completed report, but we also stop silently here so
+    // any missed call sites don't trigger a storage write.
+    if (widget.readOnly) return;
     if (_draftSaveInProgress) {
       if (fromAutosave) {
         _autosaveRequestedWhileSaving = true;

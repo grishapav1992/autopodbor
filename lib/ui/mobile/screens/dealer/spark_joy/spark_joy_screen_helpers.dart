@@ -22,6 +22,11 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
   }
 
   Future<void> _editReportTitle() async {
+    // Read-only views of completed reports must never mutate the
+    // reportName — swallow the tap silently so the editor-shell code
+    // paths that always wire this callback don't accidentally pop a
+    // rename dialog on top of the recap.
+    if (widget.readOnly) return;
     final controller = TextEditingController(text: _reportNameController.text);
     final saved = await showDialog<bool>(
       context: context,

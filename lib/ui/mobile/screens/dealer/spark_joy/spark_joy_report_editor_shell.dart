@@ -2,8 +2,9 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
   Widget _buildReportEditorShell(BuildContext context) {
+    final isReadOnly = widget.readOnly;
     return PopScope(
-      canPop: !_editingSection,
+      canPop: isReadOnly ? true : !_editingSection,
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         if (_editingSection) {
@@ -14,13 +15,22 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
         appBar: SparkReportEditorAppBar(
           title: _reportTitle(),
           meta: sjFormatReportMeta(_currentReportCode(), _createdAt),
-          draftStatus: _draftSaveStatusText(),
-          draftStatusColor: _draftSaveStatusColor(),
-          draftStatusIcon: _draftSaveStatusIcon(),
-          draftSaving: _draftSaveInProgress,
+          // In read-only mode the save-status pill is meaningless (nothing
+          // to save), so we swap it for a neutral "Завершённый отчёт"
+          // pill that still explains what the user is looking at.
+          draftStatus: isReadOnly
+              ? 'Завершённый отчёт'
+              : _draftSaveStatusText(),
+          draftStatusColor: isReadOnly ? kGreenColor : _draftSaveStatusColor(),
+          draftStatusIcon: isReadOnly
+              ? Icons.task_alt_rounded
+              : _draftSaveStatusIcon(),
+          draftSaving: isReadOnly ? false : _draftSaveInProgress,
           onBack: () => _handleEditorBack(context),
-          showEditAction: !_editingSection,
+          showEditAction: !isReadOnly && !_editingSection,
           onEdit: _editReportTitle,
+          onShare: isReadOnly ? () => _shareCompletedReport(context) : null,
+          sharing: _shareInProgress,
         ),
         scrollController: _pageScrollController,
         padding: AppSizes.listPaddingWithBottomBar(),
@@ -31,6 +41,13 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
   }
 
   void _handleEditorBack(BuildContext context) {
+    // Read-only view has no overview fallback — back always pops the route
+    // directly, so «Назад» behaves like a close button the way users
+    // expect from a finalised report screen.
+    if (widget.readOnly) {
+      Navigator.of(context).pop();
+      return;
+    }
     if (_editingSection) {
       _handleSectionBack();
       return;

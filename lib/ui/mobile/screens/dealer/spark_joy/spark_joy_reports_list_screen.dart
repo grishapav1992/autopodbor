@@ -9,7 +9,6 @@ import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_i18n.dart';
 import 'spark_joy_new_report_name_screen.dart';
-import 'spark_joy_report_detail_screen.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -67,9 +66,41 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   }
 
   Future<void> _openCompleted(Map<String, dynamic> report) async {
-    await Navigator.of(context).push<void>(
+    // Prefer a fresh payload from Storage.ViewSpecialistReport so the
+    // read-only view reflects the server's current state (any re-generated
+    // media URLs, post-submission edits, etc.). Fall back to the locally
+    // cached `report` map when the RPC is unavailable — e.g. offline — so
+    // the screen still opens instead of silently dropping the tap.
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    Map<String, dynamic> reportToOpen = report;
+    try {
+      final reportId = await _ensureReportId(report);
+      if (reportId != null) {
+        final remote = await storage_api.StorageApi.viewSpecialistReport(
+          reportId: reportId,
+        );
+        if (remote.isNotEmpty) {
+          reportToOpen = {...report, ...remote};
+        }
+      }
+    } catch (_) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Не удалось обновить отчёт с сервера — показываем локальную копию',
+          ),
+        ),
+      );
+    }
+    if (!mounted) return;
+    await navigator.push<void>(
       MaterialPageRoute(
-        builder: (_) => SparkJoyReportDetailScreen(report: report),
+        builder: (_) => SparkJoyCreateReportScreen(
+          draft: reportToOpen,
+          readOnly: true,
+        ),
       ),
     );
   }

@@ -732,6 +732,8 @@ class SparkReportEditorAppBar extends StatelessWidget
     required this.onBack,
     required this.showEditAction,
     this.onEdit,
+    this.onShare,
+    this.sharing = false,
   });
 
   final String title;
@@ -743,6 +745,15 @@ class SparkReportEditorAppBar extends StatelessWidget
   final VoidCallback onBack;
   final bool showEditAction;
   final VoidCallback? onEdit;
+
+  /// When non-null the AppBar renders a share icon in the actions row. Used
+  /// by the read-only completed-report view to surface the "Поделиться"
+  /// affordance next to the back button without adding a bottom action bar.
+  final VoidCallback? onShare;
+
+  /// Swap the share icon for a compact spinner while the share URL is
+  /// being generated so mashing the button doesn't queue duplicate RPCs.
+  final bool sharing;
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
@@ -776,6 +787,18 @@ class SparkReportEditorAppBar extends StatelessWidget
         ],
       ),
       actions: [
+        if (onShare != null)
+          IconButton(
+            onPressed: sharing ? null : onShare,
+            tooltip: 'Поделиться ссылкой',
+            icon: sharing
+                ? const SizedBox(
+                    width: SparkSize.iconSm,
+                    height: SparkSize.iconSm,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.ios_share_rounded),
+          ),
         if (showEditAction)
           IconButton(
             onPressed: onEdit,
