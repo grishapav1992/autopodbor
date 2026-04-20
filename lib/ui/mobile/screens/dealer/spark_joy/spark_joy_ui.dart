@@ -241,11 +241,18 @@ class SparkHintCard extends StatelessWidget {
     required this.text,
     this.icon,
     this.textColor = kGreyColor,
+    this.trailing,
   });
 
   final String text;
   final IconData? icon;
   final Color textColor;
+
+  /// Optional action rendered on the right side of the hint (e.g. a
+  /// compact TextButton for "Обновить" when we're surfacing a stale-cache
+  /// refresh failure). Use sparingly — the hint card is meant to be
+  /// passive context, not a second nav target.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -264,6 +271,10 @@ class SparkHintCard extends StatelessWidget {
               color: textColor,
             ),
           ),
+          if (trailing != null) ...[
+            const SizedBox(width: SparkSpace.sm),
+            trailing!,
+          ],
         ],
       ),
     );

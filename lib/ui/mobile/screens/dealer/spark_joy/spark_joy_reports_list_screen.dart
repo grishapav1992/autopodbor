@@ -839,8 +839,26 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   ),
                 ],
               ]
-            else
+            else ...[
+              // Subtle in-band hint when we're showing cached data because
+              // the revalidation failed. Users can still open existing
+              // reports + share links, and one tap on "Обновить" re-runs
+              // the RPC.
+              if (_controller.completedSyncFailed)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: SparkSpace.md),
+                  child: SparkHintCard(
+                    icon: Icons.cloud_off_rounded,
+                    text:
+                        'Список не обновлён — показана последняя сохранённая версия.',
+                    trailing: TextButton(
+                      onPressed: _load,
+                      child: const Text('Обновить'),
+                    ),
+                  ),
+                ),
               ...completed.map(_buildCompletedCard),
+            ],
           ],
         );
       },
@@ -942,24 +960,31 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   Future<void> load() async {
     final token = ++_loadToken;
     _loading = true;
-    _completedLoading = true;
     _loadError = null;
     _completedSyncFailed = false;
     _safeNotify();
     try {
-      // Drafts still live only in local storage (they aren't submitted
-      // until the user finishes the flow), so those stay on the device.
-      // Clear [_loading] right after they're in so the drafts tab paints
-      // immediately — the slower remote completed fetch continues in the
-      // background via [_refreshCompleted].
-      final allDrafts = await SparkJoyStorage.loadDrafts();
+      // Load drafts + the cached completed snapshot in parallel so the
+      // first paint is instant regardless of network state. Stale-while-
+      // revalidate: we show whatever the last successful server fetch
+      // wrote to [SparkJoyStorage.replaceCompleted] while
+      // [_refreshCompleted] re-checks the server in the background.
+      final results = await Future.wait([
+        SparkJoyStorage.loadDrafts(),
+        SparkJoyStorage.loadCompleted(),
+      ]);
       if (_disposed || token != _loadToken) return;
+      final allDrafts = results[0];
+      final cachedCompleted = results[1];
       _drafts = allDrafts.where(_isVisibleDraft).toList();
+      _completed = _sortCompleted(cachedCompleted);
       _loading = false;
       _loadError = null;
       _safeNotify();
 
-      await _refreshCompleted(token: token);
+      // Fire the remote refresh but don't await it — the user can already
+      // see + interact with the cached list while we revalidate.
+      unawaited(_refreshCompleted(token: token));
     } catch (_) {
       if (_disposed || token != _loadToken) return;
       _loading = false;
@@ -975,6 +1000,12 @@ class _SparkJoyReportsListController extends ChangeNotifier {
 
   /// Re-fetches completed reports from Storage.GetSpecialistReport.
   ///
+  /// Stale-while-revalidate: never clears the in-memory list on failure,
+  /// and never hides the cached list behind a full-page spinner while
+  /// the fetch is in flight. The existing list stays tappable; only the
+  /// [_completedLoading] flag flips so the UI can render a small
+  /// background indicator if it wants to.
+  ///
   /// Called from both the initial [load] and from [setTab] when the user
   /// switches to the completed tab, so navigating directly into that tab
   /// from a cold start yields the same freshness as returning to it after
@@ -982,13 +1013,9 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   /// omit it for a standalone refresh that uses a fresh [_loadToken].
   Future<void> _refreshCompleted({int? token}) async {
     final effectiveToken = token ?? ++_loadToken;
-    if (token == null) {
-      // Standalone invocation (e.g. tab switch) — keep drafts untouched
-      // and only drive the completed-specific indicators.
-      _completedLoading = true;
-      _completedSyncFailed = false;
-      _safeNotify();
-    }
+    _completedLoading = true;
+    _completedSyncFailed = false;
+    _safeNotify();
     try {
       final remoteCompleted = await storage_api.StorageApi.getSpecialistReport(
         page: 1,
@@ -1000,12 +1027,14 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       _completedLoading = false;
       _completedSyncFailed = false;
       _safeNotify();
-      // Persist the server snapshot so the profile's "Отчётов" counter
-      // and any future offline read path keep only server-backed data.
+      // Persist the server snapshot so the next cold start serves fresh
+      // data from cache and the profile's "Отчётов" counter stays in sync.
       await SparkJoyStorage.replaceCompleted(_completed);
     } catch (_) {
       if (_disposed || effectiveToken != _loadToken) return;
-      _completed = const <Map<String, dynamic>>[];
+      // Keep the cached list — user can still open existing reports or
+      // generate share links while offline. Surface the failure via
+      // [_completedSyncFailed] so the UI can show a subtle retry hint.
       _completedLoading = false;
       _completedSyncFailed = true;
       _safeNotify();
