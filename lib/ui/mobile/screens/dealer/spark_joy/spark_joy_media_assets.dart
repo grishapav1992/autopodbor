@@ -317,14 +317,27 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     int? cacheHeight,
     FilterQuality filterQuality = FilterQuality.low,
   }) {
+    // When both cacheWidth AND cacheHeight are non-null, Flutter
+    // decodes the image into *exactly* those dimensions — aspect
+    // ratio is forced to cacheWidth/cacheHeight regardless of the
+    // source. Downstream BoxFit.cover then paints that already
+    // distorted square onto the tile, which is what users were
+    // seeing as "мини фото растягивается". Prefer a single
+    // dimension so Flutter rescales the other axis proportionally;
+    // keep the tighter of the two so memory stays bounded.
+    final (int? decodeWidth, int? decodeHeight) = (cacheWidth != null &&
+            cacheHeight != null)
+        ? (cacheWidth <= cacheHeight ? (cacheWidth, null) : (null, cacheHeight))
+        : (cacheWidth, cacheHeight);
+
     final source = item.dataUrl.trim();
     final bytes = _decodeDataUrlImageBytes(source);
     if (bytes != null) {
       return Image.memory(
         bytes,
         fit: fit,
-        cacheWidth: cacheWidth,
-        cacheHeight: cacheHeight,
+        cacheWidth: decodeWidth,
+        cacheHeight: decodeHeight,
         filterQuality: filterQuality,
         gaplessPlayback: true,
         errorBuilder: (context, error, stackTrace) => Icon(
@@ -360,8 +373,8 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
           return Image.memory(
             localBytes,
             fit: fit,
-            cacheWidth: cacheWidth,
-            cacheHeight: cacheHeight,
+            cacheWidth: decodeWidth,
+            cacheHeight: decodeHeight,
             filterQuality: filterQuality,
             gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => Icon(
