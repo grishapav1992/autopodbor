@@ -48,6 +48,13 @@ class _SparkJoySpecialistProfileScreenState
   bool _isVerifying = false;
   bool _isSavingProfile = false;
   bool _profileDirty = false;
+
+  // View-by-default for "Информация". The profile opens as a read-only
+  // summary (SparkInfoRow list + non-interactive specialization chips);
+  // tapping the pencil action flips this flag and reveals the Form with
+  // inputs + Save/Cancel buttons. Reduces visual noise on a screen users
+  // visit often to glance, rarely to edit.
+  bool _profileEditMode = false;
   String? _innError;
   String? _verifiedInn;
   String? _businessType;
@@ -376,16 +383,208 @@ class _SparkJoySpecialistProfileScreenState
       _specialistProfile = next;
       _profileDirty = false;
       _isSavingProfile = false;
+      // Collapse back to the read-only summary after a successful save
+      // — users want to see the result of their edit, not stay in
+      // edit-mode with the same buttons.
+      _profileEditMode = false;
     });
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Профиль сохранен')));
   }
 
-  void _resetProfileDraft() {
+  void _cancelProfileEdit() {
     final specialist = _specialist();
     _applyProfileToControllers(specialist);
-    setState(() => _profileDirty = false);
+    setState(() {
+      _profileDirty = false;
+      _profileEditMode = false;
+    });
+  }
+
+  Widget _buildProfileInfoRead(Map<String, dynamic> specialist) {
+    final specs = _currentSpecializations();
+    String valueOrDash(String value) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? '—' : trimmed;
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header row: hint + pencil "Изменить" action.
+        Row(
+          children: [
+            const Expanded(
+              child: MyText(
+                text: 'Контактные данные и специализация',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                setState(() => _profileEditMode = true);
+              },
+              icon: const Icon(Icons.edit_outlined, size: SparkSize.iconSm),
+              label: const Text('Изменить'),
+              style: TextButton.styleFrom(
+                foregroundColor: kSecondaryColor,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.xs,
+                ),
+                visualDensity: const VisualDensity(
+                  horizontal: -2,
+                  vertical: -2,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.md),
+        SparkInfoRow(
+          label: 'ФИО',
+          value: valueOrDash(
+            _nameController.text.isEmpty
+                ? sjRead(specialist, 'name')
+                : _nameController.text,
+          ),
+        ),
+        SparkInfoRow(
+          label: 'Город',
+          value: valueOrDash(
+            _cityController.text.isEmpty
+                ? sjRead(specialist, 'city')
+                : _cityController.text,
+          ),
+        ),
+        // Specialization — read-only chips so the scale is obvious at a
+        // glance without re-reading a comma-separated list.
+        const SizedBox(height: SparkSpace.md),
+        const MyText(
+          text: 'Специализация',
+          size: SparkTextSize.body,
+          color: kGreyColor,
+        ),
+        const SizedBox(height: SparkSpace.sm),
+        if (specs.isEmpty)
+          const MyText(
+            text: '—',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+          )
+        else
+          Wrap(
+            spacing: SparkSpace.sm,
+            runSpacing: SparkSpace.sm,
+            children: specs
+                .map(
+                  (s) => SparkChip(
+                    text: s,
+                    background: kSecondaryColor.withValues(alpha: 0.08),
+                    color: kSecondaryColor,
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        const SizedBox(height: SparkSpace.md),
+        SparkInfoRow(
+          label: 'Опыт',
+          value: valueOrDash(
+            _experienceController.text.isEmpty
+                ? sjRead(specialist, 'experience')
+                : _experienceController.text,
+          ),
+        ),
+        SparkInfoRow(
+          label: 'Телефон',
+          value: valueOrDash(
+            _phoneController.text.isEmpty
+                ? sjRead(specialist, 'phone')
+                : _phoneController.text,
+          ),
+        ),
+        SparkInfoRow(
+          label: 'Email',
+          value: valueOrDash(
+            _emailController.text.isEmpty
+                ? sjRead(specialist, 'email')
+                : _emailController.text,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileInfoEdit() {
+    return Form(
+      key: _profileFormKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _profileTextField(
+            controller: _nameController,
+            label: 'ФИО',
+            hint: 'Имя специалиста',
+            validator: (value) => _requiredValidator(value, 'ФИО'),
+          ),
+          _profileTextField(
+            controller: _cityController,
+            label: 'Город',
+            hint: 'Город осмотров',
+            validator: (value) => _requiredValidator(value, 'Город'),
+          ),
+          _buildSpecializationEditor(),
+          _profileTextField(
+            controller: _experienceController,
+            label: 'Опыт',
+            hint: 'Например: 8 лет',
+          ),
+          _profileTextField(
+            controller: _phoneController,
+            label: 'Телефон',
+            hint: '+7...',
+            keyboardType: TextInputType.phone,
+            validator: _phoneValidator,
+          ),
+          _profileTextField(
+            controller: _emailController,
+            label: 'Email',
+            hint: 'name@example.com',
+            keyboardType: TextInputType.emailAddress,
+            validator: _emailValidator,
+          ),
+          const SizedBox(height: SparkSpace.xs),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: SparkSize.actionHeight,
+                  child: OutlinedButton(
+                    onPressed: _isSavingProfile ? null : _cancelProfileEdit,
+                    child: const Text('Отмена'),
+                  ),
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              Expanded(
+                child: SizedBox(
+                  height: SparkSize.actionHeight,
+                  child: FilledButton(
+                    onPressed: _isSavingProfile ? null : _saveProfile,
+                    child: Text(
+                      _isSavingProfile ? 'Сохраняем...' : 'Сохранить',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _profileTextField({
@@ -600,64 +799,9 @@ class _SparkJoySpecialistProfileScreenState
         ),
         const SparkSectionTitle('Информация', top: SparkSpace.xxl),
         SparkCard(
-          child: Form(
-            key: _profileFormKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _profileTextField(
-                  controller: _nameController,
-                  label: 'ФИО',
-                  hint: 'Имя специалиста',
-                  validator: (value) => _requiredValidator(value, 'ФИО'),
-                ),
-                _profileTextField(
-                  controller: _cityController,
-                  label: 'Город',
-                  hint: 'Город осмотров',
-                  validator: (value) => _requiredValidator(value, 'Город'),
-                ),
-                _buildSpecializationEditor(),
-                _profileTextField(
-                  controller: _experienceController,
-                  label: 'Опыт',
-                  hint: 'Например: 8 лет',
-                ),
-                _profileTextField(
-                  controller: _phoneController,
-                  label: 'Телефон',
-                  hint: '+7...',
-                  keyboardType: TextInputType.phone,
-                  validator: _phoneValidator,
-                ),
-                _profileTextField(
-                  controller: _emailController,
-                  label: 'Email',
-                  hint: 'name@example.com',
-                  keyboardType: TextInputType.emailAddress,
-                  validator: _emailValidator,
-                ),
-                const SizedBox(height: SparkSpace.xs),
-                SizedBox(
-                  height: SparkSize.actionHeightMd,
-                  child: FilledButton(
-                    onPressed: _isSavingProfile ? null : _saveProfile,
-                    child: Text(_isSavingProfile ? 'Обновляем...' : 'Готово'),
-                  ),
-                ),
-                if (_profileDirty) ...[
-                  const SizedBox(height: SparkSpace.md),
-                  SizedBox(
-                    height: SparkSize.actionHeightMd,
-                    child: OutlinedButton(
-                      onPressed: _resetProfileDraft,
-                      child: const Text('Отменить изменения'),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
+          child: _profileEditMode
+              ? _buildProfileInfoEdit()
+              : _buildProfileInfoRead(specialist),
         ),
         const SparkSectionTitle('Проверка компании', top: SparkSpace.xxl),
         SparkCard(
