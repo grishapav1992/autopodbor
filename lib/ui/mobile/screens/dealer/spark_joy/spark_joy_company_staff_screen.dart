@@ -485,10 +485,9 @@ class _SparkJoyCompanyStaffScreenState
     return SparkScreenList(
       bottomInset: 56,
       children: [
-        const SparkPageHeader(
-          title: 'Сотрудники',
-          subtitle: 'Штат компании и приглашения',
-        ),
+        // SparkPageHeader removed — the shell's AppBar already shows
+        // "Сотрудники" as the tab title. Avoids the duplicate greeting
+        // that crowded the profile screen.
         Row(
           children: [
             _buildStatTile(

@@ -748,10 +748,11 @@ class _SparkJoySpecialistProfileScreenState
         ]);
       },
       children: [
-        const SparkPageHeader(
-          title: 'Мой профиль',
-          subtitle: 'Данные специалиста и статус компании',
-        ),
+        // SparkPageHeader removed — the shell's AppBar already shows
+        // "Профиль" as the tab title, and the shapka card below owns
+        // the specialist's identity. The extra "Мой профиль" + subtitle
+        // were a third redundant greeting and crowded the top of the
+        // screen.
         SparkCard(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
