@@ -53,11 +53,29 @@ class _SparkJoySpecialistProfileScreenState
   String? _businessType;
   Map<String, dynamic>? _specialistProfile;
 
+  // Real counts of saved drafts + completed reports, loaded from local
+  // storage. Fall back to the seed value from sparkSpecialists only while
+  // the first load is in flight so the cards never show "0" during a
+  // cold start.
+  int? _localDraftCount;
+  int? _localCompletedCount;
+
   @override
   void initState() {
     super.initState();
     _loadProfile();
     _loadBusinessStatus();
+    _loadReportCounts();
+  }
+
+  Future<void> _loadReportCounts() async {
+    final drafts = await SparkJoyStorage.loadDrafts();
+    final completed = await SparkJoyStorage.loadCompleted();
+    if (!mounted) return;
+    setState(() {
+      _localDraftCount = drafts.length;
+      _localCompletedCount = completed.length;
+    });
   }
 
   @override
@@ -516,6 +534,13 @@ class _SparkJoySpecialistProfileScreenState
 
     return SparkScreenList(
       bottomInset: 56,
+      onRefresh: () async {
+        await Future.wait([
+          _loadProfile(),
+          _loadBusinessStatus(),
+          _loadReportCounts(),
+        ]);
+      },
       children: [
         const SparkPageHeader(
           title: 'Мой профиль',
@@ -712,7 +737,7 @@ class _SparkJoySpecialistProfileScreenState
                 child: Column(
                   children: [
                     MyText(
-                      text: sjRead(specialist, 'reportCount', fallback: '0'),
+                      text: (_localCompletedCount ?? 0).toString(),
                       size: SparkSize.iconXl,
                       weight: FontWeight.w800,
                       color: kSecondaryColor,
@@ -733,11 +758,7 @@ class _SparkJoySpecialistProfileScreenState
                 child: Column(
                   children: [
                     MyText(
-                      text: sjRead(
-                        specialist,
-                        'activeInspections',
-                        fallback: '0',
-                      ),
+                      text: (_localDraftCount ?? 0).toString(),
                       size: SparkSize.iconXl,
                       weight: FontWeight.w800,
                       color: kSecondaryColor,
