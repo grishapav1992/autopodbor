@@ -801,6 +801,13 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                 )
               else
                 ...drafts.map(_buildDraftCard)
+            else if (_controller.completedLoading && completed.isEmpty)
+              SparkLoadingState(
+                message: sjT(
+                  'spark.state.loading.reports',
+                  fallback: 'Загрузка отчётов...',
+                ),
+              )
             else if (completed.isEmpty)
               ...[
                 SparkEmptyState(
@@ -848,6 +855,12 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   bool _loading = true;
   String? _loadError;
   bool _completedSyncFailed = false;
+  // True while the Storage.GetSpecialistReport RPC is in flight. Tracked
+  // separately from [_loading] so the drafts tab (local-only data)
+  // doesn't block on the ~12s server fetch — users who only came back
+  // to change a draft name used to sit through the whole RPC before the
+  // list re-appeared.
+  bool _completedLoading = false;
   int _loadToken = 0;
   bool _disposed = false;
 
@@ -858,6 +871,7 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   bool get loading => _loading;
   String? get loadError => _loadError;
   bool get completedSyncFailed => _completedSyncFailed;
+  bool get completedLoading => _completedLoading;
   List<Map<String, dynamic>> get drafts => _drafts;
   List<Map<String, dynamic>> get completed => _completed;
 
@@ -919,15 +933,21 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   Future<void> load() async {
     final token = ++_loadToken;
     _loading = true;
+    _completedLoading = true;
     _loadError = null;
     _completedSyncFailed = false;
     _safeNotify();
     try {
       // Drafts still live only in local storage (they aren't submitted
       // until the user finishes the flow), so those stay on the device.
+      // Clear [_loading] right after they're in so the drafts tab paints
+      // immediately — the slower remote completed fetch continues in the
+      // background tracked by [_completedLoading].
       final allDrafts = await SparkJoyStorage.loadDrafts();
       if (_disposed || token != _loadToken) return;
       _drafts = allDrafts.where(_isVisibleDraft).toList();
+      _loading = false;
+      _loadError = null;
       _safeNotify();
 
       // Completed reports are the server's source of truth. We no longer
@@ -942,8 +962,7 @@ class _SparkJoyReportsListController extends ChangeNotifier {
             );
         if (_disposed || token != _loadToken) return;
         _completed = _sortCompleted(remoteCompleted);
-        _loading = false;
-        _loadError = null;
+        _completedLoading = false;
         _completedSyncFailed = false;
         _safeNotify();
         // Persist the server snapshot so the profile's "Отчётов" counter
@@ -952,13 +971,14 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       } catch (_) {
         if (_disposed || token != _loadToken) return;
         _completed = const <Map<String, dynamic>>[];
-        _loading = false;
+        _completedLoading = false;
         _completedSyncFailed = true;
         _safeNotify();
       }
     } catch (_) {
       if (_disposed || token != _loadToken) return;
       _loading = false;
+      _completedLoading = false;
       _loadError = sjT(
         'spark.state.error.reports',
         fallback:
