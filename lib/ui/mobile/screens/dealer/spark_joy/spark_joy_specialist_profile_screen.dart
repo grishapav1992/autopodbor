@@ -671,31 +671,41 @@ class _SparkJoySpecialistProfileScreenState
             validator: _emailValidator,
           ),
           const SizedBox(height: SparkSpace.xs),
-          Row(
-            children: [
-              Expanded(
-                child: SizedBox(
-                  height: SparkSize.actionHeight,
-                  child: OutlinedButton(
-                    onPressed: _isSavingProfile ? null : _cancelProfileEdit,
-                    child: const Text('Отмена'),
-                  ),
-                ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              Expanded(
-                child: SizedBox(
-                  height: SparkSize.actionHeight,
-                  child: FilledButton(
-                    onPressed: _isSavingProfile ? null : _saveProfile,
-                    child: Text(
-                      _isSavingProfile ? 'Сохраняем...' : 'Сохранить',
+          // Same explicit RoundedRectangleBorder on both Cancel + Save
+          // so the theme's default FilledButton StadiumBorder doesn't
+          // turn one into a pill while the other stays a rectangle.
+          () {
+            final buttonShape = RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(SparkRadius.lg),
+            );
+            return Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: SparkSize.actionHeight,
+                    child: OutlinedButton(
+                      onPressed: _isSavingProfile ? null : _cancelProfileEdit,
+                      style: OutlinedButton.styleFrom(shape: buttonShape),
+                      child: const Text('Отмена'),
                     ),
                   ),
                 ),
-              ),
-            ],
-          ),
+                const SizedBox(width: SparkSpace.md),
+                Expanded(
+                  child: SizedBox(
+                    height: SparkSize.actionHeight,
+                    child: FilledButton(
+                      onPressed: _isSavingProfile ? null : _saveProfile,
+                      style: FilledButton.styleFrom(shape: buttonShape),
+                      child: Text(
+                        _isSavingProfile ? 'Сохраняем...' : 'Сохранить',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }(),
         ],
       ),
     );
@@ -797,40 +807,46 @@ class _SparkJoySpecialistProfileScreenState
                 .toList(growable: false),
           ),
           const SizedBox(height: SparkSpace.lg),
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const MyText(
-                      text: 'Своя специализация',
-                      size: SparkTextSize.body,
-                      color: kGreyColor,
-                      paddingBottom: SparkSpace.sm,
-                    ),
-                    TextField(
-                      controller: _customSpecializationController,
-                      textInputAction: TextInputAction.done,
-                      onSubmitted: (_) => _addCustomSpecialization(),
-                      onTapOutside: (_) =>
-                          FocusManager.instance.primaryFocus?.unfocus(),
-                      decoration: sparkInputDecoration('Напишите вручную'),
-                    ),
-                  ],
+          const MyText(
+            text: 'Своя специализация',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+            paddingBottom: SparkSpace.sm,
+          ),
+          // Input + «Добавить» on the same baseline — the label now
+          // sits above the Row so both children share the Row's height
+          // and CrossAxisAlignment.stretch guarantees the button
+          // matches the input field's box height.
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _customSpecializationController,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) => _addCustomSpecialization(),
+                    onTapOutside: (_) =>
+                        FocusManager.instance.primaryFocus?.unfocus(),
+                    decoration: sparkInputDecoration('Напишите вручную'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              SizedBox(
-                width: 120,
-                height: SparkSize.actionHeight,
-                child: OutlinedButton.icon(
-                  onPressed: _addCustomSpecialization,
-                  icon: const Icon(Icons.add_rounded, size: SparkSize.iconSm),
-                  label: const Text('Добавить'),
+                const SizedBox(width: SparkSpace.md),
+                SizedBox(
+                  width: 120,
+                  child: OutlinedButton.icon(
+                    onPressed: _addCustomSpecialization,
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(SparkRadius.lg),
+                      ),
+                    ),
+                    icon: const Icon(Icons.add_rounded, size: SparkSize.iconSm),
+                    label: const Text('Добавить'),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
