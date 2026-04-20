@@ -562,17 +562,21 @@ class SparkSegmentedTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Rail is a flat pill track in kLightGreyColor — no border. The
+    // active item slides into a white pill inside it with a soft
+    // shadow. Matches the iOS UISegmentedControl pattern more
+    // directly than the previous double-border / card-inside-card
+    // variant that read as clunky.
     return Container(
+      height: SparkSize.inputHeight,
+      padding: const EdgeInsets.all(SparkSpace.xxs),
       decoration: BoxDecoration(
-        color: kInputBgColor,
-        borderRadius: BorderRadius.circular(SparkRadius.xl),
-        border: Border.all(color: kBorderColor),
+        color: kLightGreyColor,
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
       ),
-      padding: const EdgeInsets.all(SparkSpace.xs),
       child: Row(
         children: [
-          for (int index = 0; index < items.length; index++) ...[
-            if (index > 0) const SizedBox(width: SparkSpace.xs),
+          for (int index = 0; index < items.length; index++)
             Expanded(
               child: _SparkSegmentedTabButton(
                 item: items[index],
@@ -580,7 +584,6 @@ class SparkSegmentedTabs extends StatelessWidget {
                 onTap: () => onChanged(items[index].value),
               ),
             ),
-          ],
         ],
       ),
     );
@@ -607,52 +610,55 @@ class _SparkSegmentedTabButton extends StatelessWidget {
           HapticFeedback.selectionClick();
           onTap();
         },
-        borderRadius: BorderRadius.circular(SparkRadius.xl),
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
         child: AnimatedContainer(
           duration: SparkMotion.fast,
           curve: Curves.easeOut,
           padding: const EdgeInsets.symmetric(
             horizontal: SparkSpace.md,
-            vertical: SparkSpace.xl,
           ),
+          alignment: Alignment.center,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(SparkRadius.xl),
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
             color: active ? kWhiteColor : Colors.transparent,
-            border: active
-                ? Border.all(color: kSecondaryColor.withValues(alpha: 0.35))
+            boxShadow: active
+                ? const [
+                    BoxShadow(
+                      color: kShadowColor,
+                      blurRadius: 6,
+                      offset: Offset(0, 2),
+                      spreadRadius: -2,
+                    ),
+                  ]
                 : null,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: MyText(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MyText(
                   text: item.label,
-                  size: SparkTextSize.title,
+                  size: SparkTextSize.bodyLg,
                   weight: FontWeight.w700,
                   color: active ? kSecondaryColor : kGreyColor,
                 ),
-              ),
-              if (item.count > 0) ...[
-                const SizedBox(width: SparkSpace.sm),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                    vertical: SparkSpace.xxxs,
-                  ),
-                  decoration: BoxDecoration(
-                    color: active ? kSecondaryColor : kLightGreyColor,
-                    borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  ),
-                  child: MyText(
+                if (item.count > 0) ...[
+                  const SizedBox(width: SparkSpace.xs),
+                  // Inline count — same tier as the label, just tinted
+                  // softer. No pill-inside-a-pill badge clutter.
+                  MyText(
                     text: '${item.count}',
-                    size: SparkTextSize.chip,
+                    size: SparkTextSize.bodyLg,
                     weight: FontWeight.w700,
-                    color: active ? kWhiteColor : kGreyColor,
+                    color: active
+                        ? kSecondaryColor.withValues(alpha: 0.5)
+                        : kGreyColor.withValues(alpha: 0.6),
+                    tabularFigures: true,
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
