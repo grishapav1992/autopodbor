@@ -1538,13 +1538,30 @@ class StorageApi {
   /// [section] — only for step=inspection: body, body_reinforcement, glass,
   /// interior, under_hood, wheels_and_brakes, lightning, computer_diagnostics.
   /// [selectedTagIds] — optional int[] for relevance sorting.
+  /// Server enum for `step` drops underscores (`testdrive`, `legalreview`,
+  /// `documentreconciliation`) while the rest of the client uses the
+  /// readable form. Normalize at the RPC boundary so callers can stay
+  /// with `test_drive` / `legal_review` / `document_reconciliation`.
+  static String _stepToWireEnum(String step) {
+    switch (step) {
+      case 'test_drive':
+        return 'testdrive';
+      case 'legal_review':
+        return 'legalreview';
+      case 'document_reconciliation':
+        return 'documentreconciliation';
+      default:
+        return step;
+    }
+  }
+
   static Future<List<UserTag>> getUserTags({
     required String step,
     String? section,
     List<int>? selectedTagIds,
     Duration timeout = const Duration(seconds: 12),
   }) async {
-    final params = <String, dynamic>{'step': step};
+    final params = <String, dynamic>{'step': _stepToWireEnum(step)};
     if (section != null) params['section'] = section;
     if (selectedTagIds != null && selectedTagIds.isNotEmpty) {
       params['selectedTagIds'] = selectedTagIds;
@@ -1594,7 +1611,10 @@ class StorageApi {
     String? type,
     Duration timeout = const Duration(seconds: 12),
   }) async {
-    final params = <String, dynamic>{'step': step, 'name': name};
+    final params = <String, dynamic>{
+      'step': _stepToWireEnum(step),
+      'name': name,
+    };
     if (section != null) params['section'] = section;
     if (type != null) params['type'] = type;
     final data = await _postRpc(
@@ -1829,7 +1849,7 @@ class StorageApi {
     String? section,
     Duration timeout = const Duration(seconds: 12),
   }) async {
-    final params = <String, dynamic>{'id': id, 'step': step};
+    final params = <String, dynamic>{'id': id, 'step': _stepToWireEnum(step)};
     if (section != null) params['section'] = section;
     await _postRpc(
       method: 'Storage.RemoveUserTag',

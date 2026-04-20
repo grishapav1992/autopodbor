@@ -48,12 +48,35 @@ class SparkJoyTagService {
   /// Builds the composite cache key. Normalizes name to
   /// `trim().toLowerCase()`. `section` is nullable — for steps without
   /// sections (car, test_drive, …) we store an empty string.
+  ///
+  /// Step is also normalized to the server's wire enum (`test_drive` →
+  /// `testdrive`, `legal_review` → `legalreview`, `document_reconciliation`
+  /// → `documentreconciliation`) so server responses (which use the
+  /// concatenated form) and client-side calls (which use the readable
+  /// form) land in the same bucket. Without this the `testdrive` entry
+  /// the server writes on `GetUserTags` / `AddUserTag` wouldn't match a
+  /// later `idFor(step: 'test_drive', …)` lookup and the upload path
+  /// would send empty `testDriveXxxTags` arrays.
   static String _composeKey({
     required String step,
     String? section,
     required String name,
   }) {
-    return '$step|${section ?? ''}|${name.trim().toLowerCase()}';
+    return '${_normalizeStep(step)}|${section ?? ''}|'
+        '${name.trim().toLowerCase()}';
+  }
+
+  static String _normalizeStep(String step) {
+    switch (step) {
+      case 'test_drive':
+        return 'testdrive';
+      case 'legal_review':
+        return 'legalreview';
+      case 'document_reconciliation':
+        return 'documentreconciliation';
+      default:
+        return step;
+    }
   }
 
   /// Serializes every compound read-modify-write against the persisted
