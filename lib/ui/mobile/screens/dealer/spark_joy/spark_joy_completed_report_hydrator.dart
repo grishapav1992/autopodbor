@@ -56,6 +56,17 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
       final file = _asMap(raw['file']);
       final name = (file['filename'] ?? '').toString().trim();
       if (name.isNotEmpty) filenames.add(name);
+      // Audio notes live alongside the photo/video as plain filenames
+      // (`voice_memo_1.m4a`). They go to S3 under the same report and
+      // need presigned GET URLs too — the lightbox player otherwise
+      // calls UrlSource() with a bare filename and silently fails.
+      final rawAudio = raw['audioNotes'];
+      if (rawAudio is List) {
+        for (final audio in rawAudio) {
+          final audioName = audio?.toString().trim() ?? '';
+          if (audioName.isNotEmpty) filenames.add(audioName);
+        }
+      }
     }
   }
   _collectLegalFilenames(legalReviewStep, filenames);
@@ -224,7 +235,16 @@ Map<String, dynamic>? _elementToUploadedItemJson(
     if (name != null && name.isNotEmpty) tags.add(name);
   }
 
-  final audioNotes = _asStringList(raw['audioNotes']);
+  final audioFilenames = _asStringList(raw['audioNotes']);
+  // Replace filenames with presigned view URLs where available so the
+  // AudioPlayer source lands on a real HTTP endpoint. Missing entries
+  // are dropped instead of leaving a dead filename behind — the UI
+  // would otherwise show a play button that silently fails.
+  final audioRecordings = <String>[
+    for (final name in audioFilenames)
+      if ((urls[name] ?? '').isNotEmpty) urls[name]!,
+  ];
+
   final paintFromRaw = raw['paintworkThicknessFrom'];
   final paintToRaw = raw['paintworkThicknessTo'];
   final paintFrom = paintFromRaw is num ? paintFromRaw.toDouble() : null;
@@ -241,7 +261,7 @@ Map<String, dynamic>? _elementToUploadedItemJson(
       'tags': tags,
       'note': (raw['note'] ?? '').toString(),
       'elementType': raw['elementType']?.toString(),
-      'audioRecordings': audioNotes,
+      'audioRecordings': audioRecordings,
       'paintFrom': paintFrom,
       'paintTo': paintTo,
       'isDraft': false,
