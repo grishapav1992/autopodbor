@@ -93,12 +93,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return _accountBusinessType == 'company' || _accountBusinessType == 'ip';
   }
 
-  String _businessStatusLabel() {
-    if (_accountBusinessType == 'ip') return 'ИП';
-    if (_accountBusinessType == 'company') return 'Компания';
-    return 'Специалист';
-  }
-
   String _currentCompanyName() {
     final company = sparkCompanies.firstWhere(
       (item) => (item['id'] ?? '').toString() == kSparkCompanyId,
@@ -108,17 +102,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return name.isEmpty ? 'Компания' : name;
   }
 
-  List<Map<String, dynamic>> _companyStaffOptions() {
-    return sparkSpecialists
-        .where((specialist) {
-          final companyId = (specialist['companyId'] ?? '').toString();
-          final status = (specialist['status'] ?? '').toString();
-          return companyId == kSparkCompanyId && status != 'blocked';
-        })
-        .map((specialist) => Map<String, dynamic>.from(specialist))
-        .toList();
-  }
-
   String _resolveSpecialistName(String specialistId) {
     if (specialistId.trim().isEmpty) return '';
     final specialist = sparkSpecialists.firstWhere(
@@ -126,51 +109,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
       orElse: () => const {},
     );
     return (specialist['name'] ?? '').toString();
-  }
-
-  String _buildStaffInviteToken() {
-    final source = '$_draftId|${DateTime.now().microsecondsSinceEpoch}';
-    final encoded = base64Url.encode(utf8.encode(source)).replaceAll('=', '');
-    if (encoded.length <= 18) return encoded;
-    return encoded.substring(0, 18);
-  }
-
-  Future<void> _generateStaffInviteLink() async {
-    if (_staffInviteLinkCreating || !_hasBusinessStatus()) return;
-    _setStateSafely(() => _staffInviteLinkCreating = true);
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-
-    final link = Uri.https('invite.autocheck.local', '/staff', {
-      'report': _draftId,
-      'code': _currentReportCode(),
-      'type': _accountBusinessType ?? 'company',
-      'inn': _accountVerifiedInn ?? '',
-      'token': _buildStaffInviteToken(),
-    }).toString();
-
-    if (!mounted) return;
-    _setStateSafely(() {
-      _staffInviteLink = link;
-      _staffInviteLinkCreating = false;
-    });
-    _markDraftDirty();
-    await Clipboard.setData(ClipboardData(text: link));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Ссылка приглашения сформирована и скопирована'),
-      ),
-    );
-  }
-
-  Future<void> _copyStaffInviteLink() async {
-    final link = _staffInviteLink.trim();
-    if (link.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: link));
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Ссылка скопирована')));
   }
 
   InputDecoration _fieldDecoration(String hint) {

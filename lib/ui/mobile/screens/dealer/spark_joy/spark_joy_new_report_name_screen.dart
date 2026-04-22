@@ -1,14 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 
-import 'spark_joy_data.dart';
+import 'spark_joy_assignee_picker.dart';
 import 'spark_joy_create_report_screen.dart';
+import 'spark_joy_data.dart';
+import 'spark_joy_storage.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyNewReportNameScreen extends StatefulWidget {
@@ -25,21 +25,7 @@ class _SparkJoyNewReportNameScreenState
     extends State<SparkJoyNewReportNameScreen> {
   final _formKey = GlobalKey<FormState>();
   final _controller = TextEditingController();
-  String _assignedSpecialistId = '';
-  String _assignedSpecialistName = '';
-  String _inviteLink = '';
-  bool _inviteBuilding = false;
-
-  List<Map<String, dynamic>> get _staff {
-    return sparkSpecialists
-        .where((specialist) {
-          final companyId = sjRead(specialist, 'companyId');
-          final status = sjRead(specialist, 'status');
-          return companyId == kSparkCompanyId && status != 'blocked';
-        })
-        .map(cloneMap)
-        .toList();
-  }
+  SparkJoyAssigneeSelection _assignee = const SparkJoyAssigneeSelection();
 
   @override
   void dispose() {
@@ -47,66 +33,126 @@ class _SparkJoyNewReportNameScreenState
     super.dispose();
   }
 
-  String _buildInviteToken() {
-    final source =
-        '${DateTime.now().microsecondsSinceEpoch}|${_controller.text.trim()}';
-    final encoded = base64Url.encode(utf8.encode(source)).replaceAll('=', '');
-    if (encoded.length <= 18) return encoded;
-    return encoded.substring(0, 18);
-  }
-
-  Future<void> _generateInviteLink() async {
-    if (_inviteBuilding) return;
-    setState(() => _inviteBuilding = true);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    final link = Uri.https('app.autocheck.local', '/invite/staff', {
-      'companyId': kSparkCompanyId,
-      'token': _buildInviteToken(),
-      'source': 'new_report',
-    }).toString();
-    if (!mounted) return;
-    setState(() {
-      _inviteLink = link;
-      _inviteBuilding = false;
-    });
-    await Clipboard.setData(ClipboardData(text: link));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ссылка приглашения скопирована')),
-    );
-  }
-
-  Future<void> _copyInviteLink() async {
-    final link = _inviteLink.trim();
-    if (link.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: link));
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Ссылка скопирована')));
-  }
-
+  /// "Создать" action. Branches on the assignee selection:
+  ///   • empty selection → open the full stepper so the company (or
+  ///     specialist) can fill the report themselves.
+  ///   • specialist / phone / invite → persist a minimal "pending"
+  ///     draft so it shows up for the assignee, fire a notification
+  ///     stub, and close the form with a toast. The company does not
+  ///     open the stepper for work they're not doing.
   Future<void> _create() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
     final name = _controller.text.trim();
-    final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => SparkJoyCreateReportScreen(
-          initialReportName: name,
-          initialAssignedSpecialistId: _assignedSpecialistId.trim(),
-          initialAssignedSpecialistName: _assignedSpecialistName.trim(),
-          initialStaffInviteLink: _inviteLink.trim(),
+
+    if (_assignee.isEmpty) {
+      final created = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => SparkJoyCreateReportScreen(
+            initialReportName: name,
+          ),
         ),
-      ),
-    );
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(created == true);
+      return;
+    }
+
+    await _createAssignedDraft(name);
+  }
+
+  Future<void> _createAssignedDraft(String name) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final now = DateTime.now();
+    final draftId = 'spark_draft_${now.microsecondsSinceEpoch}';
+    final businessType = await SparkJoyStorage.currentBusinessType();
+    final verifiedInn = await SparkJoyStorage.currentVerifiedInn();
+
+    // Minimal shape consumed by `_loadDraftIntoState` + the reports-list
+    // `_isVisibleDraft` filter. Fields left empty fall through the
+    // draft-init `_read` fallbacks without breaking anything.
+    final draft = <String, dynamic>{
+      'id': draftId,
+      'reportName': name,
+      'reportNumber': '',
+      'currentStep': 1,
+      'createdAt': _formatDate(now),
+      'lastSavedAtIso': now.toIso8601String(),
+      'companyId': kSparkCompanyId,
+      'companyName': _companyName(),
+      'businessType': businessType ?? 'company',
+      'verifiedInn': verifiedInn ?? '',
+      'assignedSpecialistId': _assignee.specialistId,
+      'assignedSpecialistName': _assignee.specialistName,
+      'specialistId': _assignee.specialistId,
+      'specialistName': _assignee.specialistName,
+      'staffInviteLink': _assignee.inviteLink,
+      'status': _assignee.inviteLink.isNotEmpty ? 'awaiting_invite' : 'assigned',
+    };
+
+    await SparkJoyStorage.upsertDraft(draft);
+
+    // TODO(spark-joy): replace with real push/SMS dispatch when backend
+    // lands. Call sites already modeled:
+    //   • specialistId → direct notification to the specialist
+    //   • inviteLink   → invite sent, push arrives after user installs
+    if (_assignee.specialistId.isNotEmpty) {
+      debugPrint(
+        '[spark_joy] assign-notification → user=${_assignee.specialistId} '
+        '(${_assignee.specialistName}) report=$draftId',
+      );
+    } else {
+      debugPrint(
+        '[spark_joy] invite-pending → link=${_assignee.inviteLink} '
+        'report=$draftId',
+      );
+    }
+
     if (!mounted) return;
-    Navigator.of(context).pop(created == true);
+    messenger.showSnackBar(SnackBar(content: Text(_successSnackbar())));
+    Navigator.of(context).pop(true);
+  }
+
+  String _successSnackbar() {
+    if (_assignee.specialistId.isNotEmpty) {
+      final who = _assignee.specialistName.isEmpty
+          ? 'исполнителю'
+          : _assignee.specialistName;
+      return 'Отчёт создан и отправлен $who';
+    }
+    return 'Отчёт создан, ссылка-приглашение готова';
+  }
+
+  String _companyName() {
+    final c = sparkCompanies.firstWhere(
+      (it) => (it['id'] ?? '').toString() == kSparkCompanyId,
+      orElse: () => const {'name': 'Компания'},
+    );
+    return (c['name'] ?? 'Компания').toString();
+  }
+
+  String _formatDate(DateTime d) {
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    return '$dd.$mm.${d.year}';
+  }
+
+  /// Button label reflects what will actually happen: "открыть степпер"
+  /// vs "отправить и закрыть". Keeps the user from wondering what a
+  /// single "Создать" button does in two different flows.
+  String _primaryButtonLabel() {
+    if (_assignee.isEmpty) return 'Создать и начать осмотр';
+    if (_assignee.specialistId.isNotEmpty) {
+      final who = _assignee.specialistName.isEmpty
+          ? 'исполнителю'
+          : _assignee.specialistName;
+      return 'Создать и отправить $who';
+    }
+    return 'Создать и отправить по ссылке';
   }
 
   @override
   Widget build(BuildContext context) {
-    final staff = _staff;
     final enabled = _controller.text.trim().isNotEmpty;
     return SparkPageScaffold(
       appBar: AppBar(centerTitle: false, title: const Text('Новый отчёт')),
@@ -197,110 +243,35 @@ class _SparkJoyNewReportNameScreenState
               if (widget.companyMode) ...[
                 const SizedBox(height: SparkSpace.xl),
                 SparkCard(
-                  padding: const EdgeInsets.all(SparkSpace.xl),
+                  padding: const EdgeInsets.fromLTRB(
+                    SparkSpace.xl,
+                    SparkSpace.xl,
+                    SparkSpace.xl,
+                    SparkSpace.md,
+                  ),
                   radius: SparkRadius.md,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const MyText(
-                        text: 'Назначить сотрудника',
+                        text: 'Исполнитель отчёта',
                         size: SparkTextSize.title,
                         weight: FontWeight.w700,
                       ),
                       const SizedBox(height: SparkSpace.md),
-                      DropdownButtonFormField<String>(
-                        initialValue: _assignedSpecialistId.isEmpty
-                            ? ''
-                            : _assignedSpecialistId,
-                        decoration: sparkInputDecoration('Выберите сотрудника'),
-                        items: <DropdownMenuItem<String>>[
-                          const DropdownMenuItem<String>(
-                            value: '',
-                            child: Text('Без исполнителя'),
-                          ),
-                          ...staff.map((specialist) {
-                            final id = sjRead(specialist, 'id');
-                            final name = sjRead(specialist, 'name');
-                            return DropdownMenuItem<String>(
-                              value: id,
-                              child: Text(name),
-                            );
-                          }),
-                        ],
-                        onChanged: (value) {
-                          final id = value ?? '';
-                          final specialist = staff.firstWhere(
-                            (item) => sjRead(item, 'id') == id,
-                            orElse: () => const {},
-                          );
-                          setState(() {
-                            _assignedSpecialistId = id;
-                            _assignedSpecialistName = sjRead(
-                              specialist,
-                              'name',
-                            );
-                          });
-                        },
-                      ),
-                      const SizedBox(height: SparkSpace.xl),
-                      const MyText(
-                        text: 'Приглашение сотрудника',
-                        size: SparkTextSize.label,
-                        weight: FontWeight.w700,
+                      SparkJoyAssigneeField(
+                        companyId: kSparkCompanyId,
+                        selection: _assignee,
+                        onChanged: (sel) =>
+                            setState(() => _assignee = sel),
                       ),
                       const SizedBox(height: SparkSpace.sm),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _inviteBuilding
-                                  ? null
-                                  : _generateInviteLink,
-                              icon: Icon(
-                                _inviteLink.trim().isNotEmpty
-                                    ? Icons.refresh_rounded
-                                    : Icons.link_rounded,
-                                size: SparkSize.iconSm,
-                              ),
-                              label: Text(
-                                _inviteBuilding
-                                    ? 'Формируем...'
-                                    : _inviteLink.trim().isNotEmpty
-                                    ? 'Обновить ссылку'
-                                    : 'Сформировать ссылку',
-                              ),
-                            ),
-                          ),
-                          if (_inviteLink.trim().isNotEmpty) ...[
-                            const SizedBox(width: SparkSpace.sm),
-                            SizedBox(
-                              height: SparkSize.actionHeightMd,
-                              child: OutlinedButton.icon(
-                                onPressed: _copyInviteLink,
-                                icon: const Icon(
-                                  Icons.copy_rounded,
-                                  size: SparkSize.iconSm,
-                                ),
-                                label: const Text('Копия'),
-                              ),
-                            ),
-                          ],
-                        ],
+                      const MyText(
+                        text:
+                            'Можно назначить позже — компания, сотрудник или ссылка-приглашение.',
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
                       ),
-                      if (_inviteLink.trim().isNotEmpty) ...[
-                        const SizedBox(height: SparkSpace.sm),
-                        SparkCard(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: SparkSpace.lg,
-                            vertical: SparkSpace.md,
-                          ),
-                          child: MyText(
-                            text: _inviteLink,
-                            size: SparkTextSize.caption,
-                            color: kGreyColor,
-                          ),
-                        ),
-                      ],
                     ],
                   ),
                 ),
@@ -311,7 +282,7 @@ class _SparkJoyNewReportNameScreenState
                 child: Opacity(
                   opacity: enabled ? 1 : 0.55,
                   child: SparkPrimaryActionButton(
-                    label: 'Создать отчёт',
+                    label: _primaryButtonLabel(),
                     showIcon: false,
                     onTap: () => unawaited(_create()),
                   ),

@@ -502,11 +502,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _staffInviteLink(String value) =>
       _reportController.staffInviteLink.value = value;
 
-  bool get _staffInviteLinkCreating =>
-      _reportController.staffInviteLinkCreating.value;
-  set _staffInviteLinkCreating(bool value) =>
-      _reportController.staffInviteLinkCreating.value = value;
-
   String? _activeMediaGroupKey;
   double? _mediaGroupListScrollOffset;
   bool _mediaGroupSelectMode = false;
