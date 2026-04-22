@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_application_1/core/config/feature_flags.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/pb_nalog_models.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
@@ -497,6 +498,123 @@ class _SparkJoySpecialistProfileScreenState
     ).showSnackBar(const SnackBar(content: Text('Профиль сохранен')));
   }
 
+  // DEV-хелпер: раскрывашка с тестовыми ИНН для быстрой проверки
+  // мок-ответов api-cloud.ru/pb_nalog. Показывается только пока
+  // [FeatureFlags.usePbNalogMock] == true — при переключении на
+  // реальный API исчезнет автоматически. Перед релизом (с живым
+  // токеном) удалить вместе с вызовом _buildDevTestInnHelper в
+  // [_buildBusinessUnverified] и этим методом — grep по
+  // `DEV-хелпер` найдёт обе точки.
+  Widget _buildDevTestInnHelper() {
+    if (!FeatureFlags.usePbNalogMock) return const SizedBox.shrink();
+
+    const cases = <List<String>>[
+      <String>['233410953141', 'ИП «КОЧУРА», действующий (2 записи)'],
+      <String>['6234083042', 'ООО «АВТОМОЙКА № 1», прекращена'],
+      <String>['1234567890', 'Любые 10 цифр → заглушка действующего ООО'],
+      <String>['123456789012', 'Любые 12 цифр → заглушка действующего ИП'],
+      <String>['0000000000', 'Не найдено (found: false)'],
+      <String>['000000000011', 'Ошибка API (admin): «временно недоступна»'],
+    ];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: SparkSpace.md),
+      decoration: BoxDecoration(
+        color: kYellowColor.withValues(alpha: 0.08),
+        border: Border.all(color: kYellowColor.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+      ),
+      child: Theme(
+        // Убираем дефолтную серую разделительную линию ExpansionTile
+        // сверху/снизу — она конфликтует с нашей жёлтой рамкой.
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.md,
+          ),
+          childrenPadding: const EdgeInsets.only(
+            left: SparkSpace.md,
+            right: SparkSpace.md,
+            bottom: SparkSpace.md,
+          ),
+          leading: const Icon(
+            Icons.science_outlined,
+            size: SparkSize.iconMd,
+            color: kYellowColor,
+          ),
+          title: const MyText(
+            text: 'Тестовые ИНН (DEV)',
+            size: SparkTextSize.caption,
+            weight: FontWeight.w700,
+          ),
+          subtitle: const MyText(
+            text: 'Удалить перед релизом',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+          ),
+          children: [
+            for (final c in cases) _buildDevInnRow(inn: c[0], description: c[1]),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDevInnRow({required String inn, required String description}) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(SparkRadius.xs),
+      onTap: () async {
+        await Clipboard.setData(ClipboardData(text: inn));
+        HapticFeedback.selectionClick();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Скопировано: $inn'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.xs,
+          vertical: SparkSpace.sm,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    inn,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontFamilyFallback: <String>['Courier', 'Menlo'],
+                      fontWeight: FontWeight.w700,
+                      fontSize: SparkTextSize.body,
+                    ),
+                  ),
+                  const SizedBox(height: SparkSpace.xxs),
+                  MyText(
+                    text: description,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            const Icon(
+              Icons.copy_outlined,
+              size: SparkSize.iconSm,
+              color: kGreyColor,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // «Проверка компании» — verified state.
   //
   // Cleaner than the previous mixed layout (info-rows + still-visible
@@ -606,6 +724,7 @@ class _SparkJoySpecialistProfileScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _buildDevTestInnHelper(),
         const MyText(
           text:
               'Подтвердите ИНН, чтобы открыть функции компании или ИП. Данные уйдут в тех. проверку.',
