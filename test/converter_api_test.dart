@@ -7,13 +7,13 @@ void main() {
 
   group('ConverterApiMock — фикстура из документации', () {
     test('VIN из доки → Peugeot 308, 2008', () async {
-      final r = await api.lookup('VF34C9HZC5170236');
+      final r = await api.lookup('VF34CAAAAA5170236');
       expect(r.found, isTrue);
       expect(r.brand, 'PEUGEOT');
       expect(r.model, '308');
       expect(r.year, 2008);
       expect(r.regNumber, 'С812МУ93');
-      expect(r.vin, 'VF34C9HZC5170236');
+      expect(r.vin, 'VF34CAAAAA5170236');
       expect(r.brandModel, 'PEUGEOT 308');
     });
 
@@ -21,7 +21,7 @@ void main() {
       final r = await api.lookup('С812МУ93');
       expect(r.found, isTrue);
       expect(r.brand, 'PEUGEOT');
-      expect(r.vin, 'VF34C9HZC5170236');
+      expect(r.vin, 'VF34CAAAAA5170236');
     });
 
     test('ГРЗ латиницей (транслитом) → тот же Peugeot', () async {
@@ -51,17 +51,17 @@ void main() {
   });
 
   group('ConverterApiMock — error/edge кейсы', () {
-    test('NOTFOUND12345678 → found: false, поля пустые', () async {
-      final r = await api.lookup('NOTFOUND12345678');
+    test('NTFND123456789ABC → found: false, поля пустые', () async {
+      final r = await api.lookup('NTFND123456789ABC');
       expect(r.found, isFalse);
       expect(r.brand, isEmpty);
       expect(r.vin, isEmpty);
       expect(r.year, 0);
     });
 
-    test('ERROR498 → admin ConverterException', () async {
+    test('ERR498 триггер → admin ConverterException', () async {
       await expectLater(
-        api.lookup('ERROR498'),
+        api.lookup('ERR498123456789AB'),
         throwsA(
           isA<ConverterException>()
               .having((e) => e.code, 'code', '498')
@@ -81,9 +81,9 @@ void main() {
       );
     });
 
-    test('OFFLINE → transient net_offline', () async {
+    test('NETDWN триггер → transient net_offline', () async {
       await expectLater(
-        api.lookup('OFFLINE'),
+        api.lookup('NETDWN123456789AB'),
         throwsA(
           isA<ConverterException>()
               .having((e) => e.code, 'code', 'net_offline')

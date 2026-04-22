@@ -101,6 +101,11 @@ extension _SparkJoyConverterHelpers on _SparkJoyCreateReportScreenState {
     final conflicts = _detectConverterConflicts(result);
     if (conflicts.isNotEmpty) {
       final accepted = await _showConverterConfirmDialog(result, conflicts);
+      // Пользователь мог закрыть экран, пока диалог был открыт.
+      // Остальные методы делают свою проверку mounted, но apply
+      // вызывает setState — важно не добраться до него на мёртвом
+      // виджете.
+      if (!mounted) return;
       if (accepted != true) return;
     }
 
@@ -125,10 +130,8 @@ extension _SparkJoyConverterHelpers on _SparkJoyCreateReportScreenState {
     final conflicts = <String>[];
     if (diff(_brandController.text, r.brand)) conflicts.add('Марка');
     if (diff(_modelController.text, r.model)) conflicts.add('Модель');
-    // Для VIN сравниваем в верхнем регистре — юзер мог ввести как-то иначе.
-    if (diff(_vinController.text.toUpperCase(), r.vin.toUpperCase())) {
-      conflicts.add('VIN');
-    }
+    // diff() сам нормализует case, отдельный toUpperCase не нужен.
+    if (diff(_vinController.text, r.vin)) conflicts.add('VIN');
     // Для ГРЗ нормализуем обе стороны (латиница→кириллица, без пробелов),
     // иначе «А001АА 77» и «А001АА77» будут выглядеть как конфликт.
     final currentPlate = _sanitizePlate(_plateController.text);
@@ -138,12 +141,12 @@ extension _SparkJoyConverterHelpers on _SparkJoyCreateReportScreenState {
         currentPlate != incomingPlate) {
       conflicts.add('Госномер');
     }
-    if (r.year > 0 && _generationController.text.trim().isNotEmpty) {
-      // Поколение не сравниваем точно — там «Поколение 6», а у API только
-      // год. Считаем поколение потенциальным конфликтом, если оно вручную
-      // выставлено.
-      conflicts.add('Поколение');
-    }
+    // Поколение специально НЕ проверяем как конфликт: API отдаёт
+    // только год, а генерацию мы resolve'им через catalog-match
+    // фоном — он трогает _generationController только при ровно одном
+    // попадании по году, и это всегда объективно корректно. Показывать
+    // «Поколение» в диалоге было бы over-eager — приходилось бы
+    // спрашивать юзера даже при совпадении года.
     return conflicts;
   }
 

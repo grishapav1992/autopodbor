@@ -50,20 +50,36 @@ abstract class ConverterApi {
 
 /// Мок на основе примера из документации.
 ///
-/// Специальные значения для триггера error-UI:
-/// - `NOTFOUND` (регистр любой, нужна длина 10+) → `found: false`.
-/// - `ERROR498` → `ConverterException('498', 'TOKEN_NO_MONEY')` (admin).
-/// - `OFFLINE`  → `ConverterException('net_offline', ...)` (transient).
+/// Триггеры зарезервированы под 17-символьные VIN-валидные строки,
+/// чтобы кнопка «Подтянуть …» активировалась — иначе полевой
+/// валидатор VIN (`[A-HJ-NPR-Z0-9]{17}`) не пустит юзера и до мока
+/// запрос не дойдёт. Все триггеры — **точное совпадение**, чтобы не
+/// триггериться случайно на реальных VIN'ах в каких-нибудь будущих
+/// интеграционных тестах.
 ///
-/// Любой другой валидный VIN (17 символов, `[A-HJ-NPR-Z0-9]`) или
-/// ГРЗ (7–9 символов, кириллица/латиница + цифры) вернёт синтетическую
-/// «найденную» запись, чтобы UI можно было прогонять на произвольных
-/// значениях, не привязываясь к одной фикстуре.
+/// Зарегистрированные триггеры (ровно эти строки):
+/// - `VF34CAAAAA5170236` → Peugeot 308 из доки (happy-path).
+/// - `С812МУ93` / `C812MY93` → тот же Peugeot, но через ГРЗ.
+/// - `NTFND123456789ABC` → `found: false`.
+/// - `ERR498123456789AB` → `ConverterException('498', 'TOKEN_NO_MONEY')` (admin).
+/// - `NETDWN123456789AB` → `ConverterException('net_offline', ...)` (transient).
+///
+/// Любой другой 17-char VIN → синтетический Toyota Camry.
+/// Любой другой 7–9 char ГРЗ → синтетический VW Polo.
 class ConverterApiMock implements ConverterApi {
   ConverterApiMock({Duration? simulatedLatency})
       : _latency = simulatedLatency ?? const Duration(milliseconds: 700);
 
   final Duration _latency;
+
+  /// Публичные константы, чтобы DEV-раскрывашка и unit-тесты ссылались
+  /// на один источник истины и не расходились при правках мока.
+  static const String triggerDocVin = 'VF34CAAAAA5170236';
+  static const String triggerDocPlateCyr = 'С812МУ93';
+  static const String triggerDocPlateLat = 'C812MY93';
+  static const String triggerNotFound = 'NTFND123456789ABC';
+  static const String triggerError498 = 'ERR498123456789AB';
+  static const String triggerOffline = 'NETDWN123456789AB';
 
   @override
   Future<ConverterResult> lookup(String query) async {
@@ -78,27 +94,26 @@ class ConverterApiMock implements ConverterApi {
 
     final upper = trimmed.toUpperCase();
 
-    if (upper == 'ERROR498') {
+    if (upper == triggerError498) {
       throw ConverterException('498', 'TOKEN_NO_MONEY');
     }
-    if (upper == 'OFFLINE') {
+    if (upper == triggerOffline) {
       throw ConverterException('net_offline', 'OFFLINE: mock');
     }
-    if (upper.startsWith('NOTFOUND')) {
+    if (upper == triggerNotFound) {
       return ConverterResult.fromJson(_notFoundFixture);
     }
 
-    // Точный пример из доки (без звёздочек — в доке VIN замаскирован).
-    if (upper == 'VF34C9HZC5170236') {
-      return ConverterResult.fromJson(_docFixture);
-    }
-    // Алиас-ГРЗ из того же примера.
-    if (upper == 'С812МУ93' || upper == 'C812MY93') {
+    // Точный пример из доки (VIN + алиас-ГРЗ).
+    if (upper == triggerDocVin ||
+        upper == triggerDocPlateCyr ||
+        upper == triggerDocPlateLat) {
       return ConverterResult.fromJson(_docFixture);
     }
 
-    // Fallback: определяем по длине, что юзер прислал, и возвращаем
-    // синтетическую «найденную» запись.
+    // Fallback: определяем по длине и возвращаем синтетическую
+    // «найденную» запись — чтобы UI можно было прогонять на любом
+    // валидном VIN/ГРЗ, не завязываясь на конкретные триггеры.
     final looksLikeVin = trimmed.length == 17;
     if (looksLikeVin) {
       return ConverterResult.fromJson(_syntheticFromVin(trimmed));
@@ -108,19 +123,24 @@ class ConverterApiMock implements ConverterApi {
 
   // ── фикстуры ──────────────────────────────────────────────────────────
 
+  // В доке VIN записан как `VF34C*****5170236` (5 звёздочек — маскировка,
+  // итого 17 символов). Мы их раскрываем как `AAAAA`, чтобы получить
+  // валидный по VIN-regex 17-символьный идентификатор — иначе кнопка
+  // «Подтянуть …» не активируется на этом тестовом значении.
+  // `brand_model` из доки не используем — геттер [ConverterResult.brandModel]
+  // собирает его из `brand` + `model`.
   static const Map<String, dynamic> _docFixture = <String, dynamic>{
     'status': 200,
     'partner': <String, dynamic>{
       'status': 200,
       'found': true,
       'result': <String, dynamic>{
-        'brand_model': 'PEUGEOT 308',
         'brand': 'PEUGEOT',
         'model': '308',
         'year': 2008,
         'regNumber': 'С812МУ93',
-        'vin': 'VF34C9HZC5170236',
-        'body': 'VF34C9HZC5170236',
+        'vin': 'VF34CAAAAA5170236',
+        'body': 'VF34CAAAAA5170236',
         'chassis': null,
       },
     },
@@ -291,16 +311,21 @@ class ConverterApiHttp implements ConverterApi {
 
   /// Возвращает строковый код ошибки, если ответ выглядит ошибочным,
   /// иначе null.
+  ///
+  /// Приоритет: **числовой `status`** (если ≠ 200) идёт первым, потом
+  /// строковый `error`. Без этого приоритета таймаут
+  /// `{"status":404, "error":"TIME_MAX_CONNECT", ...}` классифицируется
+  /// как admin (код `"TIME_MAX_CONNECT"` не в transient-списке), а
+  /// должен быть transient. Симвόл `error` ценен только как
+  /// человекочитаемое имя для логов — его мы включаем в [message].
   static String? _extractErrorCode(Map<String, dynamic> body) {
+    final status = body['status'];
+    if (status is num && status.toInt() != 200) {
+      return status.toInt().toString();
+    }
     final topError = body['error'];
     if (topError != null) {
       return topError.toString();
-    }
-    final status = body['status'];
-    // API использует `status: 404` для TIME_MAX_CONNECT даже с
-    // заголовком HTTP 200 OK.
-    if (status is num && status != 200) {
-      return status.toString();
     }
     return null;
   }

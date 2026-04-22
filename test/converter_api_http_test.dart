@@ -21,8 +21,8 @@ http.Response _jsonResponse(String body, int status) {
 const String _docResponse =
     '{"status":200,"partner":{"status":200,"found":true,"result":{'
     '"brand_model":"PEUGEOT 308","brand":"PEUGEOT","model":"308","year":2008,'
-    '"regNumber":"С812МУ93","vin":"VF34C9HZC5170236",'
-    '"body":"VF34C9HZC5170236","chassis":null}},'
+    '"regNumber":"С812МУ93","vin":"VF34CAAAAA5170236",'
+    '"body":"VF34CAAAAA5170236","chassis":null}},'
     '"inquiry":{"price":1.4,"balance":399.01}}';
 
 void main() {
@@ -39,10 +39,10 @@ void main() {
         client: mock,
         overrideToken: 'super-secret-token-1234',
       );
-      await api.lookup('VF34C9HZC5170236');
+      await api.lookup('VF34CAAAAA5170236');
 
       expect(capturedUri!.queryParameters['type'], 'search');
-      expect(capturedUri!.queryParameters['string'], 'VF34C9HZC5170236');
+      expect(capturedUri!.queryParameters['string'], 'VF34CAAAAA5170236');
       expect(
         capturedUri!.queryParameters.containsKey('token'),
         isFalse,
@@ -58,7 +58,7 @@ void main() {
         return _jsonResponse(_docResponse, 200);
       });
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
-      await api.lookup('VF34C9HZC5170236');
+      await api.lookup('VF34CAAAAA5170236');
       expect(captured!.scheme, 'https');
       expect(captured!.host, 'api-cloud.ru');
       expect(captured!.path, '/api/converter.php');
@@ -98,7 +98,7 @@ void main() {
       });
       final api = ConverterApiHttp(client: mock, overrideToken: '');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.code, 'code', '502')
             .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)),
@@ -113,7 +113,7 @@ void main() {
         (http.Request req) async => _jsonResponse(_docResponse, 200),
       );
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
-      final r = await api.lookup('VF34C9HZC5170236');
+      final r = await api.lookup('VF34CAAAAA5170236');
       expect(r.brand, 'PEUGEOT');
       expect(r.year, 2008);
       expect(r.regNumber, 'С812МУ93');
@@ -127,11 +127,14 @@ void main() {
         ),
       );
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
-      final r = await api.lookup('NOTFOUND12345678');
+      final r = await api.lookup('NTFND123456789ABC');
       expect(r.found, isFalse);
     });
 
-    test('{"status":404,"error":"TIME_MAX_CONNECT"} → transient', () async {
+    test('{"status":404,"error":"TIME_MAX_CONNECT"} → transient (404)', () async {
+      // Числовой status приоритетнее симвόла в error — иначе таймаут
+      // классифицировался бы как admin, а юзер должен увидеть
+      // «источник не ответил, попробуйте позже».
       final mock = MockClient(
         (http.Request req) async => _jsonResponse(
           '{"status":404,"error":"TIME_MAX_CONNECT","errormsg":"таймаут"}',
@@ -140,16 +143,51 @@ void main() {
       );
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
-            .having((e) => e.code, 'code', 'TIME_MAX_CONNECT')
-            .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)
-            .having((e) => e.message, 'message', 'таймаут')),
+            .having((e) => e.code, 'code', '404')
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)
+            .having((e) => e.message, 'message', 'таймаут')
+            .having((e) => e.userMessage, 'userMessage',
+                contains('Попробуйте'))),
       );
-      // Замечание: TIME_MAX_CONNECT как код строкой не входит в наш
-      // transient-список (мы ждём «404»). Такой кейс классифицируется
-      // как admin → «временно недоступен». Лечение — маппинг
-      // symbol→numeric в http-клиенте при необходимости.
+    });
+
+    test('{"status":200,"error":"503"} → admin (status==200 игнорим, берём error)',
+        () async {
+      // Обратный кейс: когда status = 200 (или отсутствует), код
+      // извлекаем из поля error.
+      final mock = MockClient(
+        (http.Request req) async => _jsonResponse(
+          '{"status":200,"error":"503","message":"TOKEN_LOCKED"}',
+          200,
+        ),
+      );
+      final api = ConverterApiHttp(client: mock, overrideToken: 'x');
+      await expectLater(
+        api.lookup('VF34CAAAAA5170236'),
+        throwsA(isA<ConverterException>()
+            .having((e) => e.code, 'code', '503')
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)),
+      );
+    });
+
+    test('status как double 404.0 → корректно парсится в "404"', () async {
+      // Defensive: если JSON придёт с дробной записью (dart:convert
+      // выбирает double по наличию точки), toInt() должен отрезать.
+      final mock = MockClient(
+        (http.Request req) async => _jsonResponse(
+          '{"status":404.0,"error":"TIME_MAX_CONNECT"}',
+          200,
+        ),
+      );
+      final api = ConverterApiHttp(client: mock, overrideToken: 'x');
+      await expectLater(
+        api.lookup('VF34CAAAAA5170236'),
+        throwsA(isA<ConverterException>()
+            .having((e) => e.code, 'code', '404')
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)),
+      );
     });
 
     test('{"error":"498","message":"TOKEN_NO_MONEY"} → admin', () async {
@@ -161,7 +199,7 @@ void main() {
       );
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.code, 'code', '498')
             .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)),
@@ -175,7 +213,7 @@ void main() {
       );
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.code, 'code', '502')
             .having((e) => e.message, 'message', 'NON_JSON_RESPONSE')),
@@ -188,7 +226,7 @@ void main() {
       );
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.message, 'message', 'UNEXPECTED_RESPONSE_SHAPE')),
       );
@@ -202,7 +240,7 @@ void main() {
       });
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.code, 'code', 'net_offline')
             .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)),
@@ -215,7 +253,7 @@ void main() {
       });
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.code, 'code', '404')
             .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)),
@@ -228,7 +266,7 @@ void main() {
       });
       final api = ConverterApiHttp(client: mock, overrideToken: 'x');
       await expectLater(
-        api.lookup('VF34C9HZC5170236'),
+        api.lookup('VF34CAAAAA5170236'),
         throwsA(isA<ConverterException>()
             .having((e) => e.code, 'code', 'net_offline')
             .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)),

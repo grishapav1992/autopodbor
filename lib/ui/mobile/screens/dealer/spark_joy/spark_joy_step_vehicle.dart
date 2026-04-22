@@ -307,14 +307,24 @@ Widget _buildConverterLookupButton(
 Widget _buildConverterDevHelper(_SparkJoyCreateReportScreenState s) {
   if (!FeatureFlags.useConverterMock) return const SizedBox.shrink();
 
+  // Все триггеры — валидные 17-символьные VIN'ы (проходят полевой
+  // валидатор VIN, [A-HJ-NPR-Z0-9]{17}), чтобы кнопка «Подтянуть …»
+  // активировалась. Плюс один ГРЗ для плейт-флоу. Значения взяты из
+  // [ConverterApiMock] — общий источник истины.
   const cases = <List<String>>[
-    <String>['VF34C9HZC5170236', 'VIN из доки → PEUGEOT 308, 2008, ГРЗ С812МУ93'],
-    <String>['С812МУ93', 'ГРЗ из доки → тот же Peugeot'],
-    <String>['XWEGH81BBM0012345', 'Любой валидный VIN → заглушка Toyota Camry'],
+    <String>[ConverterApiMock.triggerDocVin,
+        'VIN из доки → PEUGEOT 308, 2008, ГРЗ С812МУ93'],
+    <String>[ConverterApiMock.triggerDocPlateCyr,
+        'ГРЗ из доки → тот же Peugeot'],
+    <String>['XWEGH81BBM0012345',
+        'Любой валидный VIN → заглушка Toyota Camry'],
     <String>['А001АА777', 'Любой валидный ГРЗ → заглушка VW Polo'],
-    <String>['NOTFOUND12345678', 'Не найдено (found: false)'],
-    <String>['ERROR498', 'Ошибка API (admin): «временно недоступен»'],
-    <String>['OFFLINE', 'Эмуляция отсутствия интернета'],
+    <String>[ConverterApiMock.triggerNotFound,
+        'Не найдено (found: false)'],
+    <String>[ConverterApiMock.triggerError498,
+        'Ошибка API (admin): «временно недоступен»'],
+    <String>[ConverterApiMock.triggerOffline,
+        'Эмуляция отсутствия интернета'],
   ];
 
   return Container(
