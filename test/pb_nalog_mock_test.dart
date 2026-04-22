@@ -49,7 +49,7 @@ void main() {
               .having(
                 (e) => e.kind,
                 'kind',
-                PbNalogErrorKind.admin,
+                ApiCloudErrorKind.admin,
               )
               // User-facing сообщение — обобщённое, без технических деталей.
               .having(
@@ -298,7 +298,7 @@ void main() {
   group('PbNalogException — категоризация и сообщения', () {
     test('498 (нет денег) — admin, юзер видит generic', () {
       final e = PbNalogException('498', 'TOKEN_NO_MONEY');
-      expect(e.kind, PbNalogErrorKind.admin);
+      expect(e.kind, ApiCloudErrorKind.admin);
       expect(e.userMessage, contains('временно недоступна'));
       // Никаких «денег», «баланса», «токена» в user-сообщении.
       expect(e.userMessage, isNot(contains('средств')));
@@ -312,7 +312,7 @@ void main() {
 
     test('503 (токен не принят) — admin, user-текст общий', () {
       final e = PbNalogException('503', 'TOKEN_NOT_REGISTERED_IN_THE_SYSTEM');
-      expect(e.kind, PbNalogErrorKind.admin);
+      expect(e.kind, ApiCloudErrorKind.admin);
       expect(e.userMessage, contains('временно недоступна'));
       expect(e.userMessage, isNot(contains('токен')));
       expect(e.userMessage, isNot(contains('503')));
@@ -320,19 +320,19 @@ void main() {
 
     test('331 (кривой ИНН) — userInput, конкретное сообщение', () {
       final e = PbNalogException('331', 'inn: entered incorrectly');
-      expect(e.kind, PbNalogErrorKind.userInput);
+      expect(e.kind, ApiCloudErrorKind.userInput);
       expect(e.userMessage, contains('формат'));
     });
 
     test('404 (timeout источника) — transient, «попробуйте позже»', () {
       final e = PbNalogException('404', 'TIME_MAX_CONNECT');
-      expect(e.kind, PbNalogErrorKind.transient);
+      expect(e.kind, ApiCloudErrorKind.transient);
       expect(e.userMessage, contains('Попробуйте'));
     });
 
     test('неизвестный код — admin, generic текст', () {
       final e = PbNalogException('9999', 'WUT');
-      expect(e.kind, PbNalogErrorKind.admin);
+      expect(e.kind, ApiCloudErrorKind.admin);
       expect(e.userMessage, contains('временно недоступна'));
       expect(e.diagnosticMessage, contains('9999'));
     });

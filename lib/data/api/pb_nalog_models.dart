@@ -6,6 +6,10 @@
 /// тестовый мок — в [PbNalogApiMock] (файл `pb_nalog_api.dart`).
 library;
 
+import 'api_cloud_errors.dart';
+
+export 'api_cloud_errors.dart' show ApiCloudErrorKind;
+
 /// Тип субъекта.
 enum PbNalogKind { ip, organization, unknown }
 
@@ -299,48 +303,38 @@ class PbNalogResult {
   }
 }
 
-/// Категория ошибки pb_nalog — определяет, что показывать в UI.
-///
-/// Разделение нужно, чтобы юзер в приложении не видел внутренние
-/// проблемы интеграции («закончились деньги на балансе», «токен
-/// заблокирован»). Он получает общий «сервис недоступен», а полные
-/// коды и сообщения уходят в логи и в будущую админ-панель.
-enum PbNalogErrorKind {
-  /// Юзер сам может исправить — неверный формат ИНН, запрещённые
-  /// символы. Показываем конкретно в UI.
-  userInput,
-
-  /// Транзиентное — сеть/таймаут/rate-limit. «Попробуйте позже».
-  transient,
-
-  /// Наша конфигурация/биллинг/доступ — пользователь ничего не
-  /// сделает. UI показывает «проверка временно недоступна», детали
-  /// в [diagnosticMessage] для логов и админки.
-  admin,
-}
-
 /// Ошибка pb_nalog-запроса с кодом (строка — чтобы сохранить
 /// оригинальные значения из API, в т.ч. «331», «498»).
 ///
 /// Для UI используйте [userMessage]. Для логов и админ-панели —
 /// [diagnosticMessage] (содержит код и технический текст от API).
+///
+/// Таксономия ошибок ([ApiCloudErrorKind]) общая для всех api-cloud.ru
+/// клиентов — см. `api_cloud_errors.dart`. Доменные коды pb_nalog
+/// (331/332 — «неверный формат ИНН») добавлены сюда через
+/// override-механизм.
 class PbNalogException implements Exception {
   PbNalogException(this.code, this.message)
-      : kind = _kindFor(code);
+      : kind = kindForApiCloudCode(code, overrideUserInput: _innUserInputCodes);
+
+  static const Set<String> _innUserInputCodes = <String>{'331', '332'};
 
   final String code;
   final String message;
-  final PbNalogErrorKind kind;
+  final ApiCloudErrorKind kind;
 
-  /// Сообщение для конечного юзера (ru). Для [PbNalogErrorKind.admin]
+  /// Сообщение для конечного юзера (ru). Для [ApiCloudErrorKind.admin]
   /// возвращает намеренно обобщённый текст.
   String get userMessage {
     switch (kind) {
-      case PbNalogErrorKind.userInput:
-        return _userInputMessage(code);
-      case PbNalogErrorKind.transient:
-        return _transientMessage(code);
-      case PbNalogErrorKind.admin:
+      case ApiCloudErrorKind.userInput:
+        return _innUserInputMessage(code);
+      case ApiCloudErrorKind.transient:
+        return transientMessageForApiCloudCode(code);
+      case ApiCloudErrorKind.admin:
+        // Доменная обёртка над общим admin-сообщением — чтобы юзер
+        // понимал, что именно «сломано» (проверка ИНН, а не всё
+        // приложение).
         return 'Проверка ИНН временно недоступна. Попробуйте позже.';
     }
   }
@@ -352,36 +346,7 @@ class PbNalogException implements Exception {
   @override
   String toString() => 'PbNalogException($code, kind=$kind): $message';
 
-  static PbNalogErrorKind _kindFor(String code) {
-    switch (code) {
-      case '331':
-      case '332':
-      case '888':
-        return PbNalogErrorKind.userInput;
-      case '404':
-      case '456':
-      case 'net_offline':
-        return PbNalogErrorKind.transient;
-      case '498':
-      case '499':
-      case '500':
-      case '502':
-      case '503':
-      case '504':
-      case '602':
-      case '766':
-      case '1':
-      case '2':
-      case '3':
-        return PbNalogErrorKind.admin;
-      default:
-        // Неизвестный код трактуем как admin — пусть разбирается тот,
-        // кто читает логи. Пользователю никаких технических деталей.
-        return PbNalogErrorKind.admin;
-    }
-  }
-
-  static String _userInputMessage(String code) {
+  static String _innUserInputMessage(String code) {
     switch (code) {
       case '331':
       case '332':
@@ -389,20 +354,7 @@ class PbNalogException implements Exception {
       case '888':
         return 'Недопустимые символы в ИНН';
       default:
-        return 'Проверьте ИНН и попробуйте снова';
-    }
-  }
-
-  static String _transientMessage(String code) {
-    switch (code) {
-      case '404':
-        return 'Источник ФНС не ответил. Попробуйте ещё раз через пару минут.';
-      case '456':
-        return 'Слишком много запросов подряд. Попробуйте через минуту.';
-      case 'net_offline':
-        return 'Нет подключения к интернету. Проверьте сеть и попробуйте снова.';
-      default:
-        return 'Сервис проверки сейчас занят. Попробуйте ещё раз.';
+        return sharedUserInputMessage(code);
     }
   }
 }

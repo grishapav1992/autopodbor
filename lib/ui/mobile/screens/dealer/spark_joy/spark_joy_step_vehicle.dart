@@ -10,6 +10,7 @@ Widget _buildSparkJoyStepVehicle(
 
   return Column(
     children: [
+      _buildConverterDevHelper(s),
       s._sectionHeading(
         'Обязательные данные',
         icon: Icons.fact_check_outlined,
@@ -119,6 +120,13 @@ Widget _buildSparkJoyStepVehicle(
                 size: SparkTextSize.caption,
                 color: kRedColor,
               ),
+            const SizedBox(height: SparkSpace.md),
+            _buildConverterLookupButton(
+              s,
+              source: _ConverterSource.vin,
+              enabled: s._canLookupByVin() && !s._converterLoading,
+              label: 'Подтянуть ГРЗ и данные авто',
+            ),
           ],
         ),
       ),
@@ -178,6 +186,13 @@ Widget _buildSparkJoyStepVehicle(
                 color: kRedColor,
               ),
             ],
+            const SizedBox(height: SparkSpace.md),
+            _buildConverterLookupButton(
+              s,
+              source: _ConverterSource.plate,
+              enabled: s._canLookupByPlate() && !s._converterLoading,
+              label: 'Подтянуть VIN и данные авто',
+            ),
           ],
         ),
       ),
@@ -256,5 +271,155 @@ Widget _buildSparkJoyStepVehicle(
         s._staffInviteCard(),
       ],
     ],
+  );
+}
+
+// Кнопка «Подтянуть VIN/ГРЗ и данные авто» — единый стиль для обеих
+// точек входа. Спиннер на месте иконки во время запроса, disabled при
+// невалидном поле-источнике или параллельном запросе.
+Widget _buildConverterLookupButton(
+  _SparkJoyCreateReportScreenState s, {
+  required _ConverterSource source,
+  required bool enabled,
+  required String label,
+}) {
+  final loading = s._converterLoading;
+  return SizedBox(
+    width: double.infinity,
+    height: 44,
+    child: OutlinedButton.icon(
+      onPressed: enabled ? () => s._lookupByVinOrPlate(source) : null,
+      icon: loading
+          ? const SizedBox(
+              width: SparkSize.iconSm,
+              height: SparkSize.iconSm,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.travel_explore, size: SparkSize.iconSm),
+      label: Text(loading ? 'Запрос в ФНС…' : label),
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: kBorderColor),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SparkRadius.md),
+        ),
+      ),
+    ),
+  );
+}
+
+// DEV-хелпер: тестовые VIN/ГРЗ для мок-проверки converter-API.
+// Видимо только при FeatureFlags.useConverterMock == true. При
+// переключении на реальный API исчезнет автоматически. Перед
+// релизом (с живым токеном) удалить — grep «DEV-хелпер» найдёт
+// эту функцию и её вызов в _buildSparkJoyStepVehicle.
+Widget _buildConverterDevHelper(_SparkJoyCreateReportScreenState s) {
+  if (!FeatureFlags.useConverterMock) return const SizedBox.shrink();
+
+  const cases = <List<String>>[
+    <String>['VF34C9HZC5170236', 'VIN из доки → PEUGEOT 308, 2008, ГРЗ С812МУ93'],
+    <String>['С812МУ93', 'ГРЗ из доки → тот же Peugeot'],
+    <String>['XWEGH81BBM0012345', 'Любой валидный VIN → заглушка Toyota Camry'],
+    <String>['А001АА777', 'Любой валидный ГРЗ → заглушка VW Polo'],
+    <String>['NOTFOUND12345678', 'Не найдено (found: false)'],
+    <String>['ERROR498', 'Ошибка API (admin): «временно недоступен»'],
+    <String>['OFFLINE', 'Эмуляция отсутствия интернета'],
+  ];
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: SparkSpace.md),
+    decoration: BoxDecoration(
+      color: kYellowColor.withValues(alpha: 0.08),
+      border: Border.all(color: kYellowColor.withValues(alpha: 0.35)),
+      borderRadius: BorderRadius.circular(SparkRadius.md),
+    ),
+    child: Theme(
+      data: Theme.of(s.context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: SparkSpace.md),
+        childrenPadding: const EdgeInsets.only(
+          left: SparkSpace.md,
+          right: SparkSpace.md,
+          bottom: SparkSpace.md,
+        ),
+        leading: const Icon(
+          Icons.science_outlined,
+          size: SparkSize.iconMd,
+          color: kYellowColor,
+        ),
+        title: const MyText(
+          text: 'Тестовые VIN/ГРЗ (DEV)',
+          size: SparkTextSize.caption,
+          weight: FontWeight.w700,
+        ),
+        subtitle: const MyText(
+          text: 'Удалить перед релизом',
+          size: SparkTextSize.caption,
+          color: kGreyColor,
+        ),
+        children: <Widget>[
+          for (final c in cases)
+            _buildConverterDevRow(s, inn: c[0], description: c[1]),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _buildConverterDevRow(
+  _SparkJoyCreateReportScreenState s, {
+  required String inn,
+  required String description,
+}) {
+  return InkWell(
+    borderRadius: BorderRadius.circular(SparkRadius.xs),
+    onTap: () async {
+      await Clipboard.setData(ClipboardData(text: inn));
+      HapticFeedback.selectionClick();
+      if (!s.mounted) return;
+      ScaffoldMessenger.of(s.context).showSnackBar(
+        SnackBar(
+          content: Text('Скопировано: $inn'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    },
+    child: Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xs,
+        vertical: SparkSpace.sm,
+      ),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  inn,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontFamilyFallback: <String>['Courier', 'Menlo'],
+                    fontWeight: FontWeight.w700,
+                    fontSize: SparkTextSize.body,
+                  ),
+                ),
+                const SizedBox(height: SparkSpace.xxs),
+                MyText(
+                  text: description,
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: SparkSpace.sm),
+          const Icon(
+            Icons.copy_outlined,
+            size: SparkSize.iconSm,
+            color: kGreyColor,
+          ),
+        ],
+      ),
+    ),
   );
 }

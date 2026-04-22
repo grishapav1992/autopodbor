@@ -18,7 +18,7 @@ import 'pb_nalog_models.dart';
 /// - [PbNalogApiMock] — возвращает примеры из документации, не делает
 ///   сетевых запросов. Используется по умолчанию, пока [FeatureFlags.usePbNalogMock] = true.
 /// - [PbNalogApiHttp] — реальный HTTP-клиент. Готов к работе, но
-///   требует валидного токена в `UserSimplePreferences.getPbNalogToken()`.
+///   требует валидного токена в `UserSimplePreferences.getApiCloudToken()`.
 abstract class PbNalogApi {
   /// Запрашивает данные по ИНН. Длина 10 → юрлицо (search_org),
   /// длина 12 → ИП (search_ip). Иные значения — `PbNalogException('331')`.
@@ -287,7 +287,7 @@ class PbNalogApiHttp implements PbNalogApi {
     }
 
     final token =
-        _overrideToken ?? await UserSimplePreferences.getPbNalogToken();
+        _overrideToken ?? await UserSimplePreferences.getApiCloudToken();
     if (token == null || token.isEmpty) {
       throw PbNalogException('502', 'MISSING_REQUIRED_TOKEN_PARAMETER');
     }

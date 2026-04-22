@@ -127,7 +127,7 @@ void main() {
         api.lookup('6234083042'),
         throwsA(isA<PbNalogException>()
             .having((e) => e.code, 'code', '502')
-            .having((e) => e.kind, 'kind', PbNalogErrorKind.admin)),
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)),
       );
       expect(called, isFalse);
     });
@@ -157,7 +157,7 @@ void main() {
         api.lookup('6234083042'),
         throwsA(isA<PbNalogException>()
             .having((e) => e.code, 'code', '503')
-            .having((e) => e.kind, 'kind', PbNalogErrorKind.admin)
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)
             .having((e) => e.message, 'message',
                 'TOKEN_NOT_REGISTERED_IN_THE_SYSTEM')),
       );
@@ -174,7 +174,7 @@ void main() {
       await expectLater(
         api.lookup('233410953141'),
         throwsA(isA<PbNalogException>()
-            .having((e) => e.kind, 'kind', PbNalogErrorKind.admin)
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.admin)
             .having((e) => e.userMessage, 'userMessage',
                 isNot(contains('деньги'))) // у пользователя нет деталей
             ),
@@ -218,7 +218,7 @@ void main() {
         api.lookup('233410953141'),
         throwsA(isA<PbNalogException>()
             .having((e) => e.code, 'code', 'net_offline')
-            .having((e) => e.kind, 'kind', PbNalogErrorKind.transient)
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)
             .having((e) => e.userMessage, 'userMessage',
                 contains('интернет'))),
       );
@@ -236,7 +236,7 @@ void main() {
         api.lookup('233410953141'),
         throwsA(isA<PbNalogException>()
             .having((e) => e.code, 'code', '404')
-            .having((e) => e.kind, 'kind', PbNalogErrorKind.transient)),
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)),
       );
     });
 
@@ -249,7 +249,7 @@ void main() {
         api.lookup('233410953141'),
         throwsA(isA<PbNalogException>()
             .having((e) => e.code, 'code', 'net_offline')
-            .having((e) => e.kind, 'kind', PbNalogErrorKind.transient)),
+            .having((e) => e.kind, 'kind', ApiCloudErrorKind.transient)),
       );
     });
   });
