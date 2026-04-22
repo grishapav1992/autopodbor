@@ -241,10 +241,6 @@ Widget _buildSparkJoyStepVehicle(
           ],
         ),
       ),
-      if (s._hasBusinessStatus()) ...[
-        const SizedBox(height: SparkSpace.lg),
-        s._assigneeCard(),
-      ],
       const SizedBox(height: SparkSpace.lg),
       s._card(
         child: Column(
@@ -266,10 +262,6 @@ Widget _buildSparkJoyStepVehicle(
           ],
         ),
       ),
-      if (s._hasBusinessStatus()) ...[
-        const SizedBox(height: SparkSpace.lg),
-        s._staffInviteCard(),
-      ],
     ],
   );
 }

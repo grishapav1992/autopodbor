@@ -52,10 +52,11 @@ class _SparkJoySpecialistProfileScreenState
   final _cityController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
-  final _customSpecializationController = TextEditingController();
   final _experienceController = TextEditingController();
-  final List<String> _selectedSpecializations = <String>[];
-  final List<String> _customSpecializations = <String>[];
+  // Free-form «описание услуг». Chip-suggestions below the textarea
+  // just append their label into this controller — the textarea is
+  // the single source of truth.
+  final _specializationController = TextEditingController();
 
   bool _isVerifying = false;
   bool _isSavingProfile = false;
@@ -125,7 +126,7 @@ class _SparkJoySpecialistProfileScreenState
     _cityController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
-    _customSpecializationController.dispose();
+    _specializationController.dispose();
     _experienceController.dispose();
     super.dispose();
   }
@@ -152,50 +153,26 @@ class _SparkJoySpecialistProfileScreenState
     _phoneController.text = sjRead(profile, 'phone');
     _emailController.text = sjRead(profile, 'email');
     _experienceController.text = sjRead(profile, 'experience');
-    _applySpecializations(_extractSpecializations(profile));
+    _specializationController.text = _extractSpecializationText(profile);
   }
 
-  bool _containsIgnoreCase(Iterable<String> values, String needle) {
-    final normalizedNeedle = needle.trim().toLowerCase();
-    if (normalizedNeedle.isEmpty) return false;
-    return values.any((item) => item.trim().toLowerCase() == normalizedNeedle);
-  }
-
-  List<String> _extractSpecializations(Map<String, dynamic> profile) {
+  /// Reads the profile's specialization as a plain-text description.
+  /// Legacy profiles stored it as a `specializations` list of tags;
+  /// we join those with `, ` so the textarea reads naturally. New
+  /// saves always write the single `specialization` string.
+  String _extractSpecializationText(Map<String, dynamic> profile) {
+    final text = sjRead(profile, 'specialization').trim();
+    if (text.isNotEmpty) return text;
     final fromList = profile['specializations'];
-    final result = <String>[];
-    if (fromList is List) {
+    if (fromList is List && fromList.isNotEmpty) {
+      final parts = <String>[];
       for (final raw in fromList) {
         final value = raw.toString().trim();
-        if (value.isEmpty) continue;
-        if (_containsIgnoreCase(result, value)) continue;
-        result.add(value);
+        if (value.isNotEmpty) parts.add(value);
       }
-      if (result.isNotEmpty) return result;
+      return parts.join(', ');
     }
-    final fallback = sjRead(profile, 'specialization').trim();
-    if (fallback.isEmpty) return result;
-    for (final part in fallback.split(RegExp(r'[,;\n]'))) {
-      final value = part.trim();
-      if (value.isEmpty) continue;
-      if (_containsIgnoreCase(result, value)) continue;
-      result.add(value);
-    }
-    return result;
-  }
-
-  void _applySpecializations(List<String> values) {
-    _selectedSpecializations
-      ..clear()
-      ..addAll(values);
-    _customSpecializations
-      ..clear()
-      ..addAll(
-        values.where(
-          (value) => !_containsIgnoreCase(_presetSpecializations, value),
-        ),
-      );
-    _customSpecializationController.clear();
+    return '';
   }
 
   void _setProfileDirty() {
@@ -203,60 +180,19 @@ class _SparkJoySpecialistProfileScreenState
     setState(() => _profileDirty = true);
   }
 
-  void _togglePresetSpecialization(String specialization) {
-    final index = _selectedSpecializations.indexWhere(
-      (item) => item.toLowerCase() == specialization.toLowerCase(),
+  /// Appends a preset service to the textarea. Idempotent-free by
+  /// design — the user can add the same phrase twice and edit later;
+  /// we don't want to swallow taps silently.
+  void _appendSpecializationSuggestion(String suggestion) {
+    HapticFeedback.selectionClick();
+    final current = _specializationController.text;
+    final separator = current.trim().isEmpty ? '' : ', ';
+    final next = '$current$separator$suggestion';
+    _specializationController.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: next.length),
     );
-    setState(() {
-      if (index >= 0) {
-        _selectedSpecializations.removeAt(index);
-      } else {
-        _selectedSpecializations.add(specialization);
-      }
-    });
     _setProfileDirty();
-  }
-
-  void _removeCustomSpecialization(String value) {
-    setState(() {
-      _customSpecializations.removeWhere(
-        (item) => item.toLowerCase() == value.toLowerCase(),
-      );
-      _selectedSpecializations.removeWhere(
-        (item) => item.toLowerCase() == value.toLowerCase(),
-      );
-    });
-    _setProfileDirty();
-  }
-
-  void _addCustomSpecialization() {
-    final raw = _customSpecializationController.text.trim();
-    if (raw.isEmpty) return;
-    final existsInPreset = _containsIgnoreCase(_presetSpecializations, raw);
-    final existsInCustom = _containsIgnoreCase(_customSpecializations, raw);
-    final alreadySelected = _containsIgnoreCase(_selectedSpecializations, raw);
-    setState(() {
-      if (!existsInPreset && !existsInCustom) {
-        _customSpecializations.add(raw);
-      }
-      if (!alreadySelected) {
-        _selectedSpecializations.add(raw);
-      }
-      _customSpecializationController.clear();
-    });
-    _setProfileDirty();
-    FocusScope.of(context).unfocus();
-  }
-
-  List<String> _currentSpecializations() {
-    final result = <String>[];
-    for (final specialization in _selectedSpecializations) {
-      final value = specialization.trim();
-      if (value.isEmpty) continue;
-      if (_containsIgnoreCase(result, value)) continue;
-      result.add(value);
-    }
-    return result;
   }
 
   Future<void> _loadProfile() async {
@@ -415,9 +351,19 @@ class _SparkJoySpecialistProfileScreenState
     );
   }
 
+  /// Hard-reset the company role. Shows a confirmation dialog
+  /// enumerating every piece of local data that will be wiped
+  /// (drafts, pending invites, staff preferences) so the user can't
+  /// lose work by accident. On confirm, [SparkJoyStorage.cancelCompanyMode]
+  /// deletes the drafts and resets the business verification.
   Future<void> _resetBusinessStatus() async {
     if (_isVerifying) return;
-    await SparkJoyStorage.resetBusinessVerification();
+    final messenger = ScaffoldMessenger.of(context);
+    final summary = await SparkJoyStorage.buildCompanyCancelSummary();
+    if (!mounted) return;
+    final confirmed = await _showCancelCompanyDialog(summary);
+    if (confirmed != true) return;
+    await SparkJoyStorage.cancelCompanyMode();
     if (!mounted) return;
     setState(() {
       _verifiedInn = null;
@@ -430,9 +376,122 @@ class _SparkJoySpecialistProfileScreenState
       _businessStatusDesc = '';
     });
     widget.onBusinessStatusChanged?.call(null);
-    ScaffoldMessenger.of(context).showSnackBar(
+    messenger.showSnackBar(
       const SnackBar(content: Text('Статус сброшен: теперь вы специалист')),
     );
+  }
+
+  Future<bool?> _showCancelCompanyDialog(CompanyCancelSummary s) {
+    // Enumerate only the categories that actually have data so the
+    // bullet list doesn't waste space on zeros. An empty summary still
+    // shows the generic "your account will switch to specialist" line.
+    final bullets = <String>[];
+    if (s.totalDrafts > 0) {
+      final assigned = s.assignedDrafts;
+      final invites = s.pendingInviteDrafts;
+      final breakdown = <String>[];
+      if (assigned > 0) breakdown.add('$assigned назначено сотрудникам');
+      if (invites > 0) breakdown.add('$invites ожидают приглашения');
+      final suffix = breakdown.isEmpty ? '' : ' (${breakdown.join(', ')})';
+      bullets.add('${s.totalDrafts} ${_draftsPlural(s.totalDrafts)} будут удалены$suffix');
+    }
+    if (s.promotedStaff > 0 || s.hiddenStaff > 0) {
+      bullets.add('Настройки штата (повышенные/скрытые) будут очищены');
+    }
+    bullets.add('Ваш аккаунт станет специалистом');
+
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogCtx) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SparkRadius.xl),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xxxl,
+            SparkSpace.xxxl,
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const MyText(
+                text: 'Сбросить статус компании?',
+                size: SparkTextSize.title,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: SparkSpace.md),
+              const MyText(
+                text: 'После сброса:',
+                size: SparkTextSize.body,
+                color: kGreyColor,
+              ),
+              const SizedBox(height: SparkSpace.sm),
+              for (final b in bullets) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: SparkSpace.xs),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const MyText(
+                        text: '• ',
+                        size: SparkTextSize.body,
+                        color: kGreyColor,
+                      ),
+                      Expanded(
+                        child: MyText(
+                          text: b,
+                          size: SparkTextSize.body,
+                          color: kTertiaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              const SizedBox(height: SparkSpace.sm),
+              const MyText(
+                text: 'Это действие необратимо.',
+                size: SparkTextSize.caption,
+                color: kRedColor,
+                weight: FontWeight.w600,
+              ),
+              const SizedBox(height: SparkSpace.xl),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(dialogCtx).pop(false),
+                      child: const Text('Отмена'),
+                    ),
+                  ),
+                  const SizedBox(width: SparkSpace.md),
+                  Expanded(
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: kRedColor),
+                      onPressed: () => Navigator.of(dialogCtx).pop(true),
+                      child: const Text('Сбросить'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _draftsPlural(int n) {
+    final mod10 = n % 10;
+    final mod100 = n % 100;
+    if (mod10 == 1 && mod100 != 11) return 'черновик';
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'черновика';
+    }
+    return 'черновиков';
   }
 
   String? _requiredValidator(String? value, String fieldLabel) {
@@ -477,8 +536,11 @@ class _SparkJoySpecialistProfileScreenState
       'city': _cityController.text.trim(),
       'phone': _phoneController.text.trim(),
       'email': _emailController.text.trim(),
-      'specialization': _currentSpecializations().join(', '),
-      'specializations': _currentSpecializations(),
+      'specialization': _specializationController.text.trim(),
+      // Explicitly drop the legacy `specializations` list — the
+      // string above is now the single source of truth. Without this
+      // the stored list from older saves would keep drifting.
+      'specializations': const <String>[],
       'experience': _experienceController.text.trim(),
     };
     await SparkJoyStorage.saveSpecialistProfile(next);
@@ -784,7 +846,9 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   Widget _buildProfileInfoRead(Map<String, dynamic> specialist) {
-    final specs = _currentSpecializations();
+    final specializationText = _specializationController.text.trim().isEmpty
+        ? sjRead(specialist, 'specialization').trim()
+        : _specializationController.text.trim();
     String valueOrDash(String value) {
       final trimmed = value.trim();
       return trimmed.isEmpty ? '—' : trimmed;
@@ -841,35 +905,21 @@ class _SparkJoySpecialistProfileScreenState
                 : _cityController.text,
           ),
         ),
-        // Specialization — read-only chips so the scale is obvious at a
-        // glance without re-reading a comma-separated list.
+        // Specialization is now a free-form description. Render as a
+        // paragraph so line breaks and longer sentences read
+        // naturally; fall back to an em-dash for empty profiles.
         const SizedBox(height: SparkSpace.md),
         const MyText(
-          text: 'Специализация',
+          text: 'Описание услуг',
           size: SparkTextSize.body,
           color: kGreyColor,
         ),
         const SizedBox(height: SparkSpace.sm),
-        if (specs.isEmpty)
-          const MyText(
-            text: '—',
-            size: SparkTextSize.body,
-            color: kGreyColor,
-          )
-        else
-          Wrap(
-            spacing: SparkSpace.sm,
-            runSpacing: SparkSpace.sm,
-            children: specs
-                .map(
-                  (s) => SparkChip(
-                    text: s,
-                    background: kSecondaryColor.withValues(alpha: 0.08),
-                    color: kSecondaryColor,
-                  ),
-                )
-                .toList(growable: false),
-          ),
+        MyText(
+          text: specializationText.isEmpty ? '—' : specializationText,
+          size: SparkTextSize.body,
+          color: specializationText.isEmpty ? kGreyColor : kTertiaryColor,
+        ),
         const SizedBox(height: SparkSpace.md),
         SparkInfoRow(
           label: 'Опыт',
@@ -1011,49 +1061,6 @@ class _SparkJoySpecialistProfileScreenState
     );
   }
 
-  Widget _buildSpecializationChip(String specialization) {
-    final isCustom = _containsIgnoreCase(
-      _customSpecializations,
-      specialization,
-    );
-    final selected = _containsIgnoreCase(
-      _selectedSpecializations,
-      specialization,
-    );
-    return InputChip(
-      selected: selected,
-      label: Text(specialization),
-      onSelected: (_) => _togglePresetSpecialization(specialization),
-      onDeleted: isCustom
-          ? () => _removeCustomSpecialization(specialization)
-          : null,
-      selectedColor: kSecondaryColor.withValues(alpha: 0.14),
-      backgroundColor: isCustom ? kWhiteColor : kInputBgColor,
-      side: BorderSide(color: selected ? kSecondaryColor : kBorderColor),
-      labelStyle: TextStyle(
-        color: selected ? kSecondaryColor : kTertiaryColor,
-        fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-        fontSize: SparkTextSize.body,
-      ),
-      deleteIconColor: kSecondaryColor,
-      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
-    );
-  }
-
-  List<String> _allSpecializationOptions() {
-    final result = <String>[];
-    for (final item in _presetSpecializations) {
-      if (_containsIgnoreCase(result, item)) continue;
-      result.add(item);
-    }
-    for (final item in _customSpecializations) {
-      if (_containsIgnoreCase(result, item)) continue;
-      result.add(item);
-    }
-    return result;
-  }
-
   Widget _buildSpecializationEditor() {
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.lg),
@@ -1061,59 +1068,67 @@ class _SparkJoySpecialistProfileScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const MyText(
-            text: 'Специализация',
+            text: 'Описание услуг',
             size: SparkTextSize.body,
             color: kGreyColor,
             paddingBottom: SparkSpace.md,
           ),
-          Wrap(
-            spacing: SparkSpace.md,
-            runSpacing: SparkSpace.md,
-            children: _allSpecializationOptions()
-                .map(_buildSpecializationChip)
-                .toList(growable: false),
+          TextField(
+            controller: _specializationController,
+            maxLines: 4,
+            minLines: 3,
+            // Limit enforced but counter suppressed — Flutter's default
+            // `187/500` footer is unstyled and doesn't match the
+            // spark_joy design.
+            maxLength: 500,
+            buildCounter: (
+              context, {
+              required int currentLength,
+              required int? maxLength,
+              required bool isFocused,
+            }) =>
+                null,
+            textInputAction: TextInputAction.newline,
+            onTapOutside: (_) =>
+                FocusManager.instance.primaryFocus?.unfocus(),
+            onChanged: (_) => _setProfileDirty(),
+            decoration: sparkInputDecoration(
+              'Например: выездной осмотр в Москве и области, кузов, электрика',
+            ),
           ),
-          const SizedBox(height: SparkSpace.lg),
+          const SizedBox(height: SparkSpace.sm),
           const MyText(
-            text: 'Своя специализация',
-            size: SparkTextSize.body,
+            text: 'Быстрое добавление',
+            size: SparkTextSize.caption,
             color: kGreyColor,
             paddingBottom: SparkSpace.sm,
           ),
-          // Input + «Добавить» on the same baseline — the label now
-          // sits above the Row so both children share the Row's height
-          // and CrossAxisAlignment.stretch guarantees the button
-          // matches the input field's box height.
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _customSpecializationController,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _addCustomSpecialization(),
-                    onTapOutside: (_) =>
-                        FocusManager.instance.primaryFocus?.unfocus(),
-                    decoration: sparkInputDecoration('Напишите вручную'),
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.md),
-                SizedBox(
-                  width: 120,
-                  child: OutlinedButton.icon(
-                    onPressed: _addCustomSpecialization,
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(SparkRadius.lg),
-                      ),
+          Wrap(
+            spacing: SparkSpace.sm,
+            runSpacing: SparkSpace.sm,
+            children: _presetSpecializations
+                .map(
+                  (s) => ActionChip(
+                    label: Text(s),
+                    avatar: const Icon(
+                      Icons.add_rounded,
+                      size: SparkSize.iconSm,
+                      color: kSecondaryColor,
                     ),
-                    icon: const Icon(Icons.add_rounded, size: SparkSize.iconSm),
-                    label: const Text('Добавить'),
+                    onPressed: () => _appendSpecializationSuggestion(s),
+                    backgroundColor: kInputBgColor,
+                    side: const BorderSide(color: kBorderColor),
+                    labelStyle: const TextStyle(
+                      color: kTertiaryColor,
+                      fontWeight: FontWeight.w500,
+                      fontSize: SparkTextSize.body,
+                    ),
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity:
+                        const VisualDensity(horizontal: 0, vertical: -2),
                   ),
-                ),
-              ],
-            ),
+                )
+                .toList(growable: false),
           ),
         ],
       ),

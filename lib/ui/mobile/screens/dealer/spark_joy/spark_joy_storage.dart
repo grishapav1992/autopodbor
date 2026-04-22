@@ -70,6 +70,11 @@ class SparkJoyStorage {
   static const String _businessOgrnKey = 'spark_joy_business_ogrn_v1';
   static const String _businessRawKey = 'spark_joy_business_raw_v1';
   static const String _specialistProfileKey = 'spark_joy_specialist_profile_v1';
+  /// External specialists (not originally in the company roster) that
+  /// the company has explicitly promoted to staff via "Добавить в штат".
+  /// Persists between sessions so the promotion survives app restarts.
+  static const String _promotedCompanyStaffIdsKey =
+      'spark_joy_promoted_company_staff_ids_v1';
   static const String _hiddenCompanyStaffIdsKey =
       'spark_joy_hidden_company_staff_ids_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
@@ -337,6 +342,65 @@ class SparkJoyStorage {
     return pref.getString(_businessOgrnKey) ?? '';
   }
 
+  /// Pre-flight summary for the "Сбросить статус" confirmation modal.
+  /// Counts every draft currently attributed to the company plus the
+  /// subset that carries an active invite link. The modal uses these
+  /// numbers to spell out exactly what the hard wipe is about to
+  /// destroy.
+  static Future<CompanyCancelSummary> buildCompanyCancelSummary() async {
+    final drafts = await loadDrafts();
+    int total = 0;
+    int withAssignee = 0;
+    int withPendingInvite = 0;
+    for (final d in drafts) {
+      final companyId = (d['companyId'] ?? '').toString();
+      final businessType = (d['businessType'] ?? '').toString();
+      final isCompany = companyId == kSparkCompanyId ||
+          businessType == 'company' ||
+          businessType == 'ip';
+      if (!isCompany) continue;
+      total++;
+      final assignee = ((d['assignedSpecialistId'] ?? d['specialistId']) ?? '')
+          .toString()
+          .trim();
+      if (assignee.isNotEmpty) withAssignee++;
+      final link = (d['staffInviteLink'] ?? '').toString().trim();
+      if (link.isNotEmpty && assignee.isEmpty) withPendingInvite++;
+    }
+    final hidden = await loadHiddenCompanyStaffIds();
+    final promoted = await loadPromotedCompanyStaffIds();
+    return CompanyCancelSummary(
+      totalDrafts: total,
+      assignedDrafts: withAssignee,
+      pendingInviteDrafts: withPendingInvite,
+      hiddenStaff: hidden.length,
+      promotedStaff: promoted.length,
+    );
+  }
+
+  /// Hard-reset of company mode. Deletes every draft owned by the
+  /// current company, clears the company-local staff preferences, and
+  /// delegates the business-type reset to [resetBusinessVerification].
+  /// Callers should show [buildCompanyCancelSummary] in a modal first
+  /// — this method does not prompt.
+  static Future<void> cancelCompanyMode() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final drafts = await loadDrafts();
+    final keep = drafts.where((d) {
+      final companyId = (d['companyId'] ?? '').toString();
+      final businessType = (d['businessType'] ?? '').toString();
+      final isCompany = companyId == kSparkCompanyId ||
+          businessType == 'company' ||
+          businessType == 'ip';
+      return !isCompany;
+    }).toList();
+    await _writeList(_draftsKey, keep);
+    await pref.remove(_hiddenCompanyStaffIdsKey);
+    await pref.remove(_promotedCompanyStaffIdsKey);
+    await resetBusinessVerification();
+  }
+
   static Future<Map<String, dynamic>> loadSpecialistProfile() async {
     final base = cloneMap(
       sparkSpecialists.firstWhere(
@@ -398,6 +462,39 @@ class SparkJoyStorage {
     final hidden = await loadHiddenCompanyStaffIds();
     hidden.removeWhere((id) => id == normalized);
     await pref.setStringList(_hiddenCompanyStaffIdsKey, hidden);
+  }
+
+  static Future<List<String>> loadPromotedCompanyStaffIds() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return <String>[];
+    final raw = pref.getStringList(_promotedCompanyStaffIdsKey) ?? <String>[];
+    return raw
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  static Future<void> promoteExternalStaffId(String staffId) async {
+    final normalized = staffId.trim();
+    if (normalized.isEmpty) return;
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final promoted = await loadPromotedCompanyStaffIds();
+    if (!promoted.contains(normalized)) {
+      promoted.add(normalized);
+    }
+    await pref.setStringList(_promotedCompanyStaffIdsKey, promoted);
+  }
+
+  static Future<void> demotePromotedStaffId(String staffId) async {
+    final normalized = staffId.trim();
+    if (normalized.isEmpty) return;
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final promoted = await loadPromotedCompanyStaffIds();
+    promoted.removeWhere((id) => id == normalized);
+    await pref.setStringList(_promotedCompanyStaffIdsKey, promoted);
   }
 
   static Future<void> ensureSeedData() async {
@@ -559,4 +656,26 @@ class SparkJoyStorage {
     return DateTime.tryParse(raw);
   }
 
+}
+
+/// Pre-flight summary shown in the "Сбросить статус" confirmation
+/// modal so the user sees exactly what a hard wipe is about to
+/// destroy.
+class CompanyCancelSummary {
+  const CompanyCancelSummary({
+    required this.totalDrafts,
+    required this.assignedDrafts,
+    required this.pendingInviteDrafts,
+    required this.hiddenStaff,
+    required this.promotedStaff,
+  });
+
+  final int totalDrafts;
+  final int assignedDrafts;
+  final int pendingInviteDrafts;
+  final int hiddenStaff;
+  final int promotedStaff;
+
+  bool get hasAnyData =>
+      totalDrafts > 0 || hiddenStaff > 0 || promotedStaff > 0;
 }

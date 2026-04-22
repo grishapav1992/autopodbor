@@ -112,6 +112,14 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
         'Вложения — исправьте ${attachmentStats.brokenCount} некорректных файл(ов)',
       );
     }
+    // Company/IP reports must have an assignee picked at creation
+    // time (either a specialist or a pending invite link). Both
+    // values come from the "new report" entry form.
+    if (_hasBusinessStatus() &&
+        _assignedSpecialistId.trim().isEmpty &&
+        _staffInviteLink.trim().isEmpty) {
+      reasons.add('Исполнитель — назначьте сотрудника на этапе создания');
+    }
     return reasons;
   }
 
