@@ -1,6 +1,9 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/pb_nalog_models.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
@@ -66,6 +69,15 @@ class _SparkJoySpecialistProfileScreenState
   String? _innError;
   String? _verifiedInn;
   String? _businessType;
+  // Дополнительные поля из ответа api-cloud.ru/pb_nalog, которые
+  // рендерятся в карточке «Проверка компании». Все — чистые строки,
+  // читаются из SharedPreferences в _loadBusinessStatus.
+  String _businessDisplayName = '';
+  String _businessRegion = '';
+  String _businessDateReg = '';
+  String _businessOgrn = '';
+  String _businessStatusName = '';
+  String _businessStatusDesc = '';
   Map<String, dynamic>? _specialistProfile;
 
   // Real counts of saved drafts + completed reports, loaded from local
@@ -259,14 +271,49 @@ class _SparkJoySpecialistProfileScreenState
   Future<void> _loadBusinessStatus() async {
     final inn = await SparkJoyStorage.currentVerifiedInn();
     final businessType = await SparkJoyStorage.currentBusinessType();
+    final displayName = await SparkJoyStorage.currentBusinessDisplayName();
+    final region = await SparkJoyStorage.currentBusinessRegion();
+    final dateReg = await SparkJoyStorage.currentBusinessDateReg();
+    final ogrn = await SparkJoyStorage.currentBusinessOgrn();
+    final statusName = await SparkJoyStorage.currentBusinessStatusName();
+    final statusDesc = await SparkJoyStorage.currentBusinessStatusDesc();
     if (!mounted) return;
     setState(() {
       _verifiedInn = inn;
       _businessType = businessType;
+      _businessDisplayName = displayName;
+      _businessRegion = region;
+      _businessDateReg = dateReg;
+      _businessOgrn = ogrn;
+      _businessStatusName = statusName;
+      _businessStatusDesc = statusDesc;
       if (inn != null && inn.isNotEmpty) {
         _innController.text = inn;
       }
     });
+  }
+
+  PbNalogStatus _businessStatusEnum() {
+    if (_businessStatusName.isEmpty) return PbNalogStatus.unknown;
+    return pbNalogStatusFromStorageKey(_businessStatusName);
+  }
+
+  Color _businessStatusColor() {
+    switch (_businessStatusEnum()) {
+      case PbNalogStatus.active:
+        return kGreenColor;
+      case PbNalogStatus.terminated:
+      case PbNalogStatus.liquidation:
+      case PbNalogStatus.bankruptcy:
+        return kRedColor;
+      case PbNalogStatus.exclusion:
+      case PbNalogStatus.reorganization:
+        // Палитра проекта: kYellowColor — ближайший warning-tone.
+        // Используется консистентно с другими «переходными» состояниями.
+        return kYellowColor;
+      case PbNalogStatus.unknown:
+        return kGreyColor;
+    }
   }
 
   String _businessTypeLabel() {
@@ -299,38 +346,69 @@ class _SparkJoySpecialistProfileScreenState
 
     HapticFeedback.mediumImpact();
     setState(() => _isVerifying = true);
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    final businessType = await SparkJoyStorage.verifyInnAndPromote(
-      _innController.text,
-    );
+
+    PbNalogResult? result;
+    String? errorMessage;
+    try {
+      result = await SparkJoyStorage.verifyInnAndPromote(_innController.text);
+    } on PbNalogException catch (e) {
+      // Пользователю — только userMessage (admin-коды вроде 498/503
+      // скрыты за обобщённым «временно недоступна»). Полную
+      // диагностику пишем в developer-лог — её увидит разработчик
+      // при отладке, а в будущем — админка/мониторинг.
+      developer.log(
+        'pb_nalog verify failed: ${e.diagnosticMessage} (kind=${e.kind.name})',
+        name: 'SparkJoy.ProfileScreen',
+      );
+      errorMessage = e.userMessage;
+    } catch (e, stack) {
+      developer.log(
+        'pb_nalog verify unexpected error',
+        name: 'SparkJoy.ProfileScreen',
+        error: e,
+        stackTrace: stack,
+      );
+      errorMessage = 'Не удалось подтвердить ИНН. Попробуйте позже.';
+    }
 
     if (!mounted) return;
-    setState(() {
-      _isVerifying = false;
-    });
+    setState(() => _isVerifying = false);
 
-    if (businessType == null) {
+    if (errorMessage != null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(errorMessage)));
+      return;
+    }
+
+    if (result == null ||
+        !result.found ||
+        (result.ipEntries.isEmpty && result.orgEntries.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось подтвердить ИНН')),
+        const SnackBar(
+          content: Text(
+            'По этому ИНН ФНС не нашла действующую регистрацию ИП или юрлица.',
+          ),
+        ),
       );
       return;
     }
 
-    final inn = SparkJoyStorage.normalizeInn(_innController.text);
-    setState(() {
-      _businessType = businessType;
-      _verifiedInn = inn;
-      _innController.text = inn;
-      _innError = null;
-    });
+    // Успех — перечитываем плоские поля, которые SparkJoyStorage
+    // только что записал в SharedPreferences. Да, можно было бы
+    // вытащить их из result напрямую, но проход через
+    // SharedPreferences гарантирует, что _loadBusinessStatus и
+    // _verifyInn читают один и тот же источник правды.
+    await _loadBusinessStatus();
 
-    widget.onBusinessStatusChanged?.call(businessType);
+    widget.onBusinessStatusChanged?.call(_businessType);
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          businessType == 'ip'
-              ? 'Тех. проверка пройдена: статус ИП'
-              : 'Тех. проверка пройдена: статус Компания',
+          _businessType == 'ip'
+              ? 'Проверка пройдена: статус ИП'
+              : 'Проверка пройдена: статус компании',
         ),
       ),
     );
@@ -343,6 +421,12 @@ class _SparkJoySpecialistProfileScreenState
     setState(() {
       _verifiedInn = null;
       _businessType = null;
+      _businessDisplayName = '';
+      _businessRegion = '';
+      _businessDateReg = '';
+      _businessOgrn = '';
+      _businessStatusName = '';
+      _businessStatusDesc = '';
     });
     widget.onBusinessStatusChanged?.call(null);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -421,15 +505,23 @@ class _SparkJoySpecialistProfileScreenState
   // re-verify they tap reset first, which clears state and switches
   // this card to the unverified layout.
   Widget _buildBusinessVerified() {
+    final statusEnum = _businessStatusEnum();
+    final statusColor = _businessStatusColor();
+    // Если API не прислал человекочитаемое описание (например, в синтетическом
+    // fallback-ответе мока), подставляем локализованный ярлык из enum.
+    final statusText = _businessStatusDesc.isNotEmpty
+        ? _businessStatusDesc
+        : pbNalogStatusLabel(statusEnum);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Icon(
+            Icon(
               Icons.verified_rounded,
               size: SparkSize.iconMd,
-              color: kGreenColor,
+              color: statusColor,
             ),
             const SizedBox(width: SparkSpace.sm),
             Expanded(
@@ -441,8 +533,47 @@ class _SparkJoySpecialistProfileScreenState
             ),
           ],
         ),
+        const SizedBox(height: SparkSpace.sm),
+        // Цветной чип состояния регистрации (действующий / прекращён /
+        // банкротство и т.п.). Цвет диктуется _businessStatusColor
+        // так, чтобы «прекращено» и «ликвидация» визуально кричали.
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.md,
+            vertical: SparkSpace.xs,
+          ),
+          decoration: BoxDecoration(
+            color: statusColor.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: MyText(
+            text: statusText,
+            size: SparkTextSize.caption,
+            weight: FontWeight.w700,
+            color: statusColor,
+          ),
+        ),
         const SizedBox(height: SparkSpace.md),
+        if (_businessDisplayName.isNotEmpty)
+          SparkInfoRow(label: 'Наименование', value: _businessDisplayName),
+        if (_businessDisplayName.isNotEmpty)
+          const SizedBox(height: SparkSpace.md),
         SparkInfoRow(label: 'ИНН', value: _verifiedInn ?? ''),
+        if (_businessOgrn.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.md),
+          SparkInfoRow(
+            label: _businessType == 'ip' ? 'ОГРНИП' : 'ОГРН',
+            value: _businessOgrn,
+          ),
+        ],
+        if (_businessRegion.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.md),
+          SparkInfoRow(label: 'Регион', value: _businessRegion),
+        ],
+        if (_businessDateReg.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.md),
+          SparkInfoRow(label: 'Дата регистрации', value: _businessDateReg),
+        ],
         const SizedBox(height: SparkSpace.md),
         Align(
           alignment: Alignment.centerLeft,

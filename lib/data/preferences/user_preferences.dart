@@ -74,6 +74,10 @@ class UserSimplePreferences {
   static const _accessTokenKey = 'accessToken';
   static const _refreshTokenKey = 'refreshToken';
   static const _userRoleKey = 'userRole';
+  // Токен api-cloud.ru/pb_nalog (32 символа). Лежит в SharedPreferences,
+  // потому что MVP — позже переедет либо в --dart-define (для CI/release),
+  // либо в zashifrovannyi-storage. См. TODO в [FeatureFlags.usePbNalogMock].
+  static const _pbNalogTokenKey = 'pbNalogToken';
 
   static Future init() async {
     pref = await SharedPreferences.getInstance();
@@ -353,6 +357,19 @@ class UserSimplePreferences {
   static Future<void> clearAuthTokens() async {
     await (await _prefs()).remove(_accessTokenKey);
     await (await _prefs()).remove(_refreshTokenKey);
+  }
+
+  static Future<String?> getPbNalogToken() async {
+    // ignore: await_only_futures
+    return (await _prefs()).getString(_pbNalogTokenKey);
+  }
+
+  static Future<void> setPbNalogToken(String token) async {
+    await (await _prefs()).setString(_pbNalogTokenKey, token);
+  }
+
+  static Future<void> clearPbNalogToken() async {
+    await (await _prefs()).remove(_pbNalogTokenKey);
   }
 
   static Future<void> setUserRole(String role) async {
