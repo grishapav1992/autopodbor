@@ -158,8 +158,9 @@ class _SparkJoySpecialistProfileScreenState
 
   /// Reads the profile's specialization as a plain-text description.
   /// Legacy profiles stored it as a `specializations` list of tags;
-  /// we join those with `, ` so the textarea reads naturally. New
-  /// saves always write the single `specialization` string.
+  /// we format those as a bullet list so the textarea reads
+  /// consistently with the current append-chip UX. New saves always
+  /// write the single `specialization` string.
   String _extractSpecializationText(Map<String, dynamic> profile) {
     final text = sjRead(profile, 'specialization').trim();
     if (text.isNotEmpty) return text;
@@ -168,9 +169,9 @@ class _SparkJoySpecialistProfileScreenState
       final parts = <String>[];
       for (final raw in fromList) {
         final value = raw.toString().trim();
-        if (value.isNotEmpty) parts.add(value);
+        if (value.isNotEmpty) parts.add('• $value');
       }
-      return parts.join(', ');
+      return parts.join('\n');
     }
     return '';
   }
@@ -180,14 +181,17 @@ class _SparkJoySpecialistProfileScreenState
     setState(() => _profileDirty = true);
   }
 
-  /// Appends a preset service to the textarea. Idempotent-free by
-  /// design — the user can add the same phrase twice and edit later;
-  /// we don't want to swallow taps silently.
+  /// Appends a preset service to the textarea on a new bullet line —
+  /// comma-joined list was cramped and hard to read when the user
+  /// mixed in free-form text. Each tap starts a fresh line with `• `
+  /// prefix, so the result reads as a clean enumerated list.
+  /// Idempotent-free by design — the user can add the same phrase
+  /// twice and edit later.
   void _appendSpecializationSuggestion(String suggestion) {
     HapticFeedback.selectionClick();
-    final current = _specializationController.text;
-    final separator = current.trim().isEmpty ? '' : ', ';
-    final next = '$current$separator$suggestion';
+    final current = _specializationController.text.trimRight();
+    final separator = current.isEmpty ? '' : '\n';
+    final next = '$current$separator• $suggestion';
     _specializationController.value = TextEditingValue(
       text: next,
       selection: TextSelection.collapsed(offset: next.length),
@@ -256,6 +260,50 @@ class _SparkJoySpecialistProfileScreenState
   String _businessTypeLabel() {
     if (_businessType == 'ip') return 'ИП';
     return 'Компания';
+  }
+
+  /// Сообщение об отказе в повышении роли для «нерабочих» статусов.
+  /// Вешаем в `_innError` поля — пользователь видит причину прямо под
+  /// ИНН, без отдельной модалки.
+  String _inactiveStatusMessage({
+    required PbNalogStatus status,
+    required String entityName,
+  }) {
+    final who = entityName.isEmpty ? 'Эта организация' : '«$entityName»';
+    switch (status) {
+      case PbNalogStatus.terminated:
+        return '$who прекратила деятельность по данным ФНС. Регистрация роли компании невозможна.';
+      case PbNalogStatus.liquidation:
+        return '$who находится в процессе ликвидации. Регистрация роли компании невозможна.';
+      case PbNalogStatus.exclusion:
+        return '$who исключена из ЕГРЮЛ. Регистрация роли компании невозможна.';
+      case PbNalogStatus.unknown:
+        return 'Статус организации не удалось определить. Попробуйте позже или уточните данные в ФНС.';
+      case PbNalogStatus.active:
+      case PbNalogStatus.bankruptcy:
+      case PbNalogStatus.reorganization:
+        // Эти статусы не блокируют — в эту ветку не попадают,
+        // метод вызывается только из inactive-гейта.
+        return '';
+    }
+  }
+
+  /// Короткий баннер-предупреждение над контактами в подтверждённой
+  /// карточке компании: bankruptcy/reorganization проходят проверку,
+  /// но пользователь должен знать, что юрлицо в переходном состоянии.
+  String? _verifiedStatusWarning() {
+    switch (_businessStatusEnum()) {
+      case PbNalogStatus.bankruptcy:
+        return 'Внимание: по данным ФНС организация в процессе банкротства.';
+      case PbNalogStatus.reorganization:
+        return 'Внимание: по данным ФНС организация в процессе реорганизации.';
+      case PbNalogStatus.active:
+      case PbNalogStatus.terminated:
+      case PbNalogStatus.liquidation:
+      case PbNalogStatus.exclusion:
+      case PbNalogStatus.unknown:
+        return null;
+    }
   }
 
   String? _innValidator(String? value) {
@@ -328,6 +376,28 @@ class _SparkJoySpecialistProfileScreenState
           ),
         ),
       );
+      return;
+    }
+
+    // Policy-блок: если сущность найдена, но её статус входит в
+    // «нерабочий» набор (прекращена / ликвидация / исключение / unknown),
+    // SparkJoyStorage.verifyInnAndPromote возвращает result, но ничего
+    // не пишет. Роль не повышается. Показываем понятное объяснение
+    // со статусом и названием.
+    final resolvedStatus = result.primaryIp?.status ??
+        result.primaryOrg?.status ??
+        PbNalogStatus.unknown;
+    if (SparkJoyStorage.isInactivePbNalogStatus(resolvedStatus)) {
+      final name = result.primaryIp?.name ??
+          result.primaryOrg?.shortName ??
+          result.primaryOrg?.fullName ??
+          '';
+      setState(() {
+        _innError = _inactiveStatusMessage(
+          status: resolvedStatus,
+          entityName: name.trim(),
+        );
+      });
       return;
     }
 
@@ -692,6 +762,9 @@ class _SparkJoySpecialistProfileScreenState
     final statusText = _businessStatusDesc.isNotEmpty
         ? _businessStatusDesc
         : pbNalogStatusLabel(statusEnum);
+    // Warning-баннер для bankruptcy/reorganization — вычисляем один
+    // раз, переиспользуем в if-gate и в тексте ниже.
+    final warningBanner = _verifiedStatusWarning();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -734,6 +807,40 @@ class _SparkJoySpecialistProfileScreenState
           ),
         ),
         const SizedBox(height: SparkSpace.md),
+        // Баннер-предупреждение для «пропускаемых, но рискованных»
+        // статусов (банкротство, реорганизация). Компания
+        // верифицирована, но пользователь должен видеть, что юрлицо
+        // в переходном состоянии.
+        if (warningBanner != null) ...[
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(SparkSpace.md),
+            decoration: BoxDecoration(
+              color: kYellowColor.withValues(alpha: 0.1),
+              border: Border.all(color: kYellowColor.withValues(alpha: 0.4)),
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.warning_amber_rounded,
+                  size: SparkSize.iconMd,
+                  color: kYellowColor,
+                ),
+                const SizedBox(width: SparkSpace.sm),
+                Expanded(
+                  child: MyText(
+                    text: warningBanner,
+                    size: SparkTextSize.caption,
+                    color: kTertiaryColor,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: SparkSpace.md),
+        ],
         if (_businessDisplayName.isNotEmpty)
           SparkInfoRow(label: 'Наименование', value: _businessDisplayName),
         if (_businessDisplayName.isNotEmpty)
@@ -806,6 +913,14 @@ class _SparkJoySpecialistProfileScreenState
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(12),
           ],
+          // iOS heuristically offers «Scan Credit Card» / «Scan Text»
+          // on numeric fields, popping the camera when the user taps
+          // the QuickType suggestion. An explicit empty autofillHints
+          // + disabled suggestions/autocorrect tells iOS we manage
+          // this field ourselves and kills the scan affordance.
+          autofillHints: const <String>[],
+          enableSuggestions: false,
+          autocorrect: false,
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           onChanged: (_) {
             if (_innError != null) {

@@ -2,8 +2,11 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:get/get.dart';
 
 import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
@@ -81,22 +84,54 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
 
   void _onBusinessStatusChanged(String? businessType) {
     if (!mounted) return;
+    final newRole = businessType == null
+        ? SparkJoyRole.specialist
+        : SparkJoyRole.company;
+    // Preserve the user's semantic tab across role transitions.
+    // Tab layout depends on role:
+    //   specialist → 0=Reports, 1=Profile
+    //   company    → 0=Reports, 1=Staff, 2=Profile
+    // If we left `_index` untouched, verifying INN on Profile (1→1)
+    // would land on Staff, and resetting on Profile (2→clamped→0)
+    // would land on Reports. Both jarring. So we keep the user on
+    // Profile when they started on Profile; keep Reports on Reports;
+    // and for the company-only Staff tab, fall back to Profile when
+    // the user demotes (there is no Staff in specialist mode).
+    int nextIndex = _index;
+    if (_role != newRole) {
+      final wasProfile = (_role == SparkJoyRole.specialist && _index == 1) ||
+          (_role == SparkJoyRole.company && _index == 2);
+      final wasReports = _index == 0;
+      final profileIndex = newRole == SparkJoyRole.specialist ? 1 : 2;
+      if (wasProfile || !wasReports) {
+        nextIndex = profileIndex;
+      } else {
+        nextIndex = 0;
+      }
+    }
     setState(() {
-      _role = businessType == null
-          ? SparkJoyRole.specialist
-          : SparkJoyRole.company;
+      _role = newRole;
       _businessType = businessType;
-      _index = 0;
+      _index = nextIndex;
     });
   }
 
   Future<void> _logout() async {
+    // SparkJoyStorage.logout() clears spark-joy-specific caches (drafts
+    // / frame catalog / user-tags). Auth tokens used to stay behind,
+    // so `hasSavedSession` would flip the app straight back into Home
+    // on the next launch. Clear both here.
     await SparkJoyStorage.logout();
+    await UserSimplePreferences.clearAuthTokens();
     if (!mounted) return;
     setState(() {
       _loggedIn = false;
       _index = 0;
     });
+    // Jump the whole route stack back to the login route. Without
+    // this the shell stays mounted but empty and no phone-login UI
+    // appears until next cold start.
+    Get.offAllNamed(AppLinks.login);
   }
 
   /// Pushes the notifications feed as a full-screen route.

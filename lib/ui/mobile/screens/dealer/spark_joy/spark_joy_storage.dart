@@ -229,6 +229,26 @@ class SparkJoyStorage {
   /// `null`, если данные по ИНН не нашлись (`found: false`) — для
   /// этого случая UI должен показать «не найдено», но статус не
   /// обновлять.
+  /// Статусы, при которых не повышаем пользователя в роль компании —
+  /// юридически «компании нет» или она в процессе исчезновения.
+  /// `bankruptcy` и `reorganization` разрешены: юрлицо ещё существует,
+  /// но UI покажет предупреждающий баннер в верифицированной карточке.
+  /// `unknown` блокируем консервативно — лучше попросить юзера
+  /// попробовать позже, чем пустить полузарегистрированную запись.
+  static bool isInactivePbNalogStatus(PbNalogStatus status) {
+    switch (status) {
+      case PbNalogStatus.terminated:
+      case PbNalogStatus.liquidation:
+      case PbNalogStatus.exclusion:
+      case PbNalogStatus.unknown:
+        return true;
+      case PbNalogStatus.active:
+      case PbNalogStatus.bankruptcy:
+      case PbNalogStatus.reorganization:
+        return false;
+    }
+  }
+
   static Future<PbNalogResult?> verifyInnAndPromote(
     String rawInn, {
     PbNalogApi? api,
@@ -259,6 +279,14 @@ class SparkJoyStorage {
     final ogrn = ip?.ogrn ?? org?.ogrn ?? '';
     final status = ip?.status ?? org?.status ?? PbNalogStatus.unknown;
     final statusDesc = ip?.statusDesc ?? org?.statusDesc ?? '';
+
+    // Policy: не повышаем в компанию, если юрлицо прекращено/
+    // ликвидируется/исключено/статус неизвестен. UI читает статус
+    // из result и покажет конкретную причину. Ничего не пишем в
+    // SharedPreferences — юзер остаётся специалистом.
+    if (isInactivePbNalogStatus(status)) {
+      return result;
+    }
 
     // Параллельные write-и в SharedPreferences: операции независимы
     // (разные ключи), платформенный backend их сериализует сам.

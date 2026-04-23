@@ -92,7 +92,49 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     await _load();
   }
 
+  /// True when the current user is a company AND the draft has an
+  /// external assignee — i.e. the work belongs to someone else and the
+  /// company is only tracking it. Company cannot edit such drafts;
+  /// tapping opens the status sheet, not the stepper.
+  bool _isAssignedCompanyDraft(Map<String, dynamic> draft) {
+    if (!widget.companyMode) return false;
+    final assigneeId = sjRead(draft, 'assignedSpecialistId',
+            fallback: sjRead(draft, 'specialistId'))
+        .trim();
+    final inviteLink = sjRead(draft, 'staffInviteLink').trim();
+    return assigneeId.isNotEmpty || inviteLink.isNotEmpty;
+  }
+
+  /// Human-readable status for an assigned company draft. Falls back
+  /// to the raw `status` field (`assigned` / `awaiting_invite` /
+  /// `in_progress` set in the create flow + future backend updates).
+  String _assignedStatusLabel(Map<String, dynamic> draft) {
+    final status = sjRead(draft, 'status');
+    final assigneeName = sjRead(draft, 'assignedSpecialistName',
+            fallback: sjRead(draft, 'specialistName'))
+        .trim();
+    switch (status) {
+      case 'in_progress':
+        return assigneeName.isEmpty
+            ? 'В работе'
+            : '$assigneeName · в работе';
+      case 'awaiting_invite':
+        return 'Ожидает приглашения';
+      case 'assigned':
+      default:
+        return assigneeName.isEmpty ? 'Отправлен исполнителю' : 'Отправлен: $assigneeName';
+    }
+  }
+
   Future<void> _openDraft(Map<String, dynamic> draft) async {
+    // Company users cannot open/edit drafts that are being worked on
+    // by someone else — we show a status-only detail sheet instead.
+    if (_isAssignedCompanyDraft(draft)) {
+      await _showAssignedDetailSheet(draft);
+      if (!mounted) return;
+      await _load();
+      return;
+    }
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => SparkJoyCreateReportScreen(draft: draft),
@@ -100,6 +142,149 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
     if (!mounted) return;
     await _load();
+  }
+
+  Future<void> _unassignDraft(Map<String, dynamic> draft) async {
+    // Keeps the draft but strips the assignment — company becomes the
+    // editor again. Other fields (name, vin, progress) survive so the
+    // company doesn't lose intermediate context if they want to
+    // reassign or take over the work.
+    final next = Map<String, dynamic>.from(draft);
+    next['assignedSpecialistId'] = '';
+    next['assignedSpecialistName'] = '';
+    next['specialistId'] = '';
+    next['specialistName'] = '';
+    next['staffInviteLink'] = '';
+    next['status'] = 'draft';
+    await SparkJoyStorage.upsertDraft(next);
+  }
+
+  Future<void> _showAssignedDetailSheet(Map<String, dynamic> draft) async {
+    final title = [
+      sjRead(draft, 'reportName'),
+      sjRead(draft, 'car'),
+      sjRead(draft, 'vin'),
+    ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => 'Отчёт');
+    final assigneeName = sjRead(draft, 'assignedSpecialistName',
+            fallback: sjRead(draft, 'specialistName'))
+        .trim();
+    final inviteLink = sjRead(draft, 'staffInviteLink').trim();
+    final createdAt = sjFormatDate(
+      sjRead(draft, 'createdAt', fallback: sjRead(draft, 'updatedAt')),
+    );
+    final statusLabel = _assignedStatusLabel(draft);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheetCtx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xl,
+            0,
+            SparkSpace.xl,
+            SparkSpace.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              MyText(
+                text: title,
+                size: SparkTextSize.title,
+                weight: FontWeight.w700,
+              ),
+              const SizedBox(height: SparkSpace.md),
+              Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: kSecondaryColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                ),
+                child: MyText(
+                  text: statusLabel,
+                  size: SparkTextSize.caption,
+                  weight: FontWeight.w600,
+                  color: kSecondaryColor,
+                ),
+              ),
+              const SizedBox(height: SparkSpace.lg),
+              if (assigneeName.isNotEmpty)
+                SparkInfoRow(label: 'Исполнитель', value: assigneeName),
+              if (inviteLink.isNotEmpty) ...[
+                const SizedBox(height: SparkSpace.md),
+                const MyText(
+                  text: 'Ссылка приглашения',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+                const SizedBox(height: SparkSpace.xxs),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kInputBgColor,
+                    border: Border.all(color: kBorderColor),
+                    borderRadius: BorderRadius.circular(SparkRadius.md),
+                  ),
+                  child: MyText(
+                    text: inviteLink,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ),
+              ],
+              if (createdAt.isNotEmpty) ...[
+                const SizedBox(height: SparkSpace.md),
+                SparkInfoRow(label: 'Создан', value: createdAt),
+              ],
+              const SizedBox(height: SparkSpace.xl),
+              OutlinedButton.icon(
+                // Await the storage write BEFORE popping so the outer
+                // `_openDraft → _load()` doesn't race the unassignment
+                // and show a stale list for a frame. Capture the
+                // Navigator + Messenger refs before the await so we
+                // don't touch a (possibly stale) BuildContext across
+                // the async gap.
+                onPressed: () async {
+                  final sheetNavigator = Navigator.of(sheetCtx);
+                  final messenger = ScaffoldMessenger.of(context);
+                  await _unassignDraft(draft);
+                  if (!mounted) return;
+                  sheetNavigator.pop();
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Назначение снято. Черновик снова редактируется.',
+                      ),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.undo_rounded),
+                label: const Text('Отменить назначение'),
+              ),
+              const SizedBox(height: SparkSpace.sm),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.of(sheetCtx).pop();
+                  _deleteDraft(sjRead(draft, 'id'));
+                },
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('Удалить отчёт'),
+                style: OutlinedButton.styleFrom(foregroundColor: kRedColor),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openCompleted(Map<String, dynamic> report) async {
@@ -517,6 +702,14 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       sjRead(draft, 'vin'),
     ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => 'Новый отчёт');
 
+    // Assigned drafts in company mode get a different card shape: no
+    // progress bar (not the company's work to track progress on), a
+    // status chip instead, and no inline delete (moved into the
+    // status sheet). Tap opens the sheet via _openDraft.
+    if (_isAssignedCompanyDraft(draft)) {
+      return _buildAssignedDraftCard(draft, title);
+    }
+
     final sections = _computeDraftCompletion(draft);
     final filled = sections.where((s) => s.filled).length;
     final total = sections.length;
@@ -634,6 +827,72 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         ],
       ),
     ),
+    );
+  }
+
+  /// Card for drafts assigned to someone else (company view). Shows
+  /// the current status in place of the "Заполнено X из Y" progress
+  /// row, and swaps the inline delete button for a chevron — the
+  /// delete + unassign actions live in the detail sheet.
+  Widget _buildAssignedDraftCard(Map<String, dynamic> draft, String title) {
+    final statusLabel = _assignedStatusLabel(draft);
+    return RepaintBoundary(
+      child: SparkListCard(
+        onTap: () => _openDraft(draft),
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.xl,
+          vertical: SparkSpace.lg,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: MyText(
+                    text: title,
+                    size: SparkTextSize.title,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.sm),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: kGreyColor,
+                ),
+              ],
+            ),
+            MyText(
+              text: 'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+              paddingTop: SparkSpace.xxs,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.xs,
+                ),
+                decoration: BoxDecoration(
+                  color: kSecondaryColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                ),
+                child: MyText(
+                  text: statusLabel,
+                  size: SparkTextSize.caption,
+                  weight: FontWeight.w600,
+                  color: kSecondaryColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
