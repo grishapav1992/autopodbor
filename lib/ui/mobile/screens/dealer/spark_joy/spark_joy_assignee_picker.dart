@@ -79,6 +79,10 @@ enum _PhoneLookupState {
   blockedOtherCompany,
 }
 
+// Which secondary action is currently expanded. Only one at a time —
+// the staff list is always visible above and not part of this enum.
+enum _AltSection { none, phone, invite }
+
 class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   late SparkJoyAssigneeMode _mode;
   late String _specialistId;
@@ -95,6 +99,8 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   String _phoneFoundCity = '';
 
   bool _inviteBuilding = false;
+
+  _AltSection _altSection = _AltSection.none;
 
   List<Map<String, dynamic>> get _staff {
     return sparkSpecialists
@@ -132,11 +138,57 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
 
   void _emit() => widget.onChanged(_currentSelection);
 
-  /// Wraps mode change + emit so every path that switches tabs stays
-  /// consistent (inner hint-card CTAs, segmented-button toggle).
-  void _setMode(SparkJoyAssigneeMode next) {
-    if (_mode == next) return;
-    setState(() => _mode = next);
+  /// Toggle one of the alternative-action sections (phone / invite).
+  /// Only one is open at a time; tapping the open one collapses it.
+  void _toggleAltSection(_AltSection next) {
+    setState(() {
+      _altSection = _altSection == next ? _AltSection.none : next;
+    });
+  }
+
+  /// Resets the entire selection — used by the "Очистить" action on
+  /// the selection banner and by tap-to-deselect on a staff row.
+  /// Also wipes phone-lookup local state so reopening the phone
+  /// section starts clean.
+  void _clearAll() {
+    setState(() {
+      _mode = SparkJoyAssigneeMode.staff;
+      _specialistId = '';
+      _specialistName = '';
+      _inviteLink = '';
+      _phoneController.clear();
+      _normalizedPhone = '';
+      _phoneState = _PhoneLookupState.idle;
+      _phoneFoundId = '';
+      _phoneFoundName = '';
+      _phoneFoundCity = '';
+    });
+    _emit();
+  }
+
+  /// Tap a staff row. Tapping the currently selected row clears the
+  /// selection (lets the user "undo" without hunting for a separate
+  /// reset control). Tapping a different row replaces it and collapses
+  /// any open alternative section.
+  void _toggleStaff(String id, String name) {
+    if (id.isEmpty) return;
+    if (_specialistId == id && _mode == SparkJoyAssigneeMode.staff) {
+      _clearAll();
+      return;
+    }
+    setState(() {
+      _mode = SparkJoyAssigneeMode.staff;
+      _specialistId = id;
+      _specialistName = name;
+      _inviteLink = '';
+      _altSection = _AltSection.none;
+      _phoneController.clear();
+      _normalizedPhone = '';
+      _phoneState = _PhoneLookupState.idle;
+      _phoneFoundId = '';
+      _phoneFoundName = '';
+      _phoneFoundCity = '';
+    });
     _emit();
   }
 
@@ -267,6 +319,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     if (_phoneState != _PhoneLookupState.found) return;
     if (_phoneFoundId.isEmpty) return;
     setState(() {
+      _mode = SparkJoyAssigneeMode.phone;
       _specialistId = _phoneFoundId;
       _specialistName = _phoneFoundName;
       // Clearing the invite link: a report can only have one kind of
@@ -310,6 +363,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     }).toString();
     if (!mounted) return;
     setState(() {
+      _mode = SparkJoyAssigneeMode.invite;
       _inviteLink = link;
       _specialistId = '';
       _specialistName = '';
@@ -439,79 +493,113 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ModeSelector(mode: _mode, onChanged: _setMode),
         if (!_currentSelection.isEmpty) ...[
-          const SizedBox(height: SparkSpace.md),
-          _CurrentSelectionBanner(selection: _currentSelection),
+          _CurrentSelectionBanner(
+            selection: _currentSelection,
+            onClear: _clearAll,
+          ),
+          const SizedBox(height: SparkSpace.lg),
         ],
-        const SizedBox(height: SparkSpace.lg),
-        switch (_mode) {
-          SparkJoyAssigneeMode.staff => _buildStaffTab(),
-          SparkJoyAssigneeMode.phone => _buildPhoneTab(),
-          SparkJoyAssigneeMode.invite => _buildInviteTab(),
-        },
+        _buildStaffSection(),
+        const SizedBox(height: SparkSpace.section),
+        _buildAltSection(),
       ],
     );
   }
 
-  Widget _buildStaffTab() {
+  Widget _buildStaffSection() {
     final staff = _staff;
     final hasStaff = staff.isNotEmpty;
-    final selectedInList =
-        staff.any((s) => sjRead(s, 'id') == _specialistId);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        DropdownButtonFormField<String>(
-          // Key encodes the current selection so external changes
-          // (e.g. user confirmed assignee on phone tab, then returned
-          // here) force the FormField to rebuild with the new value —
-          // `initialValue` alone is ignored after the first build.
-          key: ValueKey('assignee-staff-dd-${selectedInList ? _specialistId : ''}'),
-          initialValue: selectedInList ? _specialistId : '',
-          decoration: sparkInputDecoration('Выберите сотрудника'),
-          items: <DropdownMenuItem<String>>[
-            const DropdownMenuItem<String>(
-              value: '',
-              child: Text('Без исполнителя'),
+        Padding(
+          padding: const EdgeInsets.only(
+            left: SparkSpace.xs,
+            bottom: SparkSpace.sm,
+          ),
+          child: MyText(
+            text: hasStaff
+                ? 'Сотрудники штата · ${staff.length}'
+                : 'Сотрудники штата',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+            weight: FontWeight.w600,
+          ),
+        ),
+        if (!hasStaff)
+          _EmptyStaffCard(
+            onInvite: () => _toggleAltSection(_AltSection.invite),
+          )
+        else
+          Container(
+            decoration: BoxDecoration(
+              color: kInputBgColor,
+              border: Border.all(color: kBorderColor),
+              borderRadius: BorderRadius.circular(SparkRadius.md),
             ),
-            ...staff.map((s) => DropdownMenuItem<String>(
-                  value: sjRead(s, 'id'),
-                  child: Text(sjRead(s, 'name')),
-                )),
-          ],
-          onChanged: hasStaff
-              ? (value) {
-                  final id = value ?? '';
-                  final match = staff.firstWhere(
-                    (s) => sjRead(s, 'id') == id,
-                    orElse: () => const {},
-                  );
-                  setState(() {
-                    _specialistId = id;
-                    _specialistName = sjRead(match, 'name');
-                    _inviteLink = '';
-                  });
-                  _emit();
-                }
-              : null,
+            child: Column(
+              children: [
+                for (var i = 0; i < staff.length; i++) ...[
+                  if (i > 0)
+                    const Divider(height: 1, indent: SparkSpace.xxxl),
+                  _StaffRow(
+                    id: sjRead(staff[i], 'id'),
+                    name: sjRead(staff[i], 'name'),
+                    selected: _mode == SparkJoyAssigneeMode.staff &&
+                        _specialistId == sjRead(staff[i], 'id'),
+                    onTap: () => _toggleStaff(
+                      sjRead(staff[i], 'id'),
+                      sjRead(staff[i], 'name'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAltSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(
+            left: SparkSpace.xs,
+            bottom: SparkSpace.sm,
+          ),
+          child: const MyText(
+            text: 'Другие способы',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+            weight: FontWeight.w600,
+          ),
+        ),
+        _AltCard(
+          icon: Icons.phone_outlined,
+          title: 'Найти по номеру телефона',
+          subtitle: 'Если уже зарегистрирован в приложении',
+          expanded: _altSection == _AltSection.phone,
+          onToggle: () => _toggleAltSection(_AltSection.phone),
+          child: _buildPhoneBody(),
         ),
         const SizedBox(height: SparkSpace.md),
-        MyText(
-          text: !hasStaff
-              ? 'Нет сотрудников в штате. Пригласите через вкладку «Пригласить».'
-              : _specialistId.isEmpty
-                  ? 'Исполнитель пока не назначен.'
-                  : 'Назначен: ${_specialistName.isEmpty ? _specialistId : _specialistName}',
-          size: SparkTextSize.caption,
-          color: kGreyColor,
+        _AltCard(
+          icon: Icons.link_rounded,
+          title: 'Пригласить по ссылке',
+          subtitle: 'Если ещё нет в приложении',
+          expanded: _altSection == _AltSection.invite,
+          onToggle: () => _toggleAltSection(_AltSection.invite),
+          child: _buildInviteBody(),
         ),
       ],
     );
   }
 
-  Widget _buildPhoneTab() {
+  Widget _buildPhoneBody() {
     final assigned = _specialistId.isNotEmpty &&
         _specialistId == _phoneFoundId &&
         _phoneState == _PhoneLookupState.found;
@@ -563,19 +651,17 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
           icon: Icons.info_outline,
           title: 'Пользователь не найден',
           description:
-              'Пригласите его в приложение — переключитесь на вкладку «Пригласить».',
+              'Пригласите его в приложение — отправьте ссылку-приглашение.',
           actionLabel: 'Пригласить по ссылке',
-          onAction: () => _setMode(SparkJoyAssigneeMode.invite),
+          onAction: () => _toggleAltSection(_AltSection.invite),
         );
       case _PhoneLookupState.blockedOwnStaff:
-        return _HintCard(
+        return const _HintCard(
           iconColor: kYellowColor,
           icon: Icons.group_outlined,
           title: 'Пользователь уже в вашем штате',
           description:
-              'Выберите его во вкладке «Из штата» — избежим двойных назначений.',
-          actionLabel: 'Открыть «Из штата»',
-          onAction: () => _setMode(SparkJoyAssigneeMode.staff),
+              'Выберите его в списке сотрудников выше — избежим двойных назначений.',
         );
       case _PhoneLookupState.blockedOtherCompany:
         return const _HintCard(
@@ -595,7 +681,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     }
   }
 
-  Widget _buildInviteTab() {
+  Widget _buildInviteBody() {
     final hasLink = _inviteLink.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -671,51 +757,17 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   }
 }
 
-class _ModeSelector extends StatelessWidget {
-  const _ModeSelector({required this.mode, required this.onChanged});
-  final SparkJoyAssigneeMode mode;
-  final ValueChanged<SparkJoyAssigneeMode> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: SegmentedButton<SparkJoyAssigneeMode>(
-        segments: const [
-          ButtonSegment<SparkJoyAssigneeMode>(
-            value: SparkJoyAssigneeMode.staff,
-            label: Text('Из штата'),
-            icon: Icon(Icons.groups_2_outlined),
-          ),
-          ButtonSegment<SparkJoyAssigneeMode>(
-            value: SparkJoyAssigneeMode.phone,
-            label: Text('По телефону'),
-            icon: Icon(Icons.phone_outlined),
-          ),
-          ButtonSegment<SparkJoyAssigneeMode>(
-            value: SparkJoyAssigneeMode.invite,
-            label: Text('Пригласить'),
-            icon: Icon(Icons.link_rounded),
-          ),
-        ],
-        selected: <SparkJoyAssigneeMode>{mode},
-        showSelectedIcon: false,
-        onSelectionChanged: (sel) {
-          if (sel.isEmpty) return;
-          onChanged(sel.first);
-        },
-      ),
-    );
-  }
-}
-
-/// Persistent indicator of the current selection, shown above the
-/// tabs. Prevents the "I picked A via staff, switched to phone, and
-/// now it looks like nobody is selected" class of UX bugs: the user
-/// sees their choice regardless of which tab is active.
+/// Persistent indicator of the current selection, shown at the top of
+/// the picker. Carries an inline "Очистить" action so the user can
+/// drop the current assignee from anywhere — without hunting for the
+/// previously-clicked staff row or reopening the picker.
 class _CurrentSelectionBanner extends StatelessWidget {
-  const _CurrentSelectionBanner({required this.selection});
+  const _CurrentSelectionBanner({
+    required this.selection,
+    required this.onClear,
+  });
   final SparkJoyAssigneeSelection selection;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -726,9 +778,11 @@ class _CurrentSelectionBanner extends StatelessWidget {
         : 'Ссылка-приглашение сформирована';
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.md,
-        vertical: SparkSpace.sm,
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.md,
+        SparkSpace.sm,
+        SparkSpace.xs,
+        SparkSpace.sm,
       ),
       decoration: BoxDecoration(
         color: kChipCompletedBg,
@@ -745,6 +799,216 @@ class _CurrentSelectionBanner extends StatelessWidget {
               color: kChipCompletedFg,
               maxLines: 2,
             ),
+          ),
+          TextButton(
+            onPressed: onClear,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(0, 0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: SparkSpace.md,
+                vertical: SparkSpace.xs,
+              ),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              foregroundColor: kChipCompletedFg,
+            ),
+            child: const Text('Очистить'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One staff member as a tappable row inside the staff list. Selected
+/// row highlights and shows a check icon — tapping it again clears
+/// the selection (handled by the parent `_toggleStaff`).
+class _StaffRow extends StatelessWidget {
+  const _StaffRow({
+    required this.id,
+    required this.name,
+    required this.selected,
+    required this.onTap,
+  });
+  final String id;
+  final String name;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = name.isEmpty ? id : name;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        color: selected ? kChipCompletedBg : Colors.transparent,
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.md,
+          vertical: SparkSpace.lg,
+        ),
+        child: Row(
+          children: [
+            Icon(
+              selected
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked,
+              size: SparkSize.iconLg,
+              color: selected ? kChipCompletedFg : kGreyColor,
+            ),
+            const SizedBox(width: SparkSpace.md),
+            Expanded(
+              child: MyText(
+                text: label,
+                size: SparkTextSize.body,
+                weight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? kChipCompletedFg : kTertiaryColor,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Empty-state card shown when the company has no staff yet. Nudges
+/// the user toward the invite section so they're not stuck.
+class _EmptyStaffCard extends StatelessWidget {
+  const _EmptyStaffCard({required this.onInvite});
+  final VoidCallback onInvite;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(SparkSpace.md),
+      decoration: BoxDecoration(
+        color: kInputBgColor,
+        border: Border.all(color: kBorderColor),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'В штате пока никого нет',
+            size: SparkTextSize.body,
+            weight: FontWeight.w600,
+          ),
+          const SizedBox(height: SparkSpace.xxs),
+          const MyText(
+            text:
+                'Пригласите специалиста — он получит ссылку и сможет принять отчёт.',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: onInvite,
+              icon: const Icon(Icons.link_rounded),
+              label: const Text('Пригласить по ссылке'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Collapsible card for an alternative-action section (phone lookup
+/// or invite link). Header is always visible; body is animated on
+/// expand. Behaves like a single-open accordion — the parent picker
+/// owns which card is open via `_altSection`.
+class _AltCard extends StatelessWidget {
+  const _AltCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.expanded,
+    required this.onToggle,
+    required this.child,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: kInputBgColor,
+        border: Border.all(
+          color: expanded ? kSecondaryColor : kBorderColor,
+          width: expanded ? 1.4 : 1,
+        ),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(SparkRadius.md),
+            child: Padding(
+              padding: const EdgeInsets.all(SparkSpace.md),
+              child: Row(
+                children: [
+                  Icon(icon, color: kSecondaryColor, size: SparkSize.iconLg),
+                  const SizedBox(width: SparkSpace.md),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MyText(
+                          text: title,
+                          size: SparkTextSize.body,
+                          weight: FontWeight.w600,
+                        ),
+                        const SizedBox(height: SparkSpace.xxs),
+                        MyText(
+                          text: subtitle,
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: kGreyColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      SparkSpace.md,
+                      0,
+                      SparkSpace.md,
+                      SparkSpace.md,
+                    ),
+                    child: child,
+                  )
+                : const SizedBox(width: double.infinity),
           ),
         ],
       ),
