@@ -111,11 +111,11 @@ class SparkJoyStorage {
     // the user-tag snapshot, and the pending-deletes queue are all
     // owned by whoever signed in and meaningless to the next user.
     //
-    // Бизнес-верификация (verifiedInn, businessType, businessStatus и
-    // прочие поля pb_nalog) — намеренно **НЕ** чистится: ИНН
-    // принадлежит компании, а не пользователю, и при логине
-    // другого сотрудника той же компании повторная верификация не
-    // нужна. Для ручного сброса есть [resetBusinessVerification].
+    // Бизнес-верификация (`_verifiedInnKey` / `_businessTypeKey`)
+    // намеренно **НЕ** чистится: ИНН принадлежит компании, а не
+    // пользователю, и при логине другого сотрудника той же компании
+    // повторная верификация не нужна. Для ручного сброса есть
+    // [resetBusinessVerification].
     await pref.remove(_draftsKey);
     await pref.remove(_frameCatalogKey);
     await pref.remove(_userTagsKey);
