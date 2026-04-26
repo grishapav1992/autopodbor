@@ -126,23 +126,23 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   );
 
   // 5. Test-drive tag names.
-  final tdEngineTags = _tagIdsToNames(
+  final tdEngineTags = _resolveTagNames(
     testDriveStep['testDriveEngineTags'],
     tagService,
   );
-  final tdGearboxTags = _tagIdsToNames(
+  final tdGearboxTags = _resolveTagNames(
     testDriveStep['testDriveTransmissionTags'],
     tagService,
   );
-  final tdSteeringTags = _tagIdsToNames(
+  final tdSteeringTags = _resolveTagNames(
     testDriveStep['testDriveSteeringWheelTags'],
     tagService,
   );
-  final tdRideTags = _tagIdsToNames(
+  final tdRideTags = _resolveTagNames(
     testDriveStep['testDriveSuspensionInDriveTags'],
     tagService,
   );
-  final tdBrakeTags = _tagIdsToNames(
+  final tdBrakeTags = _resolveTagNames(
     testDriveStep['testDriveBrakesInDriveTags'],
     tagService,
   );
@@ -223,17 +223,10 @@ Map<String, dynamic>? _elementToUploadedItemJson(
   final mimeType = _mimeTypeFromServer(serverType: serverType, filename: filename);
   final dataUrl = urls[filename] ?? '';
 
-  final seriousIds = _asIntList(raw['seriousDamageTags']);
-  final nonSeriousIds = _asIntList(raw['noSeriousDamageTags']);
-  final tags = <String>[];
-  for (final id in seriousIds) {
-    final name = tagService.nameForId(id);
-    if (name != null && name.isNotEmpty) tags.add(name);
-  }
-  for (final id in nonSeriousIds) {
-    final name = tagService.nameForId(id);
-    if (name != null && name.isNotEmpty) tags.add(name);
-  }
+  final tags = <String>[
+    ..._resolveTagNames(raw['seriousDamageTags'], tagService),
+    ..._resolveTagNames(raw['noSeriousDamageTags'], tagService),
+  ];
 
   final audioFilenames = _asStringList(raw['audioNotes']);
   // Replace filenames with presigned view URLs where available so the
@@ -342,15 +335,35 @@ List<Map<String, dynamic>> _buildLegalFiles(
   return collected;
 }
 
-List<String> _tagIdsToNames(dynamic raw, SparkJoyTagService tagService) {
+/// Server returns inspection / test-drive tags either as bare integer
+/// arrays (legacy / older drafts) or as full objects
+/// `[{id, name, slug, type}, ...]` (current `ViewSpecialistReport`
+/// shape). Accept both. When the object form arrives, prefer its
+/// embedded `name` — saves a tag-service lookup and works even when
+/// the local catalog hasn't been hydrated yet (cold start, foreign
+/// report).
+List<String> _resolveTagNames(dynamic raw, SparkJoyTagService tagService) {
   if (raw is! List) return const <String>[];
   final out = <String>[];
   for (final item in raw) {
-    final id = item is int
-        ? item
-        : (item is num ? item.toInt() : int.tryParse('$item'));
-    if (id == null) continue;
-    final name = tagService.nameForId(id);
+    String? name;
+    if (item is Map) {
+      final embedded = (item['name'] ?? '').toString().trim();
+      if (embedded.isNotEmpty) {
+        name = embedded;
+      } else {
+        final idRaw = item['id'];
+        final id = idRaw is int
+            ? idRaw
+            : (idRaw is num ? idRaw.toInt() : int.tryParse('${idRaw ?? ''}'));
+        if (id != null) name = tagService.nameForId(id);
+      }
+    } else {
+      final id = item is int
+          ? item
+          : (item is num ? item.toInt() : int.tryParse('$item'));
+      if (id != null) name = tagService.nameForId(id);
+    }
     if (name != null && name.trim().isNotEmpty) out.add(name);
   }
   return out;
@@ -397,7 +410,12 @@ const _inspectionArrayKeys = <String, _GroupDescriptor>{
   'interiorElements': _GroupDescriptor('interior'),
   'underHoodElements': _GroupDescriptor('underhood'),
   'wheelsAndBrakesElements': _GroupDescriptor('wheels'),
-  'lightingElements': _GroupDescriptor('lighting'),
+  // Server-side typo: the API uses "lightning" (молниеносные) for
+  // what's actually the lighting (освещение) section. The value is
+  // load-bearing — Prepare/View both round-trip through this exact
+  // key. Keeping the misnomer here matches the wire; the editor's
+  // group key on the right stays "lighting".
+  'lightningElements': _GroupDescriptor('lighting'),
   'computerDiagnosticsElements': _GroupDescriptor('diagnostics'),
 };
 
@@ -410,22 +428,6 @@ Map<String, dynamic> _asMap(dynamic v) {
   if (v is Map<String, dynamic>) return v;
   if (v is Map) return Map<String, dynamic>.from(v);
   return const <String, dynamic>{};
-}
-
-List<int> _asIntList(dynamic raw) {
-  if (raw is! List) return const <int>[];
-  final out = <int>[];
-  for (final item in raw) {
-    if (item is int) {
-      out.add(item);
-    } else if (item is num) {
-      out.add(item.toInt());
-    } else {
-      final parsed = int.tryParse('$item');
-      if (parsed != null) out.add(parsed);
-    }
-  }
-  return out;
 }
 
 List<String> _asStringList(dynamic raw) {
