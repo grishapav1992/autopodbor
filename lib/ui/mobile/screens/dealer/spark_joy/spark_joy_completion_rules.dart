@@ -56,8 +56,27 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
 
   List<String> _summaryMissingReasons() {
     final reasons = <String>[];
+    // Все проверки соответствуют `required[]` из OpenRPC спеки
+    // `Storage.PrepareSpecialistReport` (см. `docs/openrpc_doc_2026-04-26.json`).
+    // До этого фронт молча подставлял заглушки ('Отчёт', 'Не указан',
+    // hardcoded VIN) — серверу прилетал валидный, но фактически
+    // пустой отчёт. Гейтим save строго: пусто — кричим юзеру.
+    final hasReportName = _reportNameController.text.trim().isNotEmpty;
+    final hasSummaryNote = _summaryController.text.trim().isNotEmpty;
+    final hasExpertNote = _expertController.text.trim().isNotEmpty;
     final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
+    final hasInspectionCity =
+        _inspectionCityController.text.trim().isNotEmpty;
+    // Characteristics — все required по спеке, ничего nullable.
+    final hasFrameId = _modelGenerationRestylingFrameId != null &&
+        _modelGenerationRestylingFrameId! > 0;
+    final hasEngineVolume = _engineVolumeController.text.trim().isNotEmpty;
+    final hasEngineType = _engineTypeController.text.trim().isNotEmpty;
+    final hasTransmission = _gearboxTypeController.text.trim().isNotEmpty;
+    final hasDriveType = _driveTypeController.text.trim().isNotEmpty;
+    final hasColor = _colorController.text.trim().isNotEmpty;
+    final hasEquipment = _trimController.text.trim().isNotEmpty;
     final hasDocs =
         _docsOwnerMatch != null &&
         _docsVinMatch != null &&
@@ -76,11 +95,44 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     final hasTestDrive = _tdMode != null;
     final attachmentStats = _summaryAttachmentStats();
 
+    if (!hasReportName) {
+      reasons.add('Отчёт — укажите название');
+    }
     if (!hasVehicle) {
       reasons.add('Автомобиль — укажите VIN');
     }
     if (!hasMileage) {
       reasons.add('Автомобиль — укажите пробег');
+    }
+    if (!hasInspectionCity) {
+      reasons.add('Автомобиль — укажите город осмотра');
+    }
+    if (!hasFrameId) {
+      reasons.add('Характеристики — выберите модель из каталога');
+    }
+    if (!hasEngineVolume) {
+      reasons.add('Характеристики — укажите объём двигателя');
+    }
+    if (!hasEngineType) {
+      reasons.add('Характеристики — укажите тип двигателя');
+    }
+    if (!hasTransmission) {
+      reasons.add('Характеристики — укажите коробку');
+    }
+    if (!hasDriveType) {
+      reasons.add('Характеристики — укажите привод');
+    }
+    if (!hasColor) {
+      reasons.add('Характеристики — укажите цвет');
+    }
+    if (!hasEquipment) {
+      reasons.add('Характеристики — укажите комплектацию');
+    }
+    if (!hasSummaryNote) {
+      reasons.add('Итог — заполните сводку осмотра');
+    }
+    if (!hasExpertNote) {
+      reasons.add('Итог — заполните заключение специалиста');
     }
     if (!hasDocs) {
       reasons.add('Сверка документов — ответьте на все вопросы');

@@ -1157,26 +1157,22 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   Map<String, dynamic> _buildCharacteristicsStepPayload(
     Map<String, dynamic> payload,
   ) {
-    // Per Storage.PrepareSpecialistReport spec (docs/api/PrepareSpecialistReport.md,
-    // §characteristicsStep) every field in this step is nullable. Prefer `null`
-    // over filler strings like 'не указано' — if the backend ever enum-validates
-    // engineType / transmission / driveType the filler value would 400 the
-    // whole request. engineVolume also explicitly accepts null (number | null),
-    // so don't coerce an empty controller to 0.
-    String? orNull(String raw) {
-      final trimmed = raw.trim();
-      return trimmed.isEmpty ? null : trimmed;
-    }
-
+    // Per OpenRPC spec (`docs/openrpc_doc_2026-04-26.json`,
+    // §characteristicsStep.required) **все 7 полей required и
+    // non-nullable**. Раньше тут был `orNull` — для null-tolerant
+    // версии спеки. Сейчас спека ужесточилась: пустые значения
+    // больше не валидны. Гейтим в `_summaryMissingReasons` и
+    // отправляем как есть; если что-то пустое проскочило — server
+    // вернёт honest validation error.
     return <String, dynamic>{
       'modelGenerationRestylingFrameId':
           _resolveModelGenerationRestylingFrameId(payload),
       'engineVolume': _parseDecimal(_engineVolumeController.text),
-      'engineType': orNull(_engineTypeController.text),
-      'transmission': orNull(_gearboxTypeController.text),
-      'driveType': orNull(_driveTypeController.text),
-      'color': orNull(_colorController.text),
-      'equipment': orNull(_trimController.text),
+      'engineType': _engineTypeController.text.trim(),
+      'transmission': _gearboxTypeController.text.trim(),
+      'driveType': _driveTypeController.text.trim(),
+      'color': _colorController.text.trim(),
+      'equipment': _trimController.text.trim(),
     };
   }
 
@@ -1599,12 +1595,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   Map<String, dynamic> _buildResultStepPayload() {
-    final expertNote = _expertController.text.trim();
+    // Без silent-fallback. Если до сюда дошли с пустыми полями —
+    // это баг в `_summaryMissingReasons`, не лечим тут заглушками.
     return <String, dynamic>{
       'summaryInspectionNote': _summaryController.text.trim(),
-      'resultSpecialistNote': expertNote.isEmpty
-          ? 'Заключение не указано'
-          : expertNote,
+      'resultSpecialistNote': _expertController.text.trim(),
     };
   }
 
@@ -1648,13 +1643,16 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     final ownersInt = _parseDigitsInt(_ownersCountController.text.trim());
     final today = _isoDateForBackend(_dateLabel(DateTime.now()));
     final vin = _vinController.text.trim().toUpperCase();
-    final fallbackVin = 'JTDKN3DU5A0123456';
 
-    report['reportName'] = _reportNameController.text.trim().isEmpty
-        ? 'Отчёт'
-        : _reportNameController.text.trim();
+    // Без silent-fallback'ов: hardcoded VIN ('JTDKN3DU5A0123456'),
+    // 'Не указан' для города, 'Отчёт' для названия — всё это
+    // маскировало реальные пустые поля от бэка. Сейчас валидация в
+    // `_summaryMissingReasons` блокирует save до того, как мы тут
+    // окажемся с пустыми required-полями. Если случайно проскочило —
+    // server вернёт `should not be blank`, что лучше тихих заглушек.
+    report['reportName'] = _reportNameController.text.trim();
     report['carStep'] = <String, dynamic>{
-      'vin': vin.isEmpty ? fallbackVin : vin,
+      'vin': vin,
       'unreadableVin': _vinUnreadable,
       'gosNumber': _sanitizePlate(_plateController.text.trim()).isEmpty
           ? null
@@ -1664,9 +1662,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           : _adLinkController.text.trim(),
       'mileage': mileageInt ?? 0,
       'visuallyMileageNotMatchCondition': _mileageMismatch == true,
-      'cityInspection': _inspectionCityController.text.trim().isEmpty
-          ? 'Не указан'
-          : _inspectionCityController.text.trim(),
+      'cityInspection': _inspectionCityController.text.trim(),
       'dateInspection': today,
     };
     report['characteristicsStep'] = _buildCharacteristicsStepPayload(payload);
@@ -2183,6 +2179,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'businessType': _accountBusinessType ?? '',
       'verifiedInn': _accountVerifiedInn ?? '',
       'staffInviteLink': _staffInviteLink.trim(),
+      'aiQueueChats': Map<String, dynamic>.from(_aiQueueChats),
       'backendUploadState': cloneMap(_backendUploadState),
       'mediaGroupsState': mediaPayload,
       'mediaCustomTags': customTagsPayload,

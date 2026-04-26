@@ -321,6 +321,25 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
       );
     }
 
+    // Визуальная дифференциация заполненных vs пустых секций:
+    // 1) Светло-зелёный tint фона карточки → секция взгляду читается
+    //    как «✓ done» даже без скролла к правой части карточки.
+    // 2) Зелёная рамка чуть плотнее (0.55 vs 0.3) — было слишком
+    //    блекло на фоне 8-разделового списка осмотра.
+    // 3) Trailing chevron заменяется на ✓ когда секция fullyMarked.
+    final cardBackground = isPressed
+        ? kSecondaryColor.withValues(alpha: 0.02)
+        : (hasIssue
+            ? kWhiteColor
+            : (fullyMarked ? kGreenColor.withValues(alpha: 0.04) : kWhiteColor));
+    final cardBorder = hasIssue
+        ? kRedColor.withValues(alpha: 0.3)
+        : (fullyMarked
+            ? kGreenColor.withValues(alpha: 0.55)
+            : (isPressed
+                ? kSecondaryColor.withValues(alpha: 0.28)
+                : kBorderColor));
+
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.lg),
       child: AnimatedScale(
@@ -330,16 +349,8 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         child: SparkCard(
           radius: SparkRadius.xl,
           padding: EdgeInsets.zero,
-          backgroundColor: isPressed
-              ? kSecondaryColor.withValues(alpha: 0.02)
-              : kWhiteColor,
-          borderColor: hasIssue
-              ? kRedColor.withValues(alpha: 0.3)
-              : (fullyMarked
-                    ? kGreenColor.withValues(alpha: 0.3)
-                    : (isPressed
-                          ? kSecondaryColor.withValues(alpha: 0.28)
-                          : kBorderColor)),
+          backgroundColor: cardBackground,
+          borderColor: cardBorder,
           child: Column(
             children: [
               InkWell(
@@ -449,9 +460,20 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                         ),
                       ),
                       const SizedBox(width: SparkSpace.sm),
-                      const Column(
+                      // Заполненная секция (без замечаний) → зелёный
+                      // чек вместо обычного chevron'а. С 8 группами в
+                      // списке это самый быстрый способ глазами найти
+                      // что ещё не доделано.
+                      Column(
                         children: [
-                          Icon(Icons.chevron_right_rounded, color: kGreyColor),
+                          Icon(
+                            (fullyMarked && !hasIssue)
+                                ? Icons.check_circle_rounded
+                                : Icons.chevron_right_rounded,
+                            color: (fullyMarked && !hasIssue)
+                                ? kGreenColor
+                                : kGreyColor,
+                          ),
                         ],
                       ),
                     ],

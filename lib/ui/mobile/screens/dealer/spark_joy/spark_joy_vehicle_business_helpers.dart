@@ -57,20 +57,6 @@ const Map<String, int> _vinTransliteration = {
 };
 
 const String _plateCyr = 'АВЕКМНОРСТУХ';
-const Map<String, String> _plateLatToCyr = {
-  'A': 'А',
-  'B': 'В',
-  'E': 'Е',
-  'K': 'К',
-  'M': 'М',
-  'H': 'Н',
-  'O': 'О',
-  'P': 'Р',
-  'C': 'С',
-  'T': 'Т',
-  'Y': 'У',
-  'X': 'Х',
-};
 
 extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   String _dateLabel(DateTime value) {
@@ -268,9 +254,14 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   }
 
   String _sanitizePlate(String value) {
-    var cleaned = value.toUpperCase().replaceAll(RegExp(r'\s+'), '');
-    cleaned = cleaned.split('').map((ch) => _plateLatToCyr[ch] ?? ch).join('');
-    cleaned = cleaned.replaceAll(RegExp('[^${_plateCyr}0-9]'), '');
+    // Принимаем только русские буквы из `_plateCyr` (АВЕКМНОРСТУХ) и
+    // цифры. Latin (A/B/E/K/M/H/O/P/C/T/Y/X) теперь отбрасывается, а
+    // не конвертируется автоматически — иначе на сервер уходила
+    // кириллица, а пользователь видел латиницу в UI: рассинхрон.
+    final cleaned = value
+        .toUpperCase()
+        .replaceAll(RegExp(r'\s+'), '')
+        .replaceAll(RegExp('[^${_plateCyr}0-9]'), '');
     return cleaned.length > 9 ? cleaned.substring(0, 9) : cleaned;
   }
 

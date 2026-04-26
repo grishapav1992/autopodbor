@@ -182,6 +182,25 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
       _assignedSpecialistName = _resolveSpecialistName(_assignedSpecialistId);
     }
 
+    // AiQueue per-element / summary chatIds. Хранятся как map
+    // {elementKey: chatId-as-int}. Reopen draft → реюзаем существующие
+    // chatId, чтобы AiQueue продолжил историю на сервере (если TTL
+    // ещё не истёк). Никакой типизации не делаем — формат стабильный
+    // и flat, JSON-encode/decode сохраняет int как num автоматически.
+    final rawChats = draft['aiQueueChats'];
+    _aiQueueChats = <String, dynamic>{};
+    if (rawChats is Map) {
+      rawChats.forEach((key, value) {
+        if (key is! String) return;
+        final id = value is int
+            ? value
+            : (value is num ? value.toInt() : int.tryParse('$value'));
+        if (id != null && id > 0) {
+          _aiQueueChats[key] = id;
+        }
+      });
+    }
+
     _mileageMismatch = _readTriState(draft['mileageMismatch']);
     if (_mileageMismatch == null &&
         draft.containsKey('mileageMatchesClaimed')) {

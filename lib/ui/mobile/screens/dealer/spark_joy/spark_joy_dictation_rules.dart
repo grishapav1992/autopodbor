@@ -249,18 +249,70 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       ..selection = TextSelection.collapsed(offset: formatted.length);
   }
 
+  /// Realny AI-summary через AiQueue: подтягивает per-element
+  /// chat-истории, склеивает из них контекст, открывает новый
+  /// `__final__` chat и просит модель собрать итоговое заключение
+  /// по разделам. Если ни одной истории нет — мягкое сообщение.
+  /// UI читает [_expertSummaryAiBusy] чтобы показать spinner на
+  /// «ИИ»-кнопке и не дать тапнуть второй раз.
+  Future<void> _generateExpertSummaryWithAi() async {
+    if (_expertSummaryAiBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _expertSummaryAiBusy = true);
+    try {
+      final context = await SparkJoyAiAssistantService.instance
+          .buildSummaryContext(chatsMap: _aiQueueChats);
+      if (context.trim().isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI пока не из чего собирать заключение — сначала отформатируйте заметки по элементам через ИИ-кнопку в осмотре.',
+            ),
+          ),
+        );
+        return;
+      }
+      final summary = await SparkJoyAiAssistantService.instance.generateSummary(
+        context: context,
+        chatsMap: _aiQueueChats,
+      );
+      if (summary.trim().isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('AI вернул пустой ответ. Попробуйте ещё раз.')),
+        );
+        return;
+      }
+      _expertController
+        ..text = summary
+        ..selection = TextSelection.collapsed(offset: summary.length);
+      _markDraftDirty();
+    } on AiQueueException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.userMessage)));
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('AI-помощник недоступен. Попробуйте позже.')),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _expertSummaryAiBusy = false);
+      }
+    }
+  }
+
   Widget _commentInputPanel({
     required TextEditingController controller,
     required bool isDictating,
     required VoidCallback onToggleDictation,
     required VoidCallback onAiFormat,
     String hint = 'Добавьте комментарий',
+    bool aiBusy = false,
   }) {
     return SparkJoyCommentInputPanel(
       controller: controller,
       isDictating: isDictating,
       onToggleDictation: onToggleDictation,
       onAiFormat: onAiFormat,
+      aiBusy: aiBusy,
       onDismissKeyboard: _dismissKeyboard,
       hint: hint,
     );

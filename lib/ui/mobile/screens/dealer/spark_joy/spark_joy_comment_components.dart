@@ -15,6 +15,7 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
     this.hint = 'Добавьте комментарий',
     this.minLines = 7,
     this.maxLines = 10,
+    this.aiBusy = false,
   });
 
   final TextEditingController controller;
@@ -25,6 +26,11 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
   final String hint;
   final int minLines;
   final int maxLines;
+
+  /// Если true — ИИ-кнопка показывает spinner и не реагирует на тап
+  /// (запрос в полёте). Используется в inspection editor'е, где
+  /// `onAiFormat` вызывает реальный сетевой запрос к AiQueue.
+  final bool aiBusy;
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +119,7 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                   ),
                 ),
                 InkWell(
-                  onTap: onAiFormat,
+                  onTap: aiBusy ? null : onAiFormat,
                   borderRadius: BorderRadius.circular(SparkRadius.pill),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -127,17 +133,27 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                       ),
                       color: kSecondaryColor.withValues(alpha: 0.08),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          Icons.auto_awesome_rounded,
-                          size: SparkTextSize.bodyLg,
-                          color: kSecondaryColor,
-                        ),
-                        SizedBox(width: SparkSpace.xs),
+                        if (aiBusy)
+                          const SizedBox(
+                            width: SparkTextSize.bodyLg,
+                            height: SparkTextSize.bodyLg,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: kSecondaryColor,
+                            ),
+                          )
+                        else
+                          const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: SparkTextSize.bodyLg,
+                            color: kSecondaryColor,
+                          ),
+                        const SizedBox(width: SparkSpace.xs),
                         MyText(
-                          text: 'ИИ',
+                          text: aiBusy ? 'ИИ...' : 'ИИ',
                           size: SparkTextSize.chip,
                           weight: FontWeight.w700,
                           color: kSecondaryColor,

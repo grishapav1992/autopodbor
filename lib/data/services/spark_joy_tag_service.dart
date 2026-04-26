@@ -307,20 +307,50 @@ class SparkJoyTagService {
     final existing = _idByKey[cacheKey];
     if (existing != null && existing > 0) return existing;
 
+    final normalizedName = tagName.trim().toLowerCase();
     try {
-      final tag = await storage_api.StorageApi.addUserTag(
-        step: step,
-        name: tagName.trim(),
-        section: section,
-        type: type,
-      );
-      if (tag.id > 0) {
-        _idByKey[cacheKey] = tag.id;
-        return tag.id;
+      // По указанию backend dev'а: AddUserTag возвращает только ack
+      // (`result: []`, без id). Чтобы получить id свежесозданного
+      // тега, нужно сразу после AddUserTag дёрнуть GetUserTags для
+      // того же step/section и найти тег по имени. Делаем это всегда —
+      // даже если AddUserTag упал с validation error: refetch вернёт
+      // canonical-список, кэш обновится, для других тегов будет
+      // полезно. Если матча не нашли — возвращаем null, caller
+      // обрабатывает как «id пока не известен».
+      try {
+        await storage_api.StorageApi.addUserTag(
+          step: step,
+          name: tagName.trim(),
+          section: section,
+          type: type,
+        );
+      } catch (_) {
+        // Игнорируем — refetch ниже всё равно делается.
       }
+
+      final tags = await storage_api.StorageApi.getUserTags(
+        step: step,
+        section: section,
+      );
+      int? matchedId;
+      for (final t in tags) {
+        if (t.id <= 0 || t.name.trim().isEmpty) continue;
+        final tagSection = t.section ?? section;
+        // Кэшируем все теги пока тут — getUserTags возвращает полный
+        // список для bucket'а, грех не воспользоваться.
+        _idByKey[_composeKey(
+          step: t.step ?? step,
+          section: tagSection,
+          name: t.name,
+        )] = t.id;
+        if (t.name.trim().toLowerCase() == normalizedName) {
+          matchedId = t.id;
+        }
+      }
+      return matchedId;
     } catch (_) {
-      // Best-effort: the tag will still be usable locally; it just won't
-      // have an ID until the next loadTagIdsFromServer or retry.
+      // Network / parse failure. Tag usable locally; id появится при
+      // следующем loadTagIdsFromServer или retry.
     }
     return null;
   }

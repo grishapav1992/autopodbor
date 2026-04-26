@@ -311,31 +311,75 @@ extension _SparkJoyMediaInspectionEditorMethods
       return '$minutes:$seconds';
     }
 
-    void formatNoteWithAi(StateSetter setLocalState) {
-      final text = noteController.text.trim();
-      if (text.isEmpty) return;
-      final sentences = text
-          .replaceAll(RegExp(r'([.!?])\s+'), r'$1\n')
-          .split('\n')
-          .map((line) => line.trim())
-          .where((line) => line.isNotEmpty)
-          .toList();
-      if (sentences.isEmpty) return;
+    var aiFormatBusy = false;
 
-      final paragraphs = <String>[];
-      final current = <String>[];
-      for (var i = 0; i < sentences.length; i++) {
-        current.add(sentences[i]);
-        if (current.length >= 2 || i == sentences.length - 1) {
-          paragraphs.add(current.join(' '));
-          current.clear();
+    Future<void> formatNoteWithAi(StateSetter setLocalState) async {
+      if (aiFormatBusy) return;
+      final text = noteController.text.trim();
+      if (text.isEmpty) {
+        await showMessage('Сначала напишите заметку, чтобы AI её отформатировал.');
+        return;
+      }
+      setLocalState(() => aiFormatBusy = true);
+
+      // Builds an AI assistant target for THIS specific element so the
+      // chat history on the server is scoped to (group, item index).
+      // Tags + element label go into the cliche so the model sees the
+      // structural context (e.g. "Кузов · Капот" + already-checked
+      // damage tags) and produces a domain-grounded note.
+      final target = AiAssistantTarget.inspectionElement(
+        groupKey: groupKey,
+        itemIndex: index,
+        elementLabel: _mediaElementLabel(groupKey, elementType).isEmpty
+            ? 'элемент'
+            : _mediaElementLabel(groupKey, elementType),
+        sectionLabel:
+            _SparkJoySummaryRegistry.mediaGroupLabelByKey[groupKey] ?? groupKey,
+        tags: List<String>.from(selectedTags),
+      );
+
+      // Already-uploaded media URLs the AI can use as multimodal
+      // context. We forward only `http(s)` URLs — `data:` URLs (raw
+      // bytes embedded in the draft pre-upload) are not understood by
+      // the AI side.
+      final fileUrls = <String>[];
+      for (final f in group.files) {
+        final url = f.dataUrl.trim();
+        if (url.isEmpty) continue;
+        if (url.startsWith('http://') || url.startsWith('https://')) {
+          fileUrls.add(url);
         }
       }
-      final formatted = paragraphs.join('\n\n');
-      noteController
-        ..text = formatted
-        ..selection = TextSelection.collapsed(offset: formatted.length);
-      setLocalState(() {});
+
+      try {
+        final formatted = await SparkJoyAiAssistantService.instance.formalize(
+          target: target,
+          userText: text,
+          chatsMap: _aiQueueChats,
+          fileUrls: fileUrls.isEmpty ? null : fileUrls,
+        );
+        if (!dialogActive) return;
+        if (formatted.trim().isEmpty) {
+          await showMessage('AI вернул пустой ответ. Попробуйте ещё раз.');
+          setLocalState(() => aiFormatBusy = false);
+          return;
+        }
+        noteController
+          ..text = formatted
+          ..selection = TextSelection.collapsed(offset: formatted.length);
+        // Persist the chatId map back to the draft so a reopen
+        // continues the same conversation.
+        _markDraftDirty();
+        setLocalState(() => aiFormatBusy = false);
+      } on AiQueueException catch (e) {
+        if (!dialogActive) return;
+        await showMessage(e.userMessage);
+        setLocalState(() => aiFormatBusy = false);
+      } catch (e) {
+        if (!dialogActive) return;
+        await showMessage('AI-помощник недоступен. Попробуйте позже.');
+        setLocalState(() => aiFormatBusy = false);
+      }
     }
 
     bool? saved;
@@ -1303,6 +1347,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                       SparkJoyCommentInputPanel(
                                         controller: noteController,
                                         isDictating: isDictating,
+                                        aiBusy: aiFormatBusy,
                                         onDismissKeyboard: _dismissKeyboard,
                                         onToggleDictation: () async {
                                           if (isDictating) {
