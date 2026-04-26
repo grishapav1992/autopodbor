@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -14,9 +13,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
-import 'package:flutter_application_1/core/config/feature_flags.dart';
-import 'package:flutter_application_1/data/api/converter_api.dart';
-import 'package:flutter_application_1/data/api/converter_models.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
@@ -76,7 +72,6 @@ part 'spark_joy_comment_audio_helpers.dart';
 part 'spark_joy_file_picker_helpers.dart';
 part 'spark_joy_car_picker_helpers.dart';
 part 'spark_joy_vin_actions_helpers.dart';
-part 'spark_joy_converter_helpers.dart';
 part 'spark_joy_lifecycle_helpers.dart';
 part 'spark_joy_media_state_helpers.dart';
 part 'spark_joy_init_dispose_helpers.dart';
@@ -244,11 +239,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // to kick off multiple catalogs and stack identical dialogs on top of
   // each other. Flip this while the picker is loading/open.
   bool _carPickerOpening = false;
-
-  // True while api-cloud.ru/converter lookup is in flight. Блокирует
-  // повторные клики по кнопкам «Подтянуть VIN/ГРЗ и данные» и
-  // показывает индикатор загрузки на кнопке-источнике.
-  bool _converterLoading = false;
 
   // True while a share-link RPC is in flight on the read-only view — keeps
   // the AppBar share icon disabled + spinning so users don't double-tap

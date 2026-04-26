@@ -74,12 +74,6 @@ class UserSimplePreferences {
   static const _accessTokenKey = 'accessToken';
   static const _refreshTokenKey = 'refreshToken';
   static const _userRoleKey = 'userRole';
-  // Универсальный токен api-cloud.ru (32 символа). Один токен
-  // покрывает все их эндпоинты: pb_nalog (проверка ИНН), converter
-  // (VIN↔ГРЗ) и будущие. Лежит в SharedPreferences — MVP; позже
-  // переедет в --dart-define или encrypted-storage.
-  // См. TODO в [FeatureFlags].
-  static const _apiCloudTokenKey = 'apiCloudToken';
 
   static Future init() async {
     pref = await SharedPreferences.getInstance();
@@ -359,19 +353,6 @@ class UserSimplePreferences {
   static Future<void> clearAuthTokens() async {
     await (await _prefs()).remove(_accessTokenKey);
     await (await _prefs()).remove(_refreshTokenKey);
-  }
-
-  static Future<String?> getApiCloudToken() async {
-    // ignore: await_only_futures
-    return (await _prefs()).getString(_apiCloudTokenKey);
-  }
-
-  static Future<void> setApiCloudToken(String token) async {
-    await (await _prefs()).setString(_apiCloudTokenKey, token);
-  }
-
-  static Future<void> clearApiCloudToken() async {
-    await (await _prefs()).remove(_apiCloudTokenKey);
   }
 
   static Future<void> setUserRole(String role) async {

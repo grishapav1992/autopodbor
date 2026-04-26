@@ -1,8 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_application_1/data/api/pb_nalog_api.dart';
-import 'package:flutter_application_1/data/api/pb_nalog_models.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'spark_joy_data.dart';
@@ -56,19 +54,6 @@ class SparkJoyStorage {
   static const String _roleKey = 'spark_joy_role_v1';
   static const String _verifiedInnKey = 'spark_joy_verified_inn_v1';
   static const String _businessTypeKey = 'spark_joy_business_type_v1';
-  // Поля заполняются из ответа api-cloud.ru/pb_nalog (см. PbNalogApi).
-  // Храним отдельные плоские поля для быстрого чтения в UI без лишнего
-  // jsonDecode, плюс полный сырой JSON в [_businessRawKey] — он
-  // понадобится в будущем UI (учредители, недоимки, ОКВЭД-список).
-  static const String _businessStatusKey = 'spark_joy_business_status_v1';
-  static const String _businessStatusDescKey =
-      'spark_joy_business_status_desc_v1';
-  static const String _businessDisplayNameKey =
-      'spark_joy_business_display_name_v1';
-  static const String _businessRegionKey = 'spark_joy_business_region_v1';
-  static const String _businessDateRegKey = 'spark_joy_business_date_reg_v1';
-  static const String _businessOgrnKey = 'spark_joy_business_ogrn_v1';
-  static const String _businessRawKey = 'spark_joy_business_raw_v1';
   static const String _specialistProfileKey = 'spark_joy_specialist_profile_v1';
   /// External specialists (not originally in the company roster) that
   /// the company has explicitly promoted to staff via "Добавить в штат".
@@ -217,129 +202,37 @@ class SparkJoyStorage {
     return null;
   }
 
-  /// Проверяет ИНН через [PbNalogApi] и сохраняет результат.
+  /// Проверяет ИНН локально и сохраняет результат.
   ///
-  /// При успехе кладёт в SharedPreferences и тип, и сводку для UI
-  /// ("ООО Автомойка №1", регион, дата регистрации, статус), и сырой
-  /// JSON-ответ — он пригодится, если позже захотим показать
-  /// учредителей/недоимки без повторного запроса.
-  ///
-  /// Бросает [PbNalogException] (не глотаем) — UI покажет понятное
-  /// сообщение через [PbNalogException.userMessage]. Возвращает
-  /// `null`, если данные по ИНН не нашлись (`found: false`) — для
-  /// этого случая UI должен показать «не найдено», но статус не
-  /// обновлять.
-  static Future<PbNalogResult?> verifyInnAndPromote(
-    String rawInn, {
-    PbNalogApi? api,
-  }) async {
+  /// Сейчас «проверка» = валидация формата (длина 10 → company,
+  /// длина 12 → ip) + checksum. Сетевого запроса нет — бывшая
+  /// интеграция с api-cloud.ru/pb_nalog убрана в коммите
+  /// «drop api-cloud.ru integration». Когда подключат нового
+  /// провайдера, этот метод обновится: он будет дёргать API,
+  /// получать данные компании и заполнять расширенные поля.
+  /// Storage-ключи `_verifiedInnKey` и `_businessTypeKey` остаются
+  /// провайдер-независимым каркасом.
+  static Future<String?> verifyInnAndPromote(String rawInn) async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return null;
     final inn = normalizeInn(rawInn);
-    if (inn.length != 10 && inn.length != 12) {
-      throw PbNalogException('331', 'inn: entered incorrectly');
-    }
-
-    final client = api ?? PbNalogApi.instance();
-    final result = await client.lookup(inn);
-
-    if (!result.found ||
-        (result.ipEntries.isEmpty && result.orgEntries.isEmpty)) {
-      return result;
-    }
-
-    final ip = result.primaryIp;
-    final org = result.primaryOrg;
-    final businessType = ip != null ? 'ip' : (org != null ? 'company' : null);
-    if (businessType == null) return result;
-
-    final displayName = ip?.name ?? org?.shortName ?? org?.fullName ?? '';
-    final region = org?.region ?? '';
-    final dateReg = ip?.dateReg ?? org?.dateReg ?? '';
-    final ogrn = ip?.ogrn ?? org?.ogrn ?? '';
-    final status = ip?.status ?? org?.status ?? PbNalogStatus.unknown;
-    final statusDesc = ip?.statusDesc ?? org?.statusDesc ?? '';
-
-    // Параллельные write-и в SharedPreferences: операции независимы
-    // (разные ключи), платформенный backend их сериализует сам.
-    // Используем Future.wait, чтобы не ждать 11 round-trip'ов event-loop'а.
-    //
-    // Для статуса — стабильный строковый ключ через
-    // pbNalogStatusToStorageKey, чтобы рефакторинг enum'а не сломал
-    // уже сохранённые данные на устройствах.
-    await Future.wait<Object?>(<Future<Object?>>[
-      pref.setString(_verifiedInnKey, inn),
-      pref.setString(_businessTypeKey, businessType),
-      pref.setString(_businessStatusKey, pbNalogStatusToStorageKey(status)),
-      pref.setString(_businessStatusDescKey, statusDesc),
-      pref.setString(_businessDisplayNameKey, displayName),
-      pref.setString(_businessRegionKey, region),
-      pref.setString(_businessDateRegKey, dateReg),
-      pref.setString(_businessOgrnKey, ogrn),
-      pref.setString(_businessRawKey, jsonEncode(result.raw)),
-      pref.setString(_roleKey, sparkJoyRoleKey(SparkJoyRole.company)),
-      pref.setBool(_loggedInKey, true),
-      UserSimplePreferences.setUserRole('company'),
-    ]);
-    return result;
+    final businessType = detectBusinessTypeByInn(inn);
+    if (businessType == null) return null;
+    await pref.setString(_verifiedInnKey, inn);
+    await pref.setString(_businessTypeKey, businessType);
+    await pref.setString(_roleKey, sparkJoyRoleKey(SparkJoyRole.company));
+    await pref.setBool(_loggedInKey, true);
+    await UserSimplePreferences.setUserRole('company');
+    return businessType;
   }
 
   static Future<void> resetBusinessVerification() async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
-    await Future.wait<Object?>(<Future<Object?>>[
-      pref.remove(_verifiedInnKey),
-      pref.remove(_businessTypeKey),
-      pref.remove(_businessStatusKey),
-      pref.remove(_businessStatusDescKey),
-      pref.remove(_businessDisplayNameKey),
-      pref.remove(_businessRegionKey),
-      pref.remove(_businessDateRegKey),
-      pref.remove(_businessOgrnKey),
-      pref.remove(_businessRawKey),
-      pref.setString(_roleKey, sparkJoyRoleKey(SparkJoyRole.specialist)),
-      UserSimplePreferences.setUserRole('specialist'),
-    ]);
-  }
-
-  /// Геттеры для UI — читают плоские поля, сохранённые
-  /// [verifyInnAndPromote]. Возвращают пустую строку, если
-  /// верификация не пройдена (а не null) — экрану удобнее работать
-  /// со строками для `Text(value)`.
-  static Future<String> currentBusinessStatusName() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return '';
-    return pref.getString(_businessStatusKey) ?? '';
-  }
-
-  static Future<String> currentBusinessStatusDesc() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return '';
-    return pref.getString(_businessStatusDescKey) ?? '';
-  }
-
-  static Future<String> currentBusinessDisplayName() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return '';
-    return pref.getString(_businessDisplayNameKey) ?? '';
-  }
-
-  static Future<String> currentBusinessRegion() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return '';
-    return pref.getString(_businessRegionKey) ?? '';
-  }
-
-  static Future<String> currentBusinessDateReg() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return '';
-    return pref.getString(_businessDateRegKey) ?? '';
-  }
-
-  static Future<String> currentBusinessOgrn() async {
-    final pref = UserSimplePreferences.pref;
-    if (pref == null) return '';
-    return pref.getString(_businessOgrnKey) ?? '';
+    await pref.remove(_verifiedInnKey);
+    await pref.remove(_businessTypeKey);
+    await pref.setString(_roleKey, sparkJoyRoleKey(SparkJoyRole.specialist));
+    await UserSimplePreferences.setUserRole('specialist');
   }
 
   /// Pre-flight summary for the "Сбросить статус" confirmation modal.
