@@ -6,6 +6,7 @@
  * LinkedIn: https://www.linkedin.com/company/ktonixsolutions/
  */
 import 'package:flutter_application_1/core/localization/localization_controller/localization_controller.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' show sessionExpiredTicker;
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter/material.dart';
@@ -27,8 +28,45 @@ void main() async {
 String dummyImg =
     'https://images.unsplash.com/photo-1558507652-2d9626c4e67a?ixlib=rb-1.2.1&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=687&q=80';
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Session-expiry listener. `storage_api` bumps this ticker whenever
+    // an authenticated RPC hits a dead-token path it can't recover
+    // from (refresh failed or refresh echoed an expired access token).
+    // We redirect the whole stack to the login route — any screen open
+    // at the moment loses context, which is intentional: its data is
+    // unauthenticated and shouldn't stay on screen.
+    sessionExpiredTicker.addListener(_handleSessionExpired);
+  }
+
+  @override
+  void dispose() {
+    sessionExpiredTicker.removeListener(_handleSessionExpired);
+    super.dispose();
+  }
+
+  void _handleSessionExpired() {
+    // GetX navigator may not be attached yet during very-early boot;
+    // guard so the listener doesn't crash on first-ever tick.
+    if (!Get.isRegistered<GetMaterialController>()) return;
+    Get.offAllNamed(AppLinks.login);
+    // Небольшой snackbar чтобы юзер понимал, почему его выкинуло.
+    Get.snackbar(
+      'Сессия истекла',
+      'Пожалуйста, войдите снова.',
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 3),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {

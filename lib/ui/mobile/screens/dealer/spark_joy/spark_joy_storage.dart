@@ -206,12 +206,18 @@ class SparkJoyStorage {
   ///
   /// Сейчас «проверка» = валидация формата (длина 10 → company,
   /// длина 12 → ip) + checksum. Сетевого запроса нет — бывшая
-  /// интеграция с api-cloud.ru/pb_nalog убрана в коммите
-  /// «drop api-cloud.ru integration». Когда подключат нового
-  /// провайдера, этот метод обновится: он будет дёргать API,
+  /// интеграция с api-cloud.ru/pb_nalog убрана. Когда подключат
+  /// нового провайдера, этот метод обновится: он будет дёргать API,
   /// получать данные компании и заполнять расширенные поля.
   /// Storage-ключи `_verifiedInnKey` и `_businessTypeKey` остаются
   /// провайдер-независимым каркасом.
+  ///
+  /// Раньше параллельный фикс блокировал промоцию неактивных
+  /// (terminated/liquidation/exclusion/unknown) ЮЛ через
+  /// `isInactivePbNalogStatus(PbNalogStatus)`. Без источника данных
+  /// по статусу проверять нечего, гейт временно снят. Восстановить
+  /// при подключении нового провайдера — там же, где будет логика
+  /// заполнения расширенных полей.
   static Future<String?> verifyInnAndPromote(String rawInn) async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return null;

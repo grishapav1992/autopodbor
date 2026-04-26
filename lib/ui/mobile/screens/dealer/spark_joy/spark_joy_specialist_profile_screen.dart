@@ -145,8 +145,9 @@ class _SparkJoySpecialistProfileScreenState
 
   /// Reads the profile's specialization as a plain-text description.
   /// Legacy profiles stored it as a `specializations` list of tags;
-  /// we join those with `, ` so the textarea reads naturally. New
-  /// saves always write the single `specialization` string.
+  /// we format those as a bullet list so the textarea reads
+  /// consistently with the current append-chip UX. New saves always
+  /// write the single `specialization` string.
   String _extractSpecializationText(Map<String, dynamic> profile) {
     final text = sjRead(profile, 'specialization').trim();
     if (text.isNotEmpty) return text;
@@ -155,9 +156,9 @@ class _SparkJoySpecialistProfileScreenState
       final parts = <String>[];
       for (final raw in fromList) {
         final value = raw.toString().trim();
-        if (value.isNotEmpty) parts.add(value);
+        if (value.isNotEmpty) parts.add('• $value');
       }
-      return parts.join(', ');
+      return parts.join('\n');
     }
     return '';
   }
@@ -167,14 +168,17 @@ class _SparkJoySpecialistProfileScreenState
     setState(() => _profileDirty = true);
   }
 
-  /// Appends a preset service to the textarea. Idempotent-free by
-  /// design — the user can add the same phrase twice and edit later;
-  /// we don't want to swallow taps silently.
+  /// Appends a preset service to the textarea on a new bullet line —
+  /// comma-joined list was cramped and hard to read when the user
+  /// mixed in free-form text. Each tap starts a fresh line with `• `
+  /// prefix, so the result reads as a clean enumerated list.
+  /// Idempotent-free by design — the user can add the same phrase
+  /// twice and edit later.
   void _appendSpecializationSuggestion(String suggestion) {
     HapticFeedback.selectionClick();
-    final current = _specializationController.text;
-    final separator = current.trim().isEmpty ? '' : ', ';
-    final next = '$current$separator$suggestion';
+    final current = _specializationController.text.trimRight();
+    final separator = current.isEmpty ? '' : '\n';
+    final next = '$current$separator• $suggestion';
     _specializationController.value = TextEditingValue(
       text: next,
       selection: TextSelection.collapsed(offset: next.length),
@@ -561,6 +565,14 @@ class _SparkJoySpecialistProfileScreenState
             FilteringTextInputFormatter.digitsOnly,
             LengthLimitingTextInputFormatter(12),
           ],
+          // iOS heuristically offers «Scan Credit Card» / «Scan Text»
+          // on numeric fields, popping the camera when the user taps
+          // the QuickType suggestion. An explicit empty autofillHints
+          // + disabled suggestions/autocorrect tells iOS we manage
+          // this field ourselves and kills the scan affordance.
+          autofillHints: const <String>[],
+          enableSuggestions: false,
+          autocorrect: false,
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           onChanged: (_) {
             if (_innError != null) {

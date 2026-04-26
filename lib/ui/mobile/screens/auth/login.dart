@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_application_1/core/config/feature_flags.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
@@ -425,22 +426,30 @@ class _LoginState extends State<Login> {
               ),
             ),
           const SizedBox(height: 14),
-          ExpansionTile(
-            tilePadding: EdgeInsets.zero,
-            title: const MyText(
-              text: 'Технический вход',
-              size: 12,
-              color: kGreyColor,
-            ),
-            childrenPadding: const EdgeInsets.only(bottom: 4),
-            children: [
-              MyBorderButton(
-                onTap: _promptTechPasswordAndSignIn,
-                buttonText: 'Войти по техническому коду',
-                textSize: 12,
+          // «Технический вход» — bypass с жёстко зашитыми JWT
+          // (`_techAccessToken` / `_techRefreshToken` в этом файле).
+          // В релизном билде скрываем: токены в бинаре — security leak.
+          // В debug-сборках оставлен на время отладки реального phone-
+          // auth flow. Геттер `FeatureFlags.devTechLogin` возвращает
+          // `kDebugMode`, так что release автоматически не увидит этот
+          // блок, и никаких отдельных билд-конфигов не надо.
+          if (FeatureFlags.devTechLogin)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: const MyText(
+                text: 'Технический вход (dev only)',
+                size: 12,
+                color: kGreyColor,
               ),
-            ],
-          ),
+              childrenPadding: const EdgeInsets.only(bottom: 4),
+              children: [
+                MyBorderButton(
+                  onTap: _promptTechPasswordAndSignIn,
+                  buttonText: 'Войти по техническому коду',
+                  textSize: 12,
+                ),
+              ],
+            ),
         ],
       ),
     );

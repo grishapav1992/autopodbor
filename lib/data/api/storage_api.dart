@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
@@ -23,6 +24,30 @@ class _TokenPair {
   final String refreshToken;
 
   const _TokenPair({required this.accessToken, required this.refreshToken});
+}
+
+/// Thrown by [StorageApi._postRpc] when an authenticated call has a
+/// locally-expired access token and the server-side refresh has also
+/// failed. Callers should unwind, clear UI state, and let the global
+/// listener (see `SessionExpiredNotifier`) redirect to login instead
+/// of retrying the same dead token.
+class SessionExpiredException implements Exception {
+  const SessionExpiredException([this.message = 'Session expired']);
+  final String message;
+
+  @override
+  String toString() => 'SessionExpiredException: $message';
+}
+
+/// Single listenable the shell subscribes to so an expired session
+/// discovered mid-session (e.g. during a background RPC) can kick
+/// the user back to the login route without every callsite knowing.
+/// Incremented on each expiry event so multiple rapid failures still
+/// deliver distinct notifications.
+final ValueNotifier<int> sessionExpiredTicker = ValueNotifier<int>(0);
+
+void _notifySessionExpired() {
+  sessionExpiredTicker.value = sessionExpiredTicker.value + 1;
 }
 
 class StorageApi {
@@ -299,7 +324,30 @@ class StorageApi {
         final refreshed = await _tryRefreshTokens();
         if (refreshed) {
           accessToken = await UserSimplePreferences.getAccessToken();
+        } else {
+          // Refresh failed → the stored access token is permanently
+          // dead. Don't ship a Bearer the backend will log as
+          // unauthenticated; instead wipe, surface a dedicated
+          // exception, and signal the shell to redirect. `allowRefresh`
+          // is false inside RefreshToken itself so this branch can't
+          // recurse.
+          _rpcLog('refresh-failed-clearing', seq: seq, method: method);
+          await UserSimplePreferences.clearAuthTokens();
+          _notifySessionExpired();
+          throw const SessionExpiredException();
         }
+      }
+      // Defence-in-depth: if the access token is still expired after
+      // a supposedly-successful refresh (e.g. server echoed the same
+      // stale token back), fail fast rather than making yet another
+      // unauth-looking call.
+      if (accessToken != null &&
+          accessToken.isNotEmpty &&
+          _isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
+        _rpcLog('refresh-returned-expired', seq: seq, method: method);
+        await UserSimplePreferences.clearAuthTokens();
+        _notifySessionExpired();
+        throw const SessionExpiredException();
       }
       if (accessToken != null && accessToken.isNotEmpty) {
         headers['Authorization'] = 'Bearer $accessToken';
@@ -458,15 +506,40 @@ class StorageApi {
     }
 
     if (!hasAccess && !hasRefresh) return false;
-    if (hasAccess) {
-      if (_isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
-        if (!hasRefresh) return false;
-        return _tryRefreshTokens();
-      }
+
+    // Access token is present and still valid locally — accept.
+    if (hasAccess &&
+        !_isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
       return true;
     }
 
-    return _tryRefreshTokens();
+    // Access missing or expired. Without a refresh token we can't
+    // recover — wipe whatever half-state we still have so next start
+    // is guaranteed clean, then bail to the login flow.
+    if (!hasRefresh) {
+      await UserSimplePreferences.clearAuthTokens();
+      return false;
+    }
+
+    // Try server-side refresh. If it fails we're truly dead — wipe.
+    final refreshed = await _tryRefreshTokens();
+    if (!refreshed) {
+      await UserSimplePreferences.clearAuthTokens();
+      return false;
+    }
+
+    // Defensive: if the refreshed access token is itself expired
+    // (observed on dev backends that echo input tokens back), treat
+    // it as a dead session instead of shipping a Bearer the server
+    // will reject on the next RPC.
+    final refreshedAccess = await UserSimplePreferences.getAccessToken();
+    if (refreshedAccess == null ||
+        refreshedAccess.isEmpty ||
+        _isJwtExpired(refreshedAccess, skew: const Duration(seconds: 15))) {
+      await UserSimplePreferences.clearAuthTokens();
+      return false;
+    }
+    return true;
   }
 
   static Future<bool> _probeSessionByGetBrand() async {
