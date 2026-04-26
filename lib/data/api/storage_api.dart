@@ -1687,10 +1687,7 @@ class StorageApi {
     final params = <String, dynamic>{
       'step': _stepToWireEnum(step),
       'name': name,
-      // AddUserTag enum drops the underscore ('nonserious'), while
-      // responses echo 'non_serious'. UserTagType.addUserTagWire does
-      // the right thing for the input side.
-      'type': normalizedType.addUserTagWire,
+      'type': normalizedType.wireName,
     };
     if (section != null) params['section'] = section;
     final data = await _postRpc(
