@@ -37,13 +37,17 @@ class SparkJoyAssigneeSelection {
 }
 
 /// 3-mode assignee picker for the company flow:
-///   • staff  — dropdown of existing company specialists
-///   • phone  — RU-phone lookup against the user directory
-///   • invite — generate a shareable invite link
+///   • staff  — always-visible roster of company specialists; tap a
+///              row to assign, tap the selected row again to clear
+///   • phone  — collapsible card with RU-phone lookup against the
+///              user directory
+///   • invite — collapsible card that generates a shareable invite
+///              link
 ///
-/// Owns all internal state (segmented-button mode, phone-lookup state,
-/// invite-link building) and emits a [SparkJoyAssigneeSelection] via
-/// [onChanged] whenever anything changes.
+/// Phone and invite live in a single-open accordion below the staff
+/// list (`_AltSection`); only one is expanded at a time. The picker
+/// emits a [SparkJoyAssigneeSelection] via [onChanged] whenever the
+/// selected assignee changes.
 class SparkJoyAssigneePicker extends StatefulWidget {
   const SparkJoyAssigneePicker({
     super.key,
@@ -59,8 +63,10 @@ class SparkJoyAssigneePicker extends StatefulWidget {
   /// picker usually starts empty on the "new report" screen.
   final SparkJoyAssigneeSelection initialSelection;
 
-  /// Fires on every meaningful change (mode switch, staff pick, phone
-  /// resolved, invite generated). Parent should cache the last value.
+  /// Fires whenever the resolved assignee changes (staff pick, phone
+  /// confirmed, invite generated, selection cleared). Expanding or
+  /// collapsing alt sections does **not** emit. Parent should cache
+  /// the last value.
   final ValueChanged<SparkJoyAssigneeSelection> onChanged;
 
   @override
@@ -194,41 +200,36 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
 
   // ── Phone helpers ──────────────────────────────────────────────────
 
-  String _digits(String raw) {
-    final all = raw.replaceAll(RegExp(r'\D'), '');
-    if (all.isEmpty) return '';
-    var tail = all;
-    if (tail.length > 10 && (tail.startsWith('7') || tail.startsWith('8'))) {
-      tail = tail.substring(tail.length - 10);
-    }
-    if (tail.length > 10) tail = tail.substring(tail.length - 10);
-    return tail;
-  }
+  // The phone field's controller holds the user's 10 digits only —
+  // the "+7 " prefix lives in the InputDecoration as a static prefix,
+  // so the formatter never has to round-trip it through digit
+  // extraction.
 
-  String _formatPhone(String raw) {
-    final tail = _digits(raw);
-    if (tail.isEmpty) return '';
-    final buf = StringBuffer('+7');
-    buf.write(' (');
-    buf.write(tail.substring(0, tail.length.clamp(0, 3)));
-    if (tail.length >= 3) buf.write(')');
-    if (tail.length > 3) {
+  String _formatGrouped(String digits) {
+    if (digits.isEmpty) return '';
+    final buf = StringBuffer('(');
+    buf.write(digits.substring(0, digits.length.clamp(0, 3)));
+    if (digits.length >= 3) buf.write(')');
+    if (digits.length > 3) {
       buf.write(' ');
-      buf.write(tail.substring(3, tail.length.clamp(3, 6)));
+      buf.write(digits.substring(3, digits.length.clamp(3, 6)));
     }
-    if (tail.length > 6) {
+    if (digits.length > 6) {
       buf.write('-');
-      buf.write(tail.substring(6, tail.length.clamp(6, 8)));
+      buf.write(digits.substring(6, digits.length.clamp(6, 8)));
     }
-    if (tail.length > 8) {
+    if (digits.length > 8) {
       buf.write('-');
-      buf.write(tail.substring(8, tail.length.clamp(8, 10)));
+      buf.write(digits.substring(8, digits.length.clamp(8, 10)));
     }
     return buf.toString();
   }
 
-  String _normalize(String raw) {
-    final tail = _digits(raw);
+  String _normalize(String controllerText) {
+    final digits = controllerText.replaceAll(RegExp(r'\D'), '');
+    final tail = digits.length > 10
+        ? digits.substring(digits.length - 10)
+        : digits;
     return tail.length == 10 ? '+7$tail' : '';
   }
 
@@ -610,8 +611,10 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
-          decoration: sparkInputDecoration('+7 (___) ___-__-__'),
-          inputFormatters: [_ParenPhoneFormatter(_formatPhone)],
+          decoration: sparkInputDecoration('(___) ___-__-__').copyWith(
+            prefixText: '+7 ',
+          ),
+          inputFormatters: [_GroupedPhoneFormatter(_formatGrouped)],
           onChanged: _schedulePhoneLookup,
         ),
         const SizedBox(height: SparkSpace.md),
@@ -840,10 +843,11 @@ class _StaffRow extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       child: Container(
+        constraints: const BoxConstraints(minHeight: 44),
         color: selected ? kChipCompletedBg : Colors.transparent,
         padding: const EdgeInsets.symmetric(
           horizontal: SparkSpace.md,
-          vertical: SparkSpace.lg,
+          vertical: SparkSpace.xl,
         ),
         child: Row(
           children: [
@@ -1159,16 +1163,41 @@ class _HintCard extends StatelessWidget {
   }
 }
 
-class _ParenPhoneFormatter extends TextInputFormatter {
-  const _ParenPhoneFormatter(this._format);
-  final String Function(String raw) _format;
+/// Formats the controller's digits as "(XXX) XXX-XX-XX". The "+7 "
+/// country prefix is rendered separately as the field's `prefixText`,
+/// so the controller text only ever holds the user's 10 digits — this
+/// avoids the prefix's "7" leaking back into digit extraction on
+/// re-format.
+///
+/// Backspace heuristic: when the new text is shorter than the old but
+/// the digit count didn't change, the user deleted only a delimiter
+/// (paren / space / dash). Without intervention the next reformat
+/// would re-insert that delimiter and the field would feel "stuck".
+/// In that case we drop the trailing digit instead, so backspace
+/// always shrinks the input.
+class _GroupedPhoneFormatter extends TextInputFormatter {
+  const _GroupedPhoneFormatter(this._format);
+  final String Function(String digits) _format;
+
+  static String _onlyDigits(String s) => s.replaceAll(RegExp(r'\D'), '');
 
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final formatted = _format(newValue.text);
+    final oldDigits = _onlyDigits(oldValue.text);
+    var newDigits = _onlyDigits(newValue.text);
+
+    final shrunk = newValue.text.length < oldValue.text.length;
+    if (shrunk && newDigits == oldDigits && newDigits.isNotEmpty) {
+      newDigits = newDigits.substring(0, newDigits.length - 1);
+    }
+    if (newDigits.length > 10) {
+      newDigits = newDigits.substring(newDigits.length - 10);
+    }
+
+    final formatted = _format(newDigits);
     return TextEditingValue(
       text: formatted,
       selection: TextSelection.collapsed(offset: formatted.length),
