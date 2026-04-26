@@ -152,22 +152,27 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     });
   }
 
+  /// Wipes the phone-lookup local state. Caller is responsible for
+  /// the surrounding setState — this just centralises the field list
+  /// so `_clearAll` and `_toggleStaff` stay in sync.
+  void _resetPhoneState() {
+    _phoneController.clear();
+    _normalizedPhone = '';
+    _phoneState = _PhoneLookupState.idle;
+    _phoneFoundId = '';
+    _phoneFoundName = '';
+    _phoneFoundCity = '';
+  }
+
   /// Resets the entire selection — used by the "Очистить" action on
   /// the selection banner and by tap-to-deselect on a staff row.
-  /// Also wipes phone-lookup local state so reopening the phone
-  /// section starts clean.
   void _clearAll() {
     setState(() {
       _mode = SparkJoyAssigneeMode.staff;
       _specialistId = '';
       _specialistName = '';
       _inviteLink = '';
-      _phoneController.clear();
-      _normalizedPhone = '';
-      _phoneState = _PhoneLookupState.idle;
-      _phoneFoundId = '';
-      _phoneFoundName = '';
-      _phoneFoundCity = '';
+      _resetPhoneState();
     });
     _emit();
   }
@@ -178,6 +183,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   /// any open alternative section.
   void _toggleStaff(String id, String name) {
     if (id.isEmpty) return;
+    HapticFeedback.selectionClick();
     if (_specialistId == id && _mode == SparkJoyAssigneeMode.staff) {
       _clearAll();
       return;
@@ -188,12 +194,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
       _specialistName = name;
       _inviteLink = '';
       _altSection = _AltSection.none;
-      _phoneController.clear();
-      _normalizedPhone = '';
-      _phoneState = _PhoneLookupState.idle;
-      _phoneFoundId = '';
-      _phoneFoundName = '';
-      _phoneFoundCity = '';
+      _resetPhoneState();
     });
     _emit();
   }
@@ -491,12 +492,13 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
 
   @override
   Widget build(BuildContext context) {
+    final selection = _currentSelection;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (!_currentSelection.isEmpty) ...[
+        if (!selection.isEmpty) ...[
           _CurrentSelectionBanner(
-            selection: _currentSelection,
+            selection: selection,
             onClear: _clearAll,
           ),
           const SizedBox(height: SparkSpace.lg),
@@ -840,35 +842,42 @@ class _StaffRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = name.isEmpty ? id : name;
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        constraints: const BoxConstraints(minHeight: 44),
-        color: selected ? kChipCompletedBg : Colors.transparent,
-        padding: const EdgeInsets.symmetric(
-          horizontal: SparkSpace.md,
-          vertical: SparkSpace.xl,
-        ),
-        child: Row(
-          children: [
-            Icon(
-              selected
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked,
-              size: SparkSize.iconLg,
-              color: selected ? kChipCompletedFg : kGreyColor,
+    // Material+InkWell rather than Container(color:)+InkWell so the
+    // ripple paints on top of the selected-row highlight; with a raw
+    // Container the background swallows the ink reaction.
+    return Material(
+      color: selected ? kChipCompletedBg : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 44),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.md,
+              vertical: SparkSpace.xl,
             ),
-            const SizedBox(width: SparkSpace.md),
-            Expanded(
-              child: MyText(
-                text: label,
-                size: SparkTextSize.body,
-                weight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? kChipCompletedFg : kTertiaryColor,
-                maxLines: 1,
-              ),
+            child: Row(
+              children: [
+                Icon(
+                  selected
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked,
+                  size: SparkSize.iconLg,
+                  color: selected ? kChipCompletedFg : kGreyColor,
+                ),
+                const SizedBox(width: SparkSpace.md),
+                Expanded(
+                  child: MyText(
+                    text: label,
+                    size: SparkTextSize.body,
+                    weight: selected ? FontWeight.w600 : FontWeight.w400,
+                    color: selected ? kChipCompletedFg : kTertiaryColor,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
