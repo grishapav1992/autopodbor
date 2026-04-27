@@ -1338,6 +1338,15 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                                       );
                                                                 }
                                                               });
+                                                              // Refetch всегда — даже на коротком (≤5) списке,
+                                                              // чтобы серверу прилетел сигнал co-occurrence
+                                                              // для обучения. На коротком списке ответ
+                                                              // приходит, но локальный порядок не трогаем,
+                                                              // чтобы не шуметь UI: все теги и так на экране.
+                                                              final shouldApplyOrder =
+                                                                  visibleOptions
+                                                                      .length >
+                                                                  5;
                                                               tagRefetchDebounce
                                                                   ?.cancel();
                                                               final mySeq =
@@ -1364,7 +1373,8 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                                           mySeq !=
                                                                               tagRefetchSeq ||
                                                                           next ==
-                                                                              null) {
+                                                                              null ||
+                                                                          !shouldApplyOrder) {
                                                                         return;
                                                                       }
                                                                       setLocalState(() {
