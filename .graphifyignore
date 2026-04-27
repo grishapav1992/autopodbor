@@ -1,0 +1,34 @@
+# Native platform runners — generated, not our logic
+ios/
+android/
+macos/
+windows/
+linux/
+web/
+
+# Flutter / Dart build artifacts
+.dart_tool/
+.flutter-plugins-dependencies
+build/
+coverage/
+
+# Generated code
+*.g.dart
+*.freezed.dart
+*.gr.dart
+*.config.dart
+*.mocks.dart
+l10n/generated/
+
+# Assets (images / fonts etc — большие, не дают семантических связей)
+assets/
+
+# Graphify output itself
+graphify-out/
+
+# Worktrees и локальная рабочая область
+.claude/worktrees/
+.claude/knowledge-graph/
+
+# Временное
+tmp/
