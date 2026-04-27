@@ -449,21 +449,29 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   }
 
   Widget _buildSeverityFilter() {
+    // Horizontal scroll keeps the row safe when locale-translated
+    // labels (or future filter additions) push past the available
+    // width. Russian "Незначительные" alone is long enough that on
+    // iPhone SE / split-view widths a plain Row overflows.
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        SparkSpace.xxxl,
+        0,
         SparkSpace.xs,
-        SparkSpace.xxxl,
+        0,
         SparkSpace.sm,
       ),
-      child: Row(
-        children: [
-          _filterPill(label: 'Все', value: null),
-          const SizedBox(width: SparkSpace.sm),
-          _filterPill(label: 'Серьёзные', value: 'serious'),
-          const SizedBox(width: SparkSpace.sm),
-          _filterPill(label: 'Незначительные', value: 'minor'),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xxxl),
+        child: Row(
+          children: [
+            _filterPill(label: 'Все', value: null),
+            const SizedBox(width: SparkSpace.sm),
+            _filterPill(label: 'Серьёзные', value: 'serious'),
+            const SizedBox(width: SparkSpace.sm),
+            _filterPill(label: 'Незначительные', value: 'minor'),
+          ],
+        ),
       ),
     );
   }
@@ -480,24 +488,34 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
           setState(() => _severityFilter = value);
           HapticFeedback.selectionClick();
         },
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xl,
-            vertical: SparkSpace.xs,
-          ),
-          decoration: BoxDecoration(
-            color: active ? color.withValues(alpha: 0.18) : Colors.transparent,
-            border: Border.all(
-              color: active ? color : kBorderColor,
-              width: active ? 1.4 : 1,
+        child: ConstrainedBox(
+          // ≥36pt — chip-style minimum; below that fingers slip onto
+          // the neighbouring pill on quick taps.
+          constraints: const BoxConstraints(minHeight: 36),
+          child: Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.xl,
+              vertical: SparkSpace.sm,
             ),
-            borderRadius: BorderRadius.circular(SparkRadius.pill),
-          ),
-          child: MyText(
-            text: label,
-            size: SparkTextSize.caption,
-            weight: active ? FontWeight.w700 : FontWeight.w500,
-            color: active ? color : kGreyColor,
+            decoration: BoxDecoration(
+              color: active
+                  ? color.withValues(alpha: 0.18)
+                  : Colors.transparent,
+              border: Border.all(
+                color: active ? color : kBorderColor,
+              ),
+              borderRadius: BorderRadius.circular(SparkRadius.pill),
+            ),
+            child: MyText(
+              text: label,
+              size: SparkTextSize.caption,
+              weight: active ? FontWeight.w700 : FontWeight.w500,
+              // Use the regular tertiary text colour (not kGreyColor)
+              // so inactive pills read as a real control rather than
+              // a passive label.
+              color: active ? color : kTertiaryColor,
+            ),
           ),
         ),
       ),
