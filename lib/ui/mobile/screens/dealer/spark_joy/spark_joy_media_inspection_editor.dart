@@ -81,7 +81,6 @@ extension _SparkJoyMediaInspectionEditorMethods
         entry.key: [...entry.value],
     };
     var showElementError = false;
-    String? managingTagSeverity;
     var isRecording = false;
     var recordingDuration = 0;
     var isDictating = false;
@@ -92,27 +91,11 @@ extension _SparkJoyMediaInspectionEditorMethods
     var shouldRecord = false;
     var shouldDictate = false;
 
-    // Tag-suggestion refetch — every chip toggle schedules a debounced
-    // GetUserTags call with `selectedTagIds` set so the server can
-    // re-sort unselected tags by co-occurrence with the current pick.
-    // The seq counter discards stale responses if the user taps faster
-    // than the debounce window.
-    Timer? tagRefetchDebounce;
-    var tagRefetchSeq = 0;
-
     final noteController = TextEditingController(
       text: basePartInspection.note.trim().isEmpty
           ? item.inspection.note
           : basePartInspection.note,
     );
-    final customTagControllers = <String, TextEditingController>{
-      'serious': TextEditingController(),
-      'minor': TextEditingController(),
-    };
-    final customTagFocusNodes = <String, FocusNode>{
-      'serious': FocusNode(),
-      'minor': FocusNode(),
-    };
     var paintToolsExpanded = false;
     final recorder = AudioRecorder();
     final player = AudioPlayer();
@@ -416,14 +399,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                   groupKey,
                   elementType: elementType,
                 );
-                final tagGroups = _mediaTagGroups(
-                  groupKey,
-                  elementType: elementType,
-                  customTagsByScope: customTagsByScope,
-                  customSeriousTagsByScope: customSeriousTagsByScope,
-                  disabledDefaultTagsByScope: disabledDefaultTagsByScope,
-                  tagOrderByScope: tagOrderByScope,
-                );
                 final tagGroupsAll = _mediaTagGroups(
                   groupKey,
                   elementType: elementType,
@@ -433,120 +408,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                   tagOrderByScope: tagOrderByScope,
                   includeDisabledDefaults: true,
                 );
-                final disabledDefaultsInScope =
-                    disabledDefaultTagsByScope[scopeKey] ?? const <String>[];
-                void addCustomTag(String severity) {
-                  final customTagController = customTagControllers[severity];
-                  final customTagFocusNode = customTagFocusNodes[severity];
-                  if (customTagController == null ||
-                      customTagFocusNode == null) {
-                    return;
-                  }
-                  final input = customTagController.text.trim();
-                  if (input.isEmpty) return;
-
-                  // Sync the custom tag to the server (fire-and-forget).
-                  unawaited(
-                    _syncInspectionCustomTag(
-                      groupKey: groupKey,
-                      tagName: input,
-                      severity: severity,
-                    ),
-                  );
-
-                  final next = customTagsByScope[scopeKey] != null
-                      ? [...customTagsByScope[scopeKey]!]
-                      : <String>[];
-
-                  String selectedValue = input;
-                  final lower = input.toLowerCase();
-                  for (final tag in next) {
-                    if (tag.toLowerCase() == lower) {
-                      selectedValue = tag;
-                      break;
-                    }
-                  }
-                  if (!next.any((tag) => tag.toLowerCase() == lower)) {
-                    next.add(input);
-                    selectedValue = input;
-                  }
-                  customTagsByScope[scopeKey] = next;
-                  final customSerious =
-                      customSeriousTagsByScope[scopeKey] != null
-                      ? [...customSeriousTagsByScope[scopeKey]!]
-                      : <String>[];
-                  customSerious.removeWhere(
-                    (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
-                  );
-                  if (severity == 'serious') {
-                    customSerious.add(selectedValue);
-                  }
-                  if (customSerious.isEmpty) {
-                    customSeriousTagsByScope.remove(scopeKey);
-                  } else {
-                    customSeriousTagsByScope[scopeKey] = customSerious;
-                  }
-                  disabledDefaultTagsByScope[scopeKey] =
-                      (disabledDefaultTagsByScope[scopeKey] ?? const <String>[])
-                          .where((tag) => tag.toLowerCase() != lower)
-                          .toList();
-                  final baselineTagGroups = _mediaTagGroups(
-                    groupKey,
-                    elementType: elementType,
-                    customTagsByScope: customTagsByScope,
-                    customSeriousTagsByScope: customSeriousTagsByScope,
-                    disabledDefaultTagsByScope: disabledDefaultTagsByScope,
-                    tagOrderByScope: tagOrderByScope,
-                    includeDisabledDefaults: true,
-                  );
-                  final baselineOrder = [
-                    ...(tagOrderByScope[scopeKey] ??
-                        baselineTagGroups
-                            .expand(
-                              (entry) => entry.options.map((tag) => tag.label),
-                            )
-                            .toList()),
-                  ];
-                  final order = <String>[];
-                  for (final value in baselineOrder) {
-                    if (order.any(
-                      (item) => item.toLowerCase() == value.toLowerCase(),
-                    )) {
-                      continue;
-                    }
-                    order.add(value);
-                  }
-                  order.removeWhere(
-                    (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
-                  );
-                  order.add(selectedValue);
-                  tagOrderByScope[scopeKey] = order;
-                  if (!selectedTags.any(
-                    (tag) => tag.toLowerCase() == selectedValue.toLowerCase(),
-                  )) {
-                    selectedTags.add(selectedValue);
-                  }
-                  managingTagSeverity = severity;
-                  customTagController.clear();
-                  setLocalState(() {});
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!dialogActive || !customTagFocusNode.canRequestFocus) {
-                      return;
-                    }
-                    customTagFocusNode.requestFocus();
-                  });
-                }
-
-                _MediaTagGroup? findGroupBySeverity(
-                  List<_MediaTagGroup> groups,
-                  String severity,
-                ) {
-                  for (final group in groups) {
-                    if (group.severity == severity) return group;
-                  }
-                  return null;
-                }
-
                 Future<void> closeEditorDiscard() async {
                   // Flip dialogActive *before* the await chain — Navigator
                   // tears the StatefulBuilder down asynchronously, and any
@@ -555,7 +416,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                   // a stale state and trigger a "_dependents.isEmpty" /
                   // disposed-controller assertion.
                   dialogActive = false;
-                  tagRefetchDebounce?.cancel();
                   await stopDictation(setLocalState);
                   await stopRecording(setLocalState, keepResult: false);
                   await player.stop();
@@ -574,7 +434,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                   }
                   // Same race-guard rationale as closeEditorDiscard above.
                   dialogActive = false;
-                  tagRefetchDebounce?.cancel();
                   await stopDictation(setLocalState);
                   await stopRecording(setLocalState);
                   await player.stop();
@@ -671,7 +530,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                                           elementType = value;
                                           selectedTags = [];
                                           noDamage = false;
-                                          managingTagSeverity = null;
                                           showElementError = false;
                                         });
                                       },
@@ -740,7 +598,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                                             noDamage = !noDamage;
                                             if (noDamage) {
                                               selectedTags = [];
-                                              managingTagSeverity = null;
                                             }
                                           });
                                         },
@@ -809,603 +666,265 @@ extension _SparkJoyMediaInspectionEditorMethods
                                           color: kGreyColor,
                                         )
                                       else
-                                        Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: tagGroupsAll.map((group) {
-                                            final groupTags = group.options;
-                                            if (groupTags.isEmpty) {
-                                              return const SizedBox.shrink();
-                                            }
-                                            final visibleGroup =
-                                                findGroupBySeverity(
-                                                  tagGroups,
-                                                  group.severity,
-                                                );
-                                            final visibleOptions =
-                                                visibleGroup?.options ??
-                                                const <_MediaTagOption>[];
-                                            final isManaging =
-                                                managingTagSeverity ==
-                                                group.severity;
-                                            final customTagController =
-                                                customTagControllers[group
-                                                    .severity];
-                                            final customTagFocusNode =
-                                                customTagFocusNodes[group
-                                                    .severity];
-                                            return Padding(
-                                              padding: const EdgeInsets.only(
-                                                bottom: 10,
-                                              ),
-                                              child: Column(
-                                                crossAxisAlignment:
-                                                    CrossAxisAlignment.start,
-                                                children: [
-                                                  Row(
+                                        Builder(
+                                          builder: (pillCtx) {
+                                            final allOptions = tagGroupsAll
+                                                .expand((g) => g.options)
+                                                .toList(growable: false);
+                                            final selectedCount =
+                                                selectedTags.length;
+                                            return Material(
+                                              color: Colors.transparent,
+                                              child: InkWell(
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                      SparkRadius.lg,
+                                                    ),
+                                                onTap: () async {
+                                                  final result =
+                                                      await _showSparkJoyTagPicker(
+                                                        pillCtx,
+                                                        title: 'Теги',
+                                                        options: allOptions,
+                                                        initialSelected:
+                                                            List<String>.from(
+                                                              selectedTags,
+                                                            ),
+                                                        initialOrder:
+                                                            List<String>.from(
+                                                              tagOrderByScope[scopeKey] ??
+                                                                  const <
+                                                                    String
+                                                                  >[],
+                                                            ),
+                                                        onCreateCustom:
+                                                            (
+                                                              name,
+                                                              severity,
+                                                            ) async {
+                                                              final id =
+                                                                  await _syncInspectionCustomTag(
+                                                                    groupKey:
+                                                                        groupKey,
+                                                                    tagName:
+                                                                        name,
+                                                                    severity:
+                                                                        severity,
+                                                                  );
+                                                              // Локальные карты обновляем безусловно
+                                                              // (id мог не вернуться по сети, но тег
+                                                              // юзер уже видит — сервер дочинит при
+                                                              // следующем loadTagIdsFromServer).
+                                                              final lower =
+                                                                  name
+                                                                      .toLowerCase();
+                                                              final next = [
+                                                                ...?customTagsByScope[scopeKey],
+                                                              ];
+                                                              if (!next.any(
+                                                                (s) =>
+                                                                    s.toLowerCase() ==
+                                                                    lower,
+                                                              )) {
+                                                                next.add(name);
+                                                              }
+                                                              customTagsByScope[scopeKey] =
+                                                                  next;
+                                                              if (severity ==
+                                                                  'serious') {
+                                                                final ns = [
+                                                                  ...?customSeriousTagsByScope[scopeKey],
+                                                                ];
+                                                                if (!ns.any(
+                                                                  (s) =>
+                                                                      s.toLowerCase() ==
+                                                                      lower,
+                                                                )) {
+                                                                  ns.add(name);
+                                                                }
+                                                                customSeriousTagsByScope[scopeKey] =
+                                                                    ns;
+                                                              }
+                                                              final order = [
+                                                                ...?tagOrderByScope[scopeKey],
+                                                              ];
+                                                              if (!order.any(
+                                                                (s) =>
+                                                                    s.toLowerCase() ==
+                                                                    lower,
+                                                              )) {
+                                                                order.add(
+                                                                  name,
+                                                                );
+                                                              }
+                                                              tagOrderByScope[scopeKey] =
+                                                                  order;
+                                                              return id !=
+                                                                  null;
+                                                            },
+                                                        onDeleteCustom:
+                                                            (name) async {
+                                                              final ok =
+                                                                  await _removeInspectionCustomTag(
+                                                                    groupKey:
+                                                                        groupKey,
+                                                                    tagName:
+                                                                        name,
+                                                                  );
+                                                              if (!ok) {
+                                                                return false;
+                                                              }
+                                                              final lower =
+                                                                  name
+                                                                      .toLowerCase();
+                                                              final pruned =
+                                                                  (customTagsByScope[scopeKey] ??
+                                                                          const <
+                                                                            String
+                                                                          >[])
+                                                                      .where(
+                                                                        (s) =>
+                                                                            s.toLowerCase() !=
+                                                                            lower,
+                                                                      )
+                                                                      .toList();
+                                                              if (pruned
+                                                                  .isEmpty) {
+                                                                customTagsByScope.remove(
+                                                                  scopeKey,
+                                                                );
+                                                              } else {
+                                                                customTagsByScope[scopeKey] =
+                                                                    pruned;
+                                                              }
+                                                              final prunedSerious =
+                                                                  (customSeriousTagsByScope[scopeKey] ??
+                                                                          const <
+                                                                            String
+                                                                          >[])
+                                                                      .where(
+                                                                        (s) =>
+                                                                            s.toLowerCase() !=
+                                                                            lower,
+                                                                      )
+                                                                      .toList();
+                                                              if (prunedSerious
+                                                                  .isEmpty) {
+                                                                customSeriousTagsByScope.remove(
+                                                                  scopeKey,
+                                                                );
+                                                              } else {
+                                                                customSeriousTagsByScope[scopeKey] =
+                                                                    prunedSerious;
+                                                              }
+                                                              final prunedOrder =
+                                                                  (tagOrderByScope[scopeKey] ??
+                                                                          const <
+                                                                            String
+                                                                          >[])
+                                                                      .where(
+                                                                        (s) =>
+                                                                            s.toLowerCase() !=
+                                                                            lower,
+                                                                      )
+                                                                      .toList();
+                                                              if (prunedOrder
+                                                                  .isEmpty) {
+                                                                tagOrderByScope.remove(
+                                                                  scopeKey,
+                                                                );
+                                                              } else {
+                                                                tagOrderByScope[scopeKey] =
+                                                                    prunedOrder;
+                                                              }
+                                                              return true;
+                                                            },
+                                                        onSelectionChanged:
+                                                            (selectedSnapshot) {
+                                                              // Co-occurrence обучение —
+                                                              // на каждый тап сервер получает
+                                                              // selectedTagIds. Локальный
+                                                              // tagOrderByScope не трогаем
+                                                              // здесь: следующее открытие
+                                                              // sheet'а пере-получит порядок
+                                                              // через initialOrder.
+                                                              unawaited(
+                                                                _refreshInspectionTagOrder(
+                                                                  groupKey:
+                                                                      groupKey,
+                                                                  selectedTagNames:
+                                                                      selectedSnapshot,
+                                                                ),
+                                                              );
+                                                            },
+                                                      );
+                                                  if (result == null ||
+                                                      !context.mounted) {
+                                                    return;
+                                                  }
+                                                  setLocalState(() {
+                                                    selectedTags = result;
+                                                  });
+                                                },
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal:
+                                                            SparkSpace.xl,
+                                                        vertical:
+                                                            SparkSpace.md,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: kInputBgColor,
+                                                    border: Border.all(
+                                                      color: kBorderColor,
+                                                    ),
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          SparkRadius.lg,
+                                                        ),
+                                                  ),
+                                                  child: Row(
                                                     children: [
+                                                      const Icon(
+                                                        Icons
+                                                            .local_offer_outlined,
+                                                        size:
+                                                            SparkSize.iconLg,
+                                                        color: kGreyColor,
+                                                      ),
+                                                      const SizedBox(
+                                                        width: SparkSpace.md,
+                                                      ),
                                                       Expanded(
                                                         child: MyText(
-                                                          text: group.title,
+                                                          text:
+                                                              selectedCount ==
+                                                                  0
+                                                              ? 'Выбрать теги'
+                                                              : 'Теги ($selectedCount)',
                                                           size: SparkTextSize
                                                               .body,
+                                                          weight: FontWeight
+                                                              .w600,
                                                           color:
-                                                              _mediaTagGroupTitleColor(
-                                                                group,
-                                                              ),
-                                                          weight:
-                                                              FontWeight.w700,
+                                                              selectedCount ==
+                                                                  0
+                                                              ? kGreyColor
+                                                              : kTertiaryColor,
                                                         ),
                                                       ),
-                                                      TextButton.icon(
-                                                        onPressed: () {
-                                                          setLocalState(() {
-                                                            if (isManaging) {
-                                                              managingTagSeverity =
-                                                                  null;
-                                                            } else {
-                                                              managingTagSeverity =
-                                                                  group
-                                                                      .severity;
-                                                            }
-                                                          });
-                                                        },
-                                                        icon: Icon(
-                                                          isManaging
-                                                              ? Icons
-                                                                    .check_rounded
-                                                              : Icons
-                                                                    .settings_rounded,
-                                                          size: SparkTextSize
-                                                              .title,
-                                                        ),
-                                                        label: Text(
-                                                          isManaging
-                                                              ? 'Готово'
-                                                              : 'Настроить',
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  const SizedBox(
-                                                    height: SparkSpace.sm,
-                                                  ),
-                                                  if (isManaging) ...[
-                                                    ReorderableListView.builder(
-                                                      key: ValueKey(
-                                                        'tag-manage-$scopeKey-${group.severity}',
-                                                      ),
-                                                      shrinkWrap: true,
-                                                      buildDefaultDragHandles:
-                                                          false,
-                                                      physics:
-                                                          const NeverScrollableScrollPhysics(),
-                                                      proxyDecorator:
-                                                          _tagReorderProxyDecorator,
-                                                      itemCount:
-                                                          groupTags.length,
-                                                      onReorder: (oldIndex, newIndex) {
-                                                        setLocalState(() {
-                                                          final adjusted =
-                                                              oldIndex <
-                                                                  newIndex
-                                                              ? newIndex - 1
-                                                              : newIndex;
-                                                          if (oldIndex ==
-                                                              adjusted) {
-                                                            return;
-                                                          }
-
-                                                          final reordered = [
-                                                            ...groupTags.map(
-                                                              (tag) =>
-                                                                  tag.label,
-                                                            ),
-                                                          ];
-                                                          final moved =
-                                                              reordered
-                                                                  .removeAt(
-                                                                    oldIndex,
-                                                                  );
-                                                          reordered.insert(
-                                                            adjusted,
-                                                            moved,
-                                                          );
-
-                                                          final baseline = [
-                                                            ...(tagOrderByScope[scopeKey] ??
-                                                                tagGroupsAll
-                                                                    .expand(
-                                                                      (
-                                                                        entry,
-                                                                      ) => entry
-                                                                          .options
-                                                                          .map(
-                                                                            (
-                                                                              tag,
-                                                                            ) =>
-                                                                                tag.label,
-                                                                          ),
-                                                                    )
-                                                                    .toList()),
-                                                          ];
-                                                          final normalized =
-                                                              <String>[];
-                                                          for (final value
-                                                              in baseline) {
-                                                            if (normalized.any(
-                                                              (item) =>
-                                                                  item
-                                                                      .toLowerCase() ==
-                                                                  value
-                                                                      .toLowerCase(),
-                                                            )) {
-                                                              continue;
-                                                            }
-                                                            normalized.add(
-                                                              value,
-                                                            );
-                                                          }
-
-                                                          final groupSet = groupTags
-                                                              .map(
-                                                                (tag) => tag
-                                                                    .label
-                                                                    .toLowerCase(),
-                                                              )
-                                                              .toSet();
-                                                          final withoutGroup =
-                                                              normalized
-                                                                  .where(
-                                                                    (
-                                                                      value,
-                                                                    ) => !groupSet
-                                                                        .contains(
-                                                                          value
-                                                                              .toLowerCase(),
-                                                                        ),
-                                                                  )
-                                                                  .toList();
-                                                          var insertAt = normalized
-                                                              .indexWhere(
-                                                                (
-                                                                  value,
-                                                                ) => groupSet
-                                                                    .contains(
-                                                                      value
-                                                                          .toLowerCase(),
-                                                                    ),
-                                                              );
-                                                          if (insertAt < 0 ||
-                                                              insertAt >
-                                                                  withoutGroup
-                                                                      .length) {
-                                                            insertAt =
-                                                                withoutGroup
-                                                                    .length;
-                                                          }
-                                                          withoutGroup
-                                                              .insertAll(
-                                                                insertAt,
-                                                                reordered,
-                                                              );
-                                                          tagOrderByScope[scopeKey] =
-                                                              withoutGroup;
-                                                        });
-                                                      },
-                                                      itemBuilder: (context, index) {
-                                                        final tag =
-                                                            groupTags[index];
-                                                        final hidden =
-                                                            !tag.isCustom &&
-                                                            disabledDefaultsInScope.any(
-                                                              (value) =>
-                                                                  value
-                                                                      .toLowerCase() ==
-                                                                  tag.label
-                                                                      .toLowerCase(),
-                                                            );
-
-                                                        return Container(
-                                                          key: ValueKey(
-                                                            'tag-item-$scopeKey-${group.severity}-${tag.label}',
-                                                          ),
-                                                          margin:
-                                                              const EdgeInsets.only(
-                                                                bottom: 6,
-                                                              ),
-                                                          padding:
-                                                              const EdgeInsets.symmetric(
-                                                                horizontal: 8,
-                                                                vertical: 6,
-                                                              ),
-                                                          decoration: BoxDecoration(
-                                                            borderRadius:
-                                                                BorderRadius.circular(
-                                                                  10,
-                                                                ),
-                                                            border: Border.all(
-                                                              color:
-                                                                  kBorderColor,
-                                                            ),
-                                                            color: hidden
-                                                                ? kInputBgColor
-                                                                : kWhiteColor,
-                                                          ),
-                                                          child: Row(
-                                                            children: [
-                                                              Expanded(
-                                                                child: ReorderableDelayedDragStartListener(
-                                                                  index: index,
-                                                                  child: Padding(
-                                                                    padding: const EdgeInsets.symmetric(
-                                                                      horizontal:
-                                                                          4,
-                                                                      vertical:
-                                                                          2,
-                                                                    ),
-                                                                    child: MyText(
-                                                                      text: tag
-                                                                          .label,
-                                                                      size: SparkTextSize
-                                                                          .body,
-                                                                      color:
-                                                                          hidden
-                                                                          ? kGreyColor
-                                                                          : kTertiaryColor,
-                                                                      weight: FontWeight
-                                                                          .w600,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                              const Icon(
-                                                                Icons
-                                                                    .drag_indicator_rounded,
-                                                                size:
-                                                                    SparkTextSize
-                                                                        .titleLg,
-                                                                color:
-                                                                    kGreyColor,
-                                                              ),
-                                                              const SizedBox(
-                                                                width: 4,
-                                                              ),
-                                                              if (tag.isCustom)
-                                                                InkWell(
-                                                                  onTap: () {
-                                                                    unawaited(
-                                                                      _removeInspectionCustomTag(
-                                                                        groupKey: groupKey,
-                                                                        tagName: tag.label,
-                                                                      ),
-                                                                    );
-                                                                    setLocalState(() {
-                                                                      final next =
-                                                                          (customTagsByScope[scopeKey] ??
-                                                                                  const <String>[])
-                                                                              .where(
-                                                                                (
-                                                                                  value,
-                                                                                ) =>
-                                                                                    value.toLowerCase() !=
-                                                                                    tag.label.toLowerCase(),
-                                                                              )
-                                                                              .toList();
-                                                                      if (next
-                                                                          .isEmpty) {
-                                                                        customTagsByScope.remove(
-                                                                          scopeKey,
-                                                                        );
-                                                                      } else {
-                                                                        customTagsByScope[scopeKey] =
-                                                                            next;
-                                                                      }
-                                                                      final order =
-                                                                          (tagOrderByScope[scopeKey] ??
-                                                                                  const <String>[])
-                                                                              .where(
-                                                                                (
-                                                                                  value,
-                                                                                ) =>
-                                                                                    value.toLowerCase() !=
-                                                                                    tag.label.toLowerCase(),
-                                                                              )
-                                                                              .toList();
-                                                                      if (order
-                                                                          .isEmpty) {
-                                                                        tagOrderByScope.remove(
-                                                                          scopeKey,
-                                                                        );
-                                                                      } else {
-                                                                        tagOrderByScope[scopeKey] =
-                                                                            order;
-                                                                      }
-                                                                      selectedTags.removeWhere(
-                                                                        (
-                                                                          value,
-                                                                        ) =>
-                                                                            value.toLowerCase() ==
-                                                                            tag.label.toLowerCase(),
-                                                                      );
-                                                                    });
-                                                                  },
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        999,
-                                                                      ),
-                                                                  child: const Padding(
-                                                                    padding:
-                                                                        EdgeInsets.all(
-                                                                          4,
-                                                                        ),
-                                                                    child: Icon(
-                                                                      Icons
-                                                                          .delete_outline_rounded,
-                                                                      size: SparkTextSize
-                                                                          .title,
-                                                                      color:
-                                                                          kGreyColor,
-                                                                    ),
-                                                                  ),
-                                                                )
-                                                              else
-                                                                InkWell(
-                                                                  onTap: () {
-                                                                    setLocalState(() {
-                                                                      final next = [
-                                                                        ...(disabledDefaultTagsByScope[scopeKey] ??
-                                                                            const <
-                                                                              String
-                                                                            >[]),
-                                                                      ];
-                                                                      next.removeWhere(
-                                                                        (
-                                                                          value,
-                                                                        ) =>
-                                                                            value.toLowerCase() ==
-                                                                            tag.label.toLowerCase(),
-                                                                      );
-                                                                      if (!hidden) {
-                                                                        next.add(
-                                                                          tag.label,
-                                                                        );
-                                                                        selectedTags.removeWhere(
-                                                                          (
-                                                                            value,
-                                                                          ) =>
-                                                                              value.toLowerCase() ==
-                                                                              tag.label.toLowerCase(),
-                                                                        );
-                                                                      }
-                                                                      if (next
-                                                                          .isEmpty) {
-                                                                        disabledDefaultTagsByScope.remove(
-                                                                          scopeKey,
-                                                                        );
-                                                                      } else {
-                                                                        disabledDefaultTagsByScope[scopeKey] =
-                                                                            next;
-                                                                      }
-                                                                    });
-                                                                  },
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        999,
-                                                                      ),
-                                                                  child: Padding(
-                                                                    padding:
-                                                                        const EdgeInsets.all(
-                                                                          4,
-                                                                        ),
-                                                                    child: Icon(
-                                                                      hidden
-                                                                          ? Icons.visibility_off_outlined
-                                                                          : Icons.visibility_rounded,
-                                                                      size: SparkTextSize
-                                                                          .title,
-                                                                      color:
-                                                                          hidden
-                                                                          ? kGreyColor
-                                                                          : kSecondaryColor,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                            ],
-                                                          ),
-                                                        );
-                                                      },
-                                                    ),
-                                                    if (customTagController !=
-                                                            null &&
-                                                        customTagFocusNode !=
-                                                            null) ...[
-                                                      const SizedBox(
-                                                        height: SparkSpace.md,
-                                                      ),
-                                                      Container(
-                                                        width: double.infinity,
-                                                        padding:
-                                                            const EdgeInsets.all(
-                                                              10,
-                                                            ),
-                                                        decoration: BoxDecoration(
-                                                          borderRadius:
-                                                              BorderRadius.circular(
-                                                                10,
-                                                              ),
-                                                          border: Border.all(
-                                                            color: kBorderColor,
-                                                          ),
-                                                          color: kInputBgColor,
-                                                        ),
-                                                        child: Row(
-                                                          children: [
-                                                            Expanded(
-                                                              child: TextField(
-                                                                focusNode:
-                                                                    customTagFocusNode,
-                                                                controller:
-                                                                    customTagController,
-                                                                textInputAction:
-                                                                    TextInputAction
-                                                                        .done,
-                                                                onSubmitted: (_) =>
-                                                                    addCustomTag(
-                                                                      group
-                                                                          .severity,
-                                                                    ),
-                                                                onTapOutside: (_) =>
-                                                                    _dismissKeyboard(),
-                                                                decoration:
-                                                                    _fieldDecoration(
-                                                                      'Свой тег (${group.title.toLowerCase()})',
-                                                                    ).copyWith(
-                                                                      contentPadding: const EdgeInsets.symmetric(
-                                                                        horizontal:
-                                                                            12,
-                                                                        vertical:
-                                                                            8,
-                                                                      ),
-                                                                    ),
-                                                              ),
-                                                            ),
-                                                            const SizedBox(
-                                                              width: 8,
-                                                            ),
-                                                            OutlinedButton(
-                                                              onPressed: () =>
-                                                                  addCustomTag(
-                                                                    group
-                                                                        .severity,
-                                                                  ),
-                                                              child: const Text(
-                                                                'Добавить',
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ] else ...[
-                                                    if (visibleOptions.isEmpty)
-                                                      const MyText(
-                                                        text:
-                                                            'Теги скрыты в настройке',
-                                                        size: SparkTextSize
-                                                            .caption,
+                                                      const Icon(
+                                                        Icons
+                                                            .chevron_right_rounded,
                                                         color: kGreyColor,
-                                                      )
-                                                    else
-                                                      Wrap(
-                                                        spacing: 8,
-                                                        runSpacing: 8,
-                                                        children: visibleOptions.map((
-                                                          tag,
-                                                        ) {
-                                                          final selected =
-                                                              selectedTags
-                                                                  .contains(
-                                                                    tag.label,
-                                                                  );
-                                                          return _chip(
-                                                            label: tag.label,
-                                                            selected: selected,
-                                                            selectedColor:
-                                                                _mediaTagColor(
-                                                                  tag.severity,
-                                                                ),
-                                                            onTap: () {
-                                                              setLocalState(() {
-                                                                if (selected) {
-                                                                  selectedTags
-                                                                      .remove(
-                                                                        tag.label,
-                                                                      );
-                                                                } else {
-                                                                  selectedTags
-                                                                      .add(
-                                                                        tag.label,
-                                                                      );
-                                                                }
-                                                              });
-                                                              // Refetch всегда — серверу нужен сигнал co-
-                                                              // occurrence для обучения. Применяем порядок
-                                                              // в локальный map только при scope > 5; на
-                                                              // коротком списке UI и так помещается без
-                                                              // перетасовки. Мутируем map напрямую без
-                                                              // setLocalState — следующий тап юзера
-                                                              // вызовет ребилд и подхватит новый порядок.
-                                                              // Это устраняет риск post-pop rebuild'а
-                                                              // (StatefulBuilder уже разрушен, но
-                                                              // dialogActive ещё не флипнут finally-блоком).
-                                                              final shouldApplyOrder =
-                                                                  visibleOptions
-                                                                      .length >
-                                                                  5;
-                                                              tagRefetchDebounce
-                                                                  ?.cancel();
-                                                              final mySeq =
-                                                                  ++tagRefetchSeq;
-                                                              tagRefetchDebounce =
-                                                                  Timer(
-                                                                    const Duration(
-                                                                      milliseconds:
-                                                                          200,
-                                                                    ),
-                                                                    () async {
-                                                                      final next =
-                                                                          await _refreshInspectionTagOrder(
-                                                                            groupKey:
-                                                                                groupKey,
-                                                                            selectedTagNames:
-                                                                                List<
-                                                                                  String
-                                                                                >.from(
-                                                                                  selectedTags,
-                                                                                ),
-                                                                          );
-                                                                      if (!dialogActive ||
-                                                                          mySeq !=
-                                                                              tagRefetchSeq ||
-                                                                          next ==
-                                                                              null ||
-                                                                          !shouldApplyOrder) {
-                                                                        return;
-                                                                      }
-                                                                      tagOrderByScope[scopeKey] =
-                                                                          next;
-                                                                    },
-                                                                  );
-                                                            },
-                                                          );
-                                                        }).toList(),
                                                       ),
-                                                  ],
-                                                ],
+                                                    ],
+                                                  ),
+                                                ),
                                               ),
                                             );
-                                          }).toList(),
+                                          },
                                         ),
                                     ],
                                     if (canEditDetails) ...[
@@ -1533,7 +1052,6 @@ extension _SparkJoyMediaInspectionEditorMethods
       );
     } finally {
       dialogActive = false;
-      tagRefetchDebounce?.cancel();
       recordingTimer?.cancel();
       await recordSubscription?.cancel();
       try {
@@ -1553,12 +1071,6 @@ extension _SparkJoyMediaInspectionEditorMethods
     }
     final noteValue = noteController.text.trim();
     noteController.dispose();
-    for (final controller in customTagControllers.values) {
-      controller.dispose();
-    }
-    for (final focusNode in customTagFocusNodes.values) {
-      focusNode.dispose();
-    }
     if (!mounted) return false;
 
     final selectedByLower = <String, String>{};
