@@ -548,6 +548,14 @@ extension _SparkJoyMediaInspectionEditorMethods
                 }
 
                 Future<void> closeEditorDiscard() async {
+                  // Flip dialogActive *before* the await chain — Navigator
+                  // tears the StatefulBuilder down asynchronously, and any
+                  // in-flight tag-refetch callback that resumes during the
+                  // teardown window would otherwise call setLocalState on
+                  // a stale state and trigger a "_dependents.isEmpty" /
+                  // disposed-controller assertion.
+                  dialogActive = false;
+                  tagRefetchDebounce?.cancel();
                   await stopDictation(setLocalState);
                   await stopRecording(setLocalState, keepResult: false);
                   await player.stop();
@@ -564,6 +572,9 @@ extension _SparkJoyMediaInspectionEditorMethods
                     setLocalState(() => showElementError = true);
                     return;
                   }
+                  // Same race-guard rationale as closeEditorDiscard above.
+                  dialogActive = false;
+                  tagRefetchDebounce?.cancel();
                   await stopDictation(setLocalState);
                   await stopRecording(setLocalState);
                   await player.stop();
@@ -1338,11 +1349,16 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                                       );
                                                                 }
                                                               });
-                                                              // Refetch всегда — даже на коротком (≤5) списке,
-                                                              // чтобы серверу прилетел сигнал co-occurrence
-                                                              // для обучения. На коротком списке ответ
-                                                              // приходит, но локальный порядок не трогаем,
-                                                              // чтобы не шуметь UI: все теги и так на экране.
+                                                              // Refetch всегда — серверу нужен сигнал co-
+                                                              // occurrence для обучения. Применяем порядок
+                                                              // в локальный map только при scope > 5; на
+                                                              // коротком списке UI и так помещается без
+                                                              // перетасовки. Мутируем map напрямую без
+                                                              // setLocalState — следующий тап юзера
+                                                              // вызовет ребилд и подхватит новый порядок.
+                                                              // Это устраняет риск post-pop rebuild'а
+                                                              // (StatefulBuilder уже разрушен, но
+                                                              // dialogActive ещё не флипнут finally-блоком).
                                                               final shouldApplyOrder =
                                                                   visibleOptions
                                                                       .length >
@@ -1377,10 +1393,8 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                                           !shouldApplyOrder) {
                                                                         return;
                                                                       }
-                                                                      setLocalState(() {
-                                                                        tagOrderByScope[scopeKey] =
-                                                                            next;
-                                                                      });
+                                                                      tagOrderByScope[scopeKey] =
+                                                                          next;
                                                                     },
                                                                   );
                                                             },
