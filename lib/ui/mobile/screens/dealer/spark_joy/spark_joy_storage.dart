@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -421,20 +422,70 @@ class SparkJoyStorage {
   }
 
   static Future<void> upsertDraft(Map<String, dynamic> draft) async {
-    final drafts = await loadDrafts();
     final id = (draft['id'] ?? '').toString();
     if (id.isEmpty) return;
-    final filtered = drafts.where((d) => d['id']?.toString() != id).toList();
-    filtered.insert(0, draft);
-    await _writeList(_draftsKey, filtered);
+    await _withDraftLock(() async {
+      final drafts = await loadDrafts();
+      final filtered = drafts.where((d) => d['id']?.toString() != id).toList();
+      filtered.insert(0, draft);
+      await _writeList(_draftsKey, filtered);
+    });
+  }
+
+  /// Atomic read-modify-write of a single draft by id. Use this when
+  /// multiple writers can race on the same draft (e.g. autosave +
+  /// upload-progress + AI-queue persistence). The [mutate] callback
+  /// receives the live draft map; mutate it in place. Returns `true`
+  /// when the draft was found and written back, `false` when no draft
+  /// with [draftId] exists.
+  static Future<bool> applyDraftPatch({
+    required String draftId,
+    required void Function(Map<String, dynamic> draft) mutate,
+  }) async {
+    if (draftId.isEmpty) return false;
+    final completer = Completer<bool>();
+    await _withDraftLock(() async {
+      final drafts = await loadDrafts();
+      final index = drafts.indexWhere((d) => d['id']?.toString() == draftId);
+      if (index < 0) {
+        completer.complete(false);
+        return;
+      }
+      final draft = drafts[index];
+      mutate(draft);
+      final next = [...drafts];
+      next[index] = draft;
+      await _writeList(_draftsKey, next);
+      completer.complete(true);
+    });
+    return completer.future;
+  }
+
+  // Single-flight chain: every draft mutation queues behind the
+  // previous one. Cheap when contention is low, prevents read-modify-
+  // write loss when two writers fire simultaneously.
+  static Future<void> _draftWriteChain = Future<void>.value();
+
+  static Future<T> _withDraftLock<T>(Future<T> Function() body) async {
+    final previous = _draftWriteChain;
+    final completer = Completer<void>();
+    _draftWriteChain = previous.then((_) => completer.future);
+    await previous;
+    try {
+      return await body();
+    } finally {
+      completer.complete();
+    }
   }
 
   static Future<void> deleteDraft(String id) async {
-    final drafts = await loadDrafts();
-    await _writeList(
-      _draftsKey,
-      drafts.where((d) => d['id']?.toString() != id).toList(),
-    );
+    await _withDraftLock(() async {
+      final drafts = await loadDrafts();
+      await _writeList(
+        _draftsKey,
+        drafts.where((d) => d['id']?.toString() != id).toList(),
+      );
+    });
   }
 
   static Future<void> purgeDraftAfterUpload(String draftId) async {

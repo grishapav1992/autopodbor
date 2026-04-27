@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:get/get.dart';
 
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_create_report_screen.dart'
@@ -253,6 +255,115 @@ class SparkJoyReportController extends GetxController {
 
   final RxMap<String, MediaGroupState> mediaState =
       <String, MediaGroupState>{}.obs;
+
+  // ──────────────────────────────────────────────────────────────────
+  // Chunk 15 — AiQueue per-element chat ids + last AI results
+  //
+  // Each inspection element (group + elementType + optional file) gets
+  // a stable JSON-RPC `id` that doubles as the conversation key on the
+  // aiqueue backend. Map is persisted into the draft (`aiChatIds`)
+  // alongside the rest of the report state and rehydrated on load.
+  //
+  // [aiResultBySourceKey] holds the last successful AI text response
+  // per element so the editor can preview what the model returned even
+  // after closing/reopening, and so a successful background flush can
+  // surface results without the editor being open at that moment.
+  //
+  // Rule: chatIds are bound to the *local* draftId — they persist across
+  // app restarts but die with the draft on submit/delete.
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxMap<String, int> aiChatIdBySourceKey = <String, int>{}.obs;
+  final RxMap<String, String> aiResultBySourceKey = <String, String>{}.obs;
+
+  /// Stable scope key for an element. We deliberately key on
+  /// (groupKey, elementType, itemDataUrl) so two different files of the
+  /// same element type get different chats. When the editor is at the
+  /// section level (no per-file context), pass `itemDataUrl: null`.
+  static String aiSourceKey({
+    required String groupKey,
+    required String elementType,
+    String? itemDataUrl,
+  }) {
+    final group = groupKey.trim();
+    final element = elementType.trim();
+    final url = (itemDataUrl ?? '').trim();
+    return url.isEmpty ? '$group:$element' : '$group:$element:$url';
+  }
+
+  /// Returns the chatId for [sourceKey], minting a new one if absent.
+  /// The minted id is JSON safe-int and locally unique across drafts of
+  /// the same user (server isolates by `(JWT.sub, chatId)`).
+  int ensureAiChatId(String sourceKey) {
+    final existing = aiChatIdBySourceKey[sourceKey];
+    if (existing != null && existing > 0) return existing;
+    final id = _mintChatId();
+    aiChatIdBySourceKey[sourceKey] = id;
+    return id;
+  }
+
+  void rememberAiResult(String sourceKey, String text) {
+    if (text.isEmpty) return;
+    aiResultBySourceKey[sourceKey] = text;
+  }
+
+  static int _mintChatId() {
+    final ms = DateTime.now().millisecondsSinceEpoch; // ~41 bits
+    final rnd = math.Random.secure().nextInt(1 << 20); // 20 bits
+    final composed = (ms << 20) | rnd; // ~61 bits
+    // Clamp to JSON-safe int (2^53 - 1) so any JSON encoder we transit
+    // through (Dart, NATS, OpenAI bridge) keeps the id intact.
+    return composed & 0x1FFFFFFFFFFFFF;
+  }
+
+  /// Loads chatIds and last results from the persisted draft into the
+  /// controller. Idempotent — safe to call on every draft hydration.
+  void hydrateAiChatStateFromDraft(Map<String, dynamic>? rawAiQueue) {
+    if (rawAiQueue == null) return;
+    final chatIds = rawAiQueue['bySourceKey'];
+    if (chatIds is Map) {
+      final next = <String, int>{};
+      chatIds.forEach((k, v) {
+        final intVal = v is int ? v : int.tryParse(v?.toString() ?? '');
+        if (intVal != null && intVal > 0) {
+          next[k.toString()] = intVal;
+        }
+      });
+      aiChatIdBySourceKey
+        ..clear()
+        ..addAll(next);
+    }
+    final results = rawAiQueue['results'];
+    if (results is Map) {
+      final next = <String, String>{};
+      results.forEach((k, v) {
+        if (v is Map) {
+          final text = v['text']?.toString() ?? '';
+          if (text.isNotEmpty) next[k.toString()] = text;
+        } else if (v is String && v.isNotEmpty) {
+          next[k.toString()] = v;
+        }
+      });
+      aiResultBySourceKey
+        ..clear()
+        ..addAll(next);
+    }
+  }
+
+  /// Snapshot of AI chat state in the shape persisted into the draft
+  /// under the `aiChatIds` key. Pure read — does not mutate state.
+  Map<String, dynamic> exportAiChatStateToDraft() {
+    return <String, dynamic>{
+      'bySourceKey': Map<String, int>.from(aiChatIdBySourceKey),
+      'results': {
+        for (final entry in aiResultBySourceKey.entries)
+          entry.key: <String, dynamic>{
+            'text': entry.value,
+            'updatedAt': DateTime.now().toIso8601String(),
+          },
+      },
+    };
+  }
 
   /// Replaces the contents of [list] with [next] in one shot, keeping the
   /// same RxList instance (so listeners don't have to re-subscribe).

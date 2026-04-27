@@ -2189,7 +2189,19 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'mediaCustomSeriousTags': customSeriousTagsPayload,
       'mediaDisabledDefaultTags': disabledDefaultsPayload,
       'mediaTagOrder': tagOrderPayload,
+      'aiQueue': _buildAiQueueSnapshot(),
     };
+  }
+
+  /// Composite of controller-owned chat-id maps + runner-owned pending
+  /// list. Lives next to the rest of the draft state in shared prefs so
+  /// a kill-and-restart picks up exactly where we left off, and so a
+  /// full-draft autosave doesn't drop pending ops the runner accepted.
+  Map<String, dynamic> _buildAiQueueSnapshot() {
+    final controllerSnapshot = _reportController.exportAiChatStateToDraft();
+    controllerSnapshot['pending'] =
+        AiQueueOfflineRunner.instance.snapshotPendingForDraft(_draftId);
+    return controllerSnapshot;
   }
 
   void _markDraftDirty({bool scheduleAutosave = true}) {
@@ -2474,6 +2486,47 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     };
   }
 
+  /// Drains the AI queue for the current draft so the report we ship
+  /// has all auto-generated descriptions baked in. Returns `false` only
+  /// when the user explicitly aborts the submit flow.
+  Future<bool> _flushAiQueueBeforeSubmit() async {
+    final status = AiQueueOfflineRunner.instance.statusOf(_draftId);
+    if (status.pendingCount == 0) return true;
+    try {
+      await AiQueueOfflineRunner.instance.flush(
+        draftId: _draftId,
+        blocking: true,
+        timeout: const Duration(seconds: 30),
+      );
+      return true;
+    } catch (_) {
+      if (!mounted) return false;
+      final remaining =
+          AiQueueOfflineRunner.instance.statusOf(_draftId).pendingCount;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('AI не успел'),
+          content: Text(
+            'Не удалось отправить $remaining AI-запрос(ов). '
+            'Сдать отчёт без AI-описаний?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Подождать'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Сдать без AI'),
+            ),
+          ],
+        ),
+      );
+      return proceed ?? false;
+    }
+  }
+
   Future<void> _finishReport() async {
     if (_backendUploadInProgress) {
       ScaffoldMessenger.of(
@@ -2490,6 +2543,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
 
     _ensureSummaryAutofill(force: true);
+    final canProceed = await _flushAiQueueBeforeSubmit();
+    if (!canProceed) return;
     // Online-only: after finalizing on the server we don't persist a
     // local copy — the list reloads via Storage.GetSpecialistReport and
     // a tap opens via Storage.ViewSpecialistReport + ObjectStorage.
@@ -2505,6 +2560,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       return;
     }
     await SparkJoyStorage.purgeDraftAfterUpload(_draftId);
+    await AiQueueOfflineRunner.instance.dropDraft(_draftId);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,

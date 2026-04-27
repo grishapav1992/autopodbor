@@ -274,6 +274,20 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     } else {
       _backendUploadState = <String, dynamic>{};
     }
+    final rawAiQueue = draft['aiQueue'];
+    final aiQueueMap = rawAiQueue is Map
+        ? Map<String, dynamic>.from(rawAiQueue)
+        : null;
+    _reportController.hydrateAiChatStateFromDraft(aiQueueMap);
+    // Hydrate the offline runner synchronously: it walks an in-memory
+    // map and never hits I/O, so we don't pay much for awaiting and we
+    // close a real race window — a `runner.enqueue` racing the rebuild
+    // would otherwise be wiped by `state.pending.clear()` here.
+    AiQueueOfflineRunner.instance.hydrateFromDraft(
+      draftId: _draftId,
+      rawAiQueue: aiQueueMap,
+    );
+
     unawaited(_compactInlineDraftMediaIfNeeded());
     unawaited(_loadBusinessStatusFromStorage());
   }

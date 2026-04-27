@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:get/get.dart';
 
@@ -122,6 +124,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     // so `hasSavedSession` would flip the app straight back into Home
     // on the next launch. Clear both here.
     await SparkJoyStorage.logout();
+    await AiQueueOfflineRunner.instance.resetAll();
+    AiQueueApi.resetCaches();
     await UserSimplePreferences.clearAuthTokens();
     if (!mounted) return;
     setState(() {

@@ -555,6 +555,12 @@ class StorageApi {
     }
   }
 
+  /// Public entry point to the access-token refresh chain. Other clients
+  /// (e.g. [AiQueueApi]) call this to reuse the same single-flight refresh
+  /// path instead of duplicating it. Returns `true` when the cached
+  /// tokens were updated.
+  static Future<bool> tryRefreshTokens() => _tryRefreshTokens();
+
   static Future<bool> _tryRefreshTokens() async {
     try {
       final refreshToken = await UserSimplePreferences.getRefreshToken();
