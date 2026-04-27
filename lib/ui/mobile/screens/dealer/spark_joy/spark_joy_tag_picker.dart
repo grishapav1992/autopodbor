@@ -91,11 +91,11 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   Timer? _refetchDebounce;
   int _refetchSeq = 0;
 
-  // null = "all", otherwise 'serious' | 'minor'. Filters the catalog
-  // list (and the create-rows below it) by severity. Does NOT affect
-  // the selected-chips row at the top — that one always shows
-  // everything the user has picked.
-  String? _severityFilter;
+  // 'serious' | 'minor'. The catalog is always scoped to one
+  // severity at a time — the segmented control at the top swaps
+  // between them. Does NOT affect the selected-chips row, which
+  // always shows everything the user has picked across both segments.
+  String _severityFilter = 'serious';
 
   @override
   void initState() {
@@ -162,7 +162,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     setState(() => _busy = false);
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось создать тег')),
+        const SnackBar(content: Text('Не удалось создать повреждение')),
       );
       return;
     }
@@ -184,7 +184,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Удалить тег?'),
+        title: const Text('Удалить повреждение?'),
         content: Text('«${opt.label}» будет удалён из вашего каталога.'),
         actions: [
           TextButton(
@@ -205,7 +205,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     setState(() => _busy = false);
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось удалить тег')),
+        const SnackBar(content: Text('Не удалось удалить повреждение')),
       );
       return;
     }
@@ -226,11 +226,8 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   /// the natural options order. With a query we filter by
   /// case-insensitive substring against label.
   List<_MediaTagOption> _filtered() {
-    Iterable<_MediaTagOption> pool = _options;
-    final severity = _severityFilter;
-    if (severity != null) {
-      pool = pool.where((o) => o.severity == severity);
-    }
+    Iterable<_MediaTagOption> pool =
+        _options.where((o) => o.severity == _severityFilter);
     if (_query.isNotEmpty) {
       return pool
           .where((o) => o.label.toLowerCase().contains(_query))
@@ -281,21 +278,15 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     return [...serious, ...minor];
   }
 
-  Color _severityColor(String severity) =>
-      severity == 'serious' ? kRedColor : kYellowColor;
-
   @override
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.of(context).viewInsets;
     final filtered = _filtered();
-    // Create-rows reflect the active severity filter — if the user
-    // scoped the catalog to "Серьёзные", we don't offer to create a
-    // non-serious tag below it (and vice versa). With no filter we
-    // surface both rows so the user explicitly picks severity.
-    final showCreateRows = _query.isNotEmpty && !_hasExactMatch();
-    final createSeverities = _severityFilter == null
-        ? const <String>['serious', 'minor']
-        : <String>[_severityFilter!];
+    // Create-row inherits the active severity from the segmented
+    // control: with "Серьёзные" active, the no-match query offers
+    // "Создать серьёзное повреждение" (and vice versa). Single row,
+    // not a choice — the severity is already explicit above.
+    final showCreateRow = _query.isNotEmpty && !_hasExactMatch();
 
     return FractionallySizedBox(
       heightFactor: 0.9,
@@ -338,7 +329,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
               ),
               child: TextField(
                 controller: _searchController,
-                decoration: sparkInputDecoration('Поиск тегов…').copyWith(
+                decoration: sparkInputDecoration('Поиск повреждений…').copyWith(
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _query.isEmpty
                       ? null
@@ -354,30 +345,27 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
             _buildSeverityFilter(),
             const Divider(height: 1),
             Expanded(
-              child: filtered.isEmpty && !showCreateRows
+              child: filtered.isEmpty && !showCreateRow
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(SparkSpace.xxxl),
                         child: MyText(
                           text:
-                              'Ничего не найдено. Введите запрос, чтобы создать новый тег.',
+                              'Ничего не найдено. Введите запрос, чтобы создать новое повреждение.',
                           size: SparkTextSize.body,
                           color: kGreyColor,
                         ),
                       ),
                     )
                   : ListView.separated(
-                      itemCount: filtered.length +
-                          (showCreateRows ? createSeverities.length : 0),
+                      itemCount: filtered.length + (showCreateRow ? 1 : 0),
                       separatorBuilder: (_, _) =>
-                          const Divider(height: 1, indent: 56),
+                          const Divider(height: 1, indent: 24),
                       itemBuilder: (_, index) {
                         if (index < filtered.length) {
                           return _buildRow(filtered[index]);
                         }
-                        return _buildCreateRow(
-                          createSeverities[index - filtered.length],
-                        );
+                        return _buildCreateRow(_severityFilter);
                       },
                     ),
             ),
@@ -407,8 +395,9 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
           separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (_, i) {
             final label = display[i].label;
-            final opt = display[i].opt;
-            final color = _severityColor(opt.severity);
+            // Neutral chip — severity is already implied by the
+            // grouping (serious-first) and irrelevant for re-tap-to-
+            // remove. No coloured tint.
             return Material(
               color: Colors.transparent,
               child: InkWell(
@@ -420,7 +409,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                     vertical: SparkSpace.xs,
                   ),
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.18),
+                    color: kLightGreyColor,
                     borderRadius: BorderRadius.circular(SparkRadius.pill),
                   ),
                   child: Row(
@@ -449,74 +438,40 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   }
 
   Widget _buildSeverityFilter() {
-    // Horizontal scroll keeps the row safe when locale-translated
-    // labels (or future filter additions) push past the available
-    // width. Russian "Незначительные" alone is long enough that on
-    // iPhone SE / split-view widths a plain Row overflows.
+    // Material's SegmentedButton is the native pattern for a
+    // mutually-exclusive two-segment switch — built-in keyboard /
+    // screen-reader semantics, automatic platform tinting, no need
+    // to roll our own state. Two short Russian labels ("Серьёзные" /
+    // "Незначительные") fit comfortably even on iPhone SE.
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-        0,
+        SparkSpace.xxxl,
         SparkSpace.xs,
-        0,
+        SparkSpace.xxxl,
         SparkSpace.sm,
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xxxl),
-        child: Row(
-          children: [
-            _filterPill(label: 'Все', value: null),
-            const SizedBox(width: SparkSpace.sm),
-            _filterPill(label: 'Серьёзные', value: 'serious'),
-            const SizedBox(width: SparkSpace.sm),
-            _filterPill(label: 'Незначительные', value: 'minor'),
+      child: SizedBox(
+        width: double.infinity,
+        child: SegmentedButton<String>(
+          segments: const [
+            ButtonSegment<String>(
+              value: 'serious',
+              label: Text('Серьёзные'),
+            ),
+            ButtonSegment<String>(
+              value: 'minor',
+              label: Text('Незначительные'),
+            ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _filterPill({required String label, required String? value}) {
-    final active = _severityFilter == value;
-    final color = value == null ? kSecondaryColor : _severityColor(value);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-        onTap: () {
-          if (_severityFilter == value) return;
-          setState(() => _severityFilter = value);
-          HapticFeedback.selectionClick();
-        },
-        child: ConstrainedBox(
-          // ≥36pt — chip-style minimum; below that fingers slip onto
-          // the neighbouring pill on quick taps.
-          constraints: const BoxConstraints(minHeight: 36),
-          child: Container(
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.xl,
-              vertical: SparkSpace.sm,
-            ),
-            decoration: BoxDecoration(
-              color: active
-                  ? color.withValues(alpha: 0.18)
-                  : Colors.transparent,
-              border: Border.all(
-                color: active ? color : kBorderColor,
-              ),
-              borderRadius: BorderRadius.circular(SparkRadius.pill),
-            ),
-            child: MyText(
-              text: label,
-              size: SparkTextSize.caption,
-              weight: active ? FontWeight.w700 : FontWeight.w500,
-              // Use the regular tertiary text colour (not kGreyColor)
-              // so inactive pills read as a real control rather than
-              // a passive label.
-              color: active ? color : kTertiaryColor,
-            ),
-          ),
+          selected: {_severityFilter},
+          showSelectedIcon: false,
+          onSelectionChanged: (selection) {
+            if (selection.isEmpty) return;
+            final next = selection.first;
+            if (next == _severityFilter) return;
+            setState(() => _severityFilter = next);
+            HapticFeedback.selectionClick();
+          },
         ),
       ),
     );
@@ -524,9 +479,12 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
   Widget _buildRow(_MediaTagOption opt) {
     final selected = _isSelected(opt.label);
-    final color = _severityColor(opt.severity);
+    // Selection signal is intentionally minimal: bold label + leading
+    // check icon. No coloured tint, no severity dot — severity is
+    // already conveyed by the segmented control above the list, and
+    // a coloured row felt heavier than the rest of the form.
     return Material(
-      color: selected ? color.withValues(alpha: 0.10) : Colors.transparent,
+      color: Colors.transparent,
       child: InkWell(
         onTap: () => _toggle(opt.label),
         onLongPress: opt.isCustom ? () => unawaited(_delete(opt)) : null,
@@ -539,30 +497,26 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: color,
-                    shape: BoxShape.circle,
-                  ),
+                SizedBox(
+                  width: SparkSize.iconLg,
+                  child: selected
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: SparkSize.iconLg,
+                          color: kSecondaryColor,
+                        )
+                      : null,
                 ),
-                const SizedBox(width: SparkSpace.xxxl),
+                const SizedBox(width: SparkSpace.xl),
                 Expanded(
                   child: MyText(
                     text: opt.label,
                     size: SparkTextSize.body,
-                    weight:
-                        selected ? FontWeight.w700 : FontWeight.w400,
+                    weight: selected ? FontWeight.w700 : FontWeight.w400,
+                    color: selected ? kTertiaryColor : kTertiaryColor,
                   ),
                 ),
-                if (selected)
-                  const Icon(
-                    Icons.check_rounded,
-                    size: SparkSize.iconLg,
-                  ),
-                if (opt.isCustom) ...[
-                  const SizedBox(width: SparkSpace.sm),
+                if (opt.isCustom)
                   IconButton(
                     icon: const Icon(
                       Icons.close_rounded,
@@ -570,14 +524,13 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                       color: kGreyColor,
                     ),
                     onPressed: () => unawaited(_delete(opt)),
-                    tooltip: 'Удалить тег',
+                    tooltip: 'Удалить повреждение',
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
                       minWidth: 32,
                       minHeight: 32,
                     ),
                   ),
-                ],
               ],
             ),
           ),
@@ -588,10 +541,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
   Widget _buildCreateRow(String severity) {
     final query = _searchController.text.trim();
-    final color = _severityColor(severity);
-    final label = severity == 'serious'
-        ? 'Создать как серьёзный: «$query»'
-        : 'Создать как незначительный: «$query»';
+    final adjective = severity == 'serious' ? 'серьёзное' : 'незначительное';
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -605,17 +555,17 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
             ),
             child: Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.add_circle_outline_rounded,
-                  color: color,
+                  color: kSecondaryColor,
                   size: SparkSize.iconLg,
                 ),
-                const SizedBox(width: SparkSpace.xxxl),
+                const SizedBox(width: SparkSpace.xl),
                 Expanded(
                   child: MyText(
-                    text: label,
+                    text: 'Создать $adjective повреждение: «$query»',
                     size: SparkTextSize.body,
-                    color: color,
+                    color: kSecondaryColor,
                     weight: FontWeight.w600,
                   ),
                 ),

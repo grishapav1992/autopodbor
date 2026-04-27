@@ -661,7 +661,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                       if (tagGroupsAll.isEmpty)
                                         const MyText(
                                           text:
-                                              'Для выбранного элемента теги не заданы',
+                                              'Для выбранного элемента повреждения не заданы',
                                           size: SparkTextSize.caption,
                                           color: kGreyColor,
                                         )
@@ -684,7 +684,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                   final result =
                                                       await _showSparkJoyTagPicker(
                                                         pillCtx,
-                                                        title: 'Теги',
+                                                        title: 'Повреждения',
                                                         options: allOptions,
                                                         initialSelected:
                                                             List<String>.from(
@@ -904,8 +904,8 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                           text:
                                                               selectedCount ==
                                                                   0
-                                                              ? 'Выбрать теги'
-                                                              : 'Теги ($selectedCount)',
+                                                              ? 'Выбрать повреждения'
+                                                              : 'Повреждения ($selectedCount)',
                                                           size: SparkTextSize
                                                               .body,
                                                           weight: FontWeight
