@@ -246,6 +246,16 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     );
   }
 
+  /// Symmetric delete for a user-created test-drive tag (no scope key
+  /// — test-drive tags share one bucket on the server). Returns true
+  /// on a successful delete; false routes the deletion through the
+  /// pending-delete queue for the next refresh.
+  Future<bool> _removeTestDriveCustomTag({
+    required String tagName,
+  }) {
+    return _tagService.removeTestDriveTag(tagName: tagName);
+  }
+
   /// Re-fetches the inspection tag suggestions for [groupKey] with the
   /// currently selected tags as `selectedTagIds`. The server uses that
   /// to sort unselected tags by co-occurrence — tags often picked

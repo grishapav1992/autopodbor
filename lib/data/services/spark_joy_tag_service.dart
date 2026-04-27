@@ -525,14 +525,22 @@ class SparkJoyTagService {
         }
         id = _idByKey[cacheKey];
       } catch (_) {
-        await _enqueuePendingDelete(name: tagName, section: section);
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'inspection',
+          section: section,
+        );
         return false;
       }
       if (id == null || id <= 0) {
         debugPrint(
           '[TagSync] removeInspectionTag: id not resolved for "$tagName" in section=$section — enqueued',
         );
-        await _enqueuePendingDelete(name: tagName, section: section);
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'inspection',
+          section: section,
+        );
         return false;
       }
     }
@@ -549,25 +557,104 @@ class SparkJoyTagService {
       debugPrint(
         '[TagSync] removeInspectionTag rpc failed for "$tagName" id=$id: $e — enqueued',
       );
-      await _enqueuePendingDelete(name: tagName, section: section);
+      await _enqueuePendingDelete(
+        name: tagName,
+        step: 'inspection',
+        section: section,
+      );
+      return false;
+    }
+  }
+
+  /// Symmetric counterpart to [removeInspectionTag] for the
+  /// test-drive step. Test-drive tags have no section — the cache key
+  /// uses `step='test_drive'` and a null section. Otherwise the
+  /// resolve-id-or-enqueue flow mirrors the inspection path.
+  Future<bool> removeTestDriveTag({
+    required String tagName,
+  }) async {
+    final cacheKey = _composeKey(
+      step: 'test_drive',
+      section: null,
+      name: tagName,
+    );
+    var id = _idByKey[cacheKey];
+    if (id == null || id <= 0) {
+      try {
+        final tags = await storage_api.StorageApi.getUserTags(
+          step: 'test_drive',
+        );
+        for (final tag in tags) {
+          if (tag.id <= 0 || tag.name.trim().isEmpty) continue;
+          _idByKey[_composeKey(
+            step: tag.step ?? 'test_drive',
+            section: tag.section,
+            name: tag.name,
+          )] = tag.id;
+        }
+        id = _idByKey[cacheKey];
+      } catch (_) {
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'test_drive',
+          section: null,
+        );
+        return false;
+      }
+      if (id == null || id <= 0) {
+        debugPrint(
+          '[TagSync] removeTestDriveTag: id not resolved for "$tagName" — enqueued',
+        );
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'test_drive',
+          section: null,
+        );
+        return false;
+      }
+    }
+    try {
+      await storage_api.StorageApi.removeUserTag(
+        id: id,
+        step: 'test_drive',
+      );
+      _evictTagByKey(cacheKey);
+      await _persistCatalogSnapshot();
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[TagSync] removeTestDriveTag rpc failed for "$tagName" id=$id: $e — enqueued',
+      );
+      await _enqueuePendingDelete(
+        name: tagName,
+        step: 'test_drive',
+        section: null,
+      );
       return false;
     }
   }
 
   /// Adds a pending deletion so [flushPendingDeletes] can retry later.
-  /// Dedupes by (nameKey, section). Serialized via [_withStorageLock] so
-  /// rapid successive X-taps don't lose entries at the read-write gap.
+  /// Dedupes by (nameKey, step, section). Serialized via
+  /// [_withStorageLock] so rapid successive X-taps don't lose entries
+  /// at the read-write gap.
   Future<void> _enqueuePendingDelete({
     required String name,
+    required String step,
     required String? section,
   }) {
     return _withStorageLock(
-      () => _enqueuePendingDeleteImpl(name: name, section: section),
+      () => _enqueuePendingDeleteImpl(
+        name: name,
+        step: step,
+        section: section,
+      ),
     );
   }
 
   Future<void> _enqueuePendingDeleteImpl({
     required String name,
+    required String step,
     required String? section,
   }) async {
     final normalized = name.trim();
@@ -576,12 +663,13 @@ class SparkJoyTagService {
     final key = normalized.toLowerCase();
     final deduped = queue.where((item) {
       final itemName = (item['name'] ?? '').toString().trim().toLowerCase();
+      final itemStep = (item['step'] as String?) ?? 'inspection';
       final itemSection = item['section']?.toString();
-      return !(itemName == key && itemSection == section);
+      return !(itemName == key && itemStep == step && itemSection == section);
     }).toList()
       ..add({
         'name': normalized,
-        'step': 'inspection',
+        'step': step,
         'section': section,
       });
     await SparkJoyStorage.replacePendingTagDeletes(deduped);
