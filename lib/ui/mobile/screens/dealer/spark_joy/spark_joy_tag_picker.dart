@@ -1,0 +1,485 @@
+part of 'spark_joy_create_report_screen.dart';
+
+/// Bottom-sheet picker that supersedes the old chip-wrap +
+/// management-mode for inspection tags. One virtualized list mixes
+/// system + custom tags (severity shown via a leading dot, custom
+/// tags carry an inline delete button). Sticky search filters; if
+/// the query has no exact match, two "create" rows appear at the
+/// bottom of the list (serious / non-serious).
+///
+/// Why a sheet instead of inline chips:
+///   * Scales to 1000+ tags via `ListView.separated` virtualization.
+///   * Re-prioritisation of unselected tags happens out of sight
+///     (selected zone is sticky and never reorders).
+///   * 56pt rows give finger-friendly tap targets.
+///
+/// Returns the final selected names on Готово, or `null` if the user
+/// dismisses the sheet without confirming. Selection changes also
+/// stream out via [onSelectionChanged] on every toggle so the host
+/// can fire the co-occurrence-learning refetch in real time.
+Future<List<String>?> _showSparkJoyTagPicker(
+  BuildContext context, {
+  required String title,
+  required List<_MediaTagOption> options,
+  required List<String> initialSelected,
+  List<String> initialOrder = const <String>[],
+  required Future<bool> Function(String name, String severity) onCreateCustom,
+  required Future<bool> Function(String name) onDeleteCustom,
+  required ValueChanged<List<String>> onSelectionChanged,
+}) {
+  return showModalBottomSheet<List<String>>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    useSafeArea: true,
+    builder: (_) => _SparkJoyTagPickerSheet(
+      title: title,
+      options: options,
+      initialSelected: initialSelected,
+      initialOrder: initialOrder,
+      onCreateCustom: onCreateCustom,
+      onDeleteCustom: onDeleteCustom,
+      onSelectionChanged: onSelectionChanged,
+    ),
+  );
+}
+
+class _SparkJoyTagPickerSheet extends StatefulWidget {
+  const _SparkJoyTagPickerSheet({
+    required this.title,
+    required this.options,
+    required this.initialSelected,
+    required this.initialOrder,
+    required this.onCreateCustom,
+    required this.onDeleteCustom,
+    required this.onSelectionChanged,
+  });
+
+  final String title;
+  final List<_MediaTagOption> options;
+  final List<String> initialSelected;
+  final List<String> initialOrder;
+  final Future<bool> Function(String name, String severity) onCreateCustom;
+  final Future<bool> Function(String name) onDeleteCustom;
+  final ValueChanged<List<String>> onSelectionChanged;
+
+  @override
+  State<_SparkJoyTagPickerSheet> createState() =>
+      _SparkJoyTagPickerSheetState();
+}
+
+class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
+  late List<_MediaTagOption> _options;
+  late List<String> _selected;
+  late List<String> _order;
+  final _searchController = TextEditingController();
+  String _query = '';
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _options = [...widget.options];
+    _selected = [...widget.initialSelected];
+    _order = [...widget.initialOrder];
+    _searchController.addListener(_onQueryChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onQueryChanged() {
+    final next = _searchController.text.trim().toLowerCase();
+    if (next == _query) return;
+    setState(() => _query = next);
+  }
+
+  bool _isSelected(String label) {
+    final lower = label.toLowerCase();
+    return _selected.any((l) => l.toLowerCase() == lower);
+  }
+
+  void _toggle(String label) {
+    setState(() {
+      final lower = label.toLowerCase();
+      if (_isSelected(label)) {
+        _selected.removeWhere((l) => l.toLowerCase() == lower);
+      } else {
+        _selected.add(label);
+      }
+    });
+    HapticFeedback.selectionClick();
+    widget.onSelectionChanged(List<String>.from(_selected));
+  }
+
+  Future<void> _create(String severity) async {
+    final raw = _searchController.text.trim();
+    if (raw.isEmpty || _busy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _busy = true);
+    final ok = await widget.onCreateCustom(raw, severity);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось создать тег')),
+      );
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _options = [
+        ..._options,
+        _MediaTagOption(label: raw, severity: severity, isCustom: true),
+      ];
+      if (!_isSelected(raw)) _selected.add(raw);
+      _searchController.clear();
+      _query = '';
+    });
+    widget.onSelectionChanged(List<String>.from(_selected));
+  }
+
+  Future<void> _delete(_MediaTagOption opt) async {
+    if (_busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить тег?'),
+        content: Text('«${opt.label}» будет удалён из вашего каталога.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    final ok = await widget.onDeleteCustom(opt.label);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось удалить тег')),
+      );
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    final lower = opt.label.toLowerCase();
+    setState(() {
+      _options = _options
+          .where((o) => o.label.toLowerCase() != lower)
+          .toList(growable: false);
+      _selected.removeWhere((l) => l.toLowerCase() == lower);
+    });
+    widget.onSelectionChanged(List<String>.from(_selected));
+  }
+
+  /// Returns options to display in the main list. With an empty query
+  /// we honour [_order] when present (server-prioritised), otherwise
+  /// the original options order. With a non-empty query we filter by
+  /// case-insensitive substring against label.
+  List<_MediaTagOption> _filtered() {
+    if (_query.isNotEmpty) {
+      return _options
+          .where((o) => o.label.toLowerCase().contains(_query))
+          .toList(growable: false);
+    }
+    if (_order.isEmpty) return _options;
+    final byLower = <String, _MediaTagOption>{
+      for (final o in _options) o.label.toLowerCase(): o,
+    };
+    final placed = <String>{};
+    final ordered = <_MediaTagOption>[];
+    for (final name in _order) {
+      final lower = name.toLowerCase();
+      final opt = byLower[lower];
+      if (opt != null && placed.add(lower)) ordered.add(opt);
+    }
+    for (final o in _options) {
+      if (placed.add(o.label.toLowerCase())) ordered.add(o);
+    }
+    return ordered;
+  }
+
+  bool _hasExactMatch() {
+    if (_query.isEmpty) return true;
+    return _options.any((o) => o.label.toLowerCase() == _query);
+  }
+
+  Color _severityColor(String severity) =>
+      severity == 'serious' ? kRedColor : kYellowColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final filtered = _filtered();
+    final showCreateRows = _query.isNotEmpty && !_hasExactMatch();
+
+    return FractionallySizedBox(
+      heightFactor: 0.9,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                SparkSpace.xl,
+                SparkSpace.xs,
+                SparkSpace.xs,
+                SparkSpace.sm,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: widget.title,
+                      size: SparkTextSize.titleLg,
+                      weight: FontWeight.w800,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => Navigator.of(context).pop(_selected),
+                    child: const Text('Готово'),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                SparkSpace.xxxl,
+                SparkSpace.md,
+                SparkSpace.xxxl,
+                SparkSpace.sm,
+              ),
+              child: TextField(
+                controller: _searchController,
+                decoration: sparkInputDecoration('Поиск тегов…').copyWith(
+                  prefixIcon: const Icon(Icons.search_rounded),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close_rounded),
+                          onPressed: _searchController.clear,
+                          tooltip: 'Очистить',
+                        ),
+                ),
+              ),
+            ),
+            if (_selected.isNotEmpty) _buildSelectedRow(),
+            const Divider(height: 1),
+            Expanded(
+              child: filtered.isEmpty && !showCreateRows
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(SparkSpace.xxxl),
+                        child: MyText(
+                          text:
+                              'Ничего не найдено. Введите запрос, чтобы создать новый тег.',
+                          size: SparkTextSize.body,
+                          color: kGreyColor,
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      itemCount:
+                          filtered.length + (showCreateRows ? 2 : 0),
+                      separatorBuilder: (_, _) =>
+                          const Divider(height: 1, indent: 56),
+                      itemBuilder: (_, index) {
+                        if (index < filtered.length) {
+                          return _buildRow(filtered[index]);
+                        }
+                        // Create rows: serious first, non-serious second.
+                        final severity = index == filtered.length
+                            ? 'serious'
+                            : 'minor';
+                        return _buildCreateRow(severity);
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectedRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xxxl,
+        SparkSpace.xs,
+        SparkSpace.xxxl,
+        SparkSpace.sm,
+      ),
+      child: SizedBox(
+        height: 32,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.zero,
+          itemCount: _selected.length,
+          separatorBuilder: (_, _) => const SizedBox(width: 6),
+          itemBuilder: (_, i) {
+            final label = _selected[i];
+            final lower = label.toLowerCase();
+            final opt = _options.firstWhere(
+              (o) => o.label.toLowerCase() == lower,
+              orElse: () =>
+                  _MediaTagOption(label: label, severity: 'minor'),
+            );
+            final color = _severityColor(opt.severity);
+            return Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(SparkRadius.pill),
+                onTap: () => _toggle(label),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.xl,
+                    vertical: SparkSpace.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MyText(
+                        text: label,
+                        size: SparkTextSize.body,
+                        weight: FontWeight.w600,
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.close_rounded,
+                        size: 14,
+                        color: kGreyColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRow(_MediaTagOption opt) {
+    final selected = _isSelected(opt.label);
+    final color = _severityColor(opt.severity);
+    return Material(
+      color: selected ? color.withValues(alpha: 0.10) : Colors.transparent,
+      child: InkWell(
+        onTap: () => _toggle(opt.label),
+        onLongPress: opt.isCustom ? () => unawaited(_delete(opt)) : null,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.xxxl,
+              vertical: SparkSpace.xl,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.xxxl),
+                Expanded(
+                  child: MyText(
+                    text: opt.label,
+                    size: SparkTextSize.body,
+                    weight:
+                        selected ? FontWeight.w700 : FontWeight.w400,
+                  ),
+                ),
+                if (selected)
+                  const Icon(
+                    Icons.check_rounded,
+                    size: SparkSize.iconLg,
+                  ),
+                if (opt.isCustom) ...[
+                  const SizedBox(width: SparkSpace.sm),
+                  IconButton(
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: SparkSize.iconMd,
+                      color: kGreyColor,
+                    ),
+                    onPressed: () => unawaited(_delete(opt)),
+                    tooltip: 'Удалить тег',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 32,
+                      minHeight: 32,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCreateRow(String severity) {
+    final query = _searchController.text.trim();
+    final color = _severityColor(severity);
+    final label = severity == 'serious'
+        ? 'Создать как серьёзный: «$query»'
+        : 'Создать как незначительный: «$query»';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _busy ? null : () => unawaited(_create(severity)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.xxxl,
+              vertical: SparkSpace.xl,
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.add_circle_outline_rounded,
+                  color: color,
+                  size: SparkSize.iconLg,
+                ),
+                const SizedBox(width: SparkSpace.xxxl),
+                Expanded(
+                  child: MyText(
+                    text: label,
+                    size: SparkTextSize.body,
+                    color: color,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

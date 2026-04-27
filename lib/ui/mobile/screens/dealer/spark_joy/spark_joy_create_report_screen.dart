@@ -52,6 +52,7 @@ part 'spark_joy_summary_widgets.dart';
 part 'spark_joy_vin_scanner.dart';
 part 'spark_joy_media_editor.dart';
 part 'spark_joy_media_inspection_editor.dart';
+part 'spark_joy_tag_picker.dart';
 part 'spark_joy_media_lightbox.dart';
 part 'spark_joy_media_rules.dart';
 part 'spark_joy_completion_rules.dart';
