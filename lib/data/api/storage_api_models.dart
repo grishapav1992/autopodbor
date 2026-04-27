@@ -153,6 +153,12 @@ class UserTag {
   final UserTagType type;
   final String? createdAt;
 
+  /// Owner's user id from `Storage.GetUserTags` response. `null` means
+  /// it's a system / shared tag — only the user's own tags (non-null
+  /// userId) can be deleted via `Storage.RemoveUserTag`. Use [isCustom]
+  /// for UI delete-affordance gating.
+  final int? userId;
+
   const UserTag({
     required this.id,
     required this.name,
@@ -161,9 +167,15 @@ class UserTag {
     this.step,
     this.section,
     this.createdAt,
+    this.userId,
   });
 
   bool get isSerious => type == UserTagType.serious;
+
+  /// True for tags the current user (or any user) created. False for
+  /// system / shared tags. Mirrors the server's `RemoveUserTag`
+  /// permission model: system tags can't be removed.
+  bool get isCustom => userId != null;
 }
 
 /// Two-value severity of a [UserTag]. No `null` variant — the boundary

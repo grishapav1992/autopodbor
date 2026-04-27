@@ -1663,6 +1663,10 @@ class StorageApi {
       slug: (item['slug'] ?? '').toString(),
       type: UserTagType.normalize(item['type']),
       createdAt: nullableString(item['createdAt']),
+      // userId: null = system tag, int = current user's own tag
+      // (or another user's, if the server ever supports sharing).
+      // Used downstream to gate the delete-affordance in the editor.
+      userId: _asInt(item['userId']),
     );
   }
 

@@ -90,6 +90,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     // Seed from persisted catalog first — makes id resolution work offline
     // and before the server fan-out completes.
     await _tagService.hydrateFromCache();
+    _seedCustomTagsFromServer();
     final inspectionSelected = _collectSelectedTagIdsByApiSection();
     final genericInspection = <int>{
       for (final ids in inspectionSelected.values) ...ids,
@@ -102,6 +103,57 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         step: 'test_drive',
       ),
     );
+    // Re-seed after server fan-out lands — first call covered the
+    // offline cache, this one picks up tags added in other devices /
+    // sessions since the cache was last persisted.
+    _seedCustomTagsFromServer();
+  }
+
+  /// Folds the user's server-owned inspection tags (where
+  /// `userId != null`) into `_mediaCustomTagsByScope` /
+  /// `_mediaCustomSeriousTagsByScope`. Without this, tags created in
+  /// previous sessions render in the editor as system-style chips
+  /// (no delete affordance). Local-only entries already in the maps
+  /// are preserved — server data is unioned in, never overwrites.
+  void _seedCustomTagsFromServer() {
+    final byGroup = _tagService.customInspectionTagsByGroupKey();
+    if (byGroup.isEmpty) return;
+    final next = <String, List<String>>{
+      for (final e in _mediaCustomTagsByScope.entries) e.key: [...e.value],
+    };
+    final nextSerious = <String, List<String>>{
+      for (final e in _mediaCustomSeriousTagsByScope.entries) e.key: [...e.value],
+    };
+    var changed = false;
+    for (final entry in byGroup.entries) {
+      final groupKey = entry.key;
+      // Use the plain group key as scope — interior_dashboard /
+      // diagnostics sub-typed scopes inherit from the parent scope at
+      // render time; the server doesn't split tags by elementType,
+      // so we don't either.
+      final scope = groupKey;
+      final existing = next[scope] ?? const <String>[];
+      final existingLower = existing.map((s) => s.toLowerCase()).toSet();
+      final mergedSerious = nextSerious[scope] ?? <String>[];
+      final mergedSeriousLower = mergedSerious.map((s) => s.toLowerCase()).toSet();
+      final list = [...existing];
+      for (final tag in entry.value) {
+        if (existingLower.add(tag.name.toLowerCase())) {
+          list.add(tag.name);
+          changed = true;
+        }
+        if (tag.isSerious &&
+            mergedSeriousLower.add(tag.name.toLowerCase())) {
+          mergedSerious.add(tag.name);
+          changed = true;
+        }
+      }
+      if (list.isNotEmpty) next[scope] = list;
+      if (mergedSerious.isNotEmpty) nextSerious[scope] = mergedSerious;
+    }
+    if (!changed) return;
+    _mediaCustomTagsByScope = next;
+    _mediaCustomSeriousTagsByScope = nextSerious;
   }
 
   /// Collects already-picked inspection tag IDs grouped by API section
