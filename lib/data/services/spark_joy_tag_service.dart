@@ -181,6 +181,24 @@ class SparkJoyTagService {
   /// keys.
   List<storage_api.UserTag> _lastSnapshot = const <storage_api.UserTag>[];
 
+  /// Symmetric eviction helper. Removing a tag has to clear three
+  /// in-memory tracks at once or stale entries linger:
+  ///   - [_idByKey] (composite key → server id)
+  ///   - [_userIdByKey] (composite key → owner)
+  ///   - [_lastSnapshot] (ordered list used by [customInspectionTagsByGroupKey])
+  /// Without this the deleted tag keeps getting re-seeded into
+  /// `_mediaCustomTagsByScope` on the next refresh, even though the
+  /// server has dropped it.
+  void _evictTagByKey(String cacheKey) {
+    final id = _idByKey.remove(cacheKey);
+    _userIdByKey.remove(cacheKey);
+    if (id != null && _lastSnapshot.any((t) => t.id == id)) {
+      _lastSnapshot = _lastSnapshot
+          .where((t) => t.id != id)
+          .toList(growable: false);
+    }
+  }
+
   /// Reverse lookup: given a server tag id, return the human-readable
   /// name. Used by the completed-report hydrator to turn `seriousDamageTags:
   /// [int]` from the server back into UI tag labels. Linear scan — the
@@ -524,7 +542,7 @@ class SparkJoyTagService {
         step: 'inspection',
         section: section,
       );
-      _idByKey.remove(cacheKey);
+      _evictTagByKey(cacheKey);
       await _persistCatalogSnapshot();
       return true;
     } catch (e) {
@@ -609,7 +627,7 @@ class SparkJoyTagService {
           step: step,
           section: section,
         );
-        _idByKey.remove(cacheKey);
+        _evictTagByKey(cacheKey);
         mutated = true;
       } catch (e) {
         debugPrint(

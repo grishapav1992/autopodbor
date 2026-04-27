@@ -138,14 +138,28 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       final mergedSeriousLower = mergedSerious.map((s) => s.toLowerCase()).toSet();
       final list = [...existing];
       for (final tag in entry.value) {
-        if (existingLower.add(tag.name.toLowerCase())) {
+        final isNameNew = existingLower.add(tag.name.toLowerCase());
+        if (isNameNew) {
           list.add(tag.name);
           changed = true;
         }
-        if (tag.isSerious &&
-            mergedSeriousLower.add(tag.name.toLowerCase())) {
-          mergedSerious.add(tag.name);
-          changed = true;
+        if (tag.isSerious) {
+          final isSeriousNew = mergedSeriousLower.add(tag.name.toLowerCase());
+          if (isSeriousNew) {
+            mergedSerious.add(tag.name);
+            changed = true;
+            if (!isNameNew) {
+              // Local catalog tracked this label as non-serious (in
+              // the names list but not in the serious set); server
+              // disagrees. Server is authoritative — log so the silent
+              // upgrade is visible during debugging.
+              debugPrint(
+                '[TagSync] severity override: "${tag.name}" '
+                '(group=$groupKey) was tracked locally as non-serious; '
+                'server marks it serious — using server value.',
+              );
+            }
+          }
         }
       }
       if (list.isNotEmpty) next[scope] = list;
