@@ -105,6 +105,13 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   bool _settingsMode = false;
   final FocusNode _searchFocusNode = FocusNode();
 
+  // Inline create flow — tapping the "+ Добавить" CTA replaces the
+  // row in-place with a TextField + «Создать» action so the user
+  // never gets bounced to the search bar.
+  bool _addInputOpen = false;
+  final TextEditingController _addController = TextEditingController();
+  final FocusNode _addFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -119,6 +126,8 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     _refetchDebounce?.cancel();
     _searchController.dispose();
     _searchFocusNode.dispose();
+    _addController.dispose();
+    _addFocusNode.dispose();
     super.dispose();
   }
 
@@ -158,6 +167,56 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
       }
     });
     HapticFeedback.selectionClick();
+    _scheduleRefetch();
+  }
+
+  void _openAddInput() {
+    setState(() => _addInputOpen = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _addFocusNode.requestFocus();
+    });
+  }
+
+  void _closeAddInput() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() {
+      _addInputOpen = false;
+      _addController.clear();
+    });
+  }
+
+  /// Inline create — driven by the dedicated _addController so the
+  /// search bar stays untouched. Severity is taken from the active
+  /// segmented filter (the user's already in the right context).
+  Future<void> _submitAdd() async {
+    final raw = _addController.text.trim();
+    if (raw.isEmpty || _busy) return;
+    FocusManager.instance.primaryFocus?.unfocus();
+    setState(() => _busy = true);
+    final ok = await widget.onCreateCustom(raw, _severityFilter);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось создать повреждение')),
+      );
+      return;
+    }
+    HapticFeedback.mediumImpact();
+    setState(() {
+      _options = [
+        ..._options,
+        _MediaTagOption(
+          label: raw,
+          severity: _severityFilter,
+          isCustom: true,
+        ),
+      ];
+      if (!_isSelected(raw)) _selected.add(raw);
+      _addController.clear();
+      _addInputOpen = false;
+    });
     _scheduleRefetch();
   }
 
@@ -321,9 +380,18 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                         : 'Настройки',
                     onPressed: _busy
                         ? null
-                        : () => setState(
-                              () => _settingsMode = !_settingsMode,
-                            ),
+                        : () {
+                            setState(() {
+                              _settingsMode = !_settingsMode;
+                              if (!_settingsMode) {
+                                // Leaving edit mode — collapse the
+                                // inline add field too so the picker
+                                // returns to a clean selection state.
+                                _addInputOpen = false;
+                                _addController.clear();
+                              }
+                            });
+                          },
                   ),
                   TextButton(
                     onPressed: _busy
@@ -454,7 +522,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                     children: [
                       MyText(
                         text: label,
-                        size: SparkTextSize.body,
+                        size: SparkTextSize.label,
                         weight: FontWeight.w600,
                       ),
                       const SizedBox(width: 4),
@@ -547,8 +615,8 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                 Expanded(
                   child: MyText(
                     text: opt.label,
-                    size: SparkTextSize.body,
-                    weight: selected ? FontWeight.w700 : FontWeight.w400,
+                    size: SparkTextSize.label,
+                    weight: selected ? FontWeight.w700 : FontWeight.w500,
                     color: kTertiaryColor,
                   ),
                 ),
@@ -584,17 +652,14 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   }
 
   Widget _buildAddCta() {
+    return _addInputOpen ? _buildAddInput() : _buildAddCtaRow();
+  }
+
+  Widget _buildAddCtaRow() {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: _busy
-            ? null
-            : () {
-                // Focus pulls up the keyboard; user types a name and
-                // the existing "Создать …" row at the bottom of the
-                // catalog handles the actual creation flow.
-                _searchFocusNode.requestFocus();
-              },
+        onTap: _busy ? null : _openAddInput,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 56),
           child: Padding(
@@ -613,7 +678,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                 const Expanded(
                   child: MyText(
                     text: 'Добавить повреждение',
-                    size: SparkTextSize.body,
+                    size: SparkTextSize.label,
                     color: kSecondaryColor,
                     weight: FontWeight.w700,
                   ),
@@ -623,6 +688,60 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildAddInput() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xxxl,
+        SparkSpace.md,
+        SparkSpace.md,
+        SparkSpace.md,
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.add_rounded,
+            color: kSecondaryColor,
+            size: SparkSize.iconLg,
+          ),
+          const SizedBox(width: SparkSpace.xl),
+          Expanded(
+            child: TextField(
+              controller: _addController,
+              focusNode: _addFocusNode,
+              textInputAction: TextInputAction.done,
+              autofocus: true,
+              maxLength: 255,
+              decoration: sparkInputDecoration(
+                _severityFilter == 'serious'
+                    ? 'Серьёзное повреждение'
+                    : 'Незначительное повреждение',
+              ).copyWith(
+                isDense: true,
+                counterText: '',
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.md,
+                ),
+              ),
+              style: const TextStyle(fontSize: SparkTextSize.label),
+              onSubmitted: (_) => unawaited(_submitAdd()),
+            ),
+          ),
+          const SizedBox(width: SparkSpace.sm),
+          TextButton(
+            onPressed: _busy ? null : () => unawaited(_submitAdd()),
+            child: const Text('Создать'),
+          ),
+          IconButton(
+            tooltip: 'Отмена',
+            icon: const Icon(Icons.close_rounded, color: kGreyColor),
+            onPressed: _busy ? null : _closeAddInput,
+          ),
+        ],
       ),
     );
   }
@@ -652,7 +771,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                 Expanded(
                   child: MyText(
                     text: 'Создать $adjective повреждение: «$query»',
-                    size: SparkTextSize.body,
+                    size: SparkTextSize.label,
                     color: kSecondaryColor,
                     weight: FontWeight.w600,
                   ),
