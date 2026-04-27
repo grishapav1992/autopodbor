@@ -91,6 +91,12 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   Timer? _refetchDebounce;
   int _refetchSeq = 0;
 
+  // null = "all", otherwise 'serious' | 'minor'. Filters the catalog
+  // list (and the create-rows below it) by severity. Does NOT affect
+  // the selected-chips row at the top — that one always shows
+  // everything the user has picked.
+  String? _severityFilter;
+
   @override
   void initState() {
     super.initState();
@@ -214,19 +220,26 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     _scheduleRefetch();
   }
 
-  /// Returns options to display in the main list. With an empty query
+  /// Returns options to display in the main list, applying both the
+  /// active severity filter and the search query. With an empty query
   /// we honour [_order] when present (server-prioritised), otherwise
-  /// the original options order. With a non-empty query we filter by
+  /// the natural options order. With a query we filter by
   /// case-insensitive substring against label.
   List<_MediaTagOption> _filtered() {
+    Iterable<_MediaTagOption> pool = _options;
+    final severity = _severityFilter;
+    if (severity != null) {
+      pool = pool.where((o) => o.severity == severity);
+    }
     if (_query.isNotEmpty) {
-      return _options
+      return pool
           .where((o) => o.label.toLowerCase().contains(_query))
           .toList(growable: false);
     }
-    if (_order.isEmpty) return _options;
+    final filtered = pool.toList(growable: false);
+    if (_order.isEmpty) return filtered;
     final byLower = <String, _MediaTagOption>{
-      for (final o in _options) o.label.toLowerCase(): o,
+      for (final o in filtered) o.label.toLowerCase(): o,
     };
     final placed = <String>{};
     final ordered = <_MediaTagOption>[];
@@ -235,7 +248,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
       final opt = byLower[lower];
       if (opt != null && placed.add(lower)) ordered.add(opt);
     }
-    for (final o in _options) {
+    for (final o in filtered) {
       if (placed.add(o.label.toLowerCase())) ordered.add(o);
     }
     return ordered;
@@ -246,6 +259,28 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     return _options.any((o) => o.label.toLowerCase() == _query);
   }
 
+  /// Selected names sorted serious-first, preserving tap order within
+  /// each severity bucket. The underlying [_selected] list keeps the
+  /// raw tap order so the host receives it unchanged on Готово — only
+  /// the chip-row presentation is regrouped.
+  List<({String label, _MediaTagOption opt})> _selectedForDisplay() {
+    final byLower = <String, _MediaTagOption>{
+      for (final o in _options) o.label.toLowerCase(): o,
+    };
+    final serious = <({String label, _MediaTagOption opt})>[];
+    final minor = <({String label, _MediaTagOption opt})>[];
+    for (final label in _selected) {
+      final opt = byLower[label.toLowerCase()] ??
+          _MediaTagOption(label: label, severity: 'minor');
+      if (opt.severity == 'serious') {
+        serious.add((label: label, opt: opt));
+      } else {
+        minor.add((label: label, opt: opt));
+      }
+    }
+    return [...serious, ...minor];
+  }
+
   Color _severityColor(String severity) =>
       severity == 'serious' ? kRedColor : kYellowColor;
 
@@ -253,7 +288,14 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.of(context).viewInsets;
     final filtered = _filtered();
+    // Create-rows reflect the active severity filter — if the user
+    // scoped the catalog to "Серьёзные", we don't offer to create a
+    // non-serious tag below it (and vice versa). With no filter we
+    // surface both rows so the user explicitly picks severity.
     final showCreateRows = _query.isNotEmpty && !_hasExactMatch();
+    final createSeverities = _severityFilter == null
+        ? const <String>['serious', 'minor']
+        : <String>[_severityFilter!];
 
     return FractionallySizedBox(
       heightFactor: 0.9,
@@ -309,6 +351,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
               ),
             ),
             if (_selected.isNotEmpty) _buildSelectedRow(),
+            _buildSeverityFilter(),
             const Divider(height: 1),
             Expanded(
               child: filtered.isEmpty && !showCreateRows
@@ -324,19 +367,17 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                       ),
                     )
                   : ListView.separated(
-                      itemCount:
-                          filtered.length + (showCreateRows ? 2 : 0),
+                      itemCount: filtered.length +
+                          (showCreateRows ? createSeverities.length : 0),
                       separatorBuilder: (_, _) =>
                           const Divider(height: 1, indent: 56),
                       itemBuilder: (_, index) {
                         if (index < filtered.length) {
                           return _buildRow(filtered[index]);
                         }
-                        // Create rows: serious first, non-serious second.
-                        final severity = index == filtered.length
-                            ? 'serious'
-                            : 'minor';
-                        return _buildCreateRow(severity);
+                        return _buildCreateRow(
+                          createSeverities[index - filtered.length],
+                        );
                       },
                     ),
             ),
@@ -347,14 +388,9 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   }
 
   Widget _buildSelectedRow() {
-    // Pre-build a label → option lookup so the inner itemBuilder is
-    // O(1) per chip instead of O(n) firstWhere. Matters when the
-    // catalog grows past a few hundred and the user has many chips
-    // selected — without this each keystroke triggers
-    // O(chips × options) work in the picker.
-    final byLower = <String, _MediaTagOption>{
-      for (final o in _options) o.label.toLowerCase(): o,
-    };
+    // Selected chips are displayed serious-first (then minor). The
+    // underlying _selected stays in tap order — only this view sorts.
+    final display = _selectedForDisplay();
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         SparkSpace.xxxl,
@@ -367,12 +403,11 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: EdgeInsets.zero,
-          itemCount: _selected.length,
+          itemCount: display.length,
           separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (_, i) {
-            final label = _selected[i];
-            final opt = byLower[label.toLowerCase()] ??
-                _MediaTagOption(label: label, severity: 'minor');
+            final label = display[i].label;
+            final opt = display[i].opt;
             final color = _severityColor(opt.severity);
             return Material(
               color: Colors.transparent,
@@ -408,6 +443,62 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSeverityFilter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xxxl,
+        SparkSpace.xs,
+        SparkSpace.xxxl,
+        SparkSpace.sm,
+      ),
+      child: Row(
+        children: [
+          _filterPill(label: 'Все', value: null),
+          const SizedBox(width: SparkSpace.sm),
+          _filterPill(label: 'Серьёзные', value: 'serious'),
+          const SizedBox(width: SparkSpace.sm),
+          _filterPill(label: 'Незначительные', value: 'minor'),
+        ],
+      ),
+    );
+  }
+
+  Widget _filterPill({required String label, required String? value}) {
+    final active = _severityFilter == value;
+    final color = value == null ? kSecondaryColor : _severityColor(value);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+        onTap: () {
+          if (_severityFilter == value) return;
+          setState(() => _severityFilter = value);
+          HapticFeedback.selectionClick();
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xl,
+            vertical: SparkSpace.xs,
+          ),
+          decoration: BoxDecoration(
+            color: active ? color.withValues(alpha: 0.18) : Colors.transparent,
+            border: Border.all(
+              color: active ? color : kBorderColor,
+              width: active ? 1.4 : 1,
+            ),
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
+          ),
+          child: MyText(
+            text: label,
+            size: SparkTextSize.caption,
+            weight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? color : kGreyColor,
+          ),
         ),
       ),
     );
