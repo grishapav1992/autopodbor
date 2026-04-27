@@ -360,7 +360,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                   : ListView.separated(
                       itemCount: filtered.length + (showCreateRow ? 1 : 0),
                       separatorBuilder: (_, _) =>
-                          const Divider(height: 1, indent: 24),
+                          const Divider(height: 1, indent: SparkSpace.xxxl),
                       itemBuilder: (_, index) {
                         if (index < filtered.length) {
                           return _buildRow(filtered[index]);

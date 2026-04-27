@@ -438,7 +438,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                       )
                     else if (group.options.isEmpty)
                       const MyText(
-                        text: 'Теги скрыты в настройке',
+                        text: 'Повреждения скрыты в настройке',
                         size: SparkTextSize.caption,
                         color: kGreyColor,
                       )
@@ -485,7 +485,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                                   severity: group.severity,
                                 );
                               },
-                              decoration: _fieldDecoration('Свой тег').copyWith(
+                              decoration: _fieldDecoration('Своё повреждение').copyWith(
                                 isDense: true,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 10,
