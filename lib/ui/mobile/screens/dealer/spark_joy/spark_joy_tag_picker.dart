@@ -97,6 +97,14 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   // always shows everything the user has picked across both segments.
   String _severityFilter = 'serious';
 
+  // Settings mode is the canonical add/delete affordance: a gear
+  // toggle in the header reveals the "+ Добавить" CTA at the top of
+  // the list and shows the inline delete ✕ on every custom row.
+  // Out of settings mode the picker reads as a clean selection-only
+  // surface — no destructive icons, no extra rows.
+  bool _settingsMode = false;
+  final FocusNode _searchFocusNode = FocusNode();
+
   @override
   void initState() {
     super.initState();
@@ -110,6 +118,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   void dispose() {
     _refetchDebounce?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -181,24 +190,6 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
   Future<void> _delete(_MediaTagOption opt) async {
     if (_busy) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить повреждение?'),
-        content: Text('«${opt.label}» будет удалён из вашего каталога.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
     setState(() => _busy = true);
     final ok = await widget.onDeleteCustom(opt.label);
     if (!mounted) return;
@@ -217,6 +208,12 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
           .toList(growable: false);
       _selected.removeWhere((l) => l.toLowerCase() == lower);
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('«${opt.label}» удалено'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
     _scheduleRefetch();
   }
 
@@ -310,6 +307,24 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                       weight: FontWeight.w800,
                     ),
                   ),
+                  IconButton(
+                    icon: Icon(
+                      _settingsMode
+                          ? Icons.check_rounded
+                          : Icons.tune_rounded,
+                      color: _settingsMode
+                          ? kSecondaryColor
+                          : kGreyColor,
+                    ),
+                    tooltip: _settingsMode
+                        ? 'Завершить настройку'
+                        : 'Настройки',
+                    onPressed: _busy
+                        ? null
+                        : () => setState(
+                              () => _settingsMode = !_settingsMode,
+                            ),
+                  ),
                   TextButton(
                     onPressed: _busy
                         ? null
@@ -329,6 +344,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
               ),
               child: TextField(
                 controller: _searchController,
+                focusNode: _searchFocusNode,
                 decoration: sparkInputDecoration('Поиск повреждений…').copyWith(
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _query.isEmpty
@@ -345,29 +361,50 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
             _buildSeverityFilter(),
             const Divider(height: 1),
             Expanded(
-              child: filtered.isEmpty && !showCreateRow
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(SparkSpace.xxxl),
-                        child: MyText(
-                          text:
-                              'Ничего не найдено. Введите запрос, чтобы создать новое повреждение.',
-                          size: SparkTextSize.body,
-                          color: kGreyColor,
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      itemCount: filtered.length + (showCreateRow ? 1 : 0),
-                      separatorBuilder: (_, _) =>
-                          const Divider(height: 1, indent: SparkSpace.xxxl),
-                      itemBuilder: (_, index) {
-                        if (index < filtered.length) {
-                          return _buildRow(filtered[index]);
-                        }
-                        return _buildCreateRow(_severityFilter);
-                      },
-                    ),
+              child: Column(
+                children: [
+                  // Settings-mode add CTA. AnimatedSize keeps the
+                  // appearance/disappearance smooth — no jarring
+                  // jump when toggling the gear.
+                  AnimatedSize(
+                    duration: const Duration(milliseconds: 180),
+                    curve: Curves.easeOut,
+                    alignment: Alignment.topCenter,
+                    child: _settingsMode
+                        ? _buildAddCta()
+                        : const SizedBox(width: double.infinity),
+                  ),
+                  if (_settingsMode)
+                    const Divider(height: 1, indent: SparkSpace.xxxl),
+                  Expanded(
+                    child: filtered.isEmpty && !showCreateRow
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(SparkSpace.xxxl),
+                              child: MyText(
+                                text:
+                                    'Ничего не найдено. Введите запрос, чтобы создать новое повреждение.',
+                                size: SparkTextSize.body,
+                                color: kGreyColor,
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            itemCount: filtered.length + (showCreateRow ? 1 : 0),
+                            separatorBuilder: (_, _) => const Divider(
+                              height: 1,
+                              indent: SparkSpace.xxxl,
+                            ),
+                            itemBuilder: (_, index) {
+                              if (index < filtered.length) {
+                                return _buildRow(filtered[index]);
+                              }
+                              return _buildCreateRow(_severityFilter);
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -479,15 +516,14 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
   Widget _buildRow(_MediaTagOption opt) {
     final selected = _isSelected(opt.label);
+    final showDelete = _settingsMode && opt.isCustom;
     // Selection signal is intentionally minimal: bold label + leading
     // check icon. No coloured tint, no severity dot — severity is
-    // already conveyed by the segmented control above the list, and
-    // a coloured row felt heavier than the rest of the form.
+    // already conveyed by the segmented control above the list.
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _toggle(opt.label),
-        onLongPress: opt.isCustom ? () => unawaited(_delete(opt)) : null,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 56),
           child: Padding(
@@ -513,24 +549,76 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                     text: opt.label,
                     size: SparkTextSize.body,
                     weight: selected ? FontWeight.w700 : FontWeight.w400,
-                    color: selected ? kTertiaryColor : kTertiaryColor,
+                    color: kTertiaryColor,
                   ),
                 ),
-                if (opt.isCustom)
-                  IconButton(
-                    icon: const Icon(
-                      Icons.close_rounded,
-                      size: SparkSize.iconMd,
-                      color: kGreyColor,
-                    ),
-                    onPressed: () => unawaited(_delete(opt)),
-                    tooltip: 'Удалить повреждение',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
+                // Trailing slot is always reserved (32pt) so toggling
+                // the gear doesn't shift the label's right edge. Only
+                // the rendered widget swaps in/out.
+                SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: showDelete
+                      ? IconButton(
+                          icon: const Icon(
+                            Icons.close_rounded,
+                            size: SparkSize.iconMd,
+                            color: kGreyColor,
+                          ),
+                          onPressed: () => unawaited(_delete(opt)),
+                          tooltip: 'Удалить повреждение',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                        )
+                      : null,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddCta() {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _busy
+            ? null
+            : () {
+                // Focus pulls up the keyboard; user types a name and
+                // the existing "Создать …" row at the bottom of the
+                // catalog handles the actual creation flow.
+                _searchFocusNode.requestFocus();
+              },
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.xxxl,
+              vertical: SparkSpace.xl,
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.add_rounded,
+                  color: kSecondaryColor,
+                  size: SparkSize.iconLg,
+                ),
+                const SizedBox(width: SparkSpace.xl),
+                const Expanded(
+                  child: MyText(
+                    text: 'Добавить повреждение',
+                    size: SparkTextSize.body,
+                    color: kSecondaryColor,
+                    weight: FontWeight.w700,
                   ),
+                ),
+                const SizedBox(width: 32),
               ],
             ),
           ),
