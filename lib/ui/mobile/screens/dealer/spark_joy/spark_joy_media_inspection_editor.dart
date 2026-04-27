@@ -92,6 +92,14 @@ extension _SparkJoyMediaInspectionEditorMethods
     var shouldRecord = false;
     var shouldDictate = false;
 
+    // Tag-suggestion refetch — every chip toggle schedules a debounced
+    // GetUserTags call with `selectedTagIds` set so the server can
+    // re-sort unselected tags by co-occurrence with the current pick.
+    // The seq counter discards stale responses if the user taps faster
+    // than the debounce window.
+    Timer? tagRefetchDebounce;
+    var tagRefetchSeq = 0;
+
     final noteController = TextEditingController(
       text: basePartInspection.note.trim().isEmpty
           ? item.inspection.note
@@ -1330,6 +1338,41 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                                       );
                                                                 }
                                                               });
+                                                              tagRefetchDebounce
+                                                                  ?.cancel();
+                                                              final mySeq =
+                                                                  ++tagRefetchSeq;
+                                                              tagRefetchDebounce =
+                                                                  Timer(
+                                                                    const Duration(
+                                                                      milliseconds:
+                                                                          200,
+                                                                    ),
+                                                                    () async {
+                                                                      final next =
+                                                                          await _refreshInspectionTagOrder(
+                                                                            groupKey:
+                                                                                groupKey,
+                                                                            selectedTagNames:
+                                                                                List<
+                                                                                  String
+                                                                                >.from(
+                                                                                  selectedTags,
+                                                                                ),
+                                                                          );
+                                                                      if (!dialogActive ||
+                                                                          mySeq !=
+                                                                              tagRefetchSeq ||
+                                                                          next ==
+                                                                              null) {
+                                                                        return;
+                                                                      }
+                                                                      setLocalState(() {
+                                                                        tagOrderByScope[scopeKey] =
+                                                                            next;
+                                                                      });
+                                                                    },
+                                                                  );
                                                             },
                                                           );
                                                         }).toList(),
@@ -1466,6 +1509,7 @@ extension _SparkJoyMediaInspectionEditorMethods
       );
     } finally {
       dialogActive = false;
+      tagRefetchDebounce?.cancel();
       recordingTimer?.cancel();
       await recordSubscription?.cancel();
       try {

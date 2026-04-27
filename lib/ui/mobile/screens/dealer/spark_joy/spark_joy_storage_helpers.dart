@@ -180,6 +180,57 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     );
   }
 
+  /// Re-fetches the inspection tag suggestions for [groupKey] with the
+  /// currently selected tags as `selectedTagIds`. The server uses that
+  /// to sort unselected tags by co-occurrence — tags often picked
+  /// alongside the current selection float to the top. Per spec, this
+  /// only changes ordering for `step=inspection`; the test-drive step
+  /// always returns alphabetically, so callers there should skip this.
+  ///
+  /// Returns the new label order — selected labels first (preserving
+  /// the user's tap order via [selectedTagNames]) followed by the
+  /// server's prioritized list of unselected labels. Returns `null` on
+  /// network failure or when the server returns nothing actionable;
+  /// callers keep their existing local order in that case.
+  Future<List<String>?> _refreshInspectionTagOrder({
+    required String groupKey,
+    required List<String> selectedTagNames,
+  }) async {
+    final apiSection = SparkJoyTagService.groupKeyToApiSection[groupKey];
+    if (apiSection == null) return null;
+    final selectedIds = _tagService.resolveTagIds(
+      selectedTagNames,
+      step: 'inspection',
+      section: apiSection,
+    );
+    try {
+      final tags = await storage_api.StorageApi.getUserTags(
+        step: 'inspection',
+        section: apiSection,
+        selectedTagIds: selectedIds.isEmpty ? null : selectedIds,
+      );
+      // Build the new order: keep the user's selection at the top in
+      // tap order (server omits selected tags from the response), then
+      // append the server-sorted unselected tail. De-dupe by lowercase
+      // so capitalisation drift between catalogs doesn't double-list.
+      final seen = <String>{};
+      final out = <String>[];
+      for (final name in selectedTagNames) {
+        final key = name.toLowerCase();
+        if (seen.add(key)) out.add(name);
+      }
+      for (final tag in tags) {
+        final name = tag.name.trim();
+        if (name.isEmpty) continue;
+        final key = name.toLowerCase();
+        if (seen.add(key)) out.add(name);
+      }
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Guarantees every tag name referenced by the current report has an ID
   /// cached in [_tagService]. Must be awaited once before building the
   /// final `Storage.PrepareSpecialistReport` payload.
