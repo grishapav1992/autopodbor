@@ -498,9 +498,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       List<String>.of(_reportController.tdBrakeTags);
   set _tdBrakeTags(List<String> value) =>
       _reportController.setTdBrakeTags(value);
-  final Map<String, String?> _tdManagingTagSeverityByScope = {};
-  final Map<String, TextEditingController> _tdCustomTagControllersByScope = {};
-  final Map<String, FocusNode> _tdCustomTagFocusNodesByScope = {};
   List<UploadedItem> get _tdCommentAudioFiles =>
       _reportController.tdCommentAudioFiles.value;
   set _tdCommentAudioFiles(List<UploadedItem> value) =>

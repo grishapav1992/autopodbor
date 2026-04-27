@@ -51,12 +51,6 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     _summaryController.dispose();
     _expertController.dispose();
     _inspectorController.dispose();
-    for (final controller in _tdCustomTagControllersByScope.values) {
-      controller.dispose();
-    }
-    for (final focusNode in _tdCustomTagFocusNodesByScope.values) {
-      focusNode.dispose();
-    }
   }
 
   void _disposeRuntimeResources() {
