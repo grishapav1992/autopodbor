@@ -45,6 +45,14 @@ class SparkJoyTagService {
   /// have different server IDs and must not alias).
   final Map<String, int> _idByKey = <String, int>{};
 
+  /// Composite key (same shape as [_idByKey]) → owner user-id from
+  /// `Storage.GetUserTags`. `null` for system / shared tags. Populated
+  /// alongside [_idByKey] in [loadTagIdsFromServer] and on the
+  /// [addTag] refetch. UI side reads this to gate the delete
+  /// affordance — only user-owned tags can be removed via
+  /// `Storage.RemoveUserTag`.
+  final Map<String, int?> _userIdByKey = <String, int?>{};
+
   /// Builds the composite cache key. Normalizes name to
   /// `trim().toLowerCase()`. `section` is nullable — for steps without
   /// sections (car, test_drive, …) we store an empty string.
@@ -121,6 +129,75 @@ class SparkJoyTagService {
     String? section,
     required String name,
   }) => _idByKey[_composeKey(step: step, section: section, name: name)];
+
+  /// Returns true if the given (step, section, name) is owned by a
+  /// user (`userId != null` in the server's `GetUserTags` response).
+  /// False for system / shared tags. Returns false when the tag isn't
+  /// in the cache yet (defensive — no UI delete-affordance until we
+  /// know it's safe to remove).
+  bool isCustomTag({
+    required String step,
+    String? section,
+    required String name,
+  }) {
+    final userId =
+        _userIdByKey[_composeKey(step: step, section: section, name: name)];
+    return userId != null;
+  }
+
+  /// Snapshots the current user's custom inspection tags grouped by
+  /// the UI media group key (`body`, `glass`, `interior`, …). Used to
+  /// seed `_mediaCustomTagsByScope` after a server refresh so tags
+  /// created in earlier sessions render with a delete affordance.
+  ///
+  /// Each value is a list of `(name, isSerious)` tuples; the caller
+  /// splits these into name + serious-name maps that match the
+  /// editor's existing scope-keyed shape.
+  Map<String, List<({String name, bool isSerious})>>
+      customInspectionTagsByGroupKey() {
+    final reverse = <String, String>{
+      for (final e in groupKeyToApiSection.entries) e.value: e.key,
+    };
+    final out = <String, List<({String name, bool isSerious})>>{};
+    for (final tag in _lastSnapshot) {
+      if (!tag.isCustom) continue;
+      final step = tag.step ?? 'inspection';
+      if (step != 'inspection') continue;
+      final section = tag.section;
+      if (section == null) continue;
+      final groupKey = reverse[section];
+      if (groupKey == null) continue;
+      out.putIfAbsent(groupKey, () => []).add((
+        name: tag.name,
+        isSerious: tag.isSerious,
+      ));
+    }
+    return out;
+  }
+
+  /// Last server snapshot of every user-visible tag — kept so the
+  /// helpers above can answer "is this custom?" / "what severity?" /
+  /// "what's the cased display name?" without re-walking the cache
+  /// keys.
+  List<storage_api.UserTag> _lastSnapshot = const <storage_api.UserTag>[];
+
+  /// Symmetric eviction helper. Removing a tag has to clear three
+  /// in-memory tracks at once or stale entries linger:
+  ///   - [_idByKey] (composite key → server id)
+  ///   - [_userIdByKey] (composite key → owner)
+  ///   - [_lastSnapshot] (ordered list used by [customInspectionTagsByGroupKey])
+  /// Without this the deleted tag keeps getting re-seeded into
+  /// `_mediaCustomTagsByScope` on the next refresh, even though the
+  /// server has dropped it.
+  void _evictTagByKey(String cacheKey) {
+    final id = _idByKey.remove(cacheKey);
+    _userIdByKey.remove(cacheKey);
+    if (id != null && _lastSnapshot.any((t) => t.id == id)) {
+      _lastSnapshot = _lastSnapshot
+          .where((t) => t.id != id)
+          .toList(growable: false);
+    }
+  }
 
   /// Reverse lookup: given a server tag id, return the human-readable
   /// name. Used by the completed-report hydrator to turn `seriousDamageTags:
@@ -235,14 +312,17 @@ class SparkJoyTagService {
           // Each UserTag carries its own step + section; use them so
           // identical names in different sections remain distinct.
           final step = tag.step ?? 'inspection';
-          _idByKey[_composeKey(
+          final key = _composeKey(
             step: step,
             section: tag.section,
             name: tag.name,
-          )] = tag.id;
+          );
+          _idByKey[key] = tag.id;
+          _userIdByKey[key] = tag.userId;
           byId[tag.id] = tag;
         }
       }
+      _lastSnapshot = byId.values.toList(growable: false);
       await SparkJoyStorage.replaceUserTags(
         byId.values.map(_tagToMap).toList(growable: false),
       );
@@ -261,6 +341,7 @@ class SparkJoyTagService {
   /// resolution possible for reports saved earlier.
   Future<void> hydrateFromCache() async {
     final cached = await SparkJoyStorage.loadUserTags();
+    final restored = <storage_api.UserTag>[];
     for (final raw in cached) {
       final name = (raw['name'] ?? '').toString();
       if (name.trim().isEmpty) continue;
@@ -269,8 +350,27 @@ class SparkJoyTagService {
       if (id <= 0) continue;
       final step = (raw['step'] as String?) ?? 'inspection';
       final section = raw['section'] as String?;
-      _idByKey[_composeKey(step: step, section: section, name: name)] = id;
+      final userIdRaw = raw['userId'];
+      final userId = userIdRaw is int
+          ? userIdRaw
+          : (userIdRaw is num ? userIdRaw.toInt() : int.tryParse('${userIdRaw ?? ''}'));
+      final key = _composeKey(step: step, section: section, name: name);
+      _idByKey[key] = id;
+      _userIdByKey[key] = userId;
+      restored.add(
+        storage_api.UserTag(
+          id: id,
+          name: name,
+          slug: (raw['slug'] ?? '').toString(),
+          type: storage_api.UserTagType.normalize(raw['type']),
+          step: step,
+          section: section,
+          createdAt: raw['createdAt']?.toString(),
+          userId: userId,
+        ),
+      );
     }
+    _lastSnapshot = restored;
   }
 
   static Map<String, dynamic> _tagToMap(storage_api.UserTag tag) => {
@@ -284,6 +384,7 @@ class SparkJoyTagService {
     // on the way back in (hydrateFromCache).
     'type': tag.type.wireName,
     'createdAt': tag.createdAt,
+    'userId': tag.userId,
   };
 
   /// Low-level create: calls `Storage.AddUserTag` and caches the result.
@@ -307,20 +408,52 @@ class SparkJoyTagService {
     final existing = _idByKey[cacheKey];
     if (existing != null && existing > 0) return existing;
 
+    final normalizedName = tagName.trim().toLowerCase();
     try {
-      final tag = await storage_api.StorageApi.addUserTag(
-        step: step,
-        name: tagName.trim(),
-        section: section,
-        type: type,
-      );
-      if (tag.id > 0) {
-        _idByKey[cacheKey] = tag.id;
-        return tag.id;
+      // По указанию backend dev'а: AddUserTag возвращает только ack
+      // (`result: []`, без id). Чтобы получить id свежесозданного
+      // тега, нужно сразу после AddUserTag дёрнуть GetUserTags для
+      // того же step/section и найти тег по имени. Делаем это всегда —
+      // даже если AddUserTag упал с validation error: refetch вернёт
+      // canonical-список, кэш обновится, для других тегов будет
+      // полезно. Если матча не нашли — возвращаем null, caller
+      // обрабатывает как «id пока не известен».
+      try {
+        await storage_api.StorageApi.addUserTag(
+          step: step,
+          name: tagName.trim(),
+          section: section,
+          type: type,
+        );
+      } catch (_) {
+        // Игнорируем — refetch ниже всё равно делается.
       }
+
+      final tags = await storage_api.StorageApi.getUserTags(
+        step: step,
+        section: section,
+      );
+      int? matchedId;
+      for (final t in tags) {
+        if (t.id <= 0 || t.name.trim().isEmpty) continue;
+        final tagSection = t.section ?? section;
+        // Кэшируем все теги пока тут — getUserTags возвращает полный
+        // список для bucket'а, грех не воспользоваться.
+        final key = _composeKey(
+          step: t.step ?? step,
+          section: tagSection,
+          name: t.name,
+        );
+        _idByKey[key] = t.id;
+        _userIdByKey[key] = t.userId;
+        if (t.name.trim().toLowerCase() == normalizedName) {
+          matchedId = t.id;
+        }
+      }
+      return matchedId;
     } catch (_) {
-      // Best-effort: the tag will still be usable locally; it just won't
-      // have an ID until the next loadTagIdsFromServer or retry.
+      // Network / parse failure. Tag usable locally; id появится при
+      // следующем loadTagIdsFromServer или retry.
     }
     return null;
   }
@@ -392,14 +525,22 @@ class SparkJoyTagService {
         }
         id = _idByKey[cacheKey];
       } catch (_) {
-        await _enqueuePendingDelete(name: tagName, section: section);
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'inspection',
+          section: section,
+        );
         return false;
       }
       if (id == null || id <= 0) {
         debugPrint(
           '[TagSync] removeInspectionTag: id not resolved for "$tagName" in section=$section — enqueued',
         );
-        await _enqueuePendingDelete(name: tagName, section: section);
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'inspection',
+          section: section,
+        );
         return false;
       }
     }
@@ -409,32 +550,111 @@ class SparkJoyTagService {
         step: 'inspection',
         section: section,
       );
-      _idByKey.remove(cacheKey);
+      _evictTagByKey(cacheKey);
       await _persistCatalogSnapshot();
       return true;
     } catch (e) {
       debugPrint(
         '[TagSync] removeInspectionTag rpc failed for "$tagName" id=$id: $e — enqueued',
       );
-      await _enqueuePendingDelete(name: tagName, section: section);
+      await _enqueuePendingDelete(
+        name: tagName,
+        step: 'inspection',
+        section: section,
+      );
+      return false;
+    }
+  }
+
+  /// Symmetric counterpart to [removeInspectionTag] for the
+  /// test-drive step. Test-drive tags have no section — the cache key
+  /// uses `step='test_drive'` and a null section. Otherwise the
+  /// resolve-id-or-enqueue flow mirrors the inspection path.
+  Future<bool> removeTestDriveTag({
+    required String tagName,
+  }) async {
+    final cacheKey = _composeKey(
+      step: 'test_drive',
+      section: null,
+      name: tagName,
+    );
+    var id = _idByKey[cacheKey];
+    if (id == null || id <= 0) {
+      try {
+        final tags = await storage_api.StorageApi.getUserTags(
+          step: 'test_drive',
+        );
+        for (final tag in tags) {
+          if (tag.id <= 0 || tag.name.trim().isEmpty) continue;
+          _idByKey[_composeKey(
+            step: tag.step ?? 'test_drive',
+            section: tag.section,
+            name: tag.name,
+          )] = tag.id;
+        }
+        id = _idByKey[cacheKey];
+      } catch (_) {
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'test_drive',
+          section: null,
+        );
+        return false;
+      }
+      if (id == null || id <= 0) {
+        debugPrint(
+          '[TagSync] removeTestDriveTag: id not resolved for "$tagName" — enqueued',
+        );
+        await _enqueuePendingDelete(
+          name: tagName,
+          step: 'test_drive',
+          section: null,
+        );
+        return false;
+      }
+    }
+    try {
+      await storage_api.StorageApi.removeUserTag(
+        id: id,
+        step: 'test_drive',
+      );
+      _evictTagByKey(cacheKey);
+      await _persistCatalogSnapshot();
+      return true;
+    } catch (e) {
+      debugPrint(
+        '[TagSync] removeTestDriveTag rpc failed for "$tagName" id=$id: $e — enqueued',
+      );
+      await _enqueuePendingDelete(
+        name: tagName,
+        step: 'test_drive',
+        section: null,
+      );
       return false;
     }
   }
 
   /// Adds a pending deletion so [flushPendingDeletes] can retry later.
-  /// Dedupes by (nameKey, section). Serialized via [_withStorageLock] so
-  /// rapid successive X-taps don't lose entries at the read-write gap.
+  /// Dedupes by (nameKey, step, section). Serialized via
+  /// [_withStorageLock] so rapid successive X-taps don't lose entries
+  /// at the read-write gap.
   Future<void> _enqueuePendingDelete({
     required String name,
+    required String step,
     required String? section,
   }) {
     return _withStorageLock(
-      () => _enqueuePendingDeleteImpl(name: name, section: section),
+      () => _enqueuePendingDeleteImpl(
+        name: name,
+        step: step,
+        section: section,
+      ),
     );
   }
 
   Future<void> _enqueuePendingDeleteImpl({
     required String name,
+    required String step,
     required String? section,
   }) async {
     final normalized = name.trim();
@@ -443,12 +663,13 @@ class SparkJoyTagService {
     final key = normalized.toLowerCase();
     final deduped = queue.where((item) {
       final itemName = (item['name'] ?? '').toString().trim().toLowerCase();
+      final itemStep = (item['step'] as String?) ?? 'inspection';
       final itemSection = item['section']?.toString();
-      return !(itemName == key && itemSection == section);
+      return !(itemName == key && itemStep == step && itemSection == section);
     }).toList()
       ..add({
         'name': normalized,
-        'step': 'inspection',
+        'step': step,
         'section': section,
       });
     await SparkJoyStorage.replacePendingTagDeletes(deduped);
@@ -494,7 +715,7 @@ class SparkJoyTagService {
           step: step,
           section: section,
         );
-        _idByKey.remove(cacheKey);
+        _evictTagByKey(cacheKey);
         mutated = true;
       } catch (e) {
         debugPrint(

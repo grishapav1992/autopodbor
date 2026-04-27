@@ -22,15 +22,11 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
         : sectionInvalid
         ? kRedColor
         : kYellowColor;
-    final managingSeverity = _tdManagingTagSeverityByScope[tagScopeKey];
-    final tagGroups = _testDriveTagGroups(
-      tagScopeKey,
-      includeDisabledDefaults: managingSeverity != null,
-    );
-    final disabledDefaults =
-        (_mediaDisabledDefaultTagsByScope[tagScopeKey] ?? const <String>[])
-            .map((tag) => tag.toLowerCase())
-            .toSet();
+    // Picker takes the full catalog (system + custom + previously-
+    // disabled defaults) and renders its own filter / search; no need
+    // to pre-trim by visibility here.
+    final tagGroups =
+        _testDriveTagGroups(tagScopeKey, includeDisabledDefaults: true);
 
     return _card(
       child: Column(
@@ -112,414 +108,171 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
           ),
           if (!ok) ...[
             const SizedBox(height: SparkSpace.md),
-            ...tagGroups.map((group) {
-              final isManaging = managingSeverity == group.severity;
-              final customTagController = _tdCustomTagController(
-                tagScopeKey,
-                group.severity,
-              );
-              final customTagFocusNode = _tdCustomTagFocusNode(
-                tagScopeKey,
-                group.severity,
-              );
-              return Padding(
-                padding: const EdgeInsets.only(bottom: SparkSpace.lg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: MyText(
-                            text: group.title,
-                            size: SparkTextSize.body,
-                            color: _mediaTagGroupTitleColor(group),
-                            weight: FontWeight.w700,
-                          ),
+            Builder(
+              builder: (pillCtx) {
+                final allOptions = tagGroups
+                    .expand((g) => g.options)
+                    .toList(growable: false);
+                final selectedCount = selected.length;
+                return Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(SparkRadius.lg),
+                    onTap: () async {
+                      final result = await _showSparkJoyTagPicker(
+                        pillCtx,
+                        title: 'Повреждения',
+                        options: allOptions,
+                        initialSelected: List<String>.from(selected),
+                        initialOrder: List<String>.from(
+                          _mediaTagOrderByScope[tagScopeKey] ??
+                              const <String>[],
                         ),
-                        TextButton.icon(
-                          onPressed: () {
-                            _dismissKeyboard();
-                            _setStateSafely(() {
-                              final current =
-                                  _tdManagingTagSeverityByScope[tagScopeKey];
-                              _tdManagingTagSeverityByScope[tagScopeKey] =
-                                  current == group.severity
-                                  ? null
-                                  : group.severity;
-                            });
-                          },
-                          icon: Icon(
-                            isManaging
-                                ? Icons.check_rounded
-                                : Icons.settings_rounded,
-                            size: SparkTextSize.title,
-                          ),
-                          style: TextButton.styleFrom(
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                          ),
-                          label: Text(
-                            isManaging ? 'Готово' : 'Настроить',
-                            style: const TextStyle(
-                              fontSize: SparkTextSize.caption,
-                              fontWeight: FontWeight.w700,
-                              color: kSecondaryColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: SparkSpace.sm),
-                    if (isManaging)
-                      ReorderableListView.builder(
-                        key: ValueKey(
-                          'td-tag-manage-$tagScopeKey-${group.severity}',
-                        ),
-                        shrinkWrap: true,
-                        buildDefaultDragHandles: false,
-                        physics: const NeverScrollableScrollPhysics(),
-                        proxyDecorator: _tagReorderProxyDecorator,
-                        itemCount: group.options.length,
-                        onReorder: (oldIndex, newIndex) {
-                          _setStateSafely(() {
-                            final adjusted = oldIndex < newIndex
-                                ? newIndex - 1
-                                : newIndex;
-                            if (oldIndex == adjusted) return;
-
-                            final reordered = [
-                              ...group.options.map((tag) => tag.label),
+                        onCreateCustom: (name, severity) async {
+                          // Server side fires-and-resolves; treat the
+                          // create as locally successful even if the
+                          // refetch can't pin an id immediately —
+                          // _loadTagIdsFromServer will reconcile next
+                          // time.
+                          await _syncTestDriveCustomTag(
+                            tagName: name,
+                            severity: severity,
+                          );
+                          final lower = name.toLowerCase();
+                          final next = [
+                            ...?_mediaCustomTagsByScope[tagScopeKey],
+                          ];
+                          if (!next.any(
+                            (s) => s.toLowerCase() == lower,
+                          )) {
+                            next.add(name);
+                          }
+                          _mediaCustomTagsByScope[tagScopeKey] = next;
+                          if (severity == 'serious') {
+                            final ns = [
+                              ...?_mediaCustomSeriousTagsByScope[tagScopeKey],
                             ];
-                            final moved = reordered.removeAt(oldIndex);
-                            reordered.insert(adjusted, moved);
-
-                            final baseline = [
-                              ...(_mediaTagOrderByScope[tagScopeKey] ??
-                                  tagGroups
-                                      .expand(
-                                        (entry) => entry.options.map(
-                                          (tag) => tag.label,
-                                        ),
-                                      )
-                                      .toList()),
-                            ];
-                            final normalized = <String>[];
-                            for (final value in baseline) {
-                              if (normalized.any(
-                                (item) =>
-                                    item.toLowerCase() == value.toLowerCase(),
-                              )) {
-                                continue;
-                              }
-                              normalized.add(value);
+                            if (!ns.any(
+                              (s) => s.toLowerCase() == lower,
+                            )) {
+                              ns.add(name);
                             }
-
-                            final groupSet = group.options
-                                .map((tag) => tag.label.toLowerCase())
-                                .toSet();
-                            final withoutGroup = normalized
-                                .where(
-                                  (value) =>
-                                      !groupSet.contains(value.toLowerCase()),
-                                )
-                                .toList();
-                            var insertAt = normalized.indexWhere(
-                              (value) => groupSet.contains(value.toLowerCase()),
-                            );
-                            if (insertAt < 0 ||
-                                insertAt > withoutGroup.length) {
-                              insertAt = withoutGroup.length;
-                            }
-                            withoutGroup.insertAll(insertAt, reordered);
-                            _mediaTagOrderByScope[tagScopeKey] = withoutGroup;
-                          });
-                          _markDraftDirty();
+                            _mediaCustomSeriousTagsByScope[tagScopeKey] =
+                                ns;
+                          }
+                          final order = [
+                            ...?_mediaTagOrderByScope[tagScopeKey],
+                          ];
+                          if (!order.any(
+                            (s) => s.toLowerCase() == lower,
+                          )) {
+                            order.add(name);
+                          }
+                          _mediaTagOrderByScope[tagScopeKey] = order;
+                          return true;
                         },
-                        itemBuilder: (context, index) {
-                          final tag = group.options[index];
-                          final lower = tag.label.toLowerCase();
-                          final hidden =
-                              !tag.isCustom && disabledDefaults.contains(lower);
-                          return Container(
-                            key: ValueKey(
-                              'td-tag-item-$tagScopeKey-${group.severity}-${tag.label}',
-                            ),
-                            margin: const EdgeInsets.only(
-                              bottom: SparkSpace.sm,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: SparkSpace.lg,
-                              vertical: SparkSpace.md,
-                            ),
-                            decoration: BoxDecoration(
-                              color: hidden
-                                  ? kLightGreyColor.withValues(alpha: 0.55)
-                                  : kWhiteColor,
-                              borderRadius: BorderRadius.circular(
-                                SparkRadius.md,
-                              ),
-                              border: Border.all(color: kBorderColor),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: ReorderableDelayedDragStartListener(
-                                    index: index,
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: SparkSpace.xs,
-                                        vertical: SparkSpace.xxs,
-                                      ),
-                                      child: MyText(
-                                        text: tag.label,
-                                        size: SparkTextSize.body,
-                                        color: hidden
-                                            ? kGreyColor
-                                            : kTertiaryColor,
-                                        weight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const Icon(
-                                  Icons.drag_indicator_rounded,
-                                  size: SparkTextSize.titleLg,
-                                  color: kGreyColor,
-                                ),
-                                const SizedBox(width: SparkSpace.xs),
-                                if (tag.isCustom)
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(
-                                      SparkRadius.pill,
-                                    ),
-                                    onTap: () {
-                                      final nextSelected = selected
-                                          .where(
-                                            (value) =>
-                                                value.toLowerCase() != lower,
-                                          )
-                                          .toList();
-                                      _setStateSafely(() {
-                                        final custom =
-                                            [
-                                              ...(_mediaCustomTagsByScope[tagScopeKey] ??
-                                                  const <String>[]),
-                                            ]..removeWhere(
-                                              (value) =>
-                                                  value.toLowerCase() == lower,
-                                            );
-                                        if (custom.isEmpty) {
-                                          _mediaCustomTagsByScope.remove(
-                                            tagScopeKey,
-                                          );
-                                        } else {
-                                          _mediaCustomTagsByScope[tagScopeKey] =
-                                              custom;
-                                        }
-
-                                        final serious =
-                                            [
-                                              ...(_mediaCustomSeriousTagsByScope[tagScopeKey] ??
-                                                  const <String>[]),
-                                            ]..removeWhere(
-                                              (value) =>
-                                                  value.toLowerCase() == lower,
-                                            );
-                                        if (serious.isEmpty) {
-                                          _mediaCustomSeriousTagsByScope.remove(
-                                            tagScopeKey,
-                                          );
-                                        } else {
-                                          _mediaCustomSeriousTagsByScope[tagScopeKey] =
-                                              serious;
-                                        }
-
-                                        final order =
-                                            [
-                                              ...(_mediaTagOrderByScope[tagScopeKey] ??
-                                                  const <String>[]),
-                                            ]..removeWhere(
-                                              (value) =>
-                                                  value.toLowerCase() == lower,
-                                            );
-                                        if (order.isEmpty) {
-                                          _mediaTagOrderByScope.remove(
-                                            tagScopeKey,
-                                          );
-                                        } else {
-                                          _mediaTagOrderByScope[tagScopeKey] =
-                                              order;
-                                        }
-                                      });
-                                      if (nextSelected.length !=
-                                          selected.length) {
-                                        onTagsChanged(nextSelected);
-                                      } else {
-                                        _markDraftDirty();
-                                      }
-                                    },
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(SparkSpace.xs),
-                                      child: Icon(
-                                        Icons.delete_outline_rounded,
-                                        size: SparkTextSize.title,
-                                        color: kGreyColor,
-                                      ),
-                                    ),
+                        onDeleteCustom: (name) async {
+                          final removed = await _removeTestDriveCustomTag(
+                            tagName: name,
+                          );
+                          if (!removed) return false;
+                          final lower = name.toLowerCase();
+                          final pruned =
+                              (_mediaCustomTagsByScope[tagScopeKey] ??
+                                      const <String>[])
+                                  .where(
+                                    (s) => s.toLowerCase() != lower,
                                   )
-                                else
-                                  InkWell(
-                                    borderRadius: BorderRadius.circular(
-                                      SparkRadius.pill,
-                                    ),
-                                    onTap: () {
-                                      List<String>? nextSelected;
-                                      _setStateSafely(() {
-                                        final disabled = [
-                                          ...(_mediaDisabledDefaultTagsByScope[tagScopeKey] ??
-                                              const <String>[]),
-                                        ];
-                                        final disabledLower = disabled
-                                            .map((value) => value.toLowerCase())
-                                            .toSet();
-                                        if (disabledLower.contains(lower)) {
-                                          disabled.removeWhere(
-                                            (value) =>
-                                                value.toLowerCase() == lower,
-                                          );
-                                        } else {
-                                          disabled.add(tag.label);
-                                          nextSelected = selected
-                                              .where(
-                                                (value) =>
-                                                    value.toLowerCase() !=
-                                                    lower,
-                                              )
-                                              .toList();
-                                        }
-                                        if (disabled.isEmpty) {
-                                          _mediaDisabledDefaultTagsByScope
-                                              .remove(tagScopeKey);
-                                        } else {
-                                          _mediaDisabledDefaultTagsByScope[tagScopeKey] =
-                                              disabled;
-                                        }
-                                      });
-                                      if (nextSelected != null) {
-                                        onTagsChanged(nextSelected!);
-                                      } else {
-                                        _markDraftDirty();
-                                      }
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(
-                                        SparkSpace.xs,
-                                      ),
-                                      child: Icon(
-                                        hidden
-                                            ? Icons.visibility_off_outlined
-                                            : Icons.visibility_rounded,
-                                        size: SparkTextSize.title,
-                                        color: hidden
-                                            ? kGreyColor
-                                            : kSecondaryColor,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          );
+                                  .toList();
+                          if (pruned.isEmpty) {
+                            _mediaCustomTagsByScope.remove(tagScopeKey);
+                          } else {
+                            _mediaCustomTagsByScope[tagScopeKey] = pruned;
+                          }
+                          final prunedSerious =
+                              (_mediaCustomSeriousTagsByScope[tagScopeKey] ??
+                                      const <String>[])
+                                  .where(
+                                    (s) => s.toLowerCase() != lower,
+                                  )
+                                  .toList();
+                          if (prunedSerious.isEmpty) {
+                            _mediaCustomSeriousTagsByScope.remove(
+                              tagScopeKey,
+                            );
+                          } else {
+                            _mediaCustomSeriousTagsByScope[tagScopeKey] =
+                                prunedSerious;
+                          }
+                          final prunedOrder =
+                              (_mediaTagOrderByScope[tagScopeKey] ??
+                                      const <String>[])
+                                  .where(
+                                    (s) => s.toLowerCase() != lower,
+                                  )
+                                  .toList();
+                          if (prunedOrder.isEmpty) {
+                            _mediaTagOrderByScope.remove(tagScopeKey);
+                          } else {
+                            _mediaTagOrderByScope[tagScopeKey] =
+                                prunedOrder;
+                          }
+                          return true;
                         },
-                      )
-                    else if (group.options.isEmpty)
-                      const MyText(
-                        text: 'Теги скрыты в настройке',
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                      )
-                    else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: group.options.map((tag) {
-                          final lower = tag.label.toLowerCase();
-                          final active = selected.any(
-                            (value) => value.toLowerCase() == lower,
-                          );
-                          return _chip(
-                            label: tag.label,
-                            selected: active,
-                            selectedColor: _mediaTagColor(tag.severity),
-                            onTap: () {
-                              final next = [...selected];
-                              if (active) {
-                                next.removeWhere(
-                                  (value) => value.toLowerCase() == lower,
-                                );
-                              } else {
-                                next.add(tag.label);
-                              }
-                              onTagsChanged(next);
-                            },
-                          );
-                        }).toList(),
+                        // Spec: co-occurrence sort is inspection-only.
+                        // Server returns alphabetic for test_drive
+                        // regardless of selectedTagIds — skip the
+                        // refetch entirely (returning null leaves the
+                        // sheet's local order untouched).
+                        onRefreshOrder: (_) async => null,
+                      );
+                      if (result == null) return;
+                      onTagsChanged(result);
+                    },
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minHeight: SparkSize.inputHeightLg,
                       ),
-                    if (isManaging) ...[
-                      const SizedBox(height: SparkSpace.md),
-                      Row(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: SparkSpace.xl,
+                        vertical: SparkSpace.md,
+                      ),
+                      decoration: BoxDecoration(
+                        color: kInputBgColor,
+                        border: Border.all(color: kBorderColor),
+                        borderRadius: BorderRadius.circular(SparkRadius.lg),
+                      ),
+                      child: Row(
                         children: [
+                          const Icon(
+                            Icons.local_offer_outlined,
+                            size: SparkSize.iconLg,
+                            color: kGreyColor,
+                          ),
+                          const SizedBox(width: SparkSpace.md),
                           Expanded(
-                            child: TextField(
-                              controller: customTagController,
-                              focusNode: customTagFocusNode,
-                              textInputAction: TextInputAction.done,
-                              onTapOutside: (_) => _dismissKeyboard(),
-                              onSubmitted: (_) {
-                                _addTestDriveCustomTag(
-                                  scopeKey: tagScopeKey,
-                                  severity: group.severity,
-                                );
-                              },
-                              decoration: _fieldDecoration('Свой тег').copyWith(
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 8,
-                                ),
-                              ),
+                            child: MyText(
+                              text: selectedCount == 0
+                                  ? 'Выбрать повреждения'
+                                  : 'Повреждения ($selectedCount)',
+                              size: SparkTextSize.body,
+                              weight: FontWeight.w600,
+                              color: selectedCount == 0
+                                  ? kGreyColor
+                                  : kTertiaryColor,
                             ),
                           ),
-                          const SizedBox(width: SparkSpace.sm),
-                          SizedBox(
-                            height: SparkSize.actionHeightSm,
-                            child: OutlinedButton(
-                              onPressed: () {
-                                _addTestDriveCustomTag(
-                                  scopeKey: tagScopeKey,
-                                  severity: group.severity,
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                ),
-                                side: const BorderSide(color: kBorderColor),
-                              ),
-                              child: const Text('Добавить'),
-                            ),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            color: kGreyColor,
                           ),
                         ],
                       ),
-                    ],
-                  ],
-                ),
-              );
-            }),
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ],
       ),

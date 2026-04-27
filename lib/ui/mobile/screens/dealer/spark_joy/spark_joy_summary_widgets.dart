@@ -680,6 +680,7 @@ Widget _buildSparkSummaryExpertConclusionCard(
             hint:
                 'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
             isDictating: s._expertIsDictating,
+            aiBusy: s._expertSummaryAiBusy,
             onToggleDictation: () async {
               if (s._expertIsDictating) {
                 await s._stopExpertDictation();
@@ -687,11 +688,11 @@ Widget _buildSparkSummaryExpertConclusionCard(
                 await s._startExpertDictation();
               }
             },
-            onAiFormat: () {
-              s._formatCommentWithAi(s._expertController);
-              s._markDraftDirty();
-              s._setStateSafely(() {});
-            },
+            // Раньше тут был фейк-форматтер. Теперь — реальный
+            // summary через AiQueue: подтянуть истории всех
+            // per-element чатов и сгенерировать заключение по
+            // разделам.
+            onAiFormat: () => unawaited(s._generateExpertSummaryWithAi()),
           ),
           const SizedBox(height: SparkSpace.md),
           s._commentAudioFilesBlock(

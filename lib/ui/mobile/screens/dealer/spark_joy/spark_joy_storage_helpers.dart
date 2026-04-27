@@ -90,6 +90,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     // Seed from persisted catalog first — makes id resolution work offline
     // and before the server fan-out completes.
     await _tagService.hydrateFromCache();
+    _seedCustomTagsFromServer();
     final inspectionSelected = _collectSelectedTagIdsByApiSection();
     final genericInspection = <int>{
       for (final ids in inspectionSelected.values) ...ids,
@@ -102,6 +103,71 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         step: 'test_drive',
       ),
     );
+    // Re-seed after server fan-out lands — first call covered the
+    // offline cache, this one picks up tags added in other devices /
+    // sessions since the cache was last persisted.
+    _seedCustomTagsFromServer();
+  }
+
+  /// Folds the user's server-owned inspection tags (where
+  /// `userId != null`) into `_mediaCustomTagsByScope` /
+  /// `_mediaCustomSeriousTagsByScope`. Without this, tags created in
+  /// previous sessions render in the editor as system-style chips
+  /// (no delete affordance). Local-only entries already in the maps
+  /// are preserved — server data is unioned in, never overwrites.
+  void _seedCustomTagsFromServer() {
+    final byGroup = _tagService.customInspectionTagsByGroupKey();
+    if (byGroup.isEmpty) return;
+    final next = <String, List<String>>{
+      for (final e in _mediaCustomTagsByScope.entries) e.key: [...e.value],
+    };
+    final nextSerious = <String, List<String>>{
+      for (final e in _mediaCustomSeriousTagsByScope.entries) e.key: [...e.value],
+    };
+    var changed = false;
+    for (final entry in byGroup.entries) {
+      final groupKey = entry.key;
+      // Use the plain group key as scope — interior_dashboard /
+      // diagnostics sub-typed scopes inherit from the parent scope at
+      // render time; the server doesn't split tags by elementType,
+      // so we don't either.
+      final scope = groupKey;
+      final existing = next[scope] ?? const <String>[];
+      final existingLower = existing.map((s) => s.toLowerCase()).toSet();
+      final mergedSerious = nextSerious[scope] ?? <String>[];
+      final mergedSeriousLower = mergedSerious.map((s) => s.toLowerCase()).toSet();
+      final list = [...existing];
+      for (final tag in entry.value) {
+        final isNameNew = existingLower.add(tag.name.toLowerCase());
+        if (isNameNew) {
+          list.add(tag.name);
+          changed = true;
+        }
+        if (tag.isSerious) {
+          final isSeriousNew = mergedSeriousLower.add(tag.name.toLowerCase());
+          if (isSeriousNew) {
+            mergedSerious.add(tag.name);
+            changed = true;
+            if (!isNameNew) {
+              // Local catalog tracked this label as non-serious (in
+              // the names list but not in the serious set); server
+              // disagrees. Server is authoritative — log so the silent
+              // upgrade is visible during debugging.
+              debugPrint(
+                '[TagSync] severity override: "${tag.name}" '
+                '(group=$groupKey) was tracked locally as non-serious; '
+                'server marks it serious — using server value.',
+              );
+            }
+          }
+        }
+      }
+      if (list.isNotEmpty) next[scope] = list;
+      if (mergedSerious.isNotEmpty) nextSerious[scope] = mergedSerious;
+    }
+    if (!changed) return;
+    _mediaCustomTagsByScope = next;
+    _mediaCustomSeriousTagsByScope = nextSerious;
   }
 
   /// Collects already-picked inspection tag IDs grouped by API section
@@ -178,6 +244,67 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       groupKey: groupKey,
       tagName: tagName,
     );
+  }
+
+  /// Symmetric delete for a user-created test-drive tag (no scope key
+  /// — test-drive tags share one bucket on the server). Returns true
+  /// on a successful delete; false routes the deletion through the
+  /// pending-delete queue for the next refresh.
+  Future<bool> _removeTestDriveCustomTag({
+    required String tagName,
+  }) {
+    return _tagService.removeTestDriveTag(tagName: tagName);
+  }
+
+  /// Re-fetches the inspection tag suggestions for [groupKey] with the
+  /// currently selected tags as `selectedTagIds`. The server uses that
+  /// to sort unselected tags by co-occurrence — tags often picked
+  /// alongside the current selection float to the top. Per spec, this
+  /// only changes ordering for `step=inspection`; the test-drive step
+  /// always returns alphabetically, so callers there should skip this.
+  ///
+  /// Returns the new label order — selected labels first (preserving
+  /// the user's tap order via [selectedTagNames]) followed by the
+  /// server's prioritized list of unselected labels. Returns `null` on
+  /// network failure or when the server returns nothing actionable;
+  /// callers keep their existing local order in that case.
+  Future<List<String>?> _refreshInspectionTagOrder({
+    required String groupKey,
+    required List<String> selectedTagNames,
+  }) async {
+    final apiSection = SparkJoyTagService.groupKeyToApiSection[groupKey];
+    if (apiSection == null) return null;
+    final selectedIds = _tagService.resolveTagIds(
+      selectedTagNames,
+      step: 'inspection',
+      section: apiSection,
+    );
+    try {
+      final tags = await storage_api.StorageApi.getUserTags(
+        step: 'inspection',
+        section: apiSection,
+        selectedTagIds: selectedIds.isEmpty ? null : selectedIds,
+      );
+      // Build the new order: keep the user's selection at the top in
+      // tap order (server omits selected tags from the response), then
+      // append the server-sorted unselected tail. De-dupe by lowercase
+      // so capitalisation drift between catalogs doesn't double-list.
+      final seen = <String>{};
+      final out = <String>[];
+      for (final name in selectedTagNames) {
+        final key = name.toLowerCase();
+        if (seen.add(key)) out.add(name);
+      }
+      for (final tag in tags) {
+        final name = tag.name.trim();
+        if (name.isEmpty) continue;
+        final key = name.toLowerCase();
+        if (seen.add(key)) out.add(name);
+      }
+      return out;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Guarantees every tag name referenced by the current report has an ID
@@ -1157,26 +1284,22 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   Map<String, dynamic> _buildCharacteristicsStepPayload(
     Map<String, dynamic> payload,
   ) {
-    // Per Storage.PrepareSpecialistReport spec (docs/api/PrepareSpecialistReport.md,
-    // §characteristicsStep) every field in this step is nullable. Prefer `null`
-    // over filler strings like 'не указано' — if the backend ever enum-validates
-    // engineType / transmission / driveType the filler value would 400 the
-    // whole request. engineVolume also explicitly accepts null (number | null),
-    // so don't coerce an empty controller to 0.
-    String? orNull(String raw) {
-      final trimmed = raw.trim();
-      return trimmed.isEmpty ? null : trimmed;
-    }
-
+    // Per OpenRPC spec (`docs/openrpc_doc_2026-04-26.json`,
+    // §characteristicsStep.required) **все 7 полей required и
+    // non-nullable**. Раньше тут был `orNull` — для null-tolerant
+    // версии спеки. Сейчас спека ужесточилась: пустые значения
+    // больше не валидны. Гейтим в `_summaryMissingReasons` и
+    // отправляем как есть; если что-то пустое проскочило — server
+    // вернёт honest validation error.
     return <String, dynamic>{
       'modelGenerationRestylingFrameId':
           _resolveModelGenerationRestylingFrameId(payload),
       'engineVolume': _parseDecimal(_engineVolumeController.text),
-      'engineType': orNull(_engineTypeController.text),
-      'transmission': orNull(_gearboxTypeController.text),
-      'driveType': orNull(_driveTypeController.text),
-      'color': orNull(_colorController.text),
-      'equipment': orNull(_trimController.text),
+      'engineType': _engineTypeController.text.trim(),
+      'transmission': _gearboxTypeController.text.trim(),
+      'driveType': _driveTypeController.text.trim(),
+      'color': _colorController.text.trim(),
+      'equipment': _trimController.text.trim(),
     };
   }
 
@@ -1599,12 +1722,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   Map<String, dynamic> _buildResultStepPayload() {
-    final expertNote = _expertController.text.trim();
+    // Без silent-fallback. Если до сюда дошли с пустыми полями —
+    // это баг в `_summaryMissingReasons`, не лечим тут заглушками.
     return <String, dynamic>{
       'summaryInspectionNote': _summaryController.text.trim(),
-      'resultSpecialistNote': expertNote.isEmpty
-          ? 'Заключение не указано'
-          : expertNote,
+      'resultSpecialistNote': _expertController.text.trim(),
     };
   }
 
@@ -1648,13 +1770,16 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     final ownersInt = _parseDigitsInt(_ownersCountController.text.trim());
     final today = _isoDateForBackend(_dateLabel(DateTime.now()));
     final vin = _vinController.text.trim().toUpperCase();
-    final fallbackVin = 'JTDKN3DU5A0123456';
 
-    report['reportName'] = _reportNameController.text.trim().isEmpty
-        ? 'Отчёт'
-        : _reportNameController.text.trim();
+    // Без silent-fallback'ов: hardcoded VIN ('JTDKN3DU5A0123456'),
+    // 'Не указан' для города, 'Отчёт' для названия — всё это
+    // маскировало реальные пустые поля от бэка. Сейчас валидация в
+    // `_summaryMissingReasons` блокирует save до того, как мы тут
+    // окажемся с пустыми required-полями. Если случайно проскочило —
+    // server вернёт `should not be blank`, что лучше тихих заглушек.
+    report['reportName'] = _reportNameController.text.trim();
     report['carStep'] = <String, dynamic>{
-      'vin': vin.isEmpty ? fallbackVin : vin,
+      'vin': vin,
       'unreadableVin': _vinUnreadable,
       'gosNumber': _sanitizePlate(_plateController.text.trim()).isEmpty
           ? null
@@ -1664,9 +1789,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           : _adLinkController.text.trim(),
       'mileage': mileageInt ?? 0,
       'visuallyMileageNotMatchCondition': _mileageMismatch == true,
-      'cityInspection': _inspectionCityController.text.trim().isEmpty
-          ? 'Не указан'
-          : _inspectionCityController.text.trim(),
+      'cityInspection': _inspectionCityController.text.trim(),
       'dateInspection': today,
     };
     report['characteristicsStep'] = _buildCharacteristicsStepPayload(payload);

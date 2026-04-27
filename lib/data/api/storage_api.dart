@@ -1617,22 +1617,17 @@ class StorageApi {
   /// [section] — only for step=inspection: body, body_reinforcement, glass,
   /// interior, under_hood, wheels_and_brakes, lightning, computer_diagnostics.
   /// [selectedTagIds] — optional int[] for relevance sorting.
-  /// Server enum for `step` drops underscores (`testdrive`, `legalreview`,
-  /// `documentreconciliation`) while the rest of the client uses the
-  /// readable form. Normalize at the RPC boundary so callers can stay
-  /// with `test_drive` / `legal_review` / `document_reconciliation`.
-  static String _stepToWireEnum(String step) {
-    switch (step) {
-      case 'test_drive':
-        return 'testdrive';
-      case 'legal_review':
-        return 'legalreview';
-      case 'document_reconciliation':
-        return 'documentreconciliation';
-      default:
-        return step;
-    }
-  }
+  /// Per the OpenRPC `Doc` description (фоrmal source of truth for
+  /// the API contract), `step` accepts the underscore form:
+  ///   `test_drive` / `legal_review` / `document_reconciliation`.
+  /// We send what the spec mandates and align the server-side
+  /// validator to match — the previous wire-form (`testdrive` etc.)
+  /// matched the JSON-Schema `enum` field which is being treated as
+  /// the inconsistent half of the spec and will be updated.
+  ///
+  /// Kept as a function (not removed) so a future divergence can be
+  /// re-introduced at one place if the contract shifts again.
+  static String _stepToWireEnum(String step) => step;
 
   static Future<List<UserTag>> getUserTags({
     required String step,
@@ -1674,6 +1669,10 @@ class StorageApi {
       slug: (item['slug'] ?? '').toString(),
       type: UserTagType.normalize(item['type']),
       createdAt: nullableString(item['createdAt']),
+      // userId: null = system tag, int = current user's own tag
+      // (or another user's, if the server ever supports sharing).
+      // Used downstream to gate the delete-affordance in the editor.
+      userId: _asInt(item['userId']),
     );
   }
 
@@ -1698,10 +1697,7 @@ class StorageApi {
     final params = <String, dynamic>{
       'step': _stepToWireEnum(step),
       'name': name,
-      // AddUserTag enum drops the underscore ('nonserious'), while
-      // responses echo 'non_serious'. UserTagType.addUserTagWire does
-      // the right thing for the input side.
-      'type': normalizedType.addUserTagWire,
+      'type': normalizedType.wireName,
     };
     if (section != null) params['section'] = section;
     final data = await _postRpc(

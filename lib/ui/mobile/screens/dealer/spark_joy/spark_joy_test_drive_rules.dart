@@ -69,26 +69,6 @@ extension _SparkJoyTestDriveRulesMethods on _SparkJoyCreateReportScreenState {
     _markDraftDirty();
   }
 
-  String _tdCustomTagInputKey(String scopeKey, String severity) {
-    return '$scopeKey::$severity';
-  }
-
-  TextEditingController _tdCustomTagController(
-    String scopeKey,
-    String severity,
-  ) {
-    final key = _tdCustomTagInputKey(scopeKey, severity);
-    return _tdCustomTagControllersByScope.putIfAbsent(
-      key,
-      () => TextEditingController(),
-    );
-  }
-
-  FocusNode _tdCustomTagFocusNode(String scopeKey, String severity) {
-    final key = _tdCustomTagInputKey(scopeKey, severity);
-    return _tdCustomTagFocusNodesByScope.putIfAbsent(key, () => FocusNode());
-  }
-
   List<_MediaTagGroup> _testDriveTagGroups(
     String scopeKey, {
     bool includeDisabledDefaults = false,
@@ -201,60 +181,6 @@ extension _SparkJoyTestDriveRulesMethods on _SparkJoyCreateReportScreenState {
       );
     }
     return groups;
-  }
-
-  void _addTestDriveCustomTag({
-    required String scopeKey,
-    required String severity,
-  }) {
-    final controller = _tdCustomTagController(scopeKey, severity);
-    final raw = controller.text.trim();
-    if (raw.isEmpty) return;
-    final groups = _testDriveTagGroups(scopeKey, includeDisabledDefaults: true);
-    final lower = raw.toLowerCase();
-    for (final group in groups) {
-      for (final option in group.options) {
-        if (option.label.toLowerCase() == lower) {
-          controller.clear();
-          return;
-        }
-      }
-    }
-
-    // Sync the custom tag to the server (fire-and-forget).
-    unawaited(
-      _syncTestDriveCustomTag(tagName: raw, severity: severity),
-    );
-
-    _setStateSafely(() {
-      final custom = [
-        ...(_mediaCustomTagsByScope[scopeKey] ?? const <String>[]),
-      ];
-      custom.add(raw);
-      _mediaCustomTagsByScope[scopeKey] = custom;
-
-      final serious = [
-        ...(_mediaCustomSeriousTagsByScope[scopeKey] ?? const <String>[]),
-      ];
-      if (severity == 'serious') {
-        serious.add(raw);
-      } else {
-        serious.removeWhere((tag) => tag.toLowerCase() == lower);
-      }
-      if (serious.isEmpty) {
-        _mediaCustomSeriousTagsByScope.remove(scopeKey);
-      } else {
-        _mediaCustomSeriousTagsByScope[scopeKey] = serious;
-      }
-
-      final nextOrder = <String>[
-        ...(_mediaTagOrderByScope[scopeKey] ?? const <String>[]),
-        raw,
-      ];
-      _mediaTagOrderByScope[scopeKey] = nextOrder;
-    });
-    controller.clear();
-    _markDraftDirty();
   }
 
   bool _testDriveSectionHasData(bool ok, List<String> tags) {

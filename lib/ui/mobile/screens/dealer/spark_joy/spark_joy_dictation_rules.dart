@@ -249,18 +249,103 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       ..selection = TextSelection.collapsed(offset: formatted.length);
   }
 
+  /// Real AI summary via AiQueue: pulls every per-element chat
+  /// history accumulated by the inspection editor, builds a single
+  /// context block from the assistant turns, opens a fresh chatId and
+  /// asks the model for a section-structured conclusion. Result lands
+  /// directly in the expert-conclusion field.
+  Future<void> _generateExpertSummaryWithAi() async {
+    if (_expertSummaryAiBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _expertSummaryAiBusy = true);
+    try {
+      final chatIds = _reportController.aiChatIdBySourceKey.values
+          .where((id) => id > 0)
+          .toSet()
+          .toList();
+      if (chatIds.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'AI пока не из чего собирать заключение — сначала отформатируйте заметки по элементам через ИИ-кнопку в осмотре.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final histories = await AiQueueApi.getChatHistories(ids: chatIds);
+      final contextChunks = <String>[];
+      for (final session in histories.chats.values) {
+        final assistantTurns = session.messages
+            .where((m) => m.role.toLowerCase() == 'assistant')
+            .map((m) => m.content.trim())
+            .where((s) => s.isNotEmpty)
+            .toList();
+        if (assistantTurns.isEmpty) continue;
+        contextChunks.add(assistantTurns.join('\n'));
+      }
+      if (contextChunks.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('AI ещё не сформулировал замечаний по элементам.'),
+          ),
+        );
+        return;
+      }
+
+      final summaryCliche = AiQueueClicheBuilder.buildSummaryCliche(
+        reportLabel: _reportNameController.text.trim(),
+      );
+      final newChatId = SparkJoyReportController.aiSourceKey(
+        groupKey: '__summary',
+        elementType: _draftId,
+      ).hashCode.toUnsigned(32);
+      final result = await AiQueueApi.chatCompletions(
+        chatId: newChatId,
+        text: contextChunks.join('\n\n---\n\n'),
+        cliche: summaryCliche,
+      );
+      final summary = result.text.trim();
+      if (summary.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('AI вернул пустой ответ. Попробуйте ещё раз.')),
+        );
+        return;
+      }
+      _expertController
+        ..text = summary
+        ..selection = TextSelection.collapsed(offset: summary.length);
+      _markDraftDirty();
+    } on storage_api.SessionExpiredException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('AI-помощник недоступен. Попробуйте позже.')),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _expertSummaryAiBusy = false);
+      }
+    }
+  }
+
   Widget _commentInputPanel({
     required TextEditingController controller,
     required bool isDictating,
     required VoidCallback onToggleDictation,
     required VoidCallback onAiFormat,
     String hint = 'Добавьте комментарий',
+    bool aiBusy = false,
   }) {
     return SparkJoyCommentInputPanel(
       controller: controller,
       isDictating: isDictating,
       onToggleDictation: onToggleDictation,
       onAiFormat: onAiFormat,
+      aiBusy: aiBusy,
       onDismissKeyboard: _dismissKeyboard,
       hint: hint,
     );

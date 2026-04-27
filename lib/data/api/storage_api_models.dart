@@ -136,12 +136,11 @@ class CreateRequestResult {
 
 /// User tag returned by `Storage.GetUserTags` / `Storage.AddUserTag`.
 ///
-/// Domain invariant: every tag has a severity. The server-side enum
-/// legally includes `null` and two underscore variants (`nonserious` on
-/// `AddUserTag` input, `non_serious` on responses) but that variance
-/// doesn't belong in the UI. The parser [UserTagType.normalize] folds
-/// everything into [UserTagType] so screens can switch on two values
-/// without null checks.
+/// Domain invariant: every tag has a severity. The server's enum is
+/// `serious` / `non_serious`; nulls and stale `nonserious` (no
+/// underscore) values from older clients also normalize cleanly. The
+/// parser [UserTagType.normalize] folds everything into [UserTagType]
+/// so screens can switch on two values without null checks.
 ///
 /// `step` / `section` stay nullable — their null carries meaning
 /// (system tags without an owning step), unlike `type`.
@@ -154,6 +153,12 @@ class UserTag {
   final UserTagType type;
   final String? createdAt;
 
+  /// Owner's user id from `Storage.GetUserTags` response. `null` means
+  /// it's a system / shared tag — only the user's own tags (non-null
+  /// userId) can be deleted via `Storage.RemoveUserTag`. Use [isCustom]
+  /// for UI delete-affordance gating.
+  final int? userId;
+
   const UserTag({
     required this.id,
     required this.name,
@@ -162,9 +167,15 @@ class UserTag {
     this.step,
     this.section,
     this.createdAt,
+    this.userId,
   });
 
   bool get isSerious => type == UserTagType.serious;
+
+  /// True for tags the current user (or any user) created. False for
+  /// system / shared tags. Mirrors the server's `RemoveUserTag`
+  /// permission model: system tags can't be removed.
+  bool get isCustom => userId != null;
 }
 
 /// Two-value severity of a [UserTag]. No `null` variant — the boundary
@@ -173,8 +184,9 @@ enum UserTagType {
   serious,
   nonSerious;
 
-  /// Canonical form used internally + written to the persisted catalog.
-  /// Matches the server's `GetUserTags` response wire name.
+  /// Canonical wire form — server accepts and emits the same string
+  /// for both `Storage.AddUserTag` input and `Storage.GetUserTags`
+  /// response (`serious` / `non_serious`). Used everywhere.
   String get wireName {
     switch (this) {
       case UserTagType.serious:
@@ -184,25 +196,16 @@ enum UserTagType {
     }
   }
 
-  /// Form required by `Storage.AddUserTag` param enum (no underscore).
-  String get addUserTagWire {
-    switch (this) {
-      case UserTagType.serious:
-        return 'serious';
-      case UserTagType.nonSerious:
-        return 'nonserious';
-    }
-  }
-
   /// Accepts every known server form + internal string and folds to
   /// the canonical enum. Unknown / null / empty → [nonSerious].
   static UserTagType normalize(Object? raw) {
     if (raw is UserTagType) return raw;
     final text = (raw ?? '').toString().trim().toLowerCase();
     if (text == 'serious') return UserTagType.serious;
-    // Tolerate both `non_serious` (server response) and `nonserious`
-    // (AddUserTag input enum) so persisted caches from older builds
-    // still map correctly.
+    // Tolerate the older `nonserious` (no underscore) — earlier client
+    // builds wrote it into the persisted tag catalog and the
+    // OpenRPC spec briefly listed it as the input enum. Fold both into
+    // the canonical [nonSerious].
     if (text == 'non_serious' || text == 'nonserious') {
       return UserTagType.nonSerious;
     }

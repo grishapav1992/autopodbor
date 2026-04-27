@@ -29,7 +29,7 @@ Widget _buildSparkJoyStepTestDrive(
         s._sectionHeading(
           'Проверка узлов',
           icon: Icons.build_circle_outlined,
-          subtitle: 'Отметьте исправность или добавьте теги замечаний',
+          subtitle: 'Отметьте исправность или добавьте повреждения',
         ),
         s._testDriveSubsystemCard(
           sectionLabel: 'Двигатель',
