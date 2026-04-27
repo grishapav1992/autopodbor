@@ -702,19 +702,19 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                               name,
                                                               severity,
                                                             ) async {
-                                                              final id =
-                                                                  await _syncInspectionCustomTag(
-                                                                    groupKey:
-                                                                        groupKey,
-                                                                    tagName:
-                                                                        name,
-                                                                    severity:
-                                                                        severity,
-                                                                  );
-                                                              // Локальные карты обновляем безусловно
-                                                              // (id мог не вернуться по сети, но тег
-                                                              // юзер уже видит — сервер дочинит при
-                                                              // следующем loadTagIdsFromServer).
+                                                              // Server side fires-and-resolves;
+                                                              // we don't gate UI on its id
+                                                              // because the local catalog is
+                                                              // already updated below and
+                                                              // _loadTagIdsFromServer reconciles
+                                                              // ids on the next open.
+                                                              await _syncInspectionCustomTag(
+                                                                groupKey:
+                                                                    groupKey,
+                                                                tagName: name,
+                                                                severity:
+                                                                    severity,
+                                                              );
                                                               final lower =
                                                                   name
                                                                       .toLowerCase();
@@ -759,8 +759,16 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                               }
                                                               tagOrderByScope[scopeKey] =
                                                                   order;
-                                                              return id !=
-                                                                  null;
+                                                              // Локальные карты обновлены —
+                                                              // тег пользователю виден в
+                                                              // каталоге сразу. Серверный id
+                                                              // мог не вернуться (тайм-аут
+                                                              // refetch), но _loadTagIdsFromServer
+                                                              // дочинит при следующем открытии.
+                                                              // Sheet'у возвращаем true чтобы
+                                                              // не показывать ложный «не
+                                                              // удалось создать тег» тост.
+                                                              return true;
                                                             },
                                                         onDeleteCustom:
                                                             (name) async {
@@ -839,22 +847,17 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                               }
                                                               return true;
                                                             },
-                                                        onSelectionChanged:
+                                                        onRefreshOrder:
                                                             (selectedSnapshot) {
-                                                              // Co-occurrence обучение —
-                                                              // на каждый тап сервер получает
-                                                              // selectedTagIds. Локальный
-                                                              // tagOrderByScope не трогаем
-                                                              // здесь: следующее открытие
-                                                              // sheet'а пере-получит порядок
-                                                              // через initialOrder.
-                                                              unawaited(
-                                                                _refreshInspectionTagOrder(
-                                                                  groupKey:
-                                                                      groupKey,
-                                                                  selectedTagNames:
-                                                                      selectedSnapshot,
-                                                                ),
+                                                              // Sheet debounces internally
+                                                              // and applies the returned
+                                                              // order to its own state —
+                                                              // host just forwards.
+                                                              return _refreshInspectionTagOrder(
+                                                                groupKey:
+                                                                    groupKey,
+                                                                selectedTagNames:
+                                                                    selectedSnapshot,
                                                               );
                                                             },
                                                       );

@@ -25,7 +25,8 @@ Future<List<String>?> _showSparkJoyTagPicker(
   List<String> initialOrder = const <String>[],
   required Future<bool> Function(String name, String severity) onCreateCustom,
   required Future<bool> Function(String name) onDeleteCustom,
-  required ValueChanged<List<String>> onSelectionChanged,
+  required Future<List<String>?> Function(List<String> selected)
+  onRefreshOrder,
 }) {
   return showModalBottomSheet<List<String>>(
     context: context,
@@ -39,7 +40,7 @@ Future<List<String>?> _showSparkJoyTagPicker(
       initialOrder: initialOrder,
       onCreateCustom: onCreateCustom,
       onDeleteCustom: onDeleteCustom,
-      onSelectionChanged: onSelectionChanged,
+      onRefreshOrder: onRefreshOrder,
     ),
   );
 }
@@ -52,7 +53,7 @@ class _SparkJoyTagPickerSheet extends StatefulWidget {
     required this.initialOrder,
     required this.onCreateCustom,
     required this.onDeleteCustom,
-    required this.onSelectionChanged,
+    required this.onRefreshOrder,
   });
 
   final String title;
@@ -61,7 +62,14 @@ class _SparkJoyTagPickerSheet extends StatefulWidget {
   final List<String> initialOrder;
   final Future<bool> Function(String name, String severity) onCreateCustom;
   final Future<bool> Function(String name) onDeleteCustom;
-  final ValueChanged<List<String>> onSelectionChanged;
+
+  /// Fired (debounced inside the sheet) on every selection change.
+  /// Caller hits `Storage.GetUserTags` with the current `selectedTagIds`;
+  /// the returned list is the new prioritised order of unselected
+  /// tags. Returning `null` means "keep current order" (network
+  /// failure or no signal). The sheet applies the result to its own
+  /// state so the catalog re-orders live during a single session.
+  final Future<List<String>?> Function(List<String> selected) onRefreshOrder;
 
   @override
   State<_SparkJoyTagPickerSheet> createState() =>
@@ -76,6 +84,13 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   String _query = '';
   bool _busy = false;
 
+  // Server-priority refetch is debounced inside the sheet — quick
+  // multi-tap shouldn't fan out into N concurrent GetUserTags calls.
+  // The seq counter discards stale responses if the user keeps tapping
+  // while one fetch is in flight.
+  Timer? _refetchDebounce;
+  int _refetchSeq = 0;
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +102,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
   @override
   void dispose() {
+    _refetchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -102,6 +118,21 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     return _selected.any((l) => l.toLowerCase() == lower);
   }
 
+  /// Fires the host's `onRefreshOrder` after a 200ms quiet period
+  /// since the last toggle. Stale responses (a later tap superseded
+  /// this one) are dropped via the seq counter.
+  void _scheduleRefetch() {
+    _refetchDebounce?.cancel();
+    final mySeq = ++_refetchSeq;
+    _refetchDebounce = Timer(const Duration(milliseconds: 200), () async {
+      final next = await widget.onRefreshOrder(
+        List<String>.from(_selected),
+      );
+      if (!mounted || mySeq != _refetchSeq || next == null) return;
+      setState(() => _order = next);
+    });
+  }
+
   void _toggle(String label) {
     setState(() {
       final lower = label.toLowerCase();
@@ -112,7 +143,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
       }
     });
     HapticFeedback.selectionClick();
-    widget.onSelectionChanged(List<String>.from(_selected));
+    _scheduleRefetch();
   }
 
   Future<void> _create(String severity) async {
@@ -139,7 +170,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
       _searchController.clear();
       _query = '';
     });
-    widget.onSelectionChanged(List<String>.from(_selected));
+    _scheduleRefetch();
   }
 
   Future<void> _delete(_MediaTagOption opt) async {
@@ -180,7 +211,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
           .toList(growable: false);
       _selected.removeWhere((l) => l.toLowerCase() == lower);
     });
-    widget.onSelectionChanged(List<String>.from(_selected));
+    _scheduleRefetch();
   }
 
   /// Returns options to display in the main list. With an empty query
@@ -316,6 +347,14 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   }
 
   Widget _buildSelectedRow() {
+    // Pre-build a label → option lookup so the inner itemBuilder is
+    // O(1) per chip instead of O(n) firstWhere. Matters when the
+    // catalog grows past a few hundred and the user has many chips
+    // selected — without this each keystroke triggers
+    // O(chips × options) work in the picker.
+    final byLower = <String, _MediaTagOption>{
+      for (final o in _options) o.label.toLowerCase(): o,
+    };
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         SparkSpace.xxxl,
@@ -332,12 +371,8 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
           separatorBuilder: (_, _) => const SizedBox(width: 6),
           itemBuilder: (_, i) {
             final label = _selected[i];
-            final lower = label.toLowerCase();
-            final opt = _options.firstWhere(
-              (o) => o.label.toLowerCase() == lower,
-              orElse: () =>
-                  _MediaTagOption(label: label, severity: 'minor'),
-            );
+            final opt = byLower[label.toLowerCase()] ??
+                _MediaTagOption(label: label, severity: 'minor');
             final color = _severityColor(opt.severity);
             return Material(
               color: Colors.transparent,
