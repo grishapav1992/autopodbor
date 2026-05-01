@@ -35,7 +35,17 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
         scrollController: _pageScrollController,
         padding: AppSizes.listPaddingWithBottomBar(),
         bottomInset: 0,
-        children: [_editingSection ? _sectionEditor() : _sectionsOverview()],
+        children: [
+          // ReadOnly = просмотр завершённого отчёта; используем
+          // отдельный compact-вид (verdict-баннер не нужен, разделы
+          // — раскрывающиеся карточки). Edit-флоу не задет.
+          if (isReadOnly)
+            _buildSparkJoyCompletedReportView(this)
+          else if (_editingSection)
+            _sectionEditor()
+          else
+            _sectionsOverview(),
+        ],
       ),
     );
   }

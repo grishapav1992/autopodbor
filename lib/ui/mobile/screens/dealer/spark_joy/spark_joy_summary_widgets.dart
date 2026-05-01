@@ -320,7 +320,7 @@ Widget _buildSparkSummarySectionCard(
                 weight: FontWeight.w700,
               ),
             ),
-            if (editable && !clientPreview)
+            if (editable && !clientPreview && !s.widget.readOnly)
               TextButton(
                 onPressed: () => s._openSummarySectionEditor(title),
                 style: TextButton.styleFrom(
@@ -601,6 +601,10 @@ Widget _buildSparkSummarySectionsList(
 
 Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
   final note = s._summaryController.text.trim();
+  // Read-only completed view doesn't need the edit-mode placeholder
+  // ("Заполните разделы осмотра…") — if the dealer didn't fill the
+  // recap text, the card is just noise to the buyer.
+  if (s.widget.readOnly && note.isEmpty) return const SizedBox.shrink();
   return s._card(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,

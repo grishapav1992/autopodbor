@@ -77,6 +77,7 @@ part 'spark_joy_media_state_helpers.dart';
 part 'spark_joy_init_dispose_helpers.dart';
 part 'spark_joy_draft_init_helpers.dart';
 part 'spark_joy_report_editor_shell.dart';
+part 'spark_joy_completed_report_view.dart';
 part 'spark_joy_report_flow_controller.dart';
 part 'spark_joy_step_action_controller.dart';
 part 'spark_joy_overview_controller.dart';
