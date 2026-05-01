@@ -357,6 +357,11 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                 SparkSpace.xs,
                 SparkSpace.sm,
               ),
+              // В шапке оставлены только заголовок sheet'а и
+              // шестерёнка. «Готово» переехало в фиксированный
+              // bottom action bar — иначе пользователь, создавая
+              // новый тег, мог тапнуть «Готово» вместо «Добавить»
+              // (которые сидели рядом) и потерять введённый текст.
               child: Row(
                 children: [
                   Expanded(
@@ -384,20 +389,11 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                             setState(() {
                               _settingsMode = !_settingsMode;
                               if (!_settingsMode) {
-                                // Leaving edit mode — collapse the
-                                // inline add field too so the picker
-                                // returns to a clean selection state.
                                 _addInputOpen = false;
                                 _addController.clear();
                               }
                             });
                           },
-                  ),
-                  TextButton(
-                    onPressed: _busy
-                        ? null
-                        : () => Navigator.of(context).pop(_selected),
-                    child: const Text('Готово'),
                   ),
                 ],
               ),
@@ -472,6 +468,51 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
                           ),
                   ),
                 ],
+              ),
+            ),
+            // Bottom action bar — фиксированный footer с «Готово».
+            // Если у пользователя в `_addController` остался не
+            // закоммиченный новый тег, мы сначала молча сохраняем
+            // его (auto-commit), и только потом закрываем sheet —
+            // меньше трения, никакой потери введённого текста.
+            const Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                SparkSpace.xxxl,
+                SparkSpace.md,
+                SparkSpace.xxxl,
+                SparkSpace.md,
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(SparkSize.actionHeight),
+                    backgroundColor: kSecondaryColor,
+                    foregroundColor: kWhiteColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SparkRadius.lg),
+                    ),
+                  ),
+                  onPressed: _busy
+                      ? null
+                      : () async {
+                          final pending = _addController.text.trim();
+                          final navigator = Navigator.of(context);
+                          if (pending.isNotEmpty) {
+                            await _submitAdd();
+                            if (!mounted) return;
+                          }
+                          navigator.pop(_selected);
+                        },
+                  child: const Text(
+                    'Готово',
+                    style: TextStyle(
+                      fontSize: SparkTextSize.label,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
