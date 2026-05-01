@@ -20,6 +20,11 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
     return s._mediaGroupEditor();
   }
 
+  // Обе группы (обязательные + дополнительные) живут в общей
+  // рамке-зоне «Осмотр». `_mediaGroupListRow` сам возвращает
+  // SparkCard, поэтому средний card-обёртки не нужен (иначе выходит
+  // каскад «frame → card → card на каждый ряд»). Цвет фона без
+  // border — Сам lightGrey достаточно отделяет зону.
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
@@ -35,54 +40,49 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
         ),
         const SizedBox(height: SparkSpace.lg),
       ],
-      if (hasRequiredGroups)
-        s._sectionHeading(
-          'Обязательные · $requiredFilled/${requiredGroups.length}',
-          icon: Icons.checklist_rounded,
-          subtitle: 'Минимальный набор для завершения осмотра',
+      Container(
+        padding: const EdgeInsets.fromLTRB(
+          SparkSpace.md,
+          SparkSpace.md,
+          SparkSpace.md,
+          SparkSpace.xs,
         ),
-      if (hasRequiredGroups)
-        SparkCard(
-          radius: SparkRadius.md,
-          padding: const EdgeInsets.fromLTRB(
-            SparkSpace.md,
-            SparkSpace.md,
-            SparkSpace.md,
-            SparkSpace.xs,
-          ),
-          child: Column(
-            children: requiredGroups.map((config) {
-              final state = s._mediaState[config.key]!;
-              return s._mediaGroupListRow(state);
-            }).toList(),
-          ),
+        decoration: BoxDecoration(
+          color: kLightGreyColor,
+          borderRadius: BorderRadius.circular(SparkRadius.lg),
         ),
-      if (hasRequiredGroups) const SizedBox(height: SparkSpace.md),
-      s._sectionHeading(
-        hasRequiredGroups ? 'Дополнительные' : 'Разделы осмотра',
-        icon: Icons.photo_library_outlined,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (hasRequiredGroups) ...[
+              s._sectionHeading(
+                'Обязательные · $requiredFilled/${requiredGroups.length}',
+                icon: Icons.checklist_rounded,
+                subtitle: 'Минимальный набор для завершения осмотра',
+              ),
+              ...requiredGroups.map((config) {
+                final state = s._mediaState[config.key]!;
+                return s._mediaGroupListRow(state);
+              }),
+              const SizedBox(height: SparkSpace.sm),
+            ],
+            s._sectionHeading(
+              hasRequiredGroups ? 'Дополнительные' : 'Разделы осмотра',
+              icon: Icons.photo_library_outlined,
+            ),
+            if (optionalGroups.isEmpty)
+              const SparkHintCard(
+                text: 'Дополнительные группы не настроены.',
+                icon: Icons.info_outline_rounded,
+              )
+            else
+              ...optionalGroups.map((config) {
+                final state = s._mediaState[config.key]!;
+                return s._mediaGroupListRow(state);
+              }),
+          ],
+        ),
       ),
-      if (optionalGroups.isEmpty)
-        const SparkHintCard(
-          text: 'Дополнительные группы не настроены.',
-          icon: Icons.info_outline_rounded,
-        )
-      else
-        SparkCard(
-          radius: SparkRadius.md,
-          padding: const EdgeInsets.fromLTRB(
-            SparkSpace.md,
-            SparkSpace.md,
-            SparkSpace.md,
-            SparkSpace.xs,
-          ),
-          child: Column(
-            children: optionalGroups.map((config) {
-              final state = s._mediaState[config.key]!;
-              return s._mediaGroupListRow(state);
-            }).toList(),
-          ),
-        ),
     ],
   );
 }
