@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:camerawesome/camerawesome_plugin.dart' as cam;
 import 'package:camerawesome/pigeon.dart' as cam_pigeon;
+import 'package:dotted_border/dotted_border.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';

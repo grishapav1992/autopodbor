@@ -532,146 +532,62 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Widget _runMediaOverlayCircleButton({
-    required IconData icon,
+  Widget _runMediaOverlayCornerEditButton({
+    required bool hasInspection,
     required VoidCallback onTap,
-    bool destructive = false,
   }) {
-    final fg = destructive ? kRedColor : kSecondaryColor;
+    final bgColor = hasInspection
+        ? kSecondaryColor
+        : Colors.black.withValues(alpha: 0.5);
+    final iconData = hasInspection
+        ? Icons.edit_note_rounded
+        : Icons.add_rounded;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
+        customBorder: const CircleBorder(),
         child: Ink(
-          width: SparkSize.iconState,
-          height: SparkSize.iconState,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
-            color: destructive
-                ? kWhiteColor.withValues(alpha: 0.94)
-                : kWhiteColor.withValues(alpha: 0.9),
+            color: bgColor,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: destructive
-                  ? kRedColor.withValues(alpha: 0.18)
-                  : kWhiteColor.withValues(alpha: 0.95),
-            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.16),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: Icon(icon, size: SparkTextSize.titleLg, color: fg),
+          child: Icon(iconData, size: 20, color: kWhiteColor),
         ),
       ),
     );
   }
 
-  Widget _runMediaOverlayPillButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    bool highlighted = false,
-  }) {
-    final fg = highlighted ? kSecondaryColor : kTertiaryColor;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xl,
-            vertical: SparkSpace.md,
-          ),
-          decoration: BoxDecoration(
-            color: kWhiteColor.withValues(alpha: highlighted ? 0.94 : 0.9),
-            borderRadius: BorderRadius.circular(SparkRadius.pill),
-            border: Border.all(
-              color: highlighted
-                  ? kSecondaryColor.withValues(alpha: 0.22)
-                  : kWhiteColor.withValues(alpha: 0.95),
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.14),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: SparkTextSize.title, color: fg),
-              const SizedBox(width: SparkSpace.xs),
-              MyText(
-                text: label,
-                size: SparkTextSize.caption,
-                color: fg,
-                weight: FontWeight.w700,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _runMediaOverlayStatusBadge({
-    required IconData icon,
-    required String label,
-    required Color color,
-    bool muted = false,
-  }) {
+  Widget _runMediaOverlayMicroDot({required Color color}) {
     return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.lg,
-        vertical: SparkSpace.sm,
-      ),
+      width: 14,
+      height: 14,
       decoration: BoxDecoration(
-        color: muted
-            ? kWhiteColor.withValues(alpha: 0.9)
-            : color.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-        border: Border.all(
-          color: muted
-              ? kBorderColor.withValues(alpha: 0.8)
-              : color.withValues(alpha: 0.9),
-        ),
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: kWhiteColor, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.16),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: SparkTextSize.label,
-            color: muted ? kGreyColor : kWhiteColor,
-          ),
-          const SizedBox(width: SparkSpace.xs),
-          MyText(
-            text: label,
-            size: SparkTextSize.chip,
-            color: muted ? kGreyColor : kWhiteColor,
-            weight: FontWeight.w700,
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
     );
   }
 
-  Widget _runMediaOverlayTypeBadge(UploadedItem item) {
-    final isVideo = item.isVideo;
+  Widget _runMediaOverlayVideoBadge(UploadedItem item) {
+    if (!item.isVideo) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: SparkSpace.md,
@@ -684,14 +600,14 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            isVideo ? Icons.play_arrow_rounded : Icons.photo_outlined,
+          const Icon(
+            Icons.play_arrow_rounded,
             size: SparkTextSize.label,
             color: kWhiteColor,
           ),
           const SizedBox(width: SparkSpace.xxxs),
           MyText(
-            text: isVideo ? 'Видео' : 'Фото',
+            text: 'Видео',
             size: SparkTextSize.chip,
             color: kWhiteColor,
             weight: FontWeight.w700,
@@ -710,44 +626,48 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(SparkRadius.xl),
-        child: Ink(
-          decoration: BoxDecoration(
-            color: kInputBgColor,
-            borderRadius: BorderRadius.circular(SparkRadius.xl),
-            border: Border.all(
-              color: isBusy
-                  ? kSecondaryColor.withValues(alpha: 0.35)
-                  : kBorderColor,
+        child: DottedBorder(
+          borderType: BorderType.RRect,
+          radius: const Radius.circular(SparkRadius.xl),
+          color: isBusy
+              ? kSecondaryColor.withValues(alpha: 0.55)
+              : kBorderColor.withValues(alpha: 0.85),
+          strokeWidth: 1.5,
+          dashPattern: const [6, 4],
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: kLightGreyColor,
+              borderRadius: BorderRadius.circular(SparkRadius.xl),
             ),
-          ),
-          child: Center(
-            child: AnimatedSwitcher(
-              duration: SparkMotion.fast,
-              child: isBusy
-                  ? const SizedBox(
-                      key: ValueKey('media-add-loading'),
-                      width: SparkSize.iconXxl,
-                      height: SparkSize.iconXxl,
-                      child: CircularProgressIndicator(strokeWidth: 2.2),
-                    )
-                  : Column(
-                      key: const ValueKey('media-add-idle'),
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(
-                          Icons.add_photo_alternate_outlined,
-                          size: SparkSize.icon4xl,
-                          color: kGreyColor,
-                        ),
-                        SizedBox(height: SparkSpace.sm),
-                        MyText(
-                          text: 'Фото / Видео',
-                          size: SparkTextSize.body,
-                          color: kGreyColor,
-                          weight: FontWeight.w700,
-                        ),
-                      ],
-                    ),
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: SparkMotion.fast,
+                child: isBusy
+                    ? const SizedBox(
+                        key: ValueKey('media-add-loading'),
+                        width: SparkSize.iconXxl,
+                        height: SparkSize.iconXxl,
+                        child: CircularProgressIndicator(strokeWidth: 2.2),
+                      )
+                    : Column(
+                        key: const ValueKey('media-add-idle'),
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(
+                            Icons.add_photo_alternate_outlined,
+                            size: SparkSize.icon4xl,
+                            color: kSecondaryColor,
+                          ),
+                          SizedBox(height: SparkSpace.sm),
+                          MyText(
+                            text: 'Фото / Видео',
+                            size: SparkTextSize.body,
+                            color: kSecondaryColor,
+                            weight: FontWeight.w700,
+                          ),
+                        ],
+                      ),
+              ),
             ),
           ),
         ),
@@ -801,14 +721,6 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                       maxLines: 2,
                       textOverflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: SparkSpace.xxs),
-                    MyText(
-                      text: '${files.length} файлов',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                      maxLines: 1,
-                      textOverflow: TextOverflow.ellipsis,
-                    ),
                     const SizedBox(height: SparkSpace.sm),
                     Wrap(
                       spacing: SparkSpace.sm,
@@ -824,16 +736,17 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                             vertical: SparkSpace.xxxs,
                           ),
                         ),
-                        SparkChip(
-                          text: 'С заметкой: $notedFiles',
-                          background: kGreenColor.withValues(alpha: 0.12),
-                          color: kGreenColor,
-                          textSize: SparkTextSize.caption,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: SparkSpace.md,
-                            vertical: SparkSpace.xxxs,
+                        if (notedFiles > 0)
+                          SparkChip(
+                            text: 'С заметкой: $notedFiles',
+                            background: kGreenColor.withValues(alpha: 0.12),
+                            color: kGreenColor,
+                            textSize: SparkTextSize.caption,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: SparkSpace.md,
+                              vertical: SparkSpace.xxxs,
+                            ),
                           ),
-                        ),
                         if (issueFiles > 0)
                           SparkChip(
                             text: 'Замечания: $issueFiles',
@@ -939,13 +852,31 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                     ),
                   )
                 : (files.length > 1
-                      ? const Padding(
-                          key: ValueKey('media-select-hint'),
-                          padding: EdgeInsets.only(bottom: SparkSpace.lg),
-                          child: SparkHintCard(
-                            text:
-                                'Зажмите фото для выбора нескольких файлов.',
-                            icon: Icons.touch_app_outlined,
+                      ? Padding(
+                          key: const ValueKey('media-select-hint'),
+                          padding: const EdgeInsets.only(
+                            bottom: SparkSpace.lg,
+                            left: SparkSpace.xs,
+                            right: SparkSpace.xs,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(
+                                Icons.touch_app_outlined,
+                                size: SparkSize.iconSm,
+                                color: kGreyColor,
+                              ),
+                              const SizedBox(width: SparkSpace.sm),
+                              Expanded(
+                                child: MyText(
+                                  text:
+                                      'Зажмите фото для выбора нескольких файлов.',
+                                  size: SparkTextSize.bodyLg,
+                                  color: kGreyColor,
+                                ),
+                              ),
+                            ],
                           ),
                         )
                       : const SizedBox.shrink(
@@ -959,7 +890,6 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
             final gridColumns = maxWidth >= 1080
                 ? 4
                 : (maxWidth >= 760 ? 3 : 2);
-            final gridAspectRatio = gridColumns >= 3 ? 1.18 : 1.34;
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -967,7 +897,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                 crossAxisCount: gridColumns,
                 crossAxisSpacing: SparkSpace.lg,
                 mainAxisSpacing: SparkSpace.lg,
-                childAspectRatio: gridAspectRatio,
+                childAspectRatio: 1.0,
               ),
               itemCount: files.length + 1,
               itemBuilder: (context, index) {
@@ -1102,117 +1032,43 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                                 ),
                               ),
                             ),
-                            Positioned(
-                              left: SparkSpace.lg,
-                              top: SparkSpace.lg,
-                              child: AnimatedSwitcher(
-                                duration: SparkMotion.fast,
-                                switchInCurve: Curves.easeOut,
-                                switchOutCurve: Curves.easeIn,
-                                child: _mediaGroupSelectMode
-                                    ? KeyedSubtree(
-                                        key: ValueKey(
-                                          'media-select-${item.id}-$selected',
-                                        ),
-                                        child: _runMediaOverlaySelectionMarker(
-                                          selected: selected,
-                                        ),
-                                      )
-                                    : KeyedSubtree(
-                                        key: ValueKey(
-                                          'media-delete-${item.id}',
-                                        ),
-                                        child: _runMediaOverlayCircleButton(
-                                          icon: Icons.delete_outline_rounded,
-                                          destructive: true,
-                                          onTap: () => _deleteMediaInGroup(
-                                            groupKey: groupKey,
-                                            indexes: [fileIndex],
-                                          ),
-                                        ),
-                                      ),
+                            if (_mediaGroupSelectMode)
+                              Positioned(
+                                left: SparkSpace.lg,
+                                top: SparkSpace.lg,
+                                child: _runMediaOverlaySelectionMarker(
+                                  selected: selected,
+                                ),
                               ),
-                            ),
-                            Positioned(
-                              right: SparkSpace.lg,
-                              top: SparkSpace.lg,
-                              child: AnimatedSwitcher(
-                                duration: SparkMotion.fast,
-                                switchInCurve: Curves.easeOut,
-                                switchOutCurve: Curves.easeIn,
-                                child: _mediaGroupSelectMode
-                                    ? const SizedBox.shrink(
-                                        key: ValueKey('media-note-hidden'),
-                                      )
-                                    : KeyedSubtree(
-                                        key: ValueKey(
-                                          'media-note-${item.id}-$hasInspection',
-                                        ),
-                                        child: _runMediaOverlayPillButton(
-                                          icon: hasInspection
-                                              ? Icons.edit_note_rounded
-                                              : Icons.add_rounded,
-                                          label: hasInspection
-                                              ? 'Заметка'
-                                              : 'Добавить',
-                                          highlighted: hasInspection,
-                                          onTap: () =>
-                                              _openMediaInspectionEditor(
-                                                groupKey: groupKey,
-                                                index: fileIndex,
-                                              ),
-                                        ),
-                                      ),
+                            if (!_mediaGroupSelectMode)
+                              Positioned(
+                                right: SparkSpace.lg,
+                                top: SparkSpace.lg,
+                                child: _runMediaOverlayCornerEditButton(
+                                  hasInspection: hasInspection,
+                                  onTap: () => _openMediaInspectionEditor(
+                                    groupKey: groupKey,
+                                    index: fileIndex,
+                                  ),
+                                ),
                               ),
-                            ),
-                            Positioned(
-                              left: SparkSpace.lg,
-                              bottom: SparkSpace.lg,
-                              child: AnimatedSwitcher(
-                                duration: SparkMotion.fast,
-                                switchInCurve: Curves.easeOut,
-                                switchOutCurve: Curves.easeIn,
-                                child: _mediaGroupSelectMode
-                                    ? const SizedBox.shrink(
-                                        key: ValueKey(
-                                          'inspection-badge-hidden-select',
-                                        ),
-                                      )
-                                    : KeyedSubtree(
-                                        key: ValueKey(
-                                          'inspection-badge-$hasInspection',
-                                        ),
-                                        child: _runMediaOverlayStatusBadge(
-                                          icon: hasInspection
-                                              ? Icons
-                                                    .check_circle_outline_rounded
-                                              : Icons.radio_button_unchecked,
-                                          label: hasInspection
-                                              ? 'Есть заметка'
-                                              : 'Без заметки',
-                                          color: kGreenColor,
-                                          muted: !hasInspection,
-                                        ),
-                                      ),
+                            if (!_mediaGroupSelectMode &&
+                                (_mediaItemHasIssue(item) || hasInspection))
+                              Positioned(
+                                left: SparkSpace.lg,
+                                bottom: SparkSpace.lg,
+                                child: _runMediaOverlayMicroDot(
+                                  color: _mediaItemHasIssue(item)
+                                      ? kRedColor
+                                      : kGreenColor,
+                                ),
                               ),
-                            ),
-                            Positioned(
-                              right: SparkSpace.lg,
-                              bottom: SparkSpace.lg,
-                              child: AnimatedSwitcher(
-                                duration: SparkMotion.fast,
-                                switchInCurve: Curves.easeOut,
-                                switchOutCurve: Curves.easeIn,
-                                child: _mediaGroupSelectMode
-                                    ? const SizedBox.shrink(
-                                        key: ValueKey('type-badge-hidden'),
-                                      )
-                                    : KeyedSubtree(
-                                        key: ValueKey('type-badge-${item.id}'),
-                                        child: _runMediaOverlayTypeBadge(item),
-                                      ),
+                            if (!_mediaGroupSelectMode && item.isVideo)
+                              Positioned(
+                                right: SparkSpace.lg,
+                                bottom: SparkSpace.lg,
+                                child: _runMediaOverlayVideoBadge(item),
                               ),
-                            ),
                           ],
                         ),
                       ),
