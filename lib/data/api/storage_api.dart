@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 
+import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -52,6 +53,12 @@ void _notifySessionExpired() {
 
 class StorageApi {
   static const String _endpoint = 'https://podbor-av.ru.tuna.am';
+  // Singleton Dio used only for binary uploads to presigned URLs. Other
+  // RPC calls go through `package:http` as before — Dio buys us native
+  // upload-progress callbacks (`onSendProgress`) that `http.put` can't
+  // expose. Reusing one instance keeps the underlying connection pool
+  // warm across concurrent part uploads.
+  static final dio.Dio _uploadDio = dio.Dio();
   static final Map<String, Future<CreateRequestResult>>
   _createRequestInFlightByKey = {};
   static final Map<String, _CreateRequestCacheEntry> _recentCreateRequestByKey =
@@ -1395,11 +1402,21 @@ class StorageApi {
     return MultipartUploadUrlsResult(key: key, urls: urls, result: result);
   }
 
+  /// Streams a presigned PUT through Dio so we can surface real
+  /// upload progress to the UI via [onProgress]. The `package:http`
+  /// equivalent only fires once the entire body is buffered, which
+  /// makes small files appear frozen at 0% then jump to 100%.
+  ///
+  /// Behavioural parity with the previous implementation:
+  /// - Throws on empty URL / empty bytes / non-2xx status.
+  /// - Returns the trimmed `ETag` header (case-insensitive).
+  /// - Honours [timeout] for both send + receive.
   static Future<String> uploadBytesToPresignedUrl({
     required String url,
     required List<int> bytes,
     String? contentType,
     Duration timeout = const Duration(seconds: 60),
+    void Function(int sent, int total)? onProgress,
   }) async {
     if (url.trim().isEmpty) {
       throw Exception('Presigned URL is empty');
@@ -1407,18 +1424,43 @@ class StorageApi {
     if (bytes.isEmpty) {
       throw Exception('Upload bytes are empty');
     }
-    final headers = <String, String>{
-      'Content-Length': bytes.length.toString(),
+    final length = bytes.length;
+    final headers = <String, dynamic>{
+      'Content-Length': length,
       if (contentType != null && contentType.trim().isNotEmpty)
         'Content-Type': contentType.trim(),
     };
-    final response = await http
-        .put(Uri.parse(url), headers: headers, body: bytes)
-        .timeout(timeout);
-    if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Upload failed: HTTP ${response.statusCode}');
+    final dio.Response<dynamic> response;
+    try {
+      response = await _uploadDio.put<dynamic>(
+        url,
+        // `Stream.fromIterable` yields the buffer in one chunk to
+        // Dio, which then segments it for the socket. Dio invokes
+        // onSendProgress as bytes leave its buffer.
+        data: Stream<List<int>>.fromIterable(<List<int>>[bytes]),
+        options: dio.Options(
+          headers: headers,
+          sendTimeout: timeout,
+          receiveTimeout: timeout,
+          // Treat any non-2xx as throwable so we keep the same error
+          // semantics as the old http.put-based flow.
+          validateStatus: (status) =>
+              status != null && status >= 200 && status < 300,
+          // Don't try to JSON-decode the response body — S3 returns
+          // an XML body or empty body; we only care about ETag.
+          responseType: dio.ResponseType.bytes,
+        ),
+        onSendProgress: onProgress,
+      );
+    } on dio.DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status != null) {
+        throw Exception('Upload failed: HTTP $status');
+      }
+      throw Exception(e.message ?? 'Upload transport error');
     }
-    final etag = response.headers['etag'] ?? response.headers['ETag'] ?? '';
+    final etag =
+        response.headers.value('etag') ?? response.headers.value('ETag') ?? '';
     return etag.trim();
   }
 

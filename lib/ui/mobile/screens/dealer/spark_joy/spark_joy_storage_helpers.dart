@@ -945,6 +945,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     required int totalFiles,
     required int partNumber,
     required int partCount,
+    void Function(int sent, int total)? onProgress,
   }) async {
     Object? lastError;
     for (var attempt = 1; attempt <= 3; attempt++) {
@@ -954,12 +955,17 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           bytes: bytes,
           contentType: contentType,
           timeout: timeout,
+          onProgress: onProgress,
         );
       } catch (error) {
         lastError = error;
         _backendUploadErrorText =
             'Файл $fileIndex/$totalFiles, часть $partNumber/$partCount: $error';
         if (attempt < 3) {
+          // Roll the visible progress for this part back to 0 before
+          // retrying so the UI doesn't claim partial bytes from the
+          // failed attempt are still in flight.
+          onProgress?.call(0, bytes.length);
           await Future.delayed(Duration(milliseconds: 600 * attempt));
           continue;
         }
@@ -1901,14 +1907,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       var uploadId = _uploadStateText(fileState, 'uploadId');
       final savedPartCount = _uploadStateInt(fileState, 'partCount');
       final etagsByPart = _readUploadedPartsFromState(fileState);
-      _setBackendUploadProgress(
-        inProgress: true,
-        statusText: 'Выгрузка файла ${index + 1}/$totalItems',
-        currentFile: index + 1,
-        totalFiles: totalItems,
-        currentPart: etagsByPart.length,
-        totalParts: partCount,
-      );
+      // Per-file progress lives in the per-file chip below; aggregate
+      // status text + completed counter are owned by the batch loop
+      // in _uploadReportToBackend (so parallel files don't thrash
+      // the global counters).
       _updateBackendUploadFileProgress(
         item: item,
         index: index,
@@ -1955,74 +1957,117 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           throw Exception('Not enough part URLs');
         }
 
-        for (var partNumber = 1; partNumber <= partCount; partNumber++) {
-          _setBackendUploadProgress(
-            inProgress: true,
-            statusText: null,
-            currentFile: index + 1,
-            totalFiles: totalItems,
-            currentPart: partNumber,
-            totalParts: partCount,
-          );
-          final existingEtag = etagsByPart[partNumber];
-          if (existingEtag != null && existingEtag.trim().isNotEmpty) {
-            _updateBackendUploadFileProgress(
-              item: item,
-              index: index,
-              totalItems: totalItems,
-              fileName: filename,
-              status: BackendUploadFileStatus.uploading,
-              progress: partCount <= 0 ? 0 : partNumber / partCount,
-              uploadedParts: partNumber,
-              totalParts: partCount,
-            );
-            continue;
-          }
-          final metaIndex = urlsResult.urls.indexWhere(
-            (part) => part.partNumber == partNumber,
-          );
-          if (metaIndex < 0) {
-            throw Exception('Part URL not found for part=$partNumber');
-          }
+        // Per-part `bytesSent` so the UI shows a smooth byte-level
+        // progress bar even for one-part files (where the old
+        // discrete `etagsByPart.length / partCount` jumped straight
+        // from 0 → 100% with no intermediate state). Pre-seed already
+        // completed parts (resume case) to their actual on-disk size.
+        int sizeForPart(int partNumber) {
           final start = (partNumber - 1) * partSize;
           final end = math.min(start + partSize, bytes.length);
-          final chunk = bytes.sublist(start, end);
-          final partTimeout = _multipartPartTimeoutForBytes(chunk.length);
-          final etag = await _uploadPartWithRetry(
-            url: urlsResult.urls[metaIndex].url,
-            bytes: chunk,
-            contentType: item.mimeType,
-            timeout: partTimeout,
-            fileIndex: index + 1,
-            totalFiles: totalItems,
-            partNumber: partNumber,
-            partCount: partCount,
-          );
-          if (etag.trim().isNotEmpty) {
-            etagsByPart[partNumber] = etag.trim();
-            fileState['updatedAt'] = DateTime.now().toIso8601String();
-            _writeUploadedPartsToState(fileState, etagsByPart);
-            filesState[sourceKey] = fileState;
-            await _persistBackendUploadStateToDraft();
-            _setBackendUploadProgress(
-              inProgress: true,
-              statusText: null,
-              currentFile: index + 1,
-              totalFiles: totalItems,
-              currentPart: partNumber,
-              totalParts: partCount,
-            );
-            _updateBackendUploadFileProgress(
-              item: item,
-              index: index,
-              totalItems: totalItems,
-              fileName: filename,
-              status: BackendUploadFileStatus.uploading,
-              progress: partCount <= 0 ? 0 : partNumber / partCount,
-              uploadedParts: partNumber,
-              totalParts: partCount,
-            );
+          return end - start;
+        }
+
+        final partBytesSent = <int, int>{};
+        for (final pn in etagsByPart.keys) {
+          partBytesSent[pn] = sizeForPart(pn);
+        }
+
+        // Throttle UI emits to ~10 fps. Each chunk fires onSendProgress
+        // many times per second across N parallel parts; without the
+        // throttle we'd dispatch hundreds of setState per second on
+        // every active file. Final-state emit (after etag stored) is
+        // unconditional below so we never skip the 100% frame.
+        DateTime lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+        const emitInterval = Duration(milliseconds: 100);
+
+        void emitFileProgress({bool force = false}) {
+          if (!force) {
+            final now = DateTime.now();
+            if (now.difference(lastEmit) < emitInterval) return;
+            lastEmit = now;
+          } else {
+            lastEmit = DateTime.now();
           }
+          final sentBytes = partBytesSent.values
+              .fold<int>(0, (acc, v) => acc + v);
+          _updateBackendUploadFileProgress(
+            item: item,
+            index: index,
+            totalItems: totalItems,
+            fileName: filename,
+            status: BackendUploadFileStatus.uploading,
+            progress: bytes.isEmpty
+                ? 0
+                : (sentBytes / bytes.length).clamp(0.0, 1.0),
+            uploadedParts: etagsByPart.length,
+            totalParts: partCount,
+          );
+        }
+
+        // Initial emit so chips for resumed files show their already-
+        // uploaded fraction immediately, not 0.
+        emitFileProgress(force: true);
+
+        // Parts dispatched in parallel via a small concurrency gate
+        // (typically 4). All presigned URLs were issued in one RPC
+        // above, so chunks fly independently — only the in-process
+        // map + local persistence are shared, both safe under Dart's
+        // single-threaded scheduling. `eagerError: true` aborts
+        // pending slot pickups on first failure (in-flight PUTs
+        // still finish but their outcome is ignored).
+        final pendingPartNumbers = <int>[];
+        for (var pn = 1; pn <= partCount; pn++) {
+          final existingEtag = etagsByPart[pn];
+          if (existingEtag == null || existingEtag.trim().isEmpty) {
+            pendingPartNumbers.add(pn);
+          }
+        }
+
+        if (pendingPartNumbers.isNotEmpty) {
+          final partGate = _UploadConcurrencyGate(_kPartConcurrency);
+          await Future.wait(
+            pendingPartNumbers.map((partNumber) {
+              return partGate.withSlot(() async {
+                final metaIndex = urlsResult.urls.indexWhere(
+                  (part) => part.partNumber == partNumber,
+                );
+                if (metaIndex < 0) {
+                  throw Exception('Part URL not found for part=$partNumber');
+                }
+                final start = (partNumber - 1) * partSize;
+                final end = math.min(start + partSize, bytes.length);
+                // Zero-copy view onto the source buffer — no extra
+                // allocation per part, important for big videos that
+                // would otherwise duplicate every chunk in memory.
+                final chunk = Uint8List.sublistView(bytes, start, end);
+                final partTimeout = _multipartPartTimeoutForBytes(chunk.length);
+                final etag = await _uploadPartWithRetry(
+                  url: urlsResult.urls[metaIndex].url,
+                  bytes: chunk,
+                  contentType: item.mimeType,
+                  timeout: partTimeout,
+                  fileIndex: index + 1,
+                  totalFiles: totalItems,
+                  partNumber: partNumber,
+                  partCount: partCount,
+                  onProgress: (sent, total) {
+                    partBytesSent[partNumber] = sent;
+                    emitFileProgress();
+                  },
+                );
+                if (etag.trim().isEmpty) return;
+                etagsByPart[partNumber] = etag.trim();
+                partBytesSent[partNumber] = sizeForPart(partNumber);
+                fileState['updatedAt'] = DateTime.now().toIso8601String();
+                _writeUploadedPartsToState(fileState, etagsByPart);
+                filesState[sourceKey] = fileState;
+                await _persistBackendUploadStateToDraft();
+                emitFileProgress(force: true);
+              });
+            }),
+            eagerError: true,
+          );
         }
 
         if (etagsByPart.length < partCount) {
@@ -2071,14 +2116,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         _writeUploadedPartsToState(fileState, etagsByPart);
         filesState[sourceKey] = fileState;
         await _persistBackendUploadStateToDraft();
-        _setBackendUploadProgress(
-          inProgress: true,
-          statusText: 'Файл ${index + 1}/$totalItems выгружен',
-          currentFile: index + 1,
-          totalFiles: totalItems,
-          currentPart: partCount,
-          totalParts: partCount,
-        );
+        // Aggregate counter is bumped by the batch loop on each
+        // file's completion; no per-file global-counter writes here.
         _updateBackendUploadFileProgress(
           item: item,
           index: index,
@@ -2118,15 +2157,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       }
     }
 
-    while (_backendFileUploadLocked) {
-      await Future<void>.delayed(const Duration(milliseconds: 40));
-    }
-    _backendFileUploadLocked = true;
-    try {
-      return await runUpload();
-    } finally {
-      _backendFileUploadLocked = false;
-    }
+    // Re-entrancy / double-submit guarding lives at the batch level
+    // (`_uploadReportToBackend` takes `_backendFileUploadLocked` for
+    // the whole run). Per-file locking would defeat the cross-file
+    // concurrency gate that batches now use.
+    return await runUpload();
   }
 
   Map<String, dynamic> _buildDraftPayload() {
@@ -2654,6 +2689,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
   Future<bool> _uploadReportToBackend(Map<String, dynamic> payload) async {
     if (payload.isEmpty) return false;
+    // Batch-level re-entry guard. Per-file gating moved here from
+    // _uploadItemWithMultipart so the in-batch concurrency gate can
+    // run multiple files in parallel without each one fighting the
+    // lock.
+    if (_backendFileUploadLocked) return false;
+    _backendFileUploadLocked = true;
     try {
       int? backendReportId = int.tryParse(
         (payload['id'] ?? payload['reportId'] ?? '').toString().trim(),
@@ -2731,28 +2772,59 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         currentPart: 0,
         totalParts: 0,
       );
-      for (var i = 0; i < items.length; i++) {
+      // Files uploaded in parallel via a small batch gate. Per-file
+      // chips below the progress bar already render concurrently —
+      // only the aggregate "выгружено N из M" counter is incremented
+      // from here. On the first failure, pending files don't pick up
+      // new slots; in-flight files complete (we can't safely cancel
+      // a part PUT mid-flight without leaking the multipart session)
+      // but their success/failure is ignored.
+      final fileGate = _UploadConcurrencyGate(_kFileConcurrency);
+      var completedFiles = 0;
+      Object? firstFailure;
+      void bumpStatus() {
+        if (!mounted) return;
         _setBackendUploadProgress(
           inProgress: true,
-          statusText: null,
-          currentFile: i + 1,
+          statusText: items.isEmpty
+              ? 'Файлов для загрузки нет'
+              : 'Выгружено $completedFiles из ${items.length}',
+          currentFile: completedFiles,
           totalFiles: items.length,
-          currentPart: 0,
-          totalParts: 0,
         );
-        final uploaded = await _uploadItemWithMultipart(
-          reportNumber: reportNumber,
-          item: items[i],
-          index: i,
-          totalItems: items.length,
-        );
-        if (!uploaded) {
-          throw Exception(
-            _backendUploadErrorText.trim().isNotEmpty
-                ? _backendUploadErrorText.trim()
-                : 'Выгрузка остановлена на файле ${i + 1}/${items.length}',
-          );
-        }
+      }
+
+      bumpStatus();
+      await Future.wait(
+        List.generate(items.length, (i) {
+          return fileGate.withSlot(() async {
+            if (firstFailure != null) return;
+            try {
+              final uploaded = await _uploadItemWithMultipart(
+                reportNumber: reportNumber,
+                item: items[i],
+                index: i,
+                totalItems: items.length,
+              );
+              if (!uploaded) {
+                firstFailure ??= Exception(
+                  _backendUploadErrorText.trim().isNotEmpty
+                      ? _backendUploadErrorText.trim()
+                      : 'Выгрузка остановлена на файле ${i + 1}/${items.length}',
+                );
+                return;
+              }
+              completedFiles += 1;
+              bumpStatus();
+            } catch (e) {
+              firstFailure ??= e;
+            }
+          });
+        }),
+      );
+
+      if (firstFailure != null) {
+        throw firstFailure!;
       }
 
       _setBackendUploadProgress(
@@ -2801,6 +2873,45 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         totalParts: 0,
       );
       return false;
+    } finally {
+      _backendFileUploadLocked = false;
+    }
+  }
+}
+
+// Concurrency knobs for the multipart upload pipeline. Tuned for a
+// typical inspection report (5-30 photos + a few videos) on cellular
+// or shared wifi: enough parallelism to saturate the link without
+// stalling slow networks or exhausting open-connection budgets on
+// the server.
+const int _kFileConcurrency = 3;
+const int _kPartConcurrency = 4;
+
+/// Tiny counting semaphore used to cap how many uploads (files or
+/// parts) can run at once. Dart is single-threaded, so a plain int
+/// counter + a FIFO of completers is enough — no real mutex needed.
+class _UploadConcurrencyGate {
+  _UploadConcurrencyGate(this.maxConcurrent)
+    : assert(maxConcurrent > 0, 'maxConcurrent must be positive');
+
+  final int maxConcurrent;
+  int _running = 0;
+  final List<Completer<void>> _waiters = <Completer<void>>[];
+
+  Future<T> withSlot<T>(Future<T> Function() task) async {
+    if (_running >= maxConcurrent) {
+      final waiter = Completer<void>();
+      _waiters.add(waiter);
+      await waiter.future;
+    }
+    _running += 1;
+    try {
+      return await task();
+    } finally {
+      _running -= 1;
+      if (_waiters.isNotEmpty) {
+        _waiters.removeAt(0).complete();
+      }
     }
   }
 }
