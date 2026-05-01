@@ -166,7 +166,9 @@ extension _SparkJoyLkpWidgets on _SparkJoyCreateReportScreenState {
                 selection: TextSelection.collapsed(offset: cleaned.length),
               );
             },
-            decoration: _fieldDecoration('Пробег (км)'),
+            // Заголовок «Пробег (км)» уже стоит над полем (line 149);
+            // дублировать его как hint в decoration не нужно.
+            decoration: _fieldDecoration('Введите пробег'),
           ),
           const SizedBox(height: SparkSpace.lg),
           _yesNoSelector(
