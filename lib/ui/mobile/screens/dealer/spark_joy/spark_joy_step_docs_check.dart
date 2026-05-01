@@ -44,6 +44,7 @@ Widget _buildSparkJoyStepDocsCheck(
           controller: s._docsMismatchCommentController,
           hint: 'Опишите, что не совпадает',
           isDictating: s._docsIsDictating,
+          aiBusy: s._docsCommentAiBusy,
           onToggleDictation: () async {
             if (s._docsIsDictating) {
               await s._stopDocsDictation();
@@ -51,11 +52,10 @@ Widget _buildSparkJoyStepDocsCheck(
               await s._startDocsDictation();
             }
           },
-          onAiFormat: () {
-            s._formatCommentWithAi(s._docsMismatchCommentController);
-            s._markDraftDirty();
-            setStateFn(() {});
-          },
+          // Real AI through AiQueue: cliche bakes in the three
+          // yes/no answers above so the model sees which fields are
+          // mismatching even when the typed comment is short.
+          onAiFormat: () => unawaited(s._generateDocsCommentWithAi()),
         ),
       ],
     ],

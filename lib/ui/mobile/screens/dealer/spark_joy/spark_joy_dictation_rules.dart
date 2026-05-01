@@ -332,6 +332,58 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// AI-fill for the «Комментарий по расхождениям» field in the
+  /// docs check step. The three yes/no values above are baked into
+  /// the prompt via `buildDocsCheckCommentCliche` so the model sees
+  /// which fields are mismatching even when the typed comment is
+  /// short. Result lands in `_docsMismatchCommentController`.
+  Future<void> _generateDocsCommentWithAi() async {
+    if (_docsCommentAiBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _docsCommentAiBusy = true);
+    try {
+      final cliche = AiQueueClicheBuilder.buildDocsCheckCommentCliche(
+        ownerMatch: _docsOwnerMatch,
+        vinMatch: _docsVinMatch,
+        engineMatch: _docsEngineMatch,
+      );
+      final inputText = _docsMismatchCommentController.text.trim();
+      // Fresh chatId — no carry-over of prior turns.
+      final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+      final result = await AiQueueApi.chatCompletions(
+        chatId: newChatId,
+        text: inputText.isEmpty ? '—' : inputText,
+        cliche: cliche,
+      );
+      final text = result.text.trim();
+      if (text.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('AI вернул пустой ответ. Попробуйте ещё раз.'),
+          ),
+        );
+        return;
+      }
+      _docsMismatchCommentController
+        ..text = text
+        ..selection = TextSelection.collapsed(offset: text.length);
+    } on storage_api.SessionExpiredException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('AI-помощник недоступен. Попробуйте позже.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _docsCommentAiBusy = false);
+      }
+    }
+  }
+
   /// AI-fill for the «Сводка по данным осмотра» card. Fact-only —
   /// no buy/don't-buy advice (that role belongs to the expert
   /// conclusion generator above). The user-text payload combines

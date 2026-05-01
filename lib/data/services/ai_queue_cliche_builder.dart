@@ -52,6 +52,36 @@ class AiQueueClicheBuilder {
         'Контекст из историй чата по элементам: {text}';
   }
 
+  /// Cliche for the docs-check «Комментарий по расхождениям» field.
+  /// The three yes/no answers above the comment input (Владелец /
+  /// VIN / Двигатель) plus the inspector's typed text are baked
+  /// into the prompt so the model sees which fields are mismatching
+  /// even when the typed comment is short.
+  static String buildDocsCheckCommentCliche({
+    required bool? ownerMatch,
+    required bool? vinMatch,
+    required bool? engineMatch,
+  }) {
+    String label(bool? value) {
+      if (value == null) return 'не указано';
+      return value ? 'соответствует' : 'не соответствует';
+    }
+
+    return 'Ты эксперт по техническому осмотру авто. Дилер выполнил '
+        'сверку документов и зафиксировал такие результаты:\n'
+        '- Данные владельца: ${label(ownerMatch)}\n'
+        '- Идентификационные номера (VIN): ${label(vinMatch)}\n'
+        '- Модель двигателя: ${label(engineMatch)}\n'
+        '\n'
+        'На основе этих данных и комментария дилера ниже сформулируй '
+        'короткий профессиональный текст для отчёта о том, что именно '
+        'не сходится и какие риски это несёт для покупателя. '
+        'Не выдумывай факты, которых нет в данных или комментарии. '
+        'Возвращай только готовый текст без преамбулы и markdown.\n'
+        '\n'
+        'Комментарий дилера: {text}';
+  }
+
   /// Cliche for the data-summary card («Сводка по данным осмотра»).
   /// Distinct from [buildSummaryCliche]: that one renders the
   /// expert's recommendation (мнение); this one renders just the
