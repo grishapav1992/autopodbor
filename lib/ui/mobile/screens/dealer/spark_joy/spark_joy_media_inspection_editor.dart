@@ -1164,9 +1164,20 @@ extension _SparkJoyMediaInspectionEditorMethods
       isDraft: saved == true ? false : true,
     );
 
+    // No-op-save guard: dismiss-without-changes БОЛЬШЕ не персистит
+    // черновик. Раньше открыть inspection editor и нажать «Назад»
+    // (saved=false) всё равно сохраняло partInspection с дефолтным
+    // `noDamage`, и пользователь видел badge «Есть заметка» хотя
+    // ничего не вводил. Сравниваем serialised baseline vs current —
+    // если совпадают, ничего не делаем.
+    final partInspectionUnchanged =
+        json.encode(partInspection.toJson()) ==
+        json.encode(basePartInspection.toJson());
     final shouldPersist =
         saved == true ||
-        (saveDraftOnClose && _mediaPartInspectionHasData(partInspection));
+        (saveDraftOnClose &&
+            _mediaPartInspectionHasData(partInspection) &&
+            !partInspectionUnchanged);
     if (!shouldPersist) return false;
 
     _setStateSafely(() {
