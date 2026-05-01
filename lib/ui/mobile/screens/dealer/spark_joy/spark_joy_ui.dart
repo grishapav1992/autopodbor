@@ -562,36 +562,69 @@ class SparkSegmentedTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Rail is a flat pill track in kLightGreyColor — no border. The
-    // active item slides into a white pill inside it with a soft
-    // shadow. Matches the iOS UISegmentedControl pattern more
-    // directly than the previous double-border / card-inside-card
-    // variant that read as clunky.
-    return Container(
-      height: SparkSize.inputHeight,
-      padding: const EdgeInsets.all(SparkSpace.xxs),
-      decoration: BoxDecoration(
-        color: kLightGreyColor,
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-      ),
-      child: Row(
-        children: [
-          for (int index = 0; index < items.length; index++)
-            Expanded(
-              child: _SparkSegmentedTabButton(
-                item: items[index],
-                active: value == items[index].value,
-                onTap: () => onChanged(items[index].value),
-              ),
-            ),
-        ],
-      ),
+    // Underline-style tabs (Material 3 inspired):
+    //   • Активная вкладка — тёмный жирный текст, под ней
+    //     анимированный индикатор-полоса.
+    //   • Неактивная — серый regular, без подложки.
+    //   • Счётчики — отдельным pill-badge'ем справа от лейбла.
+    //   • Под всей tabs-полосой — горизонтальный divider.
+    final selectedIndex = items.indexWhere((i) => i.value == value);
+    final clampedIndex = selectedIndex < 0 ? 0 : selectedIndex;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SizedBox(
+          height: 44,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final tabWidth = items.isEmpty
+                  ? constraints.maxWidth
+                  : constraints.maxWidth / items.length;
+              return Stack(
+                children: [
+                  Row(
+                    children: [
+                      for (int index = 0; index < items.length; index++)
+                        Expanded(
+                          child: _SparkUnderlineTabButton(
+                            item: items[index],
+                            active: value == items[index].value,
+                            onTap: () => onChanged(items[index].value),
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (items.isNotEmpty)
+                    AnimatedPositioned(
+                      duration: SparkMotion.regular,
+                      curve: Curves.easeOutCubic,
+                      left: clampedIndex * tabWidth + SparkSpace.lg,
+                      width: (tabWidth - SparkSpace.lg * 2)
+                          .clamp(24.0, double.infinity),
+                      bottom: 0,
+                      height: 3,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: kSecondaryColor,
+                          borderRadius: const BorderRadius.vertical(
+                            top: Radius.circular(SparkRadius.xs),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+        Container(height: 1, color: kBorderColor),
+      ],
     );
   }
 }
 
-class _SparkSegmentedTabButton extends StatelessWidget {
-  const _SparkSegmentedTabButton({
+class _SparkUnderlineTabButton extends StatelessWidget {
+  const _SparkUnderlineTabButton({
     required this.item,
     required this.active,
     required this.onTap,
@@ -610,59 +643,40 @@ class _SparkSegmentedTabButton extends StatelessWidget {
           HapticFeedback.selectionClick();
           onTap();
         },
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-        // Snap instead of AnimatedContainer — the text colour on the
-        // two tabs updates synchronously via setState, so a 160ms pill
-        // fade produced a visible lag where the destination tab's
-        // text was already dark while its pill hadn't arrived yet.
-        // Instant swap feels more responsive and matches iOS's
-        // UISegmentedControl behaviour for inner tiles.
         child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.md,
-          ),
           alignment: Alignment.center,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(SparkRadius.pill),
-            color: active ? kWhiteColor : Colors.transparent,
-            boxShadow: active
-                ? const [
-                    BoxShadow(
-                      color: kShadowColor,
-                      blurRadius: 6,
-                      offset: Offset(0, 2),
-                      spreadRadius: -2,
-                    ),
-                  ]
-                : null,
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                MyText(
-                  text: item.label,
-                  size: SparkTextSize.bodyLg,
-                  weight: FontWeight.w700,
-                  color: active ? kSecondaryColor : kGreyColor,
-                ),
-                if (item.count > 0) ...[
-                  const SizedBox(width: SparkSpace.xs),
-                  // Inline count — same tier as the label, just tinted
-                  // softer. No pill-inside-a-pill badge clutter.
-                  MyText(
+          padding: const EdgeInsets.symmetric(horizontal: SparkSpace.md),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              MyText(
+                text: item.label,
+                size: SparkTextSize.sectionTitle,
+                weight: active ? FontWeight.w800 : FontWeight.w500,
+                color: active ? kSecondaryColor : kGreyColor,
+              ),
+              if (item.count > 0) ...[
+                const SizedBox(width: SparkSpace.sm),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.sm,
+                    vertical: SparkSpace.xxs,
+                  ),
+                  decoration: BoxDecoration(
+                    color: active ? kSecondaryColor : kLightGreyColor,
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  ),
+                  child: MyText(
                     text: '${item.count}',
-                    size: SparkTextSize.bodyLg,
+                    size: SparkTextSize.caption,
                     weight: FontWeight.w700,
-                    color: active
-                        ? kSecondaryColor.withValues(alpha: 0.5)
-                        : kGreyColor.withValues(alpha: 0.6),
+                    color: active ? kWhiteColor : kGreyColor,
                     tabularFigures: true,
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),
