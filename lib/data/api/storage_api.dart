@@ -625,7 +625,11 @@ class StorageApi {
 
   static Future<AuthStartResult> auth({
     required String phone,
-    Duration timeout = const Duration(seconds: 12),
+    // 30s — backend auth-pipeline (call-provider lookup) иногда
+    // отвечает на грани 12-15s. Старый timeout стрелял раньше чем
+    // сервер успевал вернуть номер для звонка → пользователь видел
+    // «Не удалось начать авторизацию» когда фактически всё было ок.
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpcFirstSuccess(
       methods: const ['Storage.Auth'],
@@ -655,7 +659,10 @@ class StorageApi {
   static Future<AuthVerifyResult> authVerify({
     required String phone,
     String? sessionId,
-    Duration timeout = const Duration(seconds: 12),
+    // Same reason as `auth` above — backend verify под нагрузкой
+    // подтягивает входящий звонок и иногда уходит за 12s. 30 с
+    // даёт запас, но всё ещё не висит у юзера бесконечно.
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final params = <String, dynamic>{'phone': phone};
     if (sessionId != null && sessionId.isNotEmpty) {
