@@ -8,17 +8,8 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
       _ensureSummaryAutofill(force: true);
     }
     _attachAutosaveListeners();
-    _sectionCommentAudioCompleteSub = _sectionCommentAudioPlayer
-        .onPlayerComplete
-        .listen((_) {
-          if (!mounted) return;
-          _setStateSafely(() {
-            _docsCommentPlayingAudioIndex = -1;
-            _legalCommentPlayingAudioIndex = -1;
-            _tdCommentPlayingAudioIndex = -1;
-            _expertCommentPlayingAudioIndex = -1;
-          });
-        });
+    // Audio recording / playback инфраструктура удалена; раньше здесь
+    // монтировался onPlayerComplete listener для синка playing-index.
   }
 
   void _disposeInputResources() {
@@ -54,15 +45,9 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
   }
 
   void _disposeRuntimeResources() {
-    _sectionCommentAudioCompleteSub?.cancel();
-    unawaited(_sectionCommentAudioPlayer.stop());
-    unawaited(_sectionCommentAudioPlayer.dispose());
-    _sectionCommentRecordTimer?.cancel();
-    unawaited(_sectionCommentRecordSub?.cancel() ?? Future.value());
-    unawaited(_sectionCommentRecorder.stop());
-    unawaited(_sectionCommentRecorder.dispose());
+    // Audio recorder / player удалены вместе с UI; остаётся только
+    // dictation speech-to-text + кэш картинок.
     unawaited(_tdSpeechToText.stop());
     _dataUrlImageBytesCache.clear();
-    _resolvedAudioPlaybackSources.clear();
   }
 }

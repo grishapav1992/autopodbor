@@ -193,10 +193,11 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
   }
 
   bool _mediaPartInspectionIsEmpty(MediaPartInspection inspection) {
+    // `audioRecordings` исключены — UI записи нет, см.
+    // `_mediaInspectionHasData`.
     return !inspection.noDamage &&
         inspection.tags.isEmpty &&
         inspection.note.trim().isEmpty &&
-        inspection.audioRecordings.isEmpty &&
         (inspection.elementType ?? '').trim().isEmpty &&
         inspection.tagPhotos.isEmpty &&
         !(inspection.paintFrom != null && inspection.paintTo != null);

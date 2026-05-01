@@ -303,19 +303,20 @@ extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
   }
 
   bool _mediaInspectionHasData(MediaInspection inspection) {
+    // `audioRecordings` исключены: UI записи аудио убран, новые
+    // данные всегда `[]`.
     return inspection.noDamage ||
         inspection.tags.isNotEmpty ||
         inspection.note.trim().isNotEmpty ||
-        inspection.audioRecordings.isNotEmpty ||
         (inspection.paintFrom != null && inspection.paintTo != null) ||
         (inspection.elementType ?? '').trim().isNotEmpty;
   }
 
   bool _mediaPartInspectionHasData(MediaPartInspection inspection) {
+    // То же обоснование, что и в `_mediaInspectionHasData` выше.
     return inspection.noDamage ||
         inspection.tags.isNotEmpty ||
         inspection.note.trim().isNotEmpty ||
-        inspection.audioRecordings.isNotEmpty ||
         inspection.tagPhotos.isNotEmpty ||
         (inspection.paintFrom != null && inspection.paintTo != null) ||
         (inspection.elementType ?? '').trim().isNotEmpty;

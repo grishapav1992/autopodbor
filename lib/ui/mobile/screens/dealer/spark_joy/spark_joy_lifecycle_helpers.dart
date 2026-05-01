@@ -1,46 +1,10 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
-  Future<void> _stopActiveCommentRecordingOnPause() async {
-    final activeKey = _activeSectionCommentRecordingKey;
-    if (activeKey == null) return;
-    switch (activeKey) {
-      case 'docs_comment':
-        await _stopSectionCommentRecording(
-          key: 'docs_comment',
-          files: _docsCommentAudioFiles,
-          setFiles: (next) => _docsCommentAudioFiles = next,
-          keepResult: true,
-        );
-        break;
-      case 'legal_comment':
-        await _stopSectionCommentRecording(
-          key: 'legal_comment',
-          files: _legalCommentAudioFiles,
-          setFiles: (next) => _legalCommentAudioFiles = next,
-          keepResult: true,
-        );
-        break;
-      case 'td_comment':
-        await _stopSectionCommentRecording(
-          key: 'td_comment',
-          files: _tdCommentAudioFiles,
-          setFiles: (next) => _tdCommentAudioFiles = next,
-          keepResult: true,
-        );
-        break;
-      case 'expert_comment':
-        await _stopSectionCommentRecording(
-          key: 'expert_comment',
-          files: _expertAudioFiles,
-          setFiles: (next) => _expertAudioFiles = next,
-          keepResult: true,
-        );
-        break;
-      default:
-        break;
-    }
-  }
+  // Аудио-запись комментариев убрана из UI — никаких активных
+  // recording-сессий быть не может; функция оставлена как noop, чтобы
+  // не переписывать каскад вызовов из lifecycle observer.
+  Future<void> _stopActiveCommentRecordingOnPause() async {}
 
   Future<void> _handleAppPausedOrInactive() async {
     if (_appPauseHandlingInProgress) return;
@@ -54,9 +18,6 @@ extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
       await _stopLegalDictation();
       await _stopExpertDictation();
       await _stopActiveCommentRecordingOnPause();
-      try {
-        await _sectionCommentAudioPlayer.stop();
-      } catch (_) {}
 
       if (_hasUnsavedDraftChanges || _draftSaveFailed) {
         await _saveDraft(showToast: false, fromAutosave: true);

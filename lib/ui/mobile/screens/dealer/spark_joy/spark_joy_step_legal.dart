@@ -190,53 +190,23 @@ Widget _buildSparkJoyStepLegal(
         icon: Icons.comment_bank_outlined,
       ),
       const SizedBox(height: SparkSpace.lg),
-      s._card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            s._commentInputPanel(
-              controller: s._legalNoteController,
-              isDictating: s._legalIsDictating,
-              onToggleDictation: () async {
-                if (s._legalIsDictating) {
-                  await s._stopLegalDictation();
-                } else {
-                  await s._startLegalDictation();
-                }
-              },
-              onAiFormat: () {
-                s._formatCommentWithAi(s._legalNoteController);
-                s._markDraftDirty();
-                setStateFn(() {});
-              },
-            ),
-            const SizedBox(height: SparkSpace.md),
-            s._commentAudioFilesBlock(
-              files: s._legalCommentAudioFiles,
-              playingIndex: s._legalCommentPlayingAudioIndex,
-              isRecording: s._isCommentRecording('legal_comment'),
-              recordingLabel: s._commentRecordingLabel('legal_comment'),
-              onToggleRecording: s._toggleLegalCommentRecording,
-              onTogglePlay: (index) => s._toggleCommentAudioPlayback(
-                docsComment: false,
-                index: index,
-              ),
-              onRemoveAt: (index) {
-                setStateFn(() {
-                  final next = [...s._legalCommentAudioFiles]..removeAt(index);
-                  s._legalCommentAudioFiles = next;
-                  if (s._legalCommentPlayingAudioIndex == index) {
-                    s._legalCommentPlayingAudioIndex = -1;
-                    unawaited(s._sectionCommentAudioPlayer.stop());
-                  } else if (s._legalCommentPlayingAudioIndex > index) {
-                    s._legalCommentPlayingAudioIndex -= 1;
-                  }
-                });
-                s._markDraftDirty();
-              },
-            ),
-          ],
-        ),
+      // Без обёрточной `_card` — _commentInputPanel сам по себе уже
+      // декорирован, дополнительная карточка дублировала рамку.
+      s._commentInputPanel(
+        controller: s._legalNoteController,
+        isDictating: s._legalIsDictating,
+        onToggleDictation: () async {
+          if (s._legalIsDictating) {
+            await s._stopLegalDictation();
+          } else {
+            await s._startLegalDictation();
+          }
+        },
+        onAiFormat: () {
+          s._formatCommentWithAi(s._legalNoteController);
+          s._markDraftDirty();
+          setStateFn(() {});
+        },
       ),
     ],
   );

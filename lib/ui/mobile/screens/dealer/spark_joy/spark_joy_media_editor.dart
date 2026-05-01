@@ -157,13 +157,13 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
 
   bool _runGroupFullyMarked(MediaGroupState state) {
     if (state.files.isEmpty) return false;
+    // `audioRecordings` исключены — см. `_mediaInspectionHasData`.
     return state.files.every((file) {
       final inspection = file.inspection;
       return inspection.noDamage ||
           inspection.tags.isNotEmpty ||
           (inspection.elementType ?? '').trim().isNotEmpty ||
           inspection.note.trim().isNotEmpty ||
-          inspection.audioRecordings.isNotEmpty ||
           (inspection.paintFrom != null && inspection.paintTo != null);
     });
   }

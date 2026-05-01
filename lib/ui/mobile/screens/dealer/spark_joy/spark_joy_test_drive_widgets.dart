@@ -412,28 +412,6 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
               _setStateSafely(() {});
             },
           ),
-          const SizedBox(height: SparkSpace.md),
-          _commentAudioFilesBlock(
-            files: _tdCommentAudioFiles,
-            playingIndex: _tdCommentPlayingAudioIndex,
-            isRecording: _isCommentRecording('td_comment'),
-            recordingLabel: _commentRecordingLabel('td_comment'),
-            onToggleRecording: _toggleTdCommentRecording,
-            onTogglePlay: _toggleTdCommentAudioPlayback,
-            onRemoveAt: (index) {
-              _setStateSafely(() {
-                final next = [..._tdCommentAudioFiles]..removeAt(index);
-                _tdCommentAudioFiles = next;
-                if (_tdCommentPlayingAudioIndex == index) {
-                  _tdCommentPlayingAudioIndex = -1;
-                  unawaited(_sectionCommentAudioPlayer.stop());
-                } else if (_tdCommentPlayingAudioIndex > index) {
-                  _tdCommentPlayingAudioIndex -= 1;
-                }
-              });
-              _markDraftDirty();
-            },
-          ),
         ],
       ),
     );

@@ -50,7 +50,6 @@ extension _SparkJoyMediaInspectionEditorMethods
     var noDamage = basePartInspection.noDamage;
     var selectedTags = [...item.inspection.tags];
     var elementType = basePartInspection.elementType;
-    var audioRecordings = [...basePartInspection.audioRecordings];
     var tagPhotosByTag = <String, List<String>>{
       for (final entry in basePartInspection.tagPhotos.entries)
         entry.key: [...entry.value],
@@ -81,14 +80,10 @@ extension _SparkJoyMediaInspectionEditorMethods
         entry.key: [...entry.value],
     };
     var showElementError = false;
-    var isRecording = false;
-    var recordingDuration = 0;
     var isDictating = false;
     var speechInitialized = false;
     var speechAvailable = false;
-    var playingAudioIndex = -1;
     var dialogActive = true;
-    var shouldRecord = false;
     var shouldDictate = false;
 
     final noteController = TextEditingController(
@@ -97,113 +92,11 @@ extension _SparkJoyMediaInspectionEditorMethods
           : basePartInspection.note,
     );
     var paintToolsExpanded = false;
-    final recorder = AudioRecorder();
-    final player = AudioPlayer();
     final speechToText = SpeechToText();
-    StreamSubscription<Uint8List>? recordSubscription;
-    StreamSubscription<void>? playerCompleteSubscription;
-    BytesBuilder? recordBuffer;
-    Timer? recordingTimer;
 
     Future<void> showMessage(String text) async {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-    }
-
-    Future<void> startRecording(StateSetter setLocalState) async {
-      shouldRecord = true;
-      if (isRecording) return;
-
-      final hasPermission =
-          _microphonePermissionGranted || await recorder.hasPermission();
-      if (!hasPermission) {
-        shouldRecord = false;
-        await showMessage('Нет доступа к микрофону');
-        return;
-      }
-      _microphonePermissionGranted = true;
-
-      try {
-        recordBuffer = BytesBuilder(copy: false);
-        await recordSubscription?.cancel();
-        recordSubscription =
-            (await recorder.startStream(
-              const RecordConfig(
-                encoder: AudioEncoder.pcm16bits,
-                sampleRate: 16000,
-                numChannels: 1,
-              ),
-            )).listen((chunk) {
-              recordBuffer?.add(chunk);
-            });
-        recordingTimer?.cancel();
-        recordingDuration = 0;
-        recordingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-          if (!dialogActive) return;
-          setLocalState(() => recordingDuration += 1);
-        });
-        if (!shouldRecord) {
-          await recorder.stop();
-          recordingTimer?.cancel();
-          recordingTimer = null;
-          await recordSubscription?.cancel();
-          recordSubscription = null;
-          recordBuffer = null;
-          return;
-        }
-        if (!dialogActive) return;
-        setLocalState(() {
-          isRecording = true;
-        });
-      } catch (_) {
-        shouldRecord = false;
-        await showMessage('Не удалось начать запись');
-      }
-    }
-
-    Future<void> stopRecording(
-      StateSetter setLocalState, {
-      bool keepResult = true,
-    }) async {
-      shouldRecord = false;
-      if (!isRecording && recordBuffer == null) return;
-
-      try {
-        await recorder.stop();
-      } catch (_) {}
-
-      recordingTimer?.cancel();
-      recordingTimer = null;
-      await recordSubscription?.cancel();
-      recordSubscription = null;
-
-      final pcmBytes = recordBuffer?.takeBytes() ?? Uint8List(0);
-      recordBuffer = null;
-
-      if (keepResult && pcmBytes.isNotEmpty) {
-        final wavBytes = _pcm16ToWav(pcmBytes, sampleRate: 16000);
-        String? stored;
-        if (kIsWeb) {
-          stored = 'data:audio/wav;base64,${base64Encode(wavBytes)}';
-        } else {
-          stored = await _persistBytesToAppStorage(
-            bytes: wavBytes,
-            mimeType: 'audio/wav',
-            prefix: '${groupKey}_part_audio',
-          );
-        }
-        if ((stored ?? '').trim().isNotEmpty) {
-          audioRecordings = [...audioRecordings, stored!.trim()];
-        } else {
-          await showMessage('Не удалось сохранить аудио локально');
-        }
-      }
-
-      if (!dialogActive) return;
-      setLocalState(() {
-        isRecording = false;
-        recordingDuration = 0;
-      });
     }
 
     Future<void> ensureSpeech(StateSetter setLocalState) async {
@@ -296,11 +189,6 @@ extension _SparkJoyMediaInspectionEditorMethods
       setLocalState(() => isDictating = false);
     }
 
-    String recordingLabel() {
-      final minutes = (recordingDuration ~/ 60).toString();
-      final seconds = (recordingDuration % 60).toString().padLeft(2, '0');
-      return '$minutes:$seconds';
-    }
 
     var aiInflight = false;
     Future<void> formatNoteWithAi(StateSetter setLocalState) async {
@@ -400,13 +288,6 @@ extension _SparkJoyMediaInspectionEditorMethods
           builder: (context) {
             return StatefulBuilder(
               builder: (context, setLocalState) {
-                playerCompleteSubscription ??= player.onPlayerComplete.listen((
-                  _,
-                ) {
-                  if (!dialogActive) return;
-                  setLocalState(() => playingAudioIndex = -1);
-                });
-
                 final elementOptions = _mediaElementOptions(groupKey);
                 final isKeyboardOpen =
                     MediaQuery.viewInsetsOf(context).bottom > 0;
@@ -437,8 +318,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                   // disposed-controller assertion.
                   dialogActive = false;
                   await stopDictation(setLocalState);
-                  await stopRecording(setLocalState, keepResult: false);
-                  await player.stop();
                   if (!context.mounted) return;
                   Navigator.of(context).pop(false);
                 }
@@ -455,8 +334,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                   // Same race-guard rationale as closeEditorDiscard above.
                   dialogActive = false;
                   await stopDictation(setLocalState);
-                  await stopRecording(setLocalState);
-                  await player.stop();
                   if (!context.mounted) return;
                   Navigator.of(context).pop(true);
                 }
@@ -972,74 +849,6 @@ extension _SparkJoyMediaInspectionEditorMethods
                                         },
                                         hint: 'Добавьте комментарий',
                                       ),
-                                      const SizedBox(height: SparkSpace.md),
-                                      SparkJoyCommentAudioBlock(
-                                        items: List.generate(
-                                          audioRecordings.length,
-                                          (
-                                            audioIndex,
-                                          ) => SparkJoyCommentAudioItemView(
-                                            name:
-                                                'Аудиозапись ${audioIndex + 1}',
-                                            isPlaying:
-                                                playingAudioIndex == audioIndex,
-                                          ),
-                                        ),
-                                        isRecording: isRecording,
-                                        recordingLabel: recordingLabel(),
-                                        onToggleRecording: () async {
-                                          if (isRecording) {
-                                            await stopRecording(setLocalState);
-                                          } else {
-                                            await startRecording(setLocalState);
-                                          }
-                                        },
-                                        onTogglePlay: (audioIndex) async {
-                                          try {
-                                            final playing =
-                                                playingAudioIndex == audioIndex;
-                                            if (playing) {
-                                              await player.stop();
-                                              if (!dialogActive) return;
-                                              setLocalState(
-                                                () => playingAudioIndex = -1,
-                                              );
-                                            } else {
-                                              await player.stop();
-                                              await _playAudioSource(
-                                                player,
-                                                audioRecordings[audioIndex],
-                                              );
-                                              if (!dialogActive) return;
-                                              setLocalState(
-                                                () => playingAudioIndex =
-                                                    audioIndex,
-                                              );
-                                            }
-                                          } catch (_) {
-                                            await showMessage(
-                                              'Не удалось воспроизвести аудио',
-                                            );
-                                          }
-                                        },
-                                        onRemoveAt: (audioIndex) {
-                                          if (playingAudioIndex == audioIndex) {
-                                            unawaited(player.stop());
-                                          }
-                                          setLocalState(() {
-                                            if (playingAudioIndex ==
-                                                audioIndex) {
-                                              playingAudioIndex = -1;
-                                            } else if (playingAudioIndex >
-                                                audioIndex) {
-                                              playingAudioIndex -= 1;
-                                            }
-                                            audioRecordings.removeAt(
-                                              audioIndex,
-                                            );
-                                          });
-                                        },
-                                      ),
                                     ],
                                   ],
                                 ),
@@ -1078,22 +887,9 @@ extension _SparkJoyMediaInspectionEditorMethods
       );
     } finally {
       dialogActive = false;
-      recordingTimer?.cancel();
-      await recordSubscription?.cancel();
-      try {
-        if (await recorder.isRecording()) {
-          await recorder.stop();
-        }
-      } catch (_) {}
       try {
         await speechToText.stop();
       } catch (_) {}
-      await playerCompleteSubscription?.cancel();
-      try {
-        await player.stop();
-      } catch (_) {}
-      await player.dispose();
-      await recorder.dispose();
     }
     final noteValue = noteController.text.trim();
     noteController.dispose();
@@ -1153,11 +949,10 @@ extension _SparkJoyMediaInspectionEditorMethods
       tags: noDamage ? const [] : nextTagPhotos.keys.toList(),
       note: noteValue,
       elementType: (elementType ?? '').trim().isEmpty ? null : elementType,
-      audioRecordings: [
-        ...audioRecordings
-            .map((audio) => audio.trim())
-            .where((audio) => audio.isNotEmpty),
-      ],
+      // Audio recordings retired in favour of dictation-only flow:
+      // any pre-existing per-element audio in old drafts is dropped on
+      // the next save by passing an empty list.
+      audioRecordings: const <String>[],
       paintFrom: supportsPaint ? paintFrom : null,
       paintTo: supportsPaint ? paintTo : null,
       tagPhotos: noDamage ? const {} : nextTagPhotos,

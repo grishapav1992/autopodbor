@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:camerawesome/camerawesome_plugin.dart' as cam;
 import 'package:camerawesome/pigeon.dart' as cam_pigeon;
@@ -33,7 +31,6 @@ import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:video_player/video_player.dart';
 
@@ -72,7 +69,6 @@ part 'spark_joy_data_parsers.dart';
 part 'spark_joy_summary_calculation.dart';
 part 'spark_joy_media_assets.dart';
 part 'spark_joy_screen_helpers.dart';
-part 'spark_joy_comment_audio_helpers.dart';
 part 'spark_joy_file_picker_helpers.dart';
 part 'spark_joy_car_picker_helpers.dart';
 part 'spark_joy_vin_actions_helpers.dart';
@@ -205,14 +201,9 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _mediaTagOrderByScope(Map<String, List<String>> value) =>
       _reportController.mediaTagOrderByScope.value = value;
   final Map<String, Uint8List> _dataUrlImageBytesCache = {};
-  final Map<String, String> _resolvedAudioPlaybackSources = {};
   String? _appDocumentsPath;
-  // ┌─ Phase 4.1 · Chunks 8-9: permissions + TD dictation flags → controller ┐
-  // └─────────────────────────────────────────────────────────────────────────┘
-  bool get _microphonePermissionGranted =>
-      _reportController.microphonePermissionGranted.value;
-  set _microphonePermissionGranted(bool value) =>
-      _reportController.microphonePermissionGranted.value = value;
+  // Микрофон-permission прокси удалён вместе с recording-инфраструктурой.
+  // Дисктовка использует `_speechPermissionGranted` ниже.
 
   bool get _speechPermissionGranted =>
       _reportController.speechPermissionGranted.value;
@@ -347,6 +338,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _legalFiles(List<UploadedItem> value) =>
       _reportController.legalFiles.value = value;
 
+  // Audio-комментарии (UI recorder + playback) полностью убраны. Поля
+  // ниже остаются как пустые-по-умолчанию proxies — нужны для
+  // draft serialize/hydrate путей, которые ещё знают о ключах
+  // *audioFiles. UI к ним не пишет.
   List<UploadedItem> get _docsCommentAudioFiles =>
       _reportController.docsCommentAudioFiles.value;
   set _docsCommentAudioFiles(List<UploadedItem> value) =>
@@ -356,35 +351,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       _reportController.legalCommentAudioFiles.value;
   set _legalCommentAudioFiles(List<UploadedItem> value) =>
       _reportController.legalCommentAudioFiles.value = value;
-  final AudioPlayer _sectionCommentAudioPlayer = AudioPlayer();
-  StreamSubscription<void>? _sectionCommentAudioCompleteSub;
-  final AudioRecorder _sectionCommentRecorder = AudioRecorder();
-  StreamSubscription<Uint8List>? _sectionCommentRecordSub;
-  Timer? _sectionCommentRecordTimer;
-  BytesBuilder? _sectionCommentRecordBuffer;
-  String? _activeSectionCommentRecordingKey;
-  final Map<String, int> _sectionCommentRecordingSeconds = {};
-  // ┌─ Phase 4.1 · Chunk 10: currently-playing audio index per comment list ─┐
-  // └─────────────────────────────────────────────────────────────────────────┘
-  int get _docsCommentPlayingAudioIndex =>
-      _reportController.docsCommentPlayingAudioIndex.value;
-  set _docsCommentPlayingAudioIndex(int value) =>
-      _reportController.docsCommentPlayingAudioIndex.value = value;
-
-  int get _legalCommentPlayingAudioIndex =>
-      _reportController.legalCommentPlayingAudioIndex.value;
-  set _legalCommentPlayingAudioIndex(int value) =>
-      _reportController.legalCommentPlayingAudioIndex.value = value;
-
-  int get _tdCommentPlayingAudioIndex =>
-      _reportController.tdCommentPlayingAudioIndex.value;
-  set _tdCommentPlayingAudioIndex(int value) =>
-      _reportController.tdCommentPlayingAudioIndex.value = value;
-
-  int get _expertCommentPlayingAudioIndex =>
-      _reportController.expertCommentPlayingAudioIndex.value;
-  set _expertCommentPlayingAudioIndex(int value) =>
-      _reportController.expertCommentPlayingAudioIndex.value = value;
 
   // ┌─ Phase 4.1 · Chunk 9: per-step dictation flags → controller ──────────┐
   // └───────────────────────────────────────────────────────────────────────┘

@@ -33,9 +33,6 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
 
     var currentIndex = initialIndex.clamp(0, initialFiles.length - 1);
     final controller = PageController(initialPage: currentIndex);
-    final audioPlayer = AudioPlayer();
-    StreamSubscription<void>? playerCompleteSubscription;
-    var playingAudioIndex = -1;
     var dialogActive = true;
     VideoPlayerController? videoController;
     String? videoSourceUrl;
@@ -117,12 +114,6 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (context, setLocalState) {
-              playerCompleteSubscription ??= audioPlayer.onPlayerComplete
-                  .listen((_) {
-                    if (!dialogActive) return;
-                    setLocalState(() => playingAudioIndex = -1);
-                  });
-
               // In flat mode we take the caller-supplied snapshot as a
               // stable source of truth — editor mutations aren't possible
               // so there's nothing to live-reconcile. In group mode we
@@ -187,7 +178,6 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
               final hasInspection = _mediaInspectionHasData(item.inspection);
               final tags = item.inspection.tags;
               final hasNoDamage = item.inspection.noDamage;
-              final audioNotes = item.inspection.audioRecordings;
               final paintFrom = item.inspection.paintFrom;
               final paintTo = item.inspection.paintTo;
               final noteDisplay = note.isEmpty
@@ -204,7 +194,6 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                     elevation: 0,
                     leading: IconButton(
                       onPressed: () async {
-                        await audioPlayer.stop();
                         await disposeVideoController();
                         if (!dialogContext.mounted) return;
                         Navigator.of(dialogContext).pop();
@@ -224,7 +213,6 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                       if (!isFlatMode && !widget.readOnly)
                         TextButton.icon(
                           onPressed: () async {
-                            await audioPlayer.stop();
                             await disposeVideoController();
                             if (!dialogContext.mounted) return;
                             Navigator.of(dialogContext).pop(currentIndex);
@@ -249,11 +237,9 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                     controller: controller,
                     itemCount: files.length,
                     onPageChanged: (index) {
-                      unawaited(audioPlayer.stop());
                       unawaited(prepareVideo(files[index], setLocalState));
                       setLocalState(() {
                         currentIndex = index;
-                        playingAudioIndex = -1;
                       });
                     },
                     itemBuilder: (context, index) {
@@ -555,85 +541,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                             height: 1.3,
                           ),
                         ),
-                        if (audioNotes.isNotEmpty) ...[
-                          const SizedBox(height: SparkSpace.md),
-                          ...List.generate(audioNotes.length, (audioIndex) {
-                            final playing = playingAudioIndex == audioIndex;
-                            return Padding(
-                              padding: const EdgeInsets.only(
-                                bottom: SparkSpace.sm,
-                              ),
-                              child: InkWell(
-                                onTap: () async {
-                                  try {
-                                    if (playing) {
-                                      await audioPlayer.stop();
-                                      if (!dialogActive) return;
-                                      setLocalState(
-                                        () => playingAudioIndex = -1,
-                                      );
-                                    } else {
-                                      await audioPlayer.stop();
-                                      await _playAudioSource(
-                                        audioPlayer,
-                                        audioNotes[audioIndex],
-                                      );
-                                      if (!dialogActive) return;
-                                      setLocalState(
-                                        () => playingAudioIndex = audioIndex,
-                                      );
-                                    }
-                                  } catch (_) {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Не удалось воспроизвести аудио',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                                borderRadius: BorderRadius.circular(
-                                  SparkRadius.md,
-                                ),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(
-                                      SparkRadius.md,
-                                    ),
-                                    color: kWhiteColor.withValues(alpha: 0.08),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        playing
-                                            ? Icons.pause_circle_outline
-                                            : Icons.play_circle_outline,
-                                        size: SparkSize.iconLg,
-                                        color: kWhiteColor,
-                                      ),
-                                      const SizedBox(width: SparkSpace.md),
-                                      Text(
-                                        'Аудиозапись ${audioIndex + 1}',
-                                        style: TextStyle(
-                                          color: kWhiteColor.withValues(
-                                            alpha: 0.88,
-                                          ),
-                                          fontSize: SparkTextSize.caption,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          }),
-                        ],
+                        // Audio playback removed: dictation-only flow.
                       ],
                     ),
                   ),
@@ -645,12 +553,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
       );
     } finally {
       dialogActive = false;
-      await playerCompleteSubscription?.cancel();
-      try {
-        await audioPlayer.stop();
-      } catch (_) {}
       await disposeVideoController();
-      await audioPlayer.dispose();
       controller.dispose();
     }
 

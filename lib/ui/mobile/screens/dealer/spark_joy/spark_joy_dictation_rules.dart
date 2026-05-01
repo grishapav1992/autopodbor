@@ -351,40 +351,4 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Widget _commentAudioFilesBlock({
-    required List<UploadedItem> files,
-    required int playingIndex,
-    required bool isRecording,
-    required String recordingLabel,
-    required Future<void> Function() onToggleRecording,
-    required Future<void> Function(int index) onTogglePlay,
-    required ValueChanged<int> onRemoveAt,
-  }) {
-    return SparkJoyCommentAudioBlock(
-      items: List.generate(files.length, (index) {
-        final file = files[index];
-        return SparkJoyCommentAudioItemView(
-          name: file.name,
-          isPlaying: playingIndex == index,
-        );
-      }),
-      isRecording: isRecording,
-      recordingLabel: recordingLabel,
-      onToggleRecording: () async {
-        try {
-          await onToggleRecording();
-        } catch (_) {
-          _showErrorSnack('Не удалось запустить запись');
-        }
-      },
-      onTogglePlay: (index) async {
-        try {
-          await onTogglePlay(index);
-        } catch (_) {
-          _showErrorSnack('Не удалось воспроизвести аудио');
-        }
-      },
-      onRemoveAt: onRemoveAt,
-    );
-  }
 }

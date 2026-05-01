@@ -694,28 +694,6 @@ Widget _buildSparkSummaryExpertConclusionCard(
             // разделам.
             onAiFormat: () => unawaited(s._generateExpertSummaryWithAi()),
           ),
-          const SizedBox(height: SparkSpace.md),
-          s._commentAudioFilesBlock(
-            files: s._expertAudioFiles,
-            playingIndex: s._expertCommentPlayingAudioIndex,
-            isRecording: s._isCommentRecording('expert_comment'),
-            recordingLabel: s._commentRecordingLabel('expert_comment'),
-            onToggleRecording: s._toggleExpertCommentRecording,
-            onTogglePlay: s._toggleExpertCommentAudioPlayback,
-            onRemoveAt: (index) {
-              s._setStateSafely(() {
-                final next = [...s._expertAudioFiles]..removeAt(index);
-                s._expertAudioFiles = next;
-                if (s._expertCommentPlayingAudioIndex == index) {
-                  s._expertCommentPlayingAudioIndex = -1;
-                  unawaited(s._sectionCommentAudioPlayer.stop());
-                } else if (s._expertCommentPlayingAudioIndex > index) {
-                  s._expertCommentPlayingAudioIndex -= 1;
-                }
-              });
-              s._markDraftDirty();
-            },
-          ),
         ],
       ],
     ),

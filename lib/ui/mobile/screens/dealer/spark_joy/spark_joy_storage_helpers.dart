@@ -494,48 +494,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return Uri.parse(source);
   }
 
-  Source _audioPlayerSource(String source) {
-    final localPath = _extractLocalMediaPath(source);
-    if (!kIsWeb && localPath != null) {
-      return DeviceFileSource(localPath);
-    }
-    return UrlSource(source);
-  }
-
-  Future<Source> _audioPlayerSourceForPlayback(String source) async {
-    final normalized = source.trim();
-    if (normalized.isEmpty) {
-      return UrlSource(source);
-    }
-
-    if (_resolvedAudioPlaybackSources.containsKey(normalized)) {
-      final resolved = _resolvedAudioPlaybackSources[normalized]!;
-      return _audioPlayerSource(resolved);
-    }
-
-    if (_isDataUrl(normalized) && !kIsWeb) {
-      final persisted = await _persistDataUrlToAppStorage(
-        normalized,
-        mimeType: _dataUrlMimeType(normalized),
-        prefix: 'audio_play',
-      );
-      if ((persisted ?? '').isNotEmpty) {
-        _resolvedAudioPlaybackSources[normalized] = persisted!;
-        return _audioPlayerSource(persisted);
-      }
-      throw StateError('Не удалось подготовить аудиофайл для воспроизведения');
-    }
-
-    return _audioPlayerSource(normalized);
-  }
-
-  Future<void> _playAudioSource(AudioPlayer player, String source) async {
-    if (source.trim().isEmpty) {
-      throw StateError('Пустой аудиофайл');
-    }
-    final preparedSource = await _audioPlayerSourceForPlayback(source);
-    await player.play(preparedSource);
-  }
+  // Audio playback helpers удалены вместе с UI блоками; раньше тут
+  // жили _audioPlayerSource / _audioPlayerSourceForPlayback /
+  // _playAudioSource — все ссылались на пакет audioplayers.
 
   String _extensionForMimeType(String mimeType) {
     final normalized = mimeType.toLowerCase();
