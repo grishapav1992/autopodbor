@@ -605,6 +605,8 @@ Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
   // ("Заполните разделы осмотра…") — if the dealer didn't fill the
   // recap text, the card is just noise to the buyer.
   if (s.widget.readOnly && note.isEmpty) return const SizedBox.shrink();
+  final isReadOnly = s.widget.readOnly;
+  final aiBusy = s._summaryNoteAiBusy;
   return s._card(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -612,7 +614,9 @@ Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
         s._sectionHeading(
           'Сводка по данным осмотра',
           icon: Icons.summarize_outlined,
-          subtitle: 'Формируется на основе заполненных разделов',
+          subtitle: isReadOnly
+              ? 'Сводка из данных осмотра'
+              : 'Соберите фактологическую сводку через ИИ или допишите вручную',
         ),
         SparkCard(
           padding: const EdgeInsets.symmetric(
@@ -621,15 +625,77 @@ Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
           ),
           radius: SparkRadius.md,
           backgroundColor: kInputBgColor,
-          child: MyText(
-            text: note.isEmpty
-                ? 'Заполните разделы осмотра для формирования сводки.'
-                : note,
-            size: SparkTextSize.bodyLg,
-            color: note.isEmpty ? kGreyColor : kTertiaryColor,
-            lineHeight: 1.35,
-          ),
+          child: isReadOnly
+              ? MyText(
+                  text: note,
+                  size: SparkTextSize.bodyLg,
+                  color: kTertiaryColor,
+                  lineHeight: 1.35,
+                )
+              : TextField(
+                  controller: s._summaryController,
+                  minLines: 3,
+                  maxLines: 12,
+                  enabled: !aiBusy,
+                  decoration: const InputDecoration(
+                    hintText:
+                        'Сводка по разделам — нажмите «Сформировать через ИИ» или введите вручную.',
+                    hintStyle: TextStyle(
+                      color: kGreyColor,
+                      fontSize: SparkTextSize.bodyLg,
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: const TextStyle(
+                    fontSize: SparkTextSize.bodyLg,
+                    color: kTertiaryColor,
+                    height: 1.35,
+                  ),
+                ),
         ),
+        if (!isReadOnly) ...[
+          const SizedBox(height: SparkSpace.md),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: aiBusy
+                  ? null
+                  : () => unawaited(s._generateSummaryNoteWithAi()),
+              icon: aiBusy
+                  ? const SizedBox(
+                      width: SparkSize.iconSm,
+                      height: SparkSize.iconSm,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor:
+                            AlwaysStoppedAnimation<Color>(kSecondaryColor),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: SparkSize.iconSm,
+                    ),
+              label: Text(
+                aiBusy
+                    ? 'AI собирает сводку...'
+                    : (note.isEmpty
+                        ? 'Сформировать через ИИ'
+                        : 'Перегенерировать через ИИ'),
+              ),
+              style: TextButton.styleFrom(
+                foregroundColor: kSecondaryColor,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.xs,
+                ),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+        ],
       ],
     ),
   );

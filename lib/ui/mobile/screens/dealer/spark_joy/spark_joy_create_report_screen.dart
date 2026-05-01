@@ -157,6 +157,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final TextEditingController _summaryController;
   late final TextEditingController _expertController;
   bool _expertSummaryAiBusy = false;
+  bool _summaryNoteAiBusy = false;
+  bool _docsCommentAiBusy = false;
   late final TextEditingController _inspectorController;
   late String _assignedSpecialistId;
   late String _assignedSpecialistName;

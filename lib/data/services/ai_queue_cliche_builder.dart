@@ -52,6 +52,29 @@ class AiQueueClicheBuilder {
         'Контекст из историй чата по элементам: {text}';
   }
 
+  /// Cliche for the data-summary card («Сводка по данным осмотра»).
+  /// Distinct from [buildSummaryCliche]: that one renders the
+  /// expert's recommendation (мнение); this one renders just the
+  /// facts — what's in the report, by section, no buy/don't-buy
+  /// advice. Both can run in the same report and should not
+  /// duplicate each other.
+  static String buildReportFactsCliche({required String reportLabel}) {
+    final label = reportLabel.trim().isEmpty
+        ? 'Отчёт об осмотре авто'
+        : reportLabel.trim();
+    return 'Ты ассистент по техническому осмотру автомобилей. '
+        'Сформируй короткую фактологическую сводку по данным отчёта "$label". '
+        'Перечисли что именно зафиксировано по разделам: кузов, остекление, '
+        'светотехника, подкапотное пространство, салон, колёса, диагностика, '
+        'тест-драйв, юридическая проверка. '
+        'Только факты из контекста: что осмотрено, какие замечания/теги, '
+        'какие комментарии. Не давай оценок, рекомендаций по покупке или торгу — '
+        'это будет в отдельном поле «Итог специалиста». '
+        'Если по разделу нет данных — пропусти его. '
+        'Без преамбулы, без markdown-форматирования. '
+        'Контекст из историй чата по элементам и полям отчёта: {text}';
+  }
+
   static String _formatTags(List<UserTag> tags) {
     if (tags.isEmpty) return 'нет';
     final parts = <String>[];

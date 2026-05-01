@@ -332,6 +332,112 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// AI-fill for the «Сводка по данным осмотра» card. Fact-only —
+  /// no buy/don't-buy advice (that role belongs to the expert
+  /// conclusion generator above). The user-text payload combines
+  /// the deterministic rule-based summary template (always
+  /// available) with the per-element AI chat histories when
+  /// present, so the model sees both raw fields and assistant
+  /// interpretations and can produce a single readable recap.
+  /// Result lands in `_summaryController` so autosave persists it
+  /// to the draft and it ships to the server with the report.
+  Future<void> _generateSummaryNoteWithAi() async {
+    if (_summaryNoteAiBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _summaryNoteAiBusy = true);
+    try {
+      final summary = _calculateSummary();
+      final structured = _summaryTemplate(summary).trim();
+
+      final chatIds = _reportController.aiChatIdBySourceKey.values
+          .where((id) => id > 0)
+          .toSet()
+          .toList();
+
+      final historyChunks = <String>[];
+      if (chatIds.isNotEmpty) {
+        try {
+          final histories = await AiQueueApi.getChatHistories(ids: chatIds);
+          for (final session in histories.chats.values) {
+            final assistantTurns = session.messages
+                .where((m) => m.role.toLowerCase() == 'assistant')
+                .map((m) => m.content.trim())
+                .where((s) => s.isNotEmpty)
+                .toList();
+            if (assistantTurns.isEmpty) continue;
+            historyChunks.add(assistantTurns.join('\n'));
+          }
+        } catch (_) {
+          // Non-fatal: structured rule-based dump alone is enough
+          // context for the model.
+        }
+      }
+
+      final contextParts = <String>[];
+      if (structured.isNotEmpty) {
+        contextParts.add(
+          '=== Структурированные данные осмотра ===\n$structured',
+        );
+      }
+      if (historyChunks.isNotEmpty) {
+        contextParts.add(
+          '=== AI-комментарии по элементам ===\n'
+          '${historyChunks.join('\n---\n')}',
+        );
+      }
+      if (contextParts.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Заполните хотя бы один раздел осмотра, чтобы AI было из чего собирать сводку.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final cliche = AiQueueClicheBuilder.buildReportFactsCliche(
+        reportLabel: _reportNameController.text.trim(),
+      );
+      // Fresh chatId per generation so the model gets a clean slate
+      // and doesn't keep "polishing" the same answer.
+      final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+      final result = await AiQueueApi.chatCompletions(
+        chatId: newChatId,
+        text: contextParts.join('\n\n'),
+        cliche: cliche,
+      );
+      final note = result.text.trim();
+      if (note.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('AI вернул пустой ответ. Попробуйте ещё раз.'),
+          ),
+        );
+        return;
+      }
+      _summaryController
+        ..text = note
+        ..selection = TextSelection.collapsed(offset: note.length);
+      // Autosave listener attached to `_summaryController` already
+      // marks the draft dirty, no explicit _markDraftDirty needed.
+    } on storage_api.SessionExpiredException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('AI-помощник недоступен. Попробуйте позже.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _summaryNoteAiBusy = false);
+      }
+    }
+  }
+
   Widget _commentInputPanel({
     required TextEditingController controller,
     required bool isDictating,
