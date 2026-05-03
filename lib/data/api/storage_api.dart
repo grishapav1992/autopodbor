@@ -52,7 +52,7 @@ void _notifySessionExpired() {
 }
 
 class StorageApi {
-  static const String _endpoint = 'https://podbor-av.ru.tuna.am';
+  static const String _endpoint = 'https://77.83.92.234:8085';
   // Singleton Dio used only for binary uploads to presigned URLs. Other
   // RPC calls go through `package:http` as before — Dio buys us native
   // upload-progress callbacks (`onSendProgress`) that `http.put` can't
