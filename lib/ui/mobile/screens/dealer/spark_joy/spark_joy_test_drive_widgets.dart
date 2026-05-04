@@ -374,46 +374,29 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
   }
 
   Widget _testDriveNoteBlock(String placeholder) {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Icon(
-                Icons.description_outlined,
-                size: SparkTextSize.label,
-                color: kGreyColor,
-              ),
-              SizedBox(width: SparkSpace.xs + 1),
-              MyText(
-                text: 'Комментарий',
-                size: SparkTextSize.caption,
-                color: kGreyColor,
-                weight: FontWeight.w700,
-              ),
-            ],
-          ),
-          const SizedBox(height: SparkSpace.md),
-          _commentInputPanel(
-            controller: _tdNoteController,
-            hint: placeholder,
-            isDictating: _tdIsDictating,
-            onToggleDictation: () async {
-              if (_tdIsDictating) {
-                await _stopTdDictation();
-              } else {
-                await _startTdDictation();
-              }
-            },
-            onAiFormat: () {
-              _formatCommentWithAi(_tdNoteController);
-              _markDraftDirty();
-              _setStateSafely(() {});
-            },
-          ),
-        ],
-      ),
+    // Direct passthrough to the shared comment panel — matches the
+    // pattern used by docs-check / legal / inspection editor. Earlier
+    // version wrapped it in an extra `_card` plus a duplicate
+    // "Комментарий" header, which (a) doubled the visible label
+    // (the section title above already says "Комментарий") and
+    // (b) added a redundant border around a widget that already
+    // owns its own SparkCard background.
+    return _commentInputPanel(
+      controller: _tdNoteController,
+      hint: placeholder,
+      isDictating: _tdIsDictating,
+      onToggleDictation: () async {
+        if (_tdIsDictating) {
+          await _stopTdDictation();
+        } else {
+          await _startTdDictation();
+        }
+      },
+      onAiFormat: () {
+        _formatCommentWithAi(_tdNoteController);
+        _markDraftDirty();
+        _setStateSafely(() {});
+      },
     );
   }
 }

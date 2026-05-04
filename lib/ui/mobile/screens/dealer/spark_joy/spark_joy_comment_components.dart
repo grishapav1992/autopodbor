@@ -13,8 +13,13 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
     required this.onAiFormat,
     required this.onDismissKeyboard,
     this.hint = 'Добавьте комментарий',
-    this.minLines = 7,
-    this.maxLines = 10,
+    // Bumped from 7/10 → 9/13. Original height felt cramped on iPhone
+    // SE / mini once the section heading + Voice/AI buttons ate ~30%
+    // of the visible card. 9 lines gives ~12 typed lines visible
+    // before scroll on the smallest target devices, 13 caps growth so
+    // the panel doesn't push the action bar off-screen.
+    this.minLines = 9,
+    this.maxLines = 13,
     this.aiBusy = false,
   });
 
