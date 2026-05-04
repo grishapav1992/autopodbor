@@ -18,6 +18,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
+import 'package:flutter_application_1/data/services/vin_decoder_service.dart';
 import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
@@ -133,6 +134,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     with WidgetsBindingObserver {
   late final TextEditingController _reportNameController;
   late final TextEditingController _vinController;
+  // Last VIN value that was successfully sent to the VIN decoder (NHTSA).
+  // Used by `_decodeAndApplyVin` for UI-level deduplication so that
+  // focus loss with an unchanged VIN does not retrigger characteristics
+  // overwrite + setState. The decoder service has its own network cache
+  // — this field is purely about avoiding redundant UI work.
+  String? _lastDecodedVin;
   late final TextEditingController _plateController;
   late final TextEditingController _brandController;
   late final TextEditingController _modelController;
