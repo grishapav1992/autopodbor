@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/utils/contact_redaction.dart';
 import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart';
+import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -276,6 +278,7 @@ class _DealerProfileScreenState extends State<DealerProfileScreen>
             message: _llmStatusMessage,
             onRefresh: _checkLlmStatus,
           ),
+          if (kDebugMode) const _DebugNotificationBar(),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -754,6 +757,129 @@ class _PublicPreviewView extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Dev-only bar with two buttons that fire
+/// `Notification.DebugSendNotificationToSelf` (reminder / system).
+/// The backend gates the RPC behind `APP_DEBUG=true`; in production
+/// builds the whole bar is compiled out via `kDebugMode`.
+class _DebugNotificationBar extends StatefulWidget {
+  const _DebugNotificationBar();
+
+  @override
+  State<_DebugNotificationBar> createState() => _DebugNotificationBarState();
+}
+
+class _DebugNotificationBarState extends State<_DebugNotificationBar> {
+  bool _busy = false;
+
+  Future<void> _send(NotificationType type) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await NotificationApi.debugSendToSelf(
+        type: type,
+        title: type == NotificationType.reminder
+            ? 'Тест: напоминание'
+            : 'Тест: системное',
+        body: 'Push-проверка через WebSocket',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: kGreenColor,
+          content: Text('Отправлено — должно прилететь через WS'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: kRedColor,
+          content: Text('Ошибка: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: kBlueColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: kBlueColor.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.bug_report_outlined, size: 18, color: kBlueColor),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: MyText(
+                text: 'Notif debug:',
+                size: 12,
+                color: kBlueColor,
+                weight: FontWeight.w700,
+              ),
+            ),
+            _DebugSendButton(
+              label: 'reminder',
+              busy: _busy,
+              onTap: () => _send(NotificationType.reminder),
+            ),
+            const SizedBox(width: 6),
+            _DebugSendButton(
+              label: 'system',
+              busy: _busy,
+              onTap: () => _send(NotificationType.system),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DebugSendButton extends StatelessWidget {
+  const _DebugSendButton({
+    required this.label,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: busy ? 0.5 : 1,
+      child: Material(
+        color: kBlueColor,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: busy ? null : onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: MyText(
+              text: label,
+              size: 11,
+              color: kWhiteColor,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
