@@ -61,6 +61,11 @@ extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
     for (final controller in _autosaveControllers) {
       controller.addListener(_onAutosaveInputChanged);
     }
+    // VIN decoder hook — fires the NHTSA decoder on focus loss when
+    // the inspector finishes typing. Paired with `_applyVinScannerResult`
+    // for the OCR path. Detached in `_disposeInputResources` *before*
+    // `_vinFocusNode.dispose()` to avoid post-dispose listener calls.
+    _vinFocusNode.addListener(_handleVinFocusChange);
   }
 
   void _detachAutosaveListeners() {

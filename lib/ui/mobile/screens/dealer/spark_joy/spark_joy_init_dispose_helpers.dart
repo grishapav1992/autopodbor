@@ -14,6 +14,10 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
 
   void _disposeInputResources() {
     _pageScrollController.dispose();
+    // Detach VIN decoder hook before disposing the focus node to
+    // prevent listener calls on a disposed node. See
+    // `_attachAutosaveListeners` in spark_joy_lifecycle_helpers.dart.
+    _vinFocusNode.removeListener(_handleVinFocusChange);
     _vinFocusNode.dispose();
     _plateFocusNode.dispose();
     _adLinkFocusNode.dispose();
