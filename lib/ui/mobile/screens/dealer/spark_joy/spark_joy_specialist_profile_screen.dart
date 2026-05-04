@@ -1,6 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
@@ -920,6 +922,7 @@ class _SparkJoySpecialistProfileScreenState
         ]);
       },
       children: [
+        if (kDebugMode) const _NotifDebugBar(),
         // SparkPageHeader removed — the shell's AppBar already shows
         // "Профиль" as the tab title, and the shapka card below owns
         // the specialist's identity. The extra "Мой профиль" + subtitle
@@ -1077,6 +1080,136 @@ class _SparkJoySpecialistProfileScreenState
               : _buildBusinessUnverified(),
         ),
       ],
+    );
+  }
+}
+
+/// Dev-only bar with two buttons that fire
+/// `Notification.DebugSendNotificationToSelf` (reminder / system).
+/// Backend gates the RPC behind `APP_DEBUG=true`; this widget is also
+/// compiled out in release via `kDebugMode`.
+class _NotifDebugBar extends StatefulWidget {
+  const _NotifDebugBar();
+
+  @override
+  State<_NotifDebugBar> createState() => _NotifDebugBarState();
+}
+
+class _NotifDebugBarState extends State<_NotifDebugBar> {
+  bool _busy = false;
+
+  Future<void> _send(NotificationType type) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await NotificationApi.debugSendToSelf(
+        type: type,
+        title: type == NotificationType.reminder
+            ? 'Тест: напоминание'
+            : 'Тест: системное',
+        body: 'Push-проверка через WebSocket',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: kGreenColor,
+          content: Text('Отправлено — должно прилететь через WS'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: kRedColor,
+          content: Text('Ошибка: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: SparkSpace.lg),
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xl,
+        vertical: SparkSpace.lg,
+      ),
+      decoration: BoxDecoration(
+        color: kBlueColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+        border: Border.all(color: kBlueColor.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.bug_report_outlined,
+            size: SparkSize.iconMd,
+            color: kBlueColor,
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Expanded(
+            child: MyText(
+              text: 'Notif debug:',
+              size: SparkTextSize.body,
+              color: kBlueColor,
+              weight: FontWeight.w700,
+            ),
+          ),
+          _NotifDebugSendButton(
+            label: 'reminder',
+            busy: _busy,
+            onTap: () => _send(NotificationType.reminder),
+          ),
+          const SizedBox(width: SparkSpace.sm),
+          _NotifDebugSendButton(
+            label: 'system',
+            busy: _busy,
+            onTap: () => _send(NotificationType.system),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotifDebugSendButton extends StatelessWidget {
+  const _NotifDebugSendButton({
+    required this.label,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: busy ? 0.5 : 1,
+      child: Material(
+        color: kBlueColor,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+        child: InkWell(
+          onTap: busy ? null : onTap,
+          borderRadius: BorderRadius.circular(SparkRadius.sm),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.lg,
+              vertical: SparkSpace.sm,
+            ),
+            child: MyText(
+              text: label,
+              size: SparkTextSize.caption,
+              color: kWhiteColor,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
