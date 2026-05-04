@@ -97,6 +97,10 @@ class NotificationApi {
 
   /// Send a notification to another user. Currently not wired into UI;
   /// exposed here so future flows can call it without re-discovery.
+  ///
+  /// Per OpenRPC: `system` cannot be created via SendNotification — it's
+  /// produced only by the backend (feedback, expiry). The schema's enum
+  /// for this method is task / invitation / reminder.
   static Future<void> sendNotification({
     required NotificationType type,
     required int recipientId,
@@ -104,6 +108,11 @@ class NotificationApi {
     String? body,
     Map<String, dynamic>? payload,
   }) async {
+    assert(
+      type != NotificationType.system,
+      'Notification.SendNotification rejects type=system; '
+      'system notifications are server-issued only.',
+    );
     final params = <String, dynamic>{
       'type': type.wireValue,
       'recipientId': recipientId,

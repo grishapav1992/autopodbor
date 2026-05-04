@@ -98,6 +98,16 @@ class _LoginState extends State<Login> {
 
     try {
       final result = await StorageApi.auth(phone: phone);
+      // Persist the notification token early — backend issues it from
+      // both Storage.Auth and Storage.AuthVerify, so the WebSocket can
+      // connect while the user is still on the dialer screen. Safe even
+      // if AuthVerify never completes — token gets cleared on logout.
+      if (result.notificationToken != null &&
+          result.notificationToken!.isNotEmpty) {
+        await UserSimplePreferences.setNotificationToken(
+          result.notificationToken!,
+        );
+      }
       if (!mounted || currentOp != _opId) return;
       final callPhone = _normalizeCallPhone(result.callPhone);
       setState(() {
@@ -240,6 +250,11 @@ class _LoginState extends State<Login> {
   }
 
   Future<void> _techSignIn() async {
+    // Tech-sign-in switches identity without going through Storage.Auth,
+    // so any notification token persisted from the previous user is now
+    // invalid. Wipe it explicitly — without this, NotificationController
+    // would reconnect WebSocket with a stale JWT and loop on rejection.
+    await UserSimplePreferences.clearNotificationToken();
     await UserSimplePreferences.setAuthTokens(
       accessToken: _techAccessToken,
       refreshToken: _techRefreshToken,

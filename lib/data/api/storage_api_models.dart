@@ -111,7 +111,18 @@ class AuthStartResult {
   final String callPhone;
   final String? sessionId;
 
-  const AuthStartResult({required this.callPhone, this.sessionId});
+  /// Same JWT as `AuthVerifyResult.notificationToken` — backend returns
+  /// it from both `Storage.Auth` and `Storage.AuthVerify`. We persist it
+  /// here too so that the WebSocket can connect immediately after the
+  /// user dials the verification number, without waiting for the verify
+  /// RPC to finish.
+  final String? notificationToken;
+
+  const AuthStartResult({
+    required this.callPhone,
+    this.sessionId,
+    this.notificationToken,
+  });
 }
 
 class AuthVerifyResult {

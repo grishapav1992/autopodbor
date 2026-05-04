@@ -39,6 +39,18 @@ class NotificationWebsocketService {
   static const Duration _initialBackoff = Duration(seconds: 1);
   static const Duration _maxBackoff = Duration(seconds: 30);
 
+  /// After this many consecutive connect failures with zero successful
+  /// frames in between, the channel is treated as permanently dead
+  /// (most likely an expired notification token — TTL is 72h and there
+  /// is no client-side refresh). We stop reconnecting and emit nothing
+  /// further; the next [start] call (e.g. after re-login) re-arms.
+  static const int _maxConsecutiveFailures = 10;
+
+  /// Shared `Random` for jitter — instantiating per call is cheap but
+  /// creating many short-lived Random instances inside tight reconnect
+  /// loops looks noisy in profilers.
+  static final math.Random _jitterRng = math.Random();
+
   final StreamController<NotificationPushEvent> _eventsController =
       StreamController<NotificationPushEvent>.broadcast();
 
@@ -53,6 +65,8 @@ class NotificationWebsocketService {
   String? _token;
   bool _disposed = false;
   bool _shouldReconnect = false;
+  int _consecutiveFailures = 0;
+  bool _markedDead = false;
 
   /// True when the underlying channel is open and ready to receive.
   bool get isConnected => _channel != null && _channelSub != null;
@@ -74,6 +88,8 @@ class NotificationWebsocketService {
     _token = token;
     _shouldReconnect = true;
     _currentBackoff = _initialBackoff;
+    _consecutiveFailures = 0;
+    _markedDead = false;
     await _closeChannel();
     _connect();
   }
@@ -145,8 +161,12 @@ class NotificationWebsocketService {
       _log('drop-non-json frame=${text.length > 80 ? '${text.substring(0, 80)}…' : text}');
       return;
     }
-    // Reset backoff on first valid frame — server is healthy.
+    // Reset backoff + failure counter on any valid frame — server is
+    // healthy and the token works. Without this reset a brief network
+    // hiccup followed by a successful reconnect would leave a stale
+    // backoff value.
     _currentBackoff = _initialBackoff;
+    _consecutiveFailures = 0;
     final event = NotificationPushEvent.tryParse(frame);
     if (event == null) {
       _log('drop-unknown response=${frame['response']}');
@@ -186,10 +206,28 @@ class NotificationWebsocketService {
   }
 
   void _scheduleReconnect() {
-    if (_disposed || !_shouldReconnect) return;
-    _reconnectTimer?.cancel();
+    if (_disposed || !_shouldReconnect || _markedDead) return;
+    // Coalesce — onError + onDone often fire back-to-back for the same
+    // disconnect; without this guard backoff would double per failure.
+    if (_reconnectTimer?.isActive == true) return;
+    _consecutiveFailures += 1;
+    if (_consecutiveFailures >= _maxConsecutiveFailures) {
+      _markedDead = true;
+      _shouldReconnect = false;
+      _log(
+        'giving up after $_consecutiveFailures consecutive failures — '
+        'token likely expired (TTL 72h). Re-login required.',
+      );
+      // Don't await — caller is in a sync callback path.
+      // ignore: discarded_futures
+      _closeChannel();
+      return;
+    }
     final delay = _withJitter(_currentBackoff);
-    _log('reconnect in ${delay.inMilliseconds}ms (next-backoff=${_currentBackoff.inSeconds}s)');
+    _log(
+      'reconnect in ${delay.inMilliseconds}ms '
+      '(backoff=${_currentBackoff.inSeconds}s, fails=$_consecutiveFailures)',
+    );
     _reconnectTimer = Timer(delay, () async {
       await _closeChannel();
       _connect();
@@ -205,7 +243,7 @@ class NotificationWebsocketService {
   static Duration _withJitter(Duration base) {
     // ±25% jitter to prevent thundering-herd on backend restart.
     final ms = base.inMilliseconds;
-    final jitter = (math.Random().nextDouble() * 0.5 - 0.25) * ms;
+    final jitter = (_jitterRng.nextDouble() * 0.5 - 0.25) * ms;
     final result = math.max(250, (ms + jitter).round());
     return Duration(milliseconds: result);
   }

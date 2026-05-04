@@ -657,9 +657,15 @@ class StorageApi {
       throw Exception('Call phone is empty');
     }
     final sessionId = _extractString(result, ['sessionId', 'authId', 'id']);
+    final notificationToken = _extractString(result, [
+      'notificationToken',
+      'notification_token',
+    ]);
     return AuthStartResult(
       callPhone: callPhone,
       sessionId: sessionId.isEmpty ? null : sessionId,
+      notificationToken:
+          notificationToken.isEmpty ? null : notificationToken,
     );
   }
 

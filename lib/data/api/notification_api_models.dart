@@ -117,11 +117,6 @@ class BackendNotification {
   final DateTime? actedAt;
   final DateTime createdAt;
 
-  bool get isUnread =>
-      status == NotificationStatus.pending || status == NotificationStatus.read
-          ? status == NotificationStatus.pending
-          : false;
-
   bool get isInteractivePending =>
       type.isInteractive && status == NotificationStatus.pending;
 

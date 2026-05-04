@@ -48,6 +48,12 @@ class NotificationController extends GetxController {
   Timer? _refetchTimer;
   bool _started = false;
 
+  /// Set when a push arrives while [reload] is mid-flight. Without this
+  /// flag the second push silently no-ops and the UI stays stale until
+  /// the next event. We re-issue the reload as soon as the current one
+  /// completes.
+  bool _pendingReload = false;
+
   /// Read persisted notification token and start the realtime channel +
   /// initial HTTP fetch. No-op if already bootstrapped or no token saved.
   Future<void> bootstrap() async {
@@ -82,13 +88,21 @@ class NotificationController extends GetxController {
     unreadCount.value = 0;
     nextCursor.value = null;
     errorMessage.value = null;
+    _pendingReload = false;
     _started = false;
     _bumpNotifier();
   }
 
   /// Full refetch of page 1. Replaces the in-memory list.
+  ///
+  /// If called while another reload is in flight, sets [_pendingReload]
+  /// so the in-flight task re-issues itself on completion. Net effect:
+  /// at most 2 requests are queued (current + pending), bursts collapse.
   Future<void> reload() async {
-    if (loading.value) return;
+    if (loading.value) {
+      _pendingReload = true;
+      return;
+    }
     loading.value = true;
     errorMessage.value = null;
     try {
@@ -105,6 +119,13 @@ class NotificationController extends GetxController {
     } finally {
       loading.value = false;
       _bumpNotifier();
+      if (_pendingReload) {
+        _pendingReload = false;
+        // Don't await — caller doesn't need to wait for the chained
+        // refetch, and avoiding await keeps the recursion shallow.
+        // ignore: discarded_futures
+        reload();
+      }
     }
   }
 
