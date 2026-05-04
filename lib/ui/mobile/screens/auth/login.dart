@@ -6,6 +6,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/headings_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
@@ -151,6 +152,11 @@ class _LoginState extends State<Login> {
             accessToken: verify.accessToken!,
             refreshToken: verify.refreshToken!,
           );
+          if (verify.hasNotificationToken) {
+            await UserSimplePreferences.setNotificationToken(
+              verify.notificationToken!,
+            );
+          }
           if (!mounted || startOp != _opId) return;
           setState(() {
             _isVerifyLoading = false;
@@ -202,6 +208,11 @@ class _LoginState extends State<Login> {
           accessToken: verify.accessToken!,
           refreshToken: verify.refreshToken!,
         );
+        if (verify.hasNotificationToken) {
+          await UserSimplePreferences.setNotificationToken(
+            verify.notificationToken!,
+          );
+        }
         if (!mounted || currentOp != _opId) return;
         setState(() {
           _statusText = 'Статус проверки: все OK. Выполняем вход...';
@@ -303,6 +314,12 @@ class _LoginState extends State<Login> {
     await UserSimplePreferences.setUserRole(
       sparkRole == SparkJoyRole.company ? 'company' : 'specialist',
     );
+    // (Re)bootstrap the realtime notification channel with the freshly
+    // persisted notification token. No-op if the controller wasn't
+    // registered yet (very early launch path) or no token exists.
+    if (Get.isRegistered<NotificationController>()) {
+      unawaited(Get.find<NotificationController>().rebootstrap());
+    }
     if (!mounted) return;
     Get.offAll(() => const DealerNavBar());
   }

@@ -73,6 +73,7 @@ class UserSimplePreferences {
   static const _inspectorAboutKey = 'inspectorAbout';
   static const _accessTokenKey = 'accessToken';
   static const _refreshTokenKey = 'refreshToken';
+  static const _notificationTokenKey = 'notificationToken';
   static const _userRoleKey = 'userRole';
 
   static Future init() async {
@@ -353,6 +354,20 @@ class UserSimplePreferences {
   static Future<void> clearAuthTokens() async {
     await (await _prefs()).remove(_accessTokenKey);
     await (await _prefs()).remove(_refreshTokenKey);
+    await (await _prefs()).remove(_notificationTokenKey);
+  }
+
+  static Future<void> setNotificationToken(String token) async {
+    await (await _prefs()).setString(_notificationTokenKey, token);
+  }
+
+  static Future<String?> getNotificationToken() async {
+    // ignore: await_only_futures
+    return (await _prefs()).getString(_notificationTokenKey);
+  }
+
+  static Future<void> clearNotificationToken() async {
+    await (await _prefs()).remove(_notificationTokenKey);
   }
 
   static Future<void> setUserRole(String role) async {

@@ -693,9 +693,15 @@ class StorageApi {
       'refresh_token',
       'refresh',
     ]);
+    final notificationToken = _extractString(result, [
+      'notificationToken',
+      'notification_token',
+    ]);
     return AuthVerifyResult(
       accessToken: accessToken.isEmpty ? null : accessToken,
       refreshToken: refreshToken.isEmpty ? null : refreshToken,
+      notificationToken:
+          notificationToken.isEmpty ? null : notificationToken,
     );
   }
 

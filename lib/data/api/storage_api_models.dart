@@ -118,13 +118,27 @@ class AuthVerifyResult {
   final String? accessToken;
   final String? refreshToken;
 
-  const AuthVerifyResult({this.accessToken, this.refreshToken});
+  /// JWT for the realtime notification WebSocket channel
+  /// (`wss://...:2350/auth`). Returned by `Storage.Auth` /
+  /// `Storage.AuthVerify` since the 2026-04 backend update. Lives 72h —
+  /// shorter than the regular access token but long enough that we
+  /// don't need to refresh it inside a single session.
+  final String? notificationToken;
+
+  const AuthVerifyResult({
+    this.accessToken,
+    this.refreshToken,
+    this.notificationToken,
+  });
 
   bool get hasTokens =>
       accessToken != null &&
       accessToken!.isNotEmpty &&
       refreshToken != null &&
       refreshToken!.isNotEmpty;
+
+  bool get hasNotificationToken =>
+      notificationToken != null && notificationToken!.isNotEmpty;
 }
 
 class CreateRequestResult {
