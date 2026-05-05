@@ -66,8 +66,16 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     final hasExpertNote = _expertController.text.trim().isNotEmpty;
     final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
+    // Both the field must be non-empty AND the value must match a
+    // city in the bundled RU+CIS dataset. The validity flag is
+    // maintained by `_SparkJoyCityPickerHelpers` — flipped to true
+    // when the picker writes a selection, recomputed after draft
+    // hydration. Drafts predating the picker may have free-form
+    // strings ("Мск", "Питер") that fail this gate until the
+    // inspector reselects.
     final hasInspectionCity =
-        _inspectionCityController.text.trim().isNotEmpty;
+        _inspectionCityController.text.trim().isNotEmpty &&
+            _isInspectionCityValid;
     // Characteristics — все required по спеке, ничего nullable.
     final hasFrameId = _modelGenerationRestylingFrameId != null &&
         _modelGenerationRestylingFrameId! > 0;

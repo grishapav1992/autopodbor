@@ -52,3 +52,4 @@ app.*.map.json
 /graphify-out/
 /.mcp.json
 /autopodbor_*.postman_collection.json
+scripts/.cache/

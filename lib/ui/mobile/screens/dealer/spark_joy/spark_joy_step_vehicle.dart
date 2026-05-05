@@ -237,12 +237,17 @@ Widget _buildSparkJoyStepVehicle(
               weight: FontWeight.w700,
             ),
             const SizedBox(height: SparkSpace.md),
+            // Tap-to-open city picker. The controller is the source
+            // of truth for the value (so autosave + payload
+            // serialisation work unchanged); the field itself is
+            // read-only — manual typing is intentionally disabled per
+            // product decision (см. план 2026-05-05).
             s._input(
               s._inspectionCityController,
               'Город осмотра',
-              textInputAction: TextInputAction.done,
+              readOnly: true,
               focusNode: s._inspectionCityFocusNode,
-              onSubmitted: (_) => s._dismissKeyboard(),
+              onTap: () => s._openCityPicker(),
             ),
           ],
         ),

@@ -10,6 +10,9 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/services/city_repository.dart';
+
+import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 
@@ -3291,6 +3294,14 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
   bool _isSubmittingTurnkey = false;
   bool _remoteRefreshScheduled = false;
 
+  // Source-of-truth flag for "city is in the canonical RU+CIS list".
+  // The form's text controller always holds the displayable name;
+  // this flag answers "did the user actually pick from the dropdown
+  // or is the value some legacy free-text we cannot trust". Submit
+  // is gated on this in `_validateRequiredFields`. Picker callback
+  // sets it true; preload below resets it from the bundled list.
+  bool _isCityValid = false;
+
   @override
   void initState() {
     super.initState();
@@ -3298,6 +3309,49 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     _RemoteCarCatalog.stamp.addListener(_handleRemoteUpdate);
 
     _RemoteCarCatalog.ensureBrands();
+
+    // Eagerly preload the city dataset so the first picker open is
+    // instant. Pre-fills `_isCityValid` if the form was reopened with
+    // a value already in the controller (e.g. saved request draft).
+    unawaited(_initCityRepoAndValidate());
+  }
+
+  Future<void> _initCityRepoAndValidate() async {
+    if (!CityRepository.instance.isReady) {
+      await CityRepository.instance.init();
+    }
+    if (!mounted) return;
+    final v = _cityController.text.trim();
+    final valid = v.isNotEmpty &&
+        CityRepository.instance.findByExactRu(v) != null;
+    if (valid != _isCityValid) {
+      setState(() => _isCityValid = valid);
+    }
+  }
+
+  /// Tap handler for the city field. Awaits dataset readiness, opens
+  /// the bottom-sheet picker, writes the selected name into the
+  /// controller, and clears any city-related form error so the user
+  /// sees immediate feedback that the field is now valid.
+  Future<void> _pickCity() async {
+    if (!CityRepository.instance.isReady) {
+      await CityRepository.instance.init();
+    }
+    if (!mounted) return;
+    final picked = await showCityPickerBottomSheet(
+      context,
+      currentValue: _cityController.text.trim(),
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      // Full "Country, Region, City" label — same source string the
+      // picker tile shows. `findByExactRu` matches both this form and
+      // bare `nameRu` so legacy form drafts remain valid.
+      _cityController.text = picked.displayLabel;
+      _isCityValid = true;
+      _fieldErrors.remove('city');
+      if (_fieldErrors.isEmpty) _formError = '';
+    });
   }
 
   @override
@@ -3548,6 +3602,12 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     _fieldErrors.clear();
     if (_cityController.text.trim().isEmpty) {
       _fieldErrors['city'] = 'Укажите город';
+    } else if (!_isCityValid) {
+      // Free-form city values from older app versions / pasted strings
+      // are no longer accepted by the new picker contract — surface
+      // the explicit "reselect" prompt instead of the generic
+      // "укажите город".
+      _fieldErrors['city'] = 'Город отсутствует в списке. Выберите заново.';
     }
     if (_tkMakes.isEmpty) {
       _fieldErrors['makes'] = 'Выберите минимум одну марку';
@@ -4396,20 +4456,18 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
           key: _cityFieldKey,
           child: Column(
             children: [
+              // Tap-to-open city picker (\u0431\u044b\u0432\u0448\u0435\u0435 free-text \u043f\u043e\u043b\u0435). The
+              // `_cityController` is still source of truth, so submit
+              // payload (`city: text`) and any persisted form draft
+              // round-trip unchanged. Read-only blocks manual typing
+              // per product decision (\u0441\u043c. \u043f\u043b\u0430\u043d 2026-05-05).
               MyTextField(
                 labelText: '\u0413\u043e\u0440\u043e\u0434 *',
                 hintText:
                     '\u041d\u0430\u043f\u0440\u0438\u043c\u0435\u0440, \u0410\u043b\u043c\u0430\u0442\u044b',
                 controller: _cityController,
-                onChanged: (value) {
-                  if (_fieldErrors.containsKey('city') &&
-                      value.trim().isNotEmpty) {
-                    setState(() {
-                      _fieldErrors.remove('city');
-                      if (_fieldErrors.isEmpty) _formError = '';
-                    });
-                  }
-                },
+                isReadOnly: true,
+                onTap: _pickCity,
               ),
               _ErrorText(text: _fieldErrors['city']),
             ],
