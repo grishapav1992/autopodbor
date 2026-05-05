@@ -1751,6 +1751,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'gosNumber': _sanitizePlate(_plateController.text.trim()).isEmpty
           ? null
           : _sanitizePlate(_plateController.text.trim()),
+      // Country of the gosNumber — needed downstream so the server
+      // can interpret a non-РФ plate without re-running heuristics.
+      'gosNumberCountry': _plateCountry.name,
       'uriListing': _adLinkController.text.trim().isEmpty
           ? null
           : _adLinkController.text.trim(),
@@ -2577,6 +2580,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'summary': _summaryController.text.trim(),
       'vin': _vinController.text.trim(),
       'plate': _sanitizePlate(_plateController.text.trim()),
+      'gosNumberCountry': _plateCountry.name,
       'mileage': _mileageController.text.trim(),
       'owners': _ownersCountController.text.trim(),
       'docsMismatchComment': _docsMismatchCommentController.text.trim(),

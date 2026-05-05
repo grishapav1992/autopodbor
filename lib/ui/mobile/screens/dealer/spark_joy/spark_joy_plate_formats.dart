@@ -36,8 +36,9 @@ class PlateFormat {
     required this.pattern,
     required this.maxLength,
     required this.placeholder,
+    int? minLength,
     this.usesDash = false,
-  });
+  }) : minLength = minLength ?? maxLength;
 
   final PlateCountry country;
 
@@ -58,6 +59,13 @@ class PlateFormat {
   /// Hard cap for input length AFTER sanitize. Anything beyond is
   /// silently truncated.
   final int maxLength;
+
+  /// Smallest length that can possibly match [pattern]. For most
+  /// countries this equals [maxLength] (fixed-length plates), but RF
+  /// allows both 8- and 9-character variants (`\d{2,3}` regional part)
+  /// so its [minLength] is 8 while [maxLength] is 9. Used by
+  /// [plateError] to phrase the "too short" message correctly.
+  final int minLength;
 
   /// Example shown in TextField hint when empty.
   final String placeholder;
@@ -87,6 +95,9 @@ final PlateFormat _ruFormat = PlateFormat(
   // Example: А123БВ77 / А123БВ777
   pattern: _ruPattern,
   maxLength: 9,
+  // Both 8-char (2-digit region) and 9-char (3-digit region) plates
+  // are valid — see `\d{2,3}` in _ruPattern.
+  minLength: 8,
   placeholder: 'А123БВ77',
 );
 
@@ -230,8 +241,11 @@ String formatPlate(String sanitized, PlateFormat fmt) {
 String? plateError(String input, PlateFormat fmt) {
   final clean = sanitizePlate(input, fmt);
   if (clean.isEmpty) return null;
-  if (clean.length < fmt.maxLength - 1) {
-    return 'Введено ${clean.length} из ${fmt.maxLength} символов';
+  if (clean.length < fmt.minLength) {
+    final lengthLabel = fmt.minLength == fmt.maxLength
+        ? '${fmt.maxLength}'
+        : '${fmt.minLength}-${fmt.maxLength}';
+    return 'Введено ${clean.length} из $lengthLabel символов';
   }
   if (!fmt.pattern.hasMatch(clean)) {
     return 'Некорректный формат госномера для ${fmt.label}';

@@ -241,9 +241,13 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
 
     sections.add({
       'title': _SparkJoySummaryTextsRegistry.sectionLegal,
-      'status': _legalLoaded || legalHasManualData
-          ? 'ok'
-          : (_legalSkipped || _legalLoading ? 'warn' : 'warn'),
+      // Status mirrors the same source-of-truth as the detail value
+      // below: report-formation flags (_legalLoaded / _legalLoading /
+      // _legalSkipped) are no longer reachable from UI, so leaning on
+      // them would produce a green "ok" badge with a "Не заполнено"
+      // detail line on legacy drafts. Keep the chip honest about
+      // what the user can actually see.
+      'status': legalHasManualData ? 'ok' : 'minor',
       'required': false,
       'details': [
         {
