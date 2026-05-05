@@ -104,6 +104,14 @@ Widget _buildSparkJoyLegalFilesCard(
   );
 }
 
+/// Feature flag for the «Сформировать отчёт» card on the Материалы
+/// проверки step. Off by default — backend integration for legal-report
+/// formation is paused; we keep all the supporting state (legalLoading
+/// / Loaded / Skipped / TimedOut / Purchased) in the controller and
+/// draft so existing reports load without losing their status, but the
+/// card itself is hidden. Flip to true to bring the UI back unchanged.
+const bool _kShowLegalReportCard = false;
+
 Widget _buildSparkJoyStepLegal(
   _SparkJoyCreateReportScreenState s, {
   required void Function(VoidCallback fn) setStateFn,
@@ -127,61 +135,63 @@ Widget _buildSparkJoyStepLegal(
 
   return Column(
     children: [
-      s._card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: MyText(
-                    text: statusSubtitle,
-                    size: SparkTextSize.caption,
-                    color: kTertiaryColor,
-                    weight: FontWeight.w600,
+      if (_kShowLegalReportCard) ...[
+        s._card(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: statusSubtitle,
+                      size: SparkTextSize.caption,
+                      color: kTertiaryColor,
+                      weight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                Container(
-                  width: SparkSize.iconSm,
-                  height: SparkSize.iconSm,
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.16),
-                    shape: BoxShape.circle,
+                  Container(
+                    width: SparkSize.iconSm,
+                    height: SparkSize.iconSm,
+                    decoration: BoxDecoration(
+                      color: statusColor.withValues(alpha: 0.16),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: SparkSpace.md),
+              if (s._legalLoading) ...[
+                const SizedBox(height: SparkSpace.sm),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  child: const LinearProgressIndicator(
+                    minHeight: SparkSize.progressThin,
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: SparkSpace.md),
-            if (s._legalLoading) ...[
-              const SizedBox(height: SparkSpace.sm),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(SparkRadius.pill),
-                child: const LinearProgressIndicator(
-                  minHeight: SparkSize.progressThin,
+              const SizedBox(height: SparkSpace.lg),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: s._legalLoading ? null : s._startLegalLoading,
+                  icon: Icon(
+                    s._legalLoaded ? Icons.refresh_rounded : Icons.gavel_rounded,
+                    size: SparkSize.iconSm,
+                  ),
+                  label: Text(
+                    s._legalLoaded
+                        ? 'Обновить отчет'
+                        : (s._legalLoading
+                              ? 'Формирование...'
+                              : 'Сформировать отчет'),
+                  ),
                 ),
               ),
             ],
-            const SizedBox(height: SparkSpace.lg),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: s._legalLoading ? null : s._startLegalLoading,
-                icon: Icon(
-                  s._legalLoaded ? Icons.refresh_rounded : Icons.gavel_rounded,
-                  size: SparkSize.iconSm,
-                ),
-                label: Text(
-                  s._legalLoaded
-                      ? 'Обновить отчет'
-                      : (s._legalLoading
-                            ? 'Формирование...'
-                            : 'Сформировать отчет'),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
       s._sectionHeading('Файлы специалиста', icon: Icons.folder_open_outlined),
       const SizedBox(height: SparkSpace.lg),
       _buildSparkJoyLegalFilesCard(s, setStateFn: setStateFn),

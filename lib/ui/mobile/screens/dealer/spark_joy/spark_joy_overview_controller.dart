@@ -159,13 +159,17 @@ class _SparkJoyOverviewController {
         }
         return 'Все соответствует';
       case _SparkJoyStepRegistry.idLegal:
-        if (s._legalLoaded) return 'Юридический отчёт готов';
-        if (s._legalSkipped) return 'Пропущено';
-        if (s._legalLoading) return 'Формирование отчёта...';
-        if (s._legalFiles.isNotEmpty) return 'Файлов: ${s._legalFiles.length}';
-        if (s._legalNoteController.text.trim().isNotEmpty) {
-          return 'Есть комментарий';
+        // Step renamed «Юр. проверка» → «Материалы проверки».
+        // Report-formation flow is hidden; show only file/comment
+        // signals. legalLoaded/Loading/Skipped status messages would
+        // surface a feature the user can't see anymore.
+        final fileCount = s._legalFiles.length;
+        final hasNote = s._legalNoteController.text.trim().isNotEmpty;
+        if (fileCount > 0 && hasNote) {
+          return 'Файлов: $fileCount · комментарий';
         }
+        if (fileCount > 0) return 'Файлов: $fileCount';
+        if (hasNote) return 'Есть комментарий';
         return '';
       case _SparkJoyStepRegistry.idMedia:
         final covered = s._mediaState.values.where(s._groupHasCoverage).length;

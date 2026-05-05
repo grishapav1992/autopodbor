@@ -30,8 +30,8 @@ class _SparkJoyStepRegistry {
     ),
     _StepConfig(
       id: idLegal,
-      title: 'Юр. проверка',
-      description: 'Юридический отчёт и загрузка файлов специалиста',
+      title: 'Материалы проверки',
+      description: 'Файлы и комментарий специалиста',
     ),
     _StepConfig(
       id: idMedia,
@@ -54,7 +54,7 @@ class _SparkJoyStepRegistry {
     idVehicle: Icons.directions_car_outlined,
     idParams: Icons.tune_rounded,
     idDocsCheck: Icons.badge_outlined,
-    idLegal: Icons.gavel_rounded,
+    idLegal: Icons.fact_check_outlined,
     idMedia: Icons.photo_library_outlined,
     idTestDrive: Icons.route_rounded,
     idSummary: Icons.task_alt_rounded,

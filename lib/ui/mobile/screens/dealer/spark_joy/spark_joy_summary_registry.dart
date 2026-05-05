@@ -33,7 +33,7 @@ class _SparkJoySummaryRegistry {
     'Автомобиль': _SparkJoyStepRegistry.idVehicle,
     'Параметры': _SparkJoyStepRegistry.idParams,
     'Сверка документов': _SparkJoyStepRegistry.idDocsCheck,
-    'Юр. проверка': _SparkJoyStepRegistry.idLegal,
+    'Материалы проверки': _SparkJoyStepRegistry.idLegal,
     'Кузов': _SparkJoyStepRegistry.idMedia,
     'Остекление': _SparkJoyStepRegistry.idMedia,
     'Силовые элементы кузова': _SparkJoyStepRegistry.idMedia,
