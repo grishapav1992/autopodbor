@@ -272,8 +272,13 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     final hasIssue = _groupHasIssue(state);
     final fullyMarked = _runGroupFullyMarked(state);
     final issueCount = state.files.where(_mediaItemHasIssue).length;
+    // «С заметкой» считаем строго по наличию текстового комментария.
+    // Раньше использовался _mediaInspectionHasData, который true и для
+    // тегов / noDamage / толщиномера / типа элемента — поэтому фото
+    // только с тегом «Царапина» попадало и в «Замечания», и в
+    // «С заметкой», что вводило юзера в заблуждение.
     final notesCount = state.files
-        .where((file) => _mediaInspectionHasData(file.inspection))
+        .where((file) => file.inspection.note.trim().isNotEmpty)
         .length;
     final statusLabel = !hasFiles
         ? 'Пусто'
@@ -694,8 +699,10 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     final selectedCount = _mediaGroupSelectedIndexes.length;
     final pickerOpeningForGroup =
         _mediaPickerOpening && _mediaPickerGroupKey == groupKey;
+    // Та же семантика, что и в карточке группы выше: «С заметкой»
+    // — только фото с непустым текстовым комментарием.
     final notedFiles = files
-        .where((file) => _mediaInspectionHasData(file.inspection))
+        .where((file) => file.inspection.note.trim().isNotEmpty)
         .length;
     final issueFiles = files.where(_mediaItemHasIssue).length;
 
