@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_create_report_screen.dart'
     show UploadedItem, BackendUploadFileProgress, MediaGroupState;
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_plate_formats.dart';
 
 /// Owns the reactive state of a single spark_joy specialist report.
 ///
@@ -81,6 +82,12 @@ class SparkJoyReportController extends GetxController {
 
   final RxBool vinUnreadable = false.obs;
   final Rxn<bool> mileageMismatch = Rxn<bool>();
+
+  /// Country whose plate-format rules apply to the госномер field.
+  /// Defaults to RF; persisted in the draft as a wire-string under
+  /// `gosNumberCountry`. See `spark_joy_plate_formats.dart` for the
+  /// full RF + 5 СНГ catalog.
+  final Rx<PlateCountry> plateCountry = Rx<PlateCountry>(PlateCountry.ru);
 
   // ──────────────────────────────────────────────────────────────────
   // Chunk 5 — Paintwork thickness ranges

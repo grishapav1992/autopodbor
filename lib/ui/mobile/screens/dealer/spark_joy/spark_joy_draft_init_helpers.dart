@@ -58,6 +58,10 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _vinController = TextEditingController(
       text: _read(draft, 'vin', fallback: _read(assignment, 'vin')),
     );
+    // Plate country must be set BEFORE sanitize/format below — those
+    // helpers consult `_plateCountry` for alphabet + max-length rules.
+    // Old drafts without `gosNumberCountry` default to РФ via parser.
+    _plateCountry = parsePlateCountry(_read(draft, 'gosNumberCountry'));
     _plateController = TextEditingController(text: _read(draft, 'plate'));
     final initialPlate = _sanitizePlate(_plateController.text);
     if (initialPlate.isNotEmpty) {

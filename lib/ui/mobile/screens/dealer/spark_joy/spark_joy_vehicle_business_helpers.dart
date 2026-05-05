@@ -56,8 +56,6 @@ const Map<String, int> _vinTransliteration = {
   '9': 9,
 };
 
-const String _plateCyr = 'АВЕКМНОРСТУХ';
-
 extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   String _dateLabel(DateTime value) {
     final d = value.day.toString().padLeft(2, '0');
@@ -254,30 +252,15 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   }
 
   String _sanitizePlate(String value) {
-    // Принимаем только русские буквы из `_plateCyr` (АВЕКМНОРСТУХ) и
-    // цифры. Latin (A/B/E/K/M/H/O/P/C/T/Y/X) теперь отбрасывается, а
-    // не конвертируется автоматически — иначе на сервер уходила
-    // кириллица, а пользователь видел латиницу в UI: рассинхрон.
-    final cleaned = value
-        .toUpperCase()
-        .replaceAll(RegExp(r'\s+'), '')
-        .replaceAll(RegExp('[^${_plateCyr}0-9]'), '');
-    return cleaned.length > 9 ? cleaned.substring(0, 9) : cleaned;
+    // Country-aware sanitization. The active [_plateCountry] decides
+    // which alphabet is allowed (Cyrillic ABEKMHOPCTYX for РФ/BY,
+    // Latin A-Z for KZ/AM/KG/UZ) and the max length cap. See
+    // [spark_joy_plate_formats.dart].
+    return sanitizePlate(value, _plateFormat);
   }
 
   String _formatPlate(String sanitized) {
-    if (sanitized.length <= 1) return sanitized;
-    var result = sanitized[0];
-    final rest = sanitized.substring(1);
-    final digits = rest.substring(0, rest.length < 3 ? rest.length : 3);
-    if (digits.isNotEmpty) result += ' $digits';
-    final letters = rest.length > 3
-        ? rest.substring(3, rest.length < 5 ? rest.length : 5)
-        : '';
-    if (letters.isNotEmpty) result += ' $letters';
-    final region = rest.length > 5 ? rest.substring(5) : '';
-    if (region.isNotEmpty) result += ' $region';
-    return result;
+    return formatPlate(sanitized, _plateFormat);
   }
 
   String? _vinError() {
@@ -298,15 +281,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   }
 
   String? _plateError() {
-    final value = _plateController.text.trim();
-    if (value.isEmpty) return null;
-    final clean = _sanitizePlate(value);
-    if (clean.length < 8) return 'Введено ${clean.length} из 8-9 символов';
-    if (!RegExp(
-      '^[$_plateCyr]\\d{3}[$_plateCyr]{2}\\d{2,3}\$',
-    ).hasMatch(clean)) {
-      return 'Некорректный формат госномера';
-    }
-    return null;
+    return plateError(_plateController.text.trim(), _plateFormat);
   }
 }

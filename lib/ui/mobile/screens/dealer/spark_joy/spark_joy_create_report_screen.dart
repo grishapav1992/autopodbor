@@ -23,6 +23,7 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_i18n.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_plate_formats.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
@@ -302,6 +303,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool get _vinUnreadable => _reportController.vinUnreadable.value;
   set _vinUnreadable(bool value) =>
       _reportController.vinUnreadable.value = value;
+
+  PlateCountry get _plateCountry => _reportController.plateCountry.value;
+  set _plateCountry(PlateCountry value) =>
+      _reportController.plateCountry.value = value;
+
+  PlateFormat get _plateFormat => plateFormatFor(_plateCountry);
 
   bool? _docsOwnerMatch;
   bool? _docsVinMatch;

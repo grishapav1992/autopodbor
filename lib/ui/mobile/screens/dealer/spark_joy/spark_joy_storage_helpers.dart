@@ -2240,6 +2240,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'vin': _vinController.text.trim(),
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),
+      'gosNumberCountry': _plateCountry.name,
       'adLink': _adLinkController.text.trim(),
       'mileage': _mileageController.text.trim(),
       'mileageMismatch': _mileageMismatch,

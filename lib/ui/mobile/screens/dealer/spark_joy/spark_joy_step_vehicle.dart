@@ -139,10 +139,82 @@ Widget _buildSparkJoyStepVehicle(
               weight: FontWeight.w700,
             ),
             const SizedBox(height: SparkSpace.md),
+            // Country chip-row. Tapping a flag re-runs sanitize/format
+            // for the new country — switching alphabets (e.g. RU→KZ)
+            // wipes characters that don't fit the new whitelist.
+            SizedBox(
+              height: 36,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: kPlateFormats.length,
+                separatorBuilder: (_, _) =>
+                    const SizedBox(width: SparkSpace.sm),
+                itemBuilder: (context, i) {
+                  final fmt = kPlateFormats[i];
+                  final selected = fmt.country == s._plateCountry;
+                  return InkWell(
+                    onTap: () {
+                      setStateFn(() {
+                        s._plateCountry = fmt.country;
+                        // Re-sanitize current text under new alphabet.
+                        final resanitized = s._sanitizePlate(
+                          s._plateController.text,
+                        );
+                        final reformatted = s._formatPlate(resanitized);
+                        s._plateController.value = TextEditingValue(
+                          text: reformatted,
+                          selection: TextSelection.collapsed(
+                            offset: reformatted.length,
+                          ),
+                        );
+                      });
+                      s._markDraftDirty();
+                    },
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: SparkSpace.lg,
+                      ),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? kSecondaryColor
+                            : kSecondaryColor.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(SparkRadius.pill),
+                        border: Border.all(
+                          color: selected
+                              ? kSecondaryColor
+                              : kBorderColor,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            fmt.flag,
+                            style: const TextStyle(fontSize: 16),
+                          ),
+                          const SizedBox(width: SparkSpace.xs),
+                          MyText(
+                            text: fmt.label,
+                            size: SparkTextSize.chip,
+                            weight: FontWeight.w700,
+                            color: selected ? kWhiteColor : kTertiaryColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: SparkSpace.md),
             TextField(
               controller: s._plateController,
               focusNode: s._plateFocusNode,
-              maxLength: 12,
+              // 14 = max formatted length across all formats
+              // (РФ "А 123 БВ 777" = 12 / KZ "123 ABC 02" = 10 etc).
+              maxLength: 14,
               textInputAction: TextInputAction.next,
               onSubmitted: (_) {
                 FocusScope.of(s.context).requestFocus(s._adLinkFocusNode);
@@ -167,7 +239,7 @@ Widget _buildSparkJoyStepVehicle(
               enableSuggestions: false,
               textAlign: TextAlign.center,
               decoration: s
-                  ._fieldDecoration('А 000 АА 000')
+                  ._fieldDecoration(s._plateFormat.placeholder)
                   .copyWith(counterText: ''),
             ),
             if (plateError != null) ...[
