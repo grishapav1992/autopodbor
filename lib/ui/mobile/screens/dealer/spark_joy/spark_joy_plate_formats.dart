@@ -73,7 +73,10 @@ class PlateFormat {
 const String _plateCyr = 'АВЕКМНОРСТУХ';
 
 /// Latin letters used by KZ / AM / KG / UZ plate series we support.
-const String _plateLatin = 'ABCDEFGHIJKLMNOPRSTUVWXYZ';
+/// Full A-Z; some series in these countries do use Q (e.g. KZ taxi /
+/// rare regional codes), so excluding it would silently drop valid
+/// input.
+const String _plateLatin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
 final PlateFormat _ruFormat = PlateFormat(
   country: PlateCountry.ru,

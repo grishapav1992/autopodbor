@@ -248,16 +248,17 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       'details': [
         {
           'label': 'Статус',
-          'value': _legalLoaded
-              ? 'Юридический отчёт сформирован'
-              : (_legalLoading
-                    ? 'Юридический отчёт формируется'
-                    : (_legalSkipped
-                          ? 'Формирование отложено'
-                          : (legalHasManualData
-                                ? 'Загружены файлы специалиста'
-                                : 'Не заполнено'))),
-          'severity': _legalLoaded || legalHasManualData ? 'ok' : 'minor',
+          // Step renamed «Юр. проверка» → «Материалы проверки» and the
+          // report-formation card is hidden behind `_kShowLegalReportCard`.
+          // The legalLoaded / legalLoading / legalSkipped flags can still
+          // be `true` on legacy drafts, but the user has no UI to reach
+          // that flow anymore — surface neutral wording instead of
+          // "Юридический отчёт сформирован" which points to a feature
+          // they can't see.
+          'value': legalHasManualData
+              ? 'Материалы добавлены'
+              : 'Не заполнено',
+          'severity': legalHasManualData ? 'ok' : 'minor',
         },
         if (_legalFiles.isNotEmpty)
           {

@@ -6,7 +6,7 @@ class _SparkJoySummaryTextsRegistry {
   static const String sectionVehicle = 'Автомобиль';
   static const String sectionParams = 'Параметры';
   static const String sectionDocsCheck = 'Сверка документов';
-  static const String sectionLegal = 'Юр. проверка';
+  static const String sectionLegal = 'Материалы проверки';
   static const String sectionTestDrive = 'Тест-драйв';
 
   static const String checklistVinMissing =
@@ -23,9 +23,9 @@ class _SparkJoySummaryTextsRegistry {
   static const String checklistDocsEngineMismatch =
       'Модель двигателя в документах не совпадает.';
   static const String checklistLegalSkipped =
-      'Юридическая проверка была пропущена.';
+      'Материалы проверки не добавлены.';
   static const String checklistLegalUnconfirmed =
-      'Юридическая проверка не подтверждена.';
+      'Материалы проверки не подтверждены.';
   static const String checklistTdStatusMissing =
       'Статус тест-драйва не заполнен.';
   static const String checklistTdCommentRequired =
