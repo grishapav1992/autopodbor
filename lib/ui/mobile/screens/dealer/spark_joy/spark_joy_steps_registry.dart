@@ -36,7 +36,7 @@ class _SparkJoyStepRegistry {
     _StepConfig(
       id: idMedia,
       title: 'Осмотр',
-      description: 'Заполните группы осмотра, заметки и ссылки на фото/видео',
+      description: 'Группы осмотра, заметки и ссылки на фото/видео',
     ),
     _StepConfig(
       id: idTestDrive,

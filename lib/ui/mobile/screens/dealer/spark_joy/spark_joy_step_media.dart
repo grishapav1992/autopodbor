@@ -28,9 +28,8 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      s._sectionHeading('Пробег и соответствие', icon: Icons.speed_rounded),
-      s._mediaMileageBlock(),
-      const SizedBox(height: SparkSpace.lg),
+      // Пробег + соответствие переехали в шаг «Автомобиль» — все
+      // базовые данные о машине теперь в одном месте.
       if (hasRequiredGroups && requiredRemaining > 0) ...[
         SparkHintCard(
           text:

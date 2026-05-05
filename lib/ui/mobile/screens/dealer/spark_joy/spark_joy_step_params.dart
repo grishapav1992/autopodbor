@@ -10,12 +10,8 @@ Widget _buildSparkJoyStepParams(
 }) {
   return Column(
     children: [
-      s._sectionHeading(
-        'Марка и модель',
-        icon: Icons.directions_car_filled_outlined,
-      ),
-      s._carSelectionCard(),
-      const SizedBox(height: SparkSpace.lg),
+      // Brand/Model picker moved to the «Автомобиль» step alongside
+      // VIN and госномер — basic vehicle identification belongs together.
       s._sectionHeading(
         'Технические параметры',
         icon: Icons.settings_suggest_outlined,

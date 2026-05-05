@@ -108,7 +108,9 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
       reasons.add('Автомобиль — укажите город осмотра');
     }
     if (!hasFrameId) {
-      reasons.add('Характеристики — выберите модель из каталога');
+      // Brand/model picker now lives on the Автомобиль step alongside
+      // VIN — re-prefix so the missing-reason chip navigates there.
+      reasons.add('Автомобиль — выберите модель из каталога');
     }
     if (!hasEngineVolume) {
       reasons.add('Характеристики — укажите объём двигателя');

@@ -11,9 +11,9 @@ Widget _buildSparkJoyStepVehicle(
   return Column(
     children: [
       s._sectionHeading(
-        'Обязательные данные',
+        'Идентификация',
         icon: Icons.fact_check_outlined,
-        subtitle: 'VIN для идентификации автомобиля',
+        subtitle: 'VIN, марка/модель и госномер',
       ),
       const SizedBox(height: SparkSpace.md),
       s._card(
@@ -122,12 +122,10 @@ Widget _buildSparkJoyStepVehicle(
           ],
         ),
       ),
-      const SizedBox(height: SparkSpace.xl),
-      s._sectionHeading(
-        'Дополнительно',
-        icon: Icons.add_chart_rounded,
-        subtitle: 'Номер, ссылка, владельцы и город осмотра',
-      ),
+      const SizedBox(height: SparkSpace.lg),
+      // Brand/model picker — moved from the «Параметры» step so all
+      // identification data lives together with VIN and госномер.
+      s._carSelectionCard(),
       const SizedBox(height: SparkSpace.lg),
       s._card(
         child: Column(
@@ -252,6 +250,23 @@ Widget _buildSparkJoyStepVehicle(
             ],
           ],
         ),
+      ),
+      const SizedBox(height: SparkSpace.xl),
+      // Состояние — пробег + соответствие. Раньше блок жил в шаге
+      // «Осмотр» рядом с медиа-группами; перенесён сюда чтобы базовые
+      // данные о машине были собраны на одном экране.
+      s._sectionHeading(
+        'Состояние',
+        icon: Icons.speed_outlined,
+        subtitle: 'Пробег и его соответствие состоянию автомобиля',
+      ),
+      const SizedBox(height: SparkSpace.lg),
+      s._mediaMileageBlock(),
+      const SizedBox(height: SparkSpace.xl),
+      s._sectionHeading(
+        'Дополнительно',
+        icon: Icons.more_horiz_rounded,
+        subtitle: 'Ссылка на объявление, владельцы и город осмотра',
       ),
       const SizedBox(height: SparkSpace.lg),
       s._card(
