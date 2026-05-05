@@ -116,24 +116,6 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       tags.add(entry.value);
     }
 
-    if (partInspection.noDamage) {
-      return MediaPartInspection(
-        noDamage: true,
-        tags: const [],
-        note: partInspection.note.trim().isEmpty
-            ? fallbackNote.trim()
-            : partInspection.note.trim(),
-        elementType: (partInspection.elementType ?? '').trim().isEmpty
-            ? null
-            : partInspection.elementType,
-        audioRecordings: [...partInspection.audioRecordings],
-        paintFrom: partInspection.paintFrom,
-        paintTo: partInspection.paintTo,
-        tagPhotos: const {},
-        isDraft: partInspection.isDraft,
-      );
-    }
-
     final tagPhotos = <String, List<String>>{};
     for (final entry in canonicalByLower.entries) {
       final urls = tagPhotosByLower[entry.key] ?? <String>{};
@@ -142,9 +124,27 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       }
     }
 
+    // Group-level noDamage is now an aggregate of per-file states:
+    // true only when EVERY file in the group is marked no-damage. The
+    // editor's `partInspection.noDamage` reflects the target file's
+    // local toggle (already applied to that file by the caller via
+    // `_applyPartInspectionToFiles`), so the aggregate read here is
+    // the source of truth for the group. Files with no inspection at
+    // all (fresh additions before any edit) are skipped — they don't
+    // contribute either way to the «вся часть без повреждений» state.
+    final inspectedFiles = files
+        .where((file) => _mediaInspectionHasData(file.inspection))
+        .toList();
+    final aggregateNoDamage = inspectedFiles.isNotEmpty &&
+        inspectedFiles.every((file) => file.inspection.noDamage);
+
+    final filteredTags = aggregateNoDamage ? const <String>[] : tags;
+    final filteredTagPhotos =
+        aggregateNoDamage ? const <String, List<String>>{} : tagPhotos;
+
     return MediaPartInspection(
-      noDamage: false,
-      tags: tags,
+      noDamage: aggregateNoDamage,
+      tags: filteredTags,
       note: partInspection.note.trim().isEmpty
           ? fallbackNote.trim()
           : partInspection.note.trim(),
@@ -154,7 +154,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       audioRecordings: [...partInspection.audioRecordings],
       paintFrom: partInspection.paintFrom,
       paintTo: partInspection.paintTo,
-      tagPhotos: tagPhotos,
+      tagPhotos: filteredTagPhotos,
       isDraft: partInspection.isDraft,
     );
   }
@@ -203,32 +203,61 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     return files.map((file) {
       final applyForFile =
           applyToAll || normalizedTargetUrls.contains(file.dataUrl);
+      // Tag list per file is always derived by URL filter: a file gets
+      // a tag iff its URL is in that tag's URL set (group-level
+      // tagPhotos mapping). Previously this was gated by
+      // `!partInspection.noDamage`, which wiped tags for ALL files
+      // (including non-target ones) whenever the editor saved a
+      // no-damage toggle for one photo. With per-item noDamage the
+      // editor strips only the target's URL from non-selected tags,
+      // so the URL filter naturally produces [] for the target while
+      // preserving non-target file tags.
       final tagsForFile = <String>[];
-      if (!partInspection.noDamage) {
-        for (final lower in orderedTagLowers) {
-          final urls = urlsByTagLower[lower] ?? <String>{};
-          if (urls.contains(file.dataUrl)) {
-            tagsForFile.add(canonicalTagByLower[lower]!);
-          }
+      for (final lower in orderedTagLowers) {
+        final urls = urlsByTagLower[lower] ?? <String>{};
+        if (urls.contains(file.dataUrl)) {
+          tagsForFile.add(canonicalTagByLower[lower]!);
         }
       }
       final previous = file.inspection;
-      final nextNoDamage = tagsForFile.isEmpty
-          ? (applyForFile ? partInspection.noDamage : previous.noDamage)
-          : false;
+      // noDamage is now per-item: only an EXPLICIT per-file edit
+      // (applyToFileUrls non-empty AND this file is targeted) picks
+      // up the editor's toggle. Apply-to-all calls (delete/add path)
+      // keep each file's previous noDamage untouched. Files that
+      // ended up with tags get noDamage forced to false to preserve
+      // the invariant «tagged file ≠ no-damage».
+      final isExplicitEdit = !applyToAll && applyForFile;
+      final nextNoDamage = tagsForFile.isNotEmpty
+          ? false
+          : (isExplicitEdit
+              ? partInspection.noDamage
+              : previous.noDamage);
+      // Per-item semantics: same `isExplicitEdit` gate as noDamage.
+      // Delete / add code paths call us with `applyToFileUrls=null`
+      // (= applyToAll), and previously that overwrote every file's
+      // per-item state (note / elementType / paint / audio / isDraft)
+      // with the group-level partInspection. After the per-item-note
+      // fix landed earlier, that overwrite became user-visible — e.g.
+      // deleting one photo would replace the surviving photos' notes
+      // with the last-edited note. Now apply-to-all only refreshes
+      // tag URL associations and leaves per-item fields untouched.
       final inspection = MediaInspection(
         noDamage: nextNoDamage,
         tags: tagsForFile,
-        note: applyForFile ? normalizedNote : previous.note,
-        elementType: applyForFile
+        note: isExplicitEdit ? normalizedNote : previous.note,
+        elementType: isExplicitEdit
             ? (normalizedElementType.isEmpty ? null : normalizedElementType)
             : previous.elementType,
-        audioRecordings: applyForFile
+        audioRecordings: isExplicitEdit
             ? normalizedAudio
             : [...previous.audioRecordings],
-        paintFrom: applyForFile ? partInspection.paintFrom : previous.paintFrom,
-        paintTo: applyForFile ? partInspection.paintTo : previous.paintTo,
-        isDraft: applyForFile ? partInspection.isDraft : previous.isDraft,
+        paintFrom: isExplicitEdit
+            ? partInspection.paintFrom
+            : previous.paintFrom,
+        paintTo: isExplicitEdit
+            ? partInspection.paintTo
+            : previous.paintTo,
+        isDraft: isExplicitEdit ? partInspection.isDraft : previous.isDraft,
       );
       return file.copyWith(inspection: inspection);
     }).toList();

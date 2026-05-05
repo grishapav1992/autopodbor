@@ -938,20 +938,26 @@ extension _SparkJoyMediaInspectionEditorMethods
       entry.value.removeWhere(targetUrls.contains);
     }
 
+    // Per-item noDamage: even if the user toggled «нет повреждений»
+    // for the current photo, keep the GROUP'S tagPhotos mapping intact
+    // so other photos in the group don't lose their tags. The target
+    // file's URL is already removed from non-selected tags by loop
+    // 936-939 above, so its tags will collapse to [] in apply naturally.
     final nextTagPhotos = <String, List<String>>{};
-    if (!noDamage) {
-      for (final entry in normalizedTagPhotosByLower.entries) {
-        final label = tagDisplayByLower[entry.key] ?? entry.key;
-        final urls = entry.value.where((url) => url.trim().isNotEmpty).toList();
-        if (urls.isNotEmpty) {
-          nextTagPhotos[label] = urls;
-        }
+    for (final entry in normalizedTagPhotosByLower.entries) {
+      final label = tagDisplayByLower[entry.key] ?? entry.key;
+      final urls = entry.value.where((url) => url.trim().isNotEmpty).toList();
+      if (urls.isNotEmpty) {
+        nextTagPhotos[label] = urls;
       }
     }
 
     final partInspection = MediaPartInspection(
+      // noDamage represents the TARGET file's local state; the group's
+      // aggregate noDamage is recomputed from per-file states inside
+      // _syncPartInspectionWithFiles after _applyPartInspectionToFiles.
       noDamage: noDamage,
-      tags: noDamage ? const [] : nextTagPhotos.keys.toList(),
+      tags: nextTagPhotos.keys.toList(),
       note: noteValue,
       elementType: (elementType ?? '').trim().isEmpty ? null : elementType,
       // Audio recordings retired in favour of dictation-only flow:
@@ -960,7 +966,7 @@ extension _SparkJoyMediaInspectionEditorMethods
       audioRecordings: const <String>[],
       paintFrom: supportsPaint ? paintFrom : null,
       paintTo: supportsPaint ? paintTo : null,
-      tagPhotos: noDamage ? const {} : nextTagPhotos,
+      tagPhotos: nextTagPhotos,
       isDraft: saved == true ? false : true,
     );
 
@@ -991,15 +997,22 @@ extension _SparkJoyMediaInspectionEditorMethods
       _mediaTagOrderByScope = _readStringListMap(tagOrderByScope);
       final current = _mediaState[groupKey];
       if (current == null || index >= current.files.length) return;
-      final nextPartInspection = _syncPartInspectionWithFiles(
-        partInspection: partInspection,
-        files: current.files,
-        fallbackNote: current.note,
-      );
+      // Order matters for per-item noDamage:
+      // 1) apply the editor's payload to the target file(s) only —
+      //    other files keep their previous inspection intact;
+      // 2) THEN aggregate the group-level partInspection from the
+      //    now-updated per-file states. This way a no-damage toggle
+      //    on photo2 doesn't clobber photo1's tags via the group's
+      //    partInspection.tagPhotos wipe that the old order used to do.
       final nextFiles = _applyPartInspectionToFiles(
         files: current.files,
-        partInspection: nextPartInspection,
+        partInspection: partInspection,
         applyToFileUrls: targetUrls,
+      );
+      final nextPartInspection = _syncPartInspectionWithFiles(
+        partInspection: partInspection,
+        files: nextFiles,
+        fallbackNote: current.note,
       );
       final hasIssue = nextFiles.any(_mediaItemHasIssue);
       _mediaState[groupKey] = current.copyWith(
