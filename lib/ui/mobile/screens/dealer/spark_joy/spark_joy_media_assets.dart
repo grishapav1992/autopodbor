@@ -124,19 +124,20 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       }
     }
 
-    // Group-level noDamage is now an aggregate of per-file states:
-    // true only when EVERY file in the group is marked no-damage. The
+    // Group-level noDamage is a STRICT aggregate of per-file states:
+    // true only when EVERY file in the group has noDamage=true. The
     // editor's `partInspection.noDamage` reflects the target file's
     // local toggle (already applied to that file by the caller via
-    // `_applyPartInspectionToFiles`), so the aggregate read here is
-    // the source of truth for the group. Files with no inspection at
-    // all (fresh additions before any edit) are skipped — they don't
-    // contribute either way to the «вся часть без повреждений» state.
-    final inspectedFiles = files
-        .where((file) => _mediaInspectionHasData(file.inspection))
-        .toList();
-    final aggregateNoDamage = inspectedFiles.isNotEmpty &&
-        inspectedFiles.every((file) => file.inspection.noDamage);
+    // `_applyPartInspectionToFiles`), so this read is the source of
+    // truth for the group.
+    //
+    // Note: untouched / freshly added files default to noDamage=false,
+    // so adding a new photo to a previously-no-damage group resets
+    // the aggregate to false. That's intentional — claiming «вся
+    // часть без повреждений» requires the user to have explicitly
+    // confirmed it for every photo, not just the inspected ones.
+    final aggregateNoDamage =
+        files.isNotEmpty && files.every((file) => file.inspection.noDamage);
 
     final filteredTags = aggregateNoDamage ? const <String>[] : tags;
     final filteredTagPhotos =
