@@ -86,10 +86,15 @@ extension _SparkJoyMediaInspectionEditorMethods
     var dialogActive = true;
     var shouldDictate = false;
 
+    // Заметки строго per-item. Новое фото открывается с пустым полем,
+    // ранее отредактированное — со своей сохранённой заметкой. Раньше
+    // здесь был fallback на basePartInspection.note (group-level), но
+    // group.partInspection обновляется на каждом save: после первого
+    // фото с заметкой все следующие НОВЫЕ фото в группе наследовали
+    // её при открытии редактора, хотя у самого item.inspection.note
+    // было пусто. Bug-report 2026-05-05 (chrome).
     final noteController = TextEditingController(
-      text: basePartInspection.note.trim().isEmpty
-          ? item.inspection.note
-          : basePartInspection.note,
+      text: item.inspection.note,
     );
     var paintToolsExpanded = false;
     final speechToText = SpeechToText();
