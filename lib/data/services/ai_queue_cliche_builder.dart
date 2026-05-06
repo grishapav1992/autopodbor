@@ -68,6 +68,19 @@ class AiQueueClicheBuilder {
   static const String _kLongLengthCap =
       'Длина: 4-8 коротких предложений. Без вводных. ';
 
+  /// Coverage honesty rule for aggregated summaries — forbids the
+  /// implicit «не упомянуто = ОК» trap. The structured input contains
+  /// explicit «Осмотрено без замечаний: …» / «Не осмотрено: …» blocks;
+  /// this rule tells the model how to surface them safely.
+  static const String _kCoverageHonesty =
+      'ВАЖНО про охват осмотра: '
+      'Не утверждай исправность элементов, которых нет в '
+      'контексте. Если в данных есть блок «Не осмотрено: …» — '
+      'обязательно перечисли эти элементы отдельной фразой как '
+      'непроверенные (НЕ в позитивном ключе). Если есть блок '
+      '«Осмотрено без замечаний: …» — можешь подтвердить их '
+      'исправность одной фразой. Не объединяй эти две группы. ';
+
   // ── Public cliché builders ────────────────────────────────────────────
 
   /// [elementLabel] — human-readable element name (e.g. "Капот", "Левая
@@ -204,6 +217,7 @@ class AiQueueClicheBuilder {
         '$_kAudienceTone'
         '$_kLongLengthCap'
         '$_kAntiHallucination'
+        '$_kCoverageHonesty'
         'В САМОМ КОНЦЕ ответа обязательно одна строка с маркером '
         '«РЕКОМЕНДАЦИЯ:» по одному из вариантов:\n'
         '- РЕКОМЕНДАЦИЯ: автомобиль рекомендуется к покупке\n'
@@ -265,12 +279,12 @@ class AiQueueClicheBuilder {
         'тест-драйв, юридическая проверка. '
         'Только факты из контекста: что осмотрено, какие замечания/теги, '
         'какие комментарии. Не давай оценок, рекомендаций по покупке или торгу — '
-        'это будет в отдельном поле «Итог специалиста». '
-        'Если по разделу нет данных — пропусти его.\n\n'
+        'это будет в отдельном поле «Итог специалиста».\n\n'
         '$carLine'
         '$_kAudienceTone'
         '$_kLongLengthCap'
         '$_kAntiHallucination'
+        '$_kCoverageHonesty'
         'Без преамбулы, без markdown-форматирования. '
         'Контекст из историй чата по элементам и полям отчёта: {text}';
   }

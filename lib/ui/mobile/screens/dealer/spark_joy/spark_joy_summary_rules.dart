@@ -271,6 +271,56 @@ extension _SparkJoySummaryRulesMethods on _SparkJoyCreateReportScreenState {
     }
     appendIssues('Салон', skipIfGapPattern: inspectionGapPattern);
 
+    // Three-tier classification of media groups so the buyer (and the
+    // AI summary model) can clearly distinguish:
+    //   • inspected_clean     — фото есть, замечаний нет → safe to
+    //                           report как «без замечаний»
+    //   • inspected_with_issues — фото есть, есть теги/заметки → уже
+    //                             перечислены через `appendIssues`
+    //                             выше, не дублируем
+    //   • not_inspected       — фото нет вообще → НЕЛЬЗЯ говорить
+    //                           «без замечаний», нужно явно отметить
+    //                           что эти элементы не проверены
+    //
+    // Без этого блока сводка молча подразумевает «не упомянуто = ОК»,
+    // что юридически рискованно: инспектор подписывается под отчётом,
+    // покупатель доверяет ему. Мы НЕ можем утверждать исправность
+    // элемента, который инспектор не открывал.
+    final inspectedCleanLabels = <String>[];
+    final notInspectedLabels = <String>[];
+    for (final config in _SparkJoyMediaGroupRegistry.groups) {
+      final state = _mediaState[config.key];
+      if (state == null || !_groupHasCoverage(state)) {
+        notInspectedLabels.add(config.title);
+        continue;
+      }
+      // Has coverage. If no issue tags AND has files → inspected_clean.
+      if (!_groupHasIssue(state)) {
+        inspectedCleanLabels.add(config.title);
+      }
+      // Else: issues — already rendered via appendIssues above.
+    }
+    if (inspectedCleanLabels.isNotEmpty) {
+      hasMeaningfulBlocks = true;
+      lines.add(
+        'Осмотрено без замечаний: '
+        '${_summaryHumanJoin(inspectedCleanLabels)}.',
+      );
+      lines.add('');
+    }
+    if (notInspectedLabels.isNotEmpty) {
+      hasMeaningfulBlocks = true;
+      lines.add(
+        'Не осмотрено: ${_summaryHumanJoin(notInspectedLabels)}. '
+        'Отсутствие данных по этим элементам НЕ означает их исправность '
+        '— требуется отдельная проверка.',
+      );
+      lines.add('');
+    }
+
+    // Non-media gaps (legal / TD / docs) — keep as «рекомендуется
+    // выполнить» since these are flow-level recommendations rather
+    // than coverage gaps for specific car parts.
     final missing = <String>[];
     if (!_legalLoaded) {
       missing.add('юридическую проверку');
@@ -282,22 +332,6 @@ extension _SparkJoySummaryRulesMethods on _SparkJoyCreateReportScreenState {
         _docsVinMatch == null ||
         _docsEngineMatch == null) {
       missing.add('полную сверку документов');
-    }
-    final bodyState = _mediaState['body'];
-    if (bodyState == null || !_groupHasCoverage(bodyState)) {
-      missing.add('осмотр кузова');
-    }
-    final glassState = _mediaState['glass'];
-    if (glassState == null || !_groupHasCoverage(glassState)) {
-      missing.add('осмотр остекления');
-    }
-    final underhoodState = _mediaState['underhood'];
-    if (underhoodState == null || !_groupHasCoverage(underhoodState)) {
-      missing.add('осмотр подкапотного пространства');
-    }
-    final interiorState = _mediaState['interior'];
-    if (interiorState == null || !_groupHasCoverage(interiorState)) {
-      missing.add('осмотр салона');
     }
 
     final uniqueMissing = <String>[];
