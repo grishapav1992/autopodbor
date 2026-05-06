@@ -10,6 +10,7 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
@@ -3611,6 +3612,16 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     }
     if (_tkMakes.isEmpty) {
       _fieldErrors['makes'] = 'Выберите минимум одну марку';
+    }
+    // Profanity gate on the free-form note. The note is the only
+    // field on this form where a user can type arbitrary Russian
+    // prose; everything else is a structured selection.
+    final noteCheck = ProfanityModerator.moderateText(
+      _noteController.text,
+      fieldLabel: 'Комментарий',
+    );
+    if (noteCheck.isBlock) {
+      _fieldErrors['note'] = noteCheck.userMessage!;
     }
     _formError = _fieldErrors.isEmpty
         ? ''

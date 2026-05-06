@@ -2725,6 +2725,36 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       final backendReportPayload = _buildPrepareSpecialistReportPayload(
         payload,
       );
+
+      // Defense-in-depth profanity check before the network call.
+      // The UI completion rule (`_summaryMissingReasons`) is the
+      // primary gate, but if it ever drifts out of sync with this
+      // submit path we still don't ship мат to the server. One pass
+      // over a concatenation of the six free-text fields keeps the
+      // failure mode binary — we don't try to localise which field
+      // is bad here, that's the completion rule's job.
+      final profanityFinalCheck = ProfanityModerator.moderateText(
+        [
+          _reportNameController.text,
+          _docsMismatchCommentController.text,
+          _legalNoteController.text,
+          _tdNoteController.text,
+          _summaryController.text,
+          _expertController.text,
+        ].join('\n'),
+      );
+      if (profanityFinalCheck.isBlock) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(profanityFinalCheck.userMessage!),
+              backgroundColor: kRedColor,
+            ),
+          );
+        }
+        return false;
+      }
+
       final prepared = await storage_api.StorageApi.prepareSpecialistReport(
         report: backendReportPayload,
       );
