@@ -182,12 +182,22 @@ class AiQueueClicheBuilder {
 
   /// Cliché for the «Комментарий по тест-драйву» field. Bakes in the
   /// test-drive mode (proceeded / not proceeded / all good / has issues)
-  /// plus per-subsystem yes/no answers and any selected tags so the
-  /// model has full context regardless of how short the typed text is.
+  /// plus per-subsystem ok-flag and any selected tags so the model has
+  /// full context regardless of how short the typed text is.
+  ///
+  /// [tdMode] — wire-string from `_SparkJoyTestDriveRegistry` (one of
+  /// `all_good`, `problems`, `not_conducted`). Empty / unknown falls
+  /// back to a literal echo so the prompt isn't misleading.
   ///
   /// [subsystemStatus] — map of canonical subsystem keys
-  /// (`engine`, `gearbox`, `steering`, `ride`, `brake`) to ok-flag
-  /// (`true` ok / `false` issue / `null` not answered).
+  /// (`engine`, `gearbox`, `steering`, `ride`, `brake`) to a
+  /// confirmed-ok flag. The flag defaults to `false` in the host
+  /// state when the user hasn't visited the subsystem at all, so a
+  /// raw `false` cannot be interpreted as «есть замечания» — that
+  /// would tell the model the user explicitly diagnosed an issue.
+  /// We surface only `true` («без замечаний») as a positive
+  /// confirmation; everything else (the default + actual unset)
+  /// reads as «не отмечено».
   ///
   /// [subsystemTags] — same keys to a list of selected tag labels for
   /// each subsystem. Empty lists fine.
@@ -198,14 +208,19 @@ class AiQueueClicheBuilder {
   }) {
     String modeLabel(String mode) {
       switch (mode) {
-        case 'allGood':
+        // Wire-strings come from `_SparkJoyTestDriveRegistry.modeAllGood`
+        // etc. — `all_good` / `problems` / `not_conducted`. They live
+        // in the spark_joy UI layer; we can't import that here without
+        // creating a layering cycle, so the strings are duplicated and
+        // a comment links the source-of-truth.
+        case 'all_good':
           return 'Тест-драйв проведён, всё работает исправно';
-        case 'hasIssues':
+        case 'problems':
           return 'Тест-драйв проведён, обнаружены замечания';
-        case 'notConducted':
+        case 'not_conducted':
           return 'Тест-драйв не проводился';
         default:
-          return 'Состояние тест-драйва: $mode';
+          return 'Тест-драйв: статус не указан';
       }
     }
 
@@ -226,9 +241,12 @@ class AiQueueClicheBuilder {
       }
     }
 
+    // Only an explicit `true` confirms «без замечаний». Default-false
+    // and missing values are reported as «не отмечено» so the model
+    // doesn't misread an unvisited subsystem as a confirmed issue.
     String okLabel(bool? value) {
-      if (value == null) return 'не указано';
-      return value ? 'без замечаний' : 'есть замечания';
+      if (value == true) return 'без замечаний';
+      return 'не отмечено';
     }
 
     final lines = <String>[];

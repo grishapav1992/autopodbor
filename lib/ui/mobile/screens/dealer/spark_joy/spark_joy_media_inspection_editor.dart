@@ -110,12 +110,20 @@ extension _SparkJoyMediaInspectionEditorMethods
     final noteController = TextEditingController(
       text: item.inspection.note,
     );
-    // Mark the editor as touched on any keystroke. addListener fires for
-    // every text change, including programmatic ones from dictation /
-    // AI replace — both are forms of user-initiated content, so the
-    // flag flipping is correct in those cases too.
+    // Track text-only changes. TextEditingController.addListener also
+    // fires on `selection` changes (cursor placement on focus), so a
+    // bare `editorTouched=true` listener would flip the flag every
+    // time the user just tapped into the field — defeating the
+    // dismiss-without-save guard. Compare against a snapshot of the
+    // previous text and only flip on actual content delta. Programmatic
+    // assignments from dictation / AI replace still trigger the flag
+    // because they change `text`.
+    var noteControllerPreviousText = noteController.text;
     noteController.addListener(() {
-      editorTouched = true;
+      if (noteController.text != noteControllerPreviousText) {
+        noteControllerPreviousText = noteController.text;
+        editorTouched = true;
+      }
     });
     var paintToolsExpanded = false;
     final speechToText = SpeechToText();
