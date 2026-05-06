@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
