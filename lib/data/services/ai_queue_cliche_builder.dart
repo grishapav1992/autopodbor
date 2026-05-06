@@ -7,8 +7,68 @@ import 'package:flutter_application_1/data/api/storage_api.dart' show UserTag, U
 /// piece of element-specific context (element name, tags with severity,
 /// existing note) into the cliche so the model can reason from the full
 /// inspection state, while the user-typed note flows through `text`.
+///
+/// ## Cross-cutting rules
+///
+/// Every cliché bakes in a small shared set of guardrails — see
+/// [_kAudienceTone], [_kAntiHallucination], [_kSeverityCalibration].
+/// Together they:
+///   • keep responses short & concrete (no «был выполнен анализ…» fluff)
+///   • route them to a non-technical reader (the buyer)
+///   • prevent the model from inventing facts when input is sparse
+///   • calibrate the «серьёзное / некритичное» tag severity into a
+///     consistent buy / haggle / refuse axis
 class AiQueueClicheBuilder {
   AiQueueClicheBuilder._();
+
+  // ── Shared cross-cutting rules ────────────────────────────────────────
+
+  /// Reader + tone. Identical across all cliché — the recipient of
+  /// every piece of AI output is the buyer reading the final report,
+  /// so the voice stays the same.
+  static const String _kAudienceTone =
+      'Читатель — физлицо-покупатель, без технического образования. '
+      'Тон деловой, без жаргона ремонтников («жук», «жижа», «прокладка '
+      'под нож» — нельзя). Сложные термины кратко поясняй в скобках. ';
+
+  /// Anti-hallucination floor. Without this the model freely
+  /// reconstructs «вероятно был удар в правое крыло» from a single
+  /// «царапина» tag. This guardrail forces an explicit «нужна доп.
+  /// диагностика» exit when the data isn't enough to be sure.
+  static const String _kAntiHallucination =
+      'Если данных или фото для уверенного вывода недостаточно — '
+      'напиши явно «Требуется дополнительная диагностика» (или у '
+      'какого специалиста / на каком этапе). Не реконструируй картину '
+      'из общих соображений. Не выдумывай конкретные отзывные '
+      'кампании, заводские дефекты или TSB — если факт неточен, '
+      'формулируй обобщённо. ';
+
+  /// Severity calibration — used by element + test-drive cliché where
+  /// tags carry «серьёзное / некритичное» wire-labels. The model now
+  /// has a consistent mapping of those tokens to a
+  /// buy-with-haggle-or-refuse axis instead of guessing the impact
+  /// each time.
+  static const String _kSeverityCalibration =
+      'Калибровка серьёзности тегов: '
+      '«серьёзное» = блокирует покупку или существенно снижает цену '
+      '(требует ремонта, скрытый ущерб, влияет на безопасность). '
+      '«Некритичное» = эстетика или нормальный износ, торг возможен, '
+      'безопасность не затронута. Расставляй акценты в ответе '
+      'соответственно — серьёзные дефекты выходят первыми. ';
+
+  /// Length cap for short single-field comments (element / docs-check /
+  /// legal / test-drive). 2-4 sentences ≈ 40-90 words covers the
+  /// realistic range without inviting rambling.
+  static const String _kShortLengthCap =
+      'Длина: 2-4 предложения (40-90 слов). Без вводных фраз и '
+      'без перечисления того, чего НЕ нашли. ';
+
+  /// Length cap for aggregated summaries (full report summary, facts
+  /// sweep). Longer because they fold context from many subsystems.
+  static const String _kLongLengthCap =
+      'Длина: 4-8 предложений (100-200 слов). Без вводных. ';
+
+  // ── Public cliché builders ────────────────────────────────────────────
 
   /// [elementLabel] — human-readable element name (e.g. "Капот", "Левая
   /// передняя дверь"). The caller resolves the elementType key →
@@ -45,15 +105,110 @@ class AiQueueClicheBuilder {
     );
   }
 
+  /// Same as [buildElementCliche] but takes raw tag labels + a set of
+  /// labels that the UI considers "serious". Saves callers from
+  /// resolving labels → [UserTag] objects when the editor already
+  /// carries that data in label form.
+  ///
+  /// [paintFrom] / [paintTo] — paint thickness range in micrometers
+  /// from the толщиномер tool. Both must be non-null to surface in the
+  /// prompt; otherwise the line is omitted. Helps the model flag
+  /// suspicious values (e.g. 250+ мкм usually means body filler /
+  /// repaint).
+  ///
+  /// [carContext] — pre-formatted brand/model/generation/engine string
+  /// (e.g. «Hyundai Solaris, поколение 1, бензин 1.6, АКПП»). Optional;
+  /// adds model-aware framing to the answer when present. Caller
+  /// builds it from the report state — the cliché doesn't try to
+  /// guess the schema.
+  static String buildElementClicheFromLabels({
+    required String elementLabel,
+    required List<String> selectedTagLabels,
+    required Set<String> seriousTagLabels,
+    String existingNote = '',
+    double? paintFrom,
+    double? paintTo,
+    String? carContext,
+  }) {
+    final element = elementLabel.trim().isEmpty ? 'элемент авто' : elementLabel.trim();
+    final cleanLabels = selectedTagLabels
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+    final seriousLower = seriousTagLabels.map((s) => s.toLowerCase()).toSet();
+    final paintLine = (paintFrom != null && paintTo != null)
+        ? 'Толщина ЛКП: ${paintFrom.round()}-${paintTo.round()} мкм '
+            '(норма ~80-200 мкм; больше — возможна перекраска или шпатлёвка). '
+        : '';
+    final carLine = _carContextBlock(carContext);
+
+    final String tagsBlock;
+    final String mustMentionRule;
+    if (cleanLabels.isEmpty) {
+      tagsBlock = 'Замечания/теги: нет.\n';
+      mustMentionRule = '';
+    } else {
+      final bullets = cleanLabels.map((label) {
+        final severity = seriousLower.contains(label.toLowerCase())
+            ? 'серьёзное'
+            : 'некритичное';
+        return '- $label ($severity)';
+      }).join('\n');
+      tagsBlock =
+          'Дилер выявил следующие повреждения / замечания (НЕ ИЗМЕНЯЙ названия):\n'
+          '$bullets\n';
+      final names = cleanLabels.join(', ');
+      mustMentionRule =
+          'ОБЯЗАТЕЛЬНО упомяни в ответе каждое из этих названий дословно: '
+          '$names. ';
+    }
+
+    final noteLine = existingNote.trim().isEmpty ? '—' : existingNote.trim();
+
+    return 'Ты эксперт по техническому осмотру автомобилей. '
+        'Сформулируй профессиональное замечание на русском по '
+        'элементу: $element.\n\n'
+        '$carLine'
+        '$tagsBlock'
+        '$paintLine'
+        'Текущее описание инспектора: $noteLine.\n\n'
+        '$_kAudienceTone'
+        '$_kSeverityCalibration'
+        '$_kShortLengthCap'
+        '$mustMentionRule'
+        '$_kAntiHallucination'
+        'Если приложены фото — учитывай их визуальную информацию. '
+        'Верни только финальный текст замечания, без преамбулы и markdown. '
+        'Дополнительный контекст от инспектора: {text}';
+  }
+
   /// Cliche for the final report-level summary, called once after the
-  /// per-element histories are aggregated. Kept here so the template
-  /// stays alongside the per-element variant.
-  static String buildSummaryCliche({required String reportLabel}) {
+  /// per-element histories are aggregated. Renders the expert's
+  /// recommendation (purchase / with reservations / decline) along
+  /// with section breakdown.
+  ///
+  /// [carContext] — same shape as in [buildElementClicheFromLabels].
+  /// Optional; when present the verdict can lean on model-specific
+  /// known issues for severity.
+  static String buildSummaryCliche({
+    required String reportLabel,
+    String? carContext,
+  }) {
     final label = reportLabel.trim().isEmpty ? 'Отчёт об осмотре авто' : reportLabel.trim();
+    final carLine = _carContextBlock(carContext);
     return 'Ты эксперт по техническому осмотру автомобилей. '
         'Собери итоговое заключение по отчёту "$label" из контекста по '
         'отдельным элементам. Структурируй по разделам: кузов, салон, '
-        'тест-драйв, юридическая проверка. Будь краток и по делу. '
+        'тест-драйв, юридическая проверка. Будь краток и по делу.\n\n'
+        '$carLine'
+        '$_kAudienceTone'
+        '$_kLongLengthCap'
+        '$_kAntiHallucination'
+        'В САМОМ КОНЦЕ ответа обязательно одна строка с маркером '
+        '«РЕКОМЕНДАЦИЯ:» по одному из вариантов:\n'
+        '- РЕКОМЕНДАЦИЯ: автомобиль рекомендуется к покупке\n'
+        '- РЕКОМЕНДАЦИЯ: рекомендуется с оговорками — [что именно]\n'
+        '- РЕКОМЕНДАЦИЯ: не рекомендуется без устранения [чего]\n\n'
         'Контекст из историй чата по элементам: {text}';
   }
 
@@ -76,14 +231,14 @@ class AiQueueClicheBuilder {
         'сверку документов и зафиксировал такие результаты:\n'
         '- Данные владельца: ${label(ownerMatch)}\n'
         '- Идентификационные номера (VIN): ${label(vinMatch)}\n'
-        '- Модель двигателя: ${label(engineMatch)}\n'
-        '\n'
+        '- Модель двигателя: ${label(engineMatch)}\n\n'
         'На основе этих данных и комментария дилера ниже сформулируй '
-        'короткий профессиональный текст для отчёта о том, что именно '
-        'не сходится и какие риски это несёт для покупателя. '
-        'Не выдумывай факты, которых нет в данных или комментарии. '
-        'Возвращай только готовый текст без преамбулы и markdown.\n'
-        '\n'
+        'текст для отчёта о том, что именно не сходится и какие риски '
+        'это несёт для покупателя.\n\n'
+        '$_kAudienceTone'
+        '$_kShortLengthCap'
+        '$_kAntiHallucination'
+        'Возвращай только готовый текст без преамбулы и markdown.\n\n'
         'Комментарий дилера: {text}';
   }
 
@@ -93,95 +248,29 @@ class AiQueueClicheBuilder {
   /// facts — what's in the report, by section, no buy/don't-buy
   /// advice. Both can run in the same report and should not
   /// duplicate each other.
-  static String buildReportFactsCliche({required String reportLabel}) {
+  static String buildReportFactsCliche({
+    required String reportLabel,
+    String? carContext,
+  }) {
     final label = reportLabel.trim().isEmpty
         ? 'Отчёт об осмотре авто'
         : reportLabel.trim();
+    final carLine = _carContextBlock(carContext);
     return 'Ты ассистент по техническому осмотру автомобилей. '
-        'Сформируй короткую фактологическую сводку по данным отчёта "$label". '
+        'Сформируй фактологическую сводку по данным отчёта "$label". '
         'Перечисли что именно зафиксировано по разделам: кузов, остекление, '
         'светотехника, подкапотное пространство, салон, колёса, диагностика, '
         'тест-драйв, юридическая проверка. '
         'Только факты из контекста: что осмотрено, какие замечания/теги, '
         'какие комментарии. Не давай оценок, рекомендаций по покупке или торгу — '
         'это будет в отдельном поле «Итог специалиста». '
-        'Если по разделу нет данных — пропусти его. '
+        'Если по разделу нет данных — пропусти его.\n\n'
+        '$carLine'
+        '$_kAudienceTone'
+        '$_kLongLengthCap'
+        '$_kAntiHallucination'
         'Без преамбулы, без markdown-форматирования. '
         'Контекст из историй чата по элементам и полям отчёта: {text}';
-  }
-
-  /// Same as [buildElementCliche] but takes raw tag labels + a set of
-  /// labels that the UI considers "serious". Saves callers from
-  /// resolving labels → [UserTag] objects when the editor already
-  /// carries that data in label form.
-  ///
-  /// [paintFrom] / [paintFrom] — paint thickness range in micrometers
-  /// from the толщиномер tool. Both must be non-null to surface in the
-  /// prompt; otherwise the line is omitted. Helps the model flag
-  /// suspicious values (e.g. 250+ мкм usually means body filler /
-  /// repaint).
-  static String buildElementClicheFromLabels({
-    required String elementLabel,
-    required List<String> selectedTagLabels,
-    required Set<String> seriousTagLabels,
-    String existingNote = '',
-    double? paintFrom,
-    double? paintTo,
-  }) {
-    final element = elementLabel.trim().isEmpty ? 'элемент авто' : elementLabel.trim();
-    final cleanLabels = selectedTagLabels
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList(growable: false);
-    final seriousLower = seriousTagLabels.map((s) => s.toLowerCase()).toSet();
-    final paintLine = (paintFrom != null && paintTo != null)
-        ? 'Толщина ЛКП: ${paintFrom.round()}-${paintTo.round()} мкм '
-            '(норма ~80-200 мкм; больше — возможна перекраска или шпатлёвка). '
-        : '';
-
-    // Stronger framing for the tag list: previous version inlined tags
-    // as a single comma list and asked the model not to «invent»
-    // anything beyond them — but didn't actually require each tag to
-    // appear in the answer. Models would frequently summarize («есть
-    // повреждения») without naming the specific word the inspector
-    // selected. Now we surface each tag as its own bullet and add an
-    // explicit rule requiring every tag's name in the output.
-    final String tagsBlock;
-    final String mustMentionRule;
-    if (cleanLabels.isEmpty) {
-      tagsBlock = 'Замечания/теги: нет.\n';
-      mustMentionRule = '';
-    } else {
-      final bullets = cleanLabels.map((label) {
-        final severity = seriousLower.contains(label.toLowerCase())
-            ? 'серьёзное'
-            : 'некритичное';
-        return '- $label ($severity)';
-      }).join('\n');
-      tagsBlock =
-          'Дилер выявил следующие повреждения / замечания (НЕ ИЗМЕНЯЙ названия):\n'
-          '$bullets\n';
-      // Use the literal tag names so the prompt nails the requirement
-      // even if the model paraphrases everything else.
-      final names = cleanLabels.join(', ');
-      mustMentionRule =
-          'ОБЯЗАТЕЛЬНО упомяни в ответе каждое из этих названий дословно: '
-          '$names. ';
-    }
-
-    final noteLine = existingNote.trim().isEmpty ? '—' : existingNote.trim();
-
-    return 'Ты эксперт по техническому осмотру автомобилей. '
-        'Сформулируй короткое профессиональное замечание на русском по '
-        'элементу: $element.\n\n'
-        '$tagsBlock'
-        '$paintLine'
-        'Текущее описание инспектора: $noteLine.\n\n'
-        '$mustMentionRule'
-        'Если приложены фото — учитывай их визуальную информацию. '
-        'Не выдумывай дефекты, которых нет в тегах и фото. '
-        'Верни только финальный текст замечания, без преамбулы и markdown. '
-        'Дополнительный контекст от инспектора: {text}';
   }
 
   /// Cliché for the «Комментарий специалиста» field on the «Материалы
@@ -198,14 +287,15 @@ class AiQueueClicheBuilder {
         : 'Приложено документов: $filesCount '
             '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}). ';
     return 'Ты эксперт по приёмке автомобилей. '
-        'Сформулируй короткий профессиональный текст для блока '
-        '«Материалы проверки» отчёта. $filesPart'
+        'Сформулируй текст для блока «Материалы проверки» отчёта. '
+        '$filesPart'
         'На основе приложенных документов и комментария инспектора ниже '
         'опиши ключевые моменты: что было проверено, какие риски/'
-        'нюансы выявлены, какие действия рекомендуются клиенту. '
-        'Не выдумывай документы или факты, которых нет в данных. '
-        'Возвращай только готовый текст без преамбулы и markdown.\n'
-        '\n'
+        'нюансы выявлены, какие действия рекомендуются клиенту.\n\n'
+        '$_kAudienceTone'
+        '$_kShortLengthCap'
+        '$_kAntiHallucination'
+        'Возвращай только готовый текст без преамбулы и markdown.\n\n'
         'Комментарий инспектора: {text}';
   }
 
@@ -220,13 +310,8 @@ class AiQueueClicheBuilder {
   ///
   /// [subsystemStatus] — map of canonical subsystem keys
   /// (`engine`, `gearbox`, `steering`, `ride`, `brake`) to a
-  /// confirmed-ok flag. The flag defaults to `false` in the host
-  /// state when the user hasn't visited the subsystem at all, so a
-  /// raw `false` cannot be interpreted as «есть замечания» — that
-  /// would tell the model the user explicitly diagnosed an issue.
-  /// We surface only `true` («без замечаний») as a positive
-  /// confirmation; everything else (the default + actual unset)
-  /// reads as «не отмечено».
+  /// confirmed-ok flag. Only `true` is treated as positive
+  /// confirmation; default-false / null = «не отмечено».
   ///
   /// [subsystemTags] — same keys to a list of selected tag labels for
   /// each subsystem. Empty lists fine.
@@ -234,14 +319,12 @@ class AiQueueClicheBuilder {
     required String tdMode,
     required Map<String, bool?> subsystemStatus,
     required Map<String, List<String>> subsystemTags,
+    String? carContext,
   }) {
     String modeLabel(String mode) {
       switch (mode) {
         // Wire-strings come from `_SparkJoyTestDriveRegistry.modeAllGood`
-        // etc. — `all_good` / `problems` / `not_conducted`. They live
-        // in the spark_joy UI layer; we can't import that here without
-        // creating a layering cycle, so the strings are duplicated and
-        // a comment links the source-of-truth.
+        // etc. — `all_good` / `problems` / `not_conducted`.
         case 'all_good':
           return 'Тест-драйв проведён, всё работает исправно';
         case 'problems':
@@ -270,9 +353,6 @@ class AiQueueClicheBuilder {
       }
     }
 
-    // Only an explicit `true` confirms «без замечаний». Default-false
-    // and missing values are reported as «не отмечено» so the model
-    // doesn't misread an unvisited subsystem as a confirmed issue.
     String okLabel(bool? value) {
       if (value == true) return 'без замечаний';
       return 'не отмечено';
@@ -285,19 +365,40 @@ class AiQueueClicheBuilder {
       lines.add('- ${subsystemLabel(entry.key)}: ${okLabel(entry.value)}$tagsPart');
     }
 
+    final carLine = _carContextBlock(carContext);
+
     return 'Ты эксперт по техническому осмотру автомобилей. Дилер '
         'провёл тест-драйв и зафиксировал такие результаты:\n'
         '${modeLabel(tdMode)}.\n'
-        '${lines.isEmpty ? '' : '${lines.join("\n")}\n'}'
-        '\n'
+        '${lines.isEmpty ? '' : '${lines.join("\n")}\n'}\n'
+        '$carLine'
         'На основе этих данных и комментария дилера ниже сформулируй '
-        'короткий профессиональный текст для отчёта о поведении '
-        'автомобиля на ходу. Если есть замечания — опиши их '
-        'конкретно и какие риски они несут. Не выдумывай дефекты, '
-        'которых нет в данных или комментарии. Возвращай только '
-        'готовый текст без преамбулы и markdown.\n'
-        '\n'
+        'текст для отчёта о поведении автомобиля на ходу. Если есть '
+        'замечания — опиши их конкретно и какие риски они несут. Если '
+        'все системы «без замечаний» / «не отмечено» — кратко '
+        'подтверди исправность, без перечисления каждой системы.\n\n'
+        '$_kAudienceTone'
+        '$_kSeverityCalibration'
+        '$_kShortLengthCap'
+        '$_kAntiHallucination'
+        'Возвращай только готовый текст без преамбулы и markdown.\n\n'
         'Комментарий дилера: {text}';
   }
 
+  // ── Helpers ───────────────────────────────────────────────────────────
+
+  /// Renders the optional car-context block — adds a section header +
+  /// guardrail so the model treats the data as factual context but
+  /// doesn't fabricate model-specific lore around it. Empty when no
+  /// context is provided so the prompt stays clean.
+  static String _carContextBlock(String? carContext) {
+    final trimmed = carContext?.trim() ?? '';
+    if (trimmed.isEmpty) return '';
+    return 'Контекст автомобиля: $trimmed.\n'
+        'Используй контекст только для (1) учёта возраста модели при '
+        'оценке серьёзности дефектов и (2) сравнения замеров с '
+        'разумной нормой. Типичные проблемы конкретной модели '
+        'упоминай только если уверен на 100%; иначе обобщай — '
+        '«характерно для машин этого класса/года».\n\n';
+  }
 }
