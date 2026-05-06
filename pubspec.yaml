@@ -97,6 +97,7 @@ flutter:
 
   assets:
     - assets/car_hub/images/
+    - assets/data/cities_ru_cis.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

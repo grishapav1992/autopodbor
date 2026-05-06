@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/utils/contact_redaction.dart';
+import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
@@ -128,6 +129,31 @@ class _DealerProfileScreenState extends State<DealerProfileScreen>
     setState(() => _saving = true);
 
     final about = _aboutController.text.trim();
+
+    // Profanity guard runs BEFORE the contact-redaction check so we
+    // surface the most actionable error first. ContactRedaction
+    // already covers PII leakage; ProfanityModerator covers the
+    // separate "недопустимые слова" axis. Both block save with their
+    // own SnackBars to give the user a concrete next step.
+    final profanityCheck = ProfanityModerator.moderateText(
+      about,
+      fieldLabel: 'О себе',
+    );
+    if (profanityCheck.isBlock) {
+      if (mounted) _tabController.animateTo(0);
+      setState(() {
+        _saving = false;
+        _aiNote = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(profanityCheck.userMessage!),
+          backgroundColor: kRedColor,
+        ),
+      );
+      return;
+    }
+
     final validation = ContactRedaction.validateProfileText(about);
     if (validation.hasViolations) {
       if (mounted) {

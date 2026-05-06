@@ -66,8 +66,16 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     final hasExpertNote = _expertController.text.trim().isNotEmpty;
     final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
+    // Both the field must be non-empty AND the value must match a
+    // city in the bundled RU+CIS dataset. The validity flag is
+    // maintained by `_SparkJoyCityPickerHelpers` — flipped to true
+    // when the picker writes a selection, recomputed after draft
+    // hydration. Drafts predating the picker may have free-form
+    // strings ("Мск", "Питер") that fail this gate until the
+    // inspector reselects.
     final hasInspectionCity =
-        _inspectionCityController.text.trim().isNotEmpty;
+        _inspectionCityController.text.trim().isNotEmpty &&
+            _isInspectionCityValid;
     // Characteristics — все required по спеке, ничего nullable.
     final hasFrameId = _modelGenerationRestylingFrameId != null &&
         _modelGenerationRestylingFrameId! > 0;
@@ -174,8 +182,61 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
         _staffInviteLink.trim().isEmpty) {
       reasons.add('Исполнитель — назначьте сотрудника на этапе создания');
     }
+
+    // Profanity gate: scan each free-text field independently so the
+    // user knows exactly which one to clean up. Reasons are appended
+    // alongside the missing-field reasons — a field can simultaneously
+    // be empty AND contain a stale draft of profanity, both surfaced.
+    for (final entry in _profanityCheckTargets()) {
+      final result = ProfanityModerator.moderateText(
+        entry.controller.text,
+        fieldLabel: entry.fieldLabel,
+      );
+      if (result.isBlock) {
+        reasons.add('${entry.section} — текст содержит недопустимые слова');
+      }
+    }
+
     return reasons;
   }
+
+  /// Free-text controllers that participate in the profanity gate +
+  /// the section / field labels used in the user-facing reason
+  /// strings. Kept on a method (not a field) so the iterable is
+  /// rebuilt against current state every time `_summaryMissingReasons`
+  /// runs — avoids stale references after a controller swap.
+  List<_ProfanityCheckTarget> _profanityCheckTargets() => [
+        _ProfanityCheckTarget(
+          controller: _reportNameController,
+          fieldLabel: 'Название отчёта',
+          section: 'Отчёт',
+        ),
+        _ProfanityCheckTarget(
+          controller: _docsMismatchCommentController,
+          fieldLabel: 'Комментарий по документам',
+          section: 'Сверка документов',
+        ),
+        _ProfanityCheckTarget(
+          controller: _legalNoteController,
+          fieldLabel: 'Юридическое заключение',
+          section: 'Юр. проверка',
+        ),
+        _ProfanityCheckTarget(
+          controller: _tdNoteController,
+          fieldLabel: 'Заметка по тест-драйву',
+          section: 'Тест-драйв',
+        ),
+        _ProfanityCheckTarget(
+          controller: _summaryController,
+          fieldLabel: 'Сводка осмотра',
+          section: 'Итог',
+        ),
+        _ProfanityCheckTarget(
+          controller: _expertController,
+          fieldLabel: 'Заключение специалиста',
+          section: 'Итог',
+        ),
+      ];
 
   String? _summaryReasonStepId(String reason) {
     return _SparkJoySummaryRegistry.stepIdByMissingReason(reason);
@@ -189,4 +250,19 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     if (input.isEmpty) return input;
     return input[0].toLowerCase() + input.substring(1);
   }
+}
+
+/// Pairs a free-text controller with the labels needed to render a
+/// profanity-block reason. Kept as a top-level class (not nested)
+/// because part-files can't declare local types inside extensions.
+class _ProfanityCheckTarget {
+  const _ProfanityCheckTarget({
+    required this.controller,
+    required this.fieldLabel,
+    required this.section,
+  });
+
+  final TextEditingController controller;
+  final String fieldLabel;
+  final String section;
 }

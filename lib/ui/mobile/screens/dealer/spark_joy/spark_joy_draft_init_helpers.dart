@@ -294,5 +294,10 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
 
     unawaited(_compactInlineDraftMediaIfNeeded());
     unawaited(_loadBusinessStatusFromStorage());
+    // Recompute city validity against the bundled list. Existing
+    // drafts may carry free-form values from before the picker
+    // existed; this lets the completion rule know whether they're
+    // canonical without forcing the inspector to open the picker.
+    unawaited(_refreshInspectionCityValidity());
   }
 }

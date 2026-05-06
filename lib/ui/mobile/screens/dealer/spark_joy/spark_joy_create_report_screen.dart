@@ -12,12 +12,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
+import 'package:flutter_application_1/data/services/city_repository.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
+import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_components.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
@@ -73,6 +76,7 @@ part 'spark_joy_media_assets.dart';
 part 'spark_joy_screen_helpers.dart';
 part 'spark_joy_file_picker_helpers.dart';
 part 'spark_joy_car_picker_helpers.dart';
+part 'spark_joy_city_picker_helpers.dart';
 part 'spark_joy_vin_actions_helpers.dart';
 part 'spark_joy_lifecycle_helpers.dart';
 part 'spark_joy_media_state_helpers.dart';
@@ -240,6 +244,19 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // to kick off multiple catalogs and stack identical dialogs on top of
   // each other. Flip this while the picker is loading/open.
   bool _carPickerOpening = false;
+
+  // Idempotency guard for the city picker bottom-sheet — same logic as
+  // `_carPickerOpening` for the brand-model picker. Prevents stacking
+  // duplicate sheets on rapid repeat taps while the dataset loads.
+  bool _cityPickerOpening = false;
+
+  // True iff `_inspectionCityController.text` matches an entry in the
+  // bundled cities list. Set by the picker on selection (always true)
+  // and recomputed against the repository after draft hydration. Read
+  // by `spark_joy_completion_rules.dart` as part of the vehicle-step
+  // gate — drafts with non-canonical city names cannot be submitted
+  // until the inspector reselects a valid city.
+  bool _isInspectionCityValid = false;
 
   // True while a share-link RPC is in flight on the read-only view — keeps
   // the AppBar share icon disabled + spinning so users don't double-tap
