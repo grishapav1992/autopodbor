@@ -222,32 +222,6 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     _setStateSafely(() => _expertIsDictating = false);
   }
 
-  void _formatCommentWithAi(TextEditingController controller) {
-    final text = controller.text.trim();
-    if (text.isEmpty) return;
-
-    final sentences = text
-        .replaceAll(RegExp(r'([.!?])\s+'), r'$1\n')
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
-    if (sentences.isEmpty) return;
-
-    final paragraphs = <String>[];
-    final current = <String>[];
-    for (var i = 0; i < sentences.length; i++) {
-      current.add(sentences[i]);
-      if (current.length >= 2 || i == sentences.length - 1) {
-        paragraphs.add(current.join(' '));
-        current.clear();
-      }
-    }
-    final formatted = paragraphs.join('\n\n');
-    controller
-      ..text = formatted
-      ..selection = TextSelection.collapsed(offset: formatted.length);
-  }
 
   /// Real AI summary via AiQueue: pulls every per-element chat
   /// history accumulated by the inspection editor, builds a single
@@ -380,6 +354,125 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     } finally {
       if (mounted) {
         _setStateSafely(() => _docsCommentAiBusy = false);
+      }
+    }
+  }
+
+  /// AI-fill for the «Комментарий специалиста» field on the «Материалы
+  /// проверки» step. Names of attached documents (with count) are
+  /// baked into the prompt via `buildLegalCommentCliche` so the model
+  /// can reference them in the answer even when the typed comment is
+  /// short. Result lands in `_legalNoteController`.
+  Future<void> _generateLegalCommentWithAi() async {
+    if (_legalCommentAiBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _legalCommentAiBusy = true);
+    try {
+      final fileNames = _legalFiles
+          .map((file) => file.name.trim())
+          .where((name) => name.isNotEmpty)
+          .toList();
+      final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
+        filesCount: _legalFiles.length,
+        fileNames: fileNames,
+      );
+      final inputText = _legalNoteController.text.trim();
+      final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+      final result = await AiQueueApi.chatCompletions(
+        chatId: newChatId,
+        text: inputText.isEmpty ? '—' : inputText,
+        cliche: cliche,
+      );
+      final text = result.text.trim();
+      if (text.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('AI вернул пустой ответ. Попробуйте ещё раз.'),
+          ),
+        );
+        return;
+      }
+      _legalNoteController
+        ..text = text
+        ..selection = TextSelection.collapsed(offset: text.length);
+      _markDraftDirty();
+    } on storage_api.SessionExpiredException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('AI-помощник недоступен. Попробуйте позже.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _legalCommentAiBusy = false);
+      }
+    }
+  }
+
+  /// AI-fill for the «Комментарий по тест-драйву» field. The mode
+  /// (всё ок / есть проблемы / не проводился) plus per-subsystem
+  /// yes/no answers and selected tags are baked into the prompt via
+  /// `buildTdCommentCliche` so the model sees the structured findings
+  /// regardless of how short the typed comment is.
+  Future<void> _generateTdCommentWithAi() async {
+    if (_tdCommentAiBusy) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _tdCommentAiBusy = true);
+    try {
+      final cliche = AiQueueClicheBuilder.buildTdCommentCliche(
+        tdMode: _tdMode ?? '',
+        subsystemStatus: <String, bool?>{
+          'engine': _tdEngineOk,
+          'gearbox': _tdGearboxOk,
+          'steering': _tdSteeringOk,
+          'ride': _tdRideOk,
+          'brake': _tdBrakeOk,
+        },
+        subsystemTags: <String, List<String>>{
+          'engine': _tdEngineTags,
+          'gearbox': _tdGearboxTags,
+          'steering': _tdSteeringTags,
+          'ride': _tdRideTags,
+          'brake': _tdBrakeTags,
+        },
+      );
+      final inputText = _tdNoteController.text.trim();
+      final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+      final result = await AiQueueApi.chatCompletions(
+        chatId: newChatId,
+        text: inputText.isEmpty ? '—' : inputText,
+        cliche: cliche,
+      );
+      final text = result.text.trim();
+      if (text.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('AI вернул пустой ответ. Попробуйте ещё раз.'),
+          ),
+        );
+        return;
+      }
+      _tdNoteController
+        ..text = text
+        ..selection = TextSelection.collapsed(offset: text.length);
+      _markDraftDirty();
+    } on storage_api.SessionExpiredException {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('AI-помощник недоступен. Попробуйте позже.'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        _setStateSafely(() => _tdCommentAiBusy = false);
       }
     }
   }

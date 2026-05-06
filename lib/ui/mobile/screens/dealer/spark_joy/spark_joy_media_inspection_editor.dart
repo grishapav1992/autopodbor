@@ -217,6 +217,12 @@ extension _SparkJoyMediaInspectionEditorMethods
                 const <String>[]),
           },
           existingNote: noteController.text.trim(),
+          // Толщина ЛКП: учитываем только если толщиномер поддерживается
+          // для этой группы (`supportsPaint`). Иначе значения paintFrom /
+          // paintTo живут в state как baseline дефолты, но не отражают
+          // реальный замер — передавать их в cliché было бы враньём.
+          paintFrom: supportsPaint ? paintFrom : null,
+          paintTo: supportsPaint ? paintTo : null,
         );
 
         final sourceKey = SparkJoyReportController.aiSourceKey(

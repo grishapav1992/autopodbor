@@ -252,6 +252,7 @@ Widget _buildSparkJoyStepLegal(
       s._commentInputPanel(
         controller: s._legalNoteController,
         isDictating: s._legalIsDictating,
+        aiBusy: s._legalCommentAiBusy,
         onToggleDictation: () async {
           if (s._legalIsDictating) {
             await s._stopLegalDictation();
@@ -259,11 +260,10 @@ Widget _buildSparkJoyStepLegal(
             await s._startLegalDictation();
           }
         },
-        onAiFormat: () {
-          s._formatCommentWithAi(s._legalNoteController);
-          s._markDraftDirty();
-          setStateFn(() {});
-        },
+        // Real AiQueue call — bakes attached file names into the cliche
+        // so the model can reference them. Replaces the old local
+        // regex-based reflow which wasn't actually AI.
+        onAiFormat: () => unawaited(s._generateLegalCommentWithAi()),
       ),
     ],
   );

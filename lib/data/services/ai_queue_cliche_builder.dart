@@ -121,25 +121,136 @@ class AiQueueClicheBuilder {
   /// labels that the UI considers "serious". Saves callers from
   /// resolving labels → [UserTag] objects when the editor already
   /// carries that data in label form.
+  ///
+  /// [paintFrom] / [paintFrom] — paint thickness range in micrometers
+  /// from the толщиномер tool. Both must be non-null to surface in the
+  /// prompt; otherwise the line is omitted. Helps the model flag
+  /// suspicious values (e.g. 250+ мкм usually means body filler /
+  /// repaint).
   static String buildElementClicheFromLabels({
     required String elementLabel,
     required List<String> selectedTagLabels,
     required Set<String> seriousTagLabels,
     String existingNote = '',
+    double? paintFrom,
+    double? paintTo,
   }) {
     final element = elementLabel.trim().isEmpty ? 'элемент авто' : elementLabel.trim();
     final tagsLine = _formatLabelTags(selectedTagLabels, seriousTagLabels);
     final noteLine = existingNote.trim().isEmpty ? '—' : existingNote.trim();
+    final paintLine = (paintFrom != null && paintTo != null)
+        ? 'Толщина ЛКП: ${paintFrom.round()}-${paintTo.round()} мкм '
+            '(норма ~80-200 мкм; больше — возможна перекраска или шпатлёвка). '
+        : '';
 
     return 'Ты эксперт по техническому осмотру автомобилей. '
         'Сформулируй короткое профессиональное замечание на русском по '
         'элементу: $element. '
         'Замечания/теги: $tagsLine. '
+        '$paintLine'
         'Текущее описание инспектора: $noteLine. '
         'Если приложены фото — учитывай их визуальную информацию. '
         'Не выдумывай дефекты, которых нет в тегах и фото. '
         'Верни только финальный текст замечания, без преамбулы. '
         'Дополнительный контекст от инспектора: {text}';
+  }
+
+  /// Cliché for the «Комментарий специалиста» field on the «Материалы
+  /// проверки» step. Bakes in the count and (top-3 by name length)
+  /// names of the documents the inspector attached so the model can
+  /// reference them in the comment without the user repeating each
+  /// filename manually. The inspector's typed text flows through {text}.
+  static String buildLegalCommentCliche({
+    required int filesCount,
+    required List<String> fileNames,
+  }) {
+    final filesPart = filesCount == 0
+        ? 'Документы не приложены. '
+        : 'Приложено документов: $filesCount '
+            '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}). ';
+    return 'Ты эксперт по приёмке автомобилей. '
+        'Сформулируй короткий профессиональный текст для блока '
+        '«Материалы проверки» отчёта. $filesPart'
+        'На основе приложенных документов и комментария инспектора ниже '
+        'опиши ключевые моменты: что было проверено, какие риски/'
+        'нюансы выявлены, какие действия рекомендуются клиенту. '
+        'Не выдумывай документы или факты, которых нет в данных. '
+        'Возвращай только готовый текст без преамбулы и markdown.\n'
+        '\n'
+        'Комментарий инспектора: {text}';
+  }
+
+  /// Cliché for the «Комментарий по тест-драйву» field. Bakes in the
+  /// test-drive mode (proceeded / not proceeded / all good / has issues)
+  /// plus per-subsystem yes/no answers and any selected tags so the
+  /// model has full context regardless of how short the typed text is.
+  ///
+  /// [subsystemStatus] — map of canonical subsystem keys
+  /// (`engine`, `gearbox`, `steering`, `ride`, `brake`) to ok-flag
+  /// (`true` ok / `false` issue / `null` not answered).
+  ///
+  /// [subsystemTags] — same keys to a list of selected tag labels for
+  /// each subsystem. Empty lists fine.
+  static String buildTdCommentCliche({
+    required String tdMode,
+    required Map<String, bool?> subsystemStatus,
+    required Map<String, List<String>> subsystemTags,
+  }) {
+    String modeLabel(String mode) {
+      switch (mode) {
+        case 'allGood':
+          return 'Тест-драйв проведён, всё работает исправно';
+        case 'hasIssues':
+          return 'Тест-драйв проведён, обнаружены замечания';
+        case 'notConducted':
+          return 'Тест-драйв не проводился';
+        default:
+          return 'Состояние тест-драйва: $mode';
+      }
+    }
+
+    String subsystemLabel(String key) {
+      switch (key) {
+        case 'engine':
+          return 'Двигатель';
+        case 'gearbox':
+          return 'Коробка передач';
+        case 'steering':
+          return 'Рулевое управление';
+        case 'ride':
+          return 'Подвеска';
+        case 'brake':
+          return 'Тормоза';
+        default:
+          return key;
+      }
+    }
+
+    String okLabel(bool? value) {
+      if (value == null) return 'не указано';
+      return value ? 'без замечаний' : 'есть замечания';
+    }
+
+    final lines = <String>[];
+    for (final entry in subsystemStatus.entries) {
+      final tags = subsystemTags[entry.key] ?? const <String>[];
+      final tagsPart = tags.isEmpty ? '' : ' — теги: ${tags.join(", ")}';
+      lines.add('- ${subsystemLabel(entry.key)}: ${okLabel(entry.value)}$tagsPart');
+    }
+
+    return 'Ты эксперт по техническому осмотру автомобилей. Дилер '
+        'провёл тест-драйв и зафиксировал такие результаты:\n'
+        '${modeLabel(tdMode)}.\n'
+        '${lines.isEmpty ? '' : '${lines.join("\n")}\n'}'
+        '\n'
+        'На основе этих данных и комментария дилера ниже сформулируй '
+        'короткий профессиональный текст для отчёта о поведении '
+        'автомобиля на ходу. Если есть замечания — опиши их '
+        'конкретно и какие риски они несут. Не выдумывай дефекты, '
+        'которых нет в данных или комментарии. Возвращай только '
+        'готовый текст без преамбулы и markdown.\n'
+        '\n'
+        'Комментарий дилера: {text}';
   }
 
   static String _formatLabelTags(

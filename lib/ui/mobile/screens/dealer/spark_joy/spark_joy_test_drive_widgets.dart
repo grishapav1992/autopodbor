@@ -385,6 +385,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
       controller: _tdNoteController,
       hint: placeholder,
       isDictating: _tdIsDictating,
+      aiBusy: _tdCommentAiBusy,
       onToggleDictation: () async {
         if (_tdIsDictating) {
           await _stopTdDictation();
@@ -392,11 +393,10 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
           await _startTdDictation();
         }
       },
-      onAiFormat: () {
-        _formatCommentWithAi(_tdNoteController);
-        _markDraftDirty();
-        _setStateSafely(() {});
-      },
+      // Real AiQueue call — bakes tdMode + per-subsystem ok/issue
+      // flags + selected tags into the cliche. Replaces the old
+      // local regex-based reflow which wasn't actually AI.
+      onAiFormat: () => unawaited(_generateTdCommentWithAi()),
     );
   }
 }
