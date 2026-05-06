@@ -146,18 +146,17 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
       if (volume.isNotEmpty) volume,
       if (engineType.isNotEmpty) engineType,
     ].join(' ');
-    final transmissionParts = <String>[
-      if (gearbox.isNotEmpty) gearbox,
-      if (drive.isNotEmpty) drive,
-    ].join(' ');
-
+    // Gearbox + drive go as separate items so the model can't read
+    // them as one phrase like «АКПП передний». «передний привод»
+    // is the canonical full form so the model has unambiguous tokens.
     final segments = <String>[
       if (core.isNotEmpty) core,
       if (genPart.isNotEmpty) genPart,
       if (restyling.isNotEmpty) restyling,
       if (yearPart.isNotEmpty) yearPart,
       if (engineParts.isNotEmpty) engineParts,
-      if (transmissionParts.isNotEmpty) transmissionParts,
+      if (gearbox.isNotEmpty) gearbox,
+      if (drive.isNotEmpty) '$drive привод',
     ];
     if (segments.isEmpty) return null;
     return segments.join(', ');

@@ -28,8 +28,8 @@ class AiQueueClicheBuilder {
   /// so the voice stays the same.
   static const String _kAudienceTone =
       'Читатель — физлицо-покупатель, без технического образования. '
-      'Тон деловой, без жаргона ремонтников («жук», «жижа», «прокладка '
-      'под нож» — нельзя). Сложные термины кратко поясняй в скобках. ';
+      'Тон деловой, без жаргона ремонтников. Сложные термины кратко '
+      'поясняй в скобках. ';
 
   /// Anti-hallucination floor. Without this the model freely
   /// reconstructs «вероятно был удар в правое крыло» from a single
@@ -57,16 +57,16 @@ class AiQueueClicheBuilder {
       'соответственно — серьёзные дефекты выходят первыми. ';
 
   /// Length cap for short single-field comments (element / docs-check /
-  /// legal / test-drive). 2-4 sentences ≈ 40-90 words covers the
-  /// realistic range without inviting rambling.
+  /// legal / test-drive). Keep both bounds soft — strict «N words»
+  /// fights structured tag listings; «N sentences» is the natural unit.
   static const String _kShortLengthCap =
-      'Длина: 2-4 предложения (40-90 слов). Без вводных фраз и '
-      'без перечисления того, чего НЕ нашли. ';
+      'Длина: 2-4 коротких предложения. Без вводных фраз, без '
+      'перечисления того, чего НЕ нашли. ';
 
   /// Length cap for aggregated summaries (full report summary, facts
   /// sweep). Longer because they fold context from many subsystems.
   static const String _kLongLengthCap =
-      'Длина: 4-8 предложений (100-200 слов). Без вводных. ';
+      'Длина: 4-8 коротких предложений. Без вводных. ';
 
   // ── Public cliché builders ────────────────────────────────────────────
 
@@ -208,7 +208,9 @@ class AiQueueClicheBuilder {
         '«РЕКОМЕНДАЦИЯ:» по одному из вариантов:\n'
         '- РЕКОМЕНДАЦИЯ: автомобиль рекомендуется к покупке\n'
         '- РЕКОМЕНДАЦИЯ: рекомендуется с оговорками — [что именно]\n'
-        '- РЕКОМЕНДАЦИЯ: не рекомендуется без устранения [чего]\n\n'
+        '- РЕКОМЕНДАЦИЯ: не рекомендуется без устранения [чего]\n'
+        'После строки «РЕКОМЕНДАЦИЯ:» больше НИЧЕГО НЕ ПИШИ — она '
+        'должна быть последней в ответе.\n\n'
         'Контекст из историй чата по элементам: {text}';
   }
 
@@ -374,9 +376,11 @@ class AiQueueClicheBuilder {
         '$carLine'
         'На основе этих данных и комментария дилера ниже сформулируй '
         'текст для отчёта о поведении автомобиля на ходу. Если есть '
-        'замечания — опиши их конкретно и какие риски они несут. Если '
-        'все системы «без замечаний» / «не отмечено» — кратко '
-        'подтверди исправность, без перечисления каждой системы.\n\n'
+        'замечания — опиши их конкретно и какие риски они несут. '
+        'Если все системы помечены «без замечаний» — кратко подтверди '
+        'исправность одной фразой, без перечисления каждой системы. '
+        'Если часть систем «не отмечено» — отдельно упомяни, что эти '
+        'системы дилер не проверил (это НЕ означает их исправность).\n\n'
         '$_kAudienceTone'
         '$_kSeverityCalibration'
         '$_kShortLengthCap'
@@ -387,18 +391,16 @@ class AiQueueClicheBuilder {
 
   // ── Helpers ───────────────────────────────────────────────────────────
 
-  /// Renders the optional car-context block — adds a section header +
-  /// guardrail so the model treats the data as factual context but
-  /// doesn't fabricate model-specific lore around it. Empty when no
-  /// context is provided so the prompt stays clean.
+  /// Renders the optional car-context block — empty when no context is
+  /// provided so the prompt stays clean. The «не выдумывай конкретные
+  /// отзывные…» guardrail lives in [_kAntiHallucination] (always
+  /// included in cliché using carContext) — we don't repeat it here.
   static String _carContextBlock(String? carContext) {
     final trimmed = carContext?.trim() ?? '';
     if (trimmed.isEmpty) return '';
     return 'Контекст автомобиля: $trimmed.\n'
         'Используй контекст только для (1) учёта возраста модели при '
         'оценке серьёзности дефектов и (2) сравнения замеров с '
-        'разумной нормой. Типичные проблемы конкретной модели '
-        'упоминай только если уверен на 100%; иначе обобщай — '
-        '«характерно для машин этого класса/года».\n\n';
+        'разумной нормой для этой модели.\n\n';
   }
 }
