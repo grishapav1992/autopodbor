@@ -39,7 +39,15 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
               ),
             ),
           ),
-          if (carTitle.isNotEmpty) ...[
+          // Detail card surfaces information that the picker button can't —
+          // photo, generation/restyling/frames meta. The title line itself
+          // is shown only when carTitle ≠ carButtonTitle (i.e. поколение
+          // adds something beyond «BMW 3-series»). Without this guard the
+          // picker button «BMW 3-series» and the detail title «BMW 3-series»
+          // duplicated each other for any car without a generation.
+          if (_carPhotoUrl.trim().isNotEmpty ||
+              carTitle != carButtonTitle ||
+              carMeta.isNotEmpty) ...[
             const SizedBox(height: SparkSpace.md),
             _card(
               padding: const EdgeInsets.symmetric(
@@ -74,15 +82,18 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
                               },
                             ),
                           ),
-                          const SizedBox(height: SparkSpace.md),
+                          if (carTitle != carButtonTitle || carMeta.isNotEmpty)
+                            const SizedBox(height: SparkSpace.md),
                         ],
-                        MyText(
-                          text: carTitle,
-                          size: SparkTextSize.body,
-                          weight: FontWeight.w700,
-                        ),
+                        if (carTitle != carButtonTitle && carTitle.isNotEmpty)
+                          MyText(
+                            text: carTitle,
+                            size: SparkTextSize.body,
+                            weight: FontWeight.w700,
+                          ),
                         if (carMeta.isNotEmpty) ...[
-                          const SizedBox(height: SparkSpace.xxs),
+                          if (carTitle != carButtonTitle && carTitle.isNotEmpty)
+                            const SizedBox(height: SparkSpace.xxs),
                           MyText(
                             text: carMeta,
                             size: SparkTextSize.caption,
