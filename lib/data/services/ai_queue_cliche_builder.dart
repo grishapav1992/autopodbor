@@ -25,19 +25,24 @@ class AiQueueClicheBuilder {
     required List<UserTag> tags,
     String existingNote = '',
   }) {
-    final element = elementLabel.trim().isEmpty ? 'элемент авто' : elementLabel.trim();
-    final tagsLine = _formatTags(tags);
-    final noteLine = existingNote.trim().isEmpty ? '—' : existingNote.trim();
-
-    return 'Ты эксперт по техническому осмотру автомобилей. '
-        'Сформулируй короткое профессиональное замечание на русском по '
-        'элементу: $element. '
-        'Замечания/теги: $tagsLine. '
-        'Текущее описание инспектора: $noteLine. '
-        'Если приложены фото — учитывай их визуальную информацию. '
-        'Не выдумывай дефекты, которых нет в тегах и фото. '
-        'Верни только финальный текст замечания, без преамбулы. '
-        'Дополнительный контекст от инспектора: {text}';
+    // Delegate to the labels-based variant so the «must mention each
+    // tag dosslovno» framing is shared. Saves drift between the two
+    // entry points — see [buildElementClicheFromLabels] for the full
+    // prompt explanation.
+    final labels = tags
+        .map((t) => t.name.trim())
+        .where((n) => n.isNotEmpty)
+        .toList(growable: false);
+    final seriousLabels = <String>{
+      for (final t in tags)
+        if (t.type == UserTagType.serious) t.name.trim(),
+    }..removeWhere((n) => n.isEmpty);
+    return buildElementClicheFromLabels(
+      elementLabel: elementLabel,
+      selectedTagLabels: labels,
+      seriousTagLabels: seriousLabels,
+      existingNote: existingNote,
+    );
   }
 
   /// Cliche for the final report-level summary, called once after the
@@ -105,18 +110,6 @@ class AiQueueClicheBuilder {
         'Контекст из историй чата по элементам и полям отчёта: {text}';
   }
 
-  static String _formatTags(List<UserTag> tags) {
-    if (tags.isEmpty) return 'нет';
-    final parts = <String>[];
-    for (final tag in tags) {
-      final name = tag.name.trim();
-      if (name.isEmpty) continue;
-      final severity = tag.type == UserTagType.serious ? 'серьёзно' : 'некритично';
-      parts.add('$name ($severity)');
-    }
-    return parts.isEmpty ? 'нет' : parts.join(', ');
-  }
-
   /// Same as [buildElementCliche] but takes raw tag labels + a set of
   /// labels that the UI considers "serious". Saves callers from
   /// resolving labels → [UserTag] objects when the editor already
@@ -136,22 +129,58 @@ class AiQueueClicheBuilder {
     double? paintTo,
   }) {
     final element = elementLabel.trim().isEmpty ? 'элемент авто' : elementLabel.trim();
-    final tagsLine = _formatLabelTags(selectedTagLabels, seriousTagLabels);
-    final noteLine = existingNote.trim().isEmpty ? '—' : existingNote.trim();
+    final cleanLabels = selectedTagLabels
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList(growable: false);
+    final seriousLower = seriousTagLabels.map((s) => s.toLowerCase()).toSet();
     final paintLine = (paintFrom != null && paintTo != null)
         ? 'Толщина ЛКП: ${paintFrom.round()}-${paintTo.round()} мкм '
             '(норма ~80-200 мкм; больше — возможна перекраска или шпатлёвка). '
         : '';
 
+    // Stronger framing for the tag list: previous version inlined tags
+    // as a single comma list and asked the model not to «invent»
+    // anything beyond them — but didn't actually require each tag to
+    // appear in the answer. Models would frequently summarize («есть
+    // повреждения») without naming the specific word the inspector
+    // selected. Now we surface each tag as its own bullet and add an
+    // explicit rule requiring every tag's name in the output.
+    final String tagsBlock;
+    final String mustMentionRule;
+    if (cleanLabels.isEmpty) {
+      tagsBlock = 'Замечания/теги: нет.\n';
+      mustMentionRule = '';
+    } else {
+      final bullets = cleanLabels.map((label) {
+        final severity = seriousLower.contains(label.toLowerCase())
+            ? 'серьёзное'
+            : 'некритичное';
+        return '- $label ($severity)';
+      }).join('\n');
+      tagsBlock =
+          'Дилер выявил следующие повреждения / замечания (НЕ ИЗМЕНЯЙ названия):\n'
+          '$bullets\n';
+      // Use the literal tag names so the prompt nails the requirement
+      // even if the model paraphrases everything else.
+      final names = cleanLabels.join(', ');
+      mustMentionRule =
+          'ОБЯЗАТЕЛЬНО упомяни в ответе каждое из этих названий дословно: '
+          '$names. ';
+    }
+
+    final noteLine = existingNote.trim().isEmpty ? '—' : existingNote.trim();
+
     return 'Ты эксперт по техническому осмотру автомобилей. '
         'Сформулируй короткое профессиональное замечание на русском по '
-        'элементу: $element. '
-        'Замечания/теги: $tagsLine. '
+        'элементу: $element.\n\n'
+        '$tagsBlock'
         '$paintLine'
-        'Текущее описание инспектора: $noteLine. '
+        'Текущее описание инспектора: $noteLine.\n\n'
+        '$mustMentionRule'
         'Если приложены фото — учитывай их визуальную информацию. '
         'Не выдумывай дефекты, которых нет в тегах и фото. '
-        'Верни только финальный текст замечания, без преамбулы. '
+        'Верни только финальный текст замечания, без преамбулы и markdown. '
         'Дополнительный контекст от инспектора: {text}';
   }
 
@@ -271,23 +300,4 @@ class AiQueueClicheBuilder {
         'Комментарий дилера: {text}';
   }
 
-  static String _formatLabelTags(
-    List<String> labels,
-    Set<String> seriousLabels,
-  ) {
-    final clean = labels
-        .map((s) => s.trim())
-        .where((s) => s.isNotEmpty)
-        .toList(growable: false);
-    if (clean.isEmpty) return 'нет';
-    final seriousLower = seriousLabels.map((s) => s.toLowerCase()).toSet();
-    return clean
-        .map((label) {
-          final severity = seriousLower.contains(label.toLowerCase())
-              ? 'серьёзно'
-              : 'некритично';
-          return '$label ($severity)';
-        })
-        .join(', ');
-  }
 }
