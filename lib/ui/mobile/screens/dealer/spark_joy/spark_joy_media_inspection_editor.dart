@@ -49,7 +49,13 @@ extension _SparkJoyMediaInspectionEditorMethods
         : group.partInspection;
     var noDamage = basePartInspection.noDamage;
     var selectedTags = [...item.inspection.tags];
-    var elementType = basePartInspection.elementType;
+    // Тип элемента — строго per-item. Новое фото открывается без
+    // выбранного типа, и юзеру предлагается выбрать заново. Раньше
+    // здесь был fallback на basePartInspection.elementType, который
+    // обновляется на каждом save группы → новые фото молча
+    // наследовали «Капот» (или любой последний elementType) и
+    // пользователь не понимал, почему dropdown уже заполнен.
+    var elementType = item.inspection.elementType;
     var tagPhotosByTag = <String, List<String>>{
       for (final entry in basePartInspection.tagPhotos.entries)
         entry.key: [...entry.value],
