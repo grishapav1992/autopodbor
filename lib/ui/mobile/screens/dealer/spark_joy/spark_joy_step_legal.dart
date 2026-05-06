@@ -39,6 +39,15 @@ Widget _buildSparkJoyLegalFilesCard(
         ],
         if (s._legalFiles.isNotEmpty) ...[
           const SizedBox(height: SparkSpace.md),
+          // Hint above the file list — files live locally in the draft
+          // until the report is submitted; they don't reach the server
+          // until then. Without this signal the user wonders whether
+          // the upload happened on pick.
+          const SparkHintCard(
+            text: 'Файлы будут загружены при сохранении отчёта.',
+            icon: Icons.cloud_upload_outlined,
+          ),
+          const SizedBox(height: SparkSpace.md),
           ...List.generate(s._legalFiles.length, (index) {
             final file = s._legalFiles[index];
             return Padding(
@@ -62,11 +71,49 @@ Widget _buildSparkJoyLegalFilesCard(
                     ),
                     const SizedBox(width: SparkSpace.md),
                     Expanded(
-                      child: MyText(
-                        text: file.name,
-                        size: SparkTextSize.caption,
-                        maxLines: 1,
-                        color: kTertiaryColor,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MyText(
+                            text: file.name,
+                            size: SparkTextSize.caption,
+                            maxLines: 1,
+                            color: kTertiaryColor,
+                          ),
+                          const SizedBox(height: SparkSpace.xxs),
+                          // Per-file status pill. Files are persisted
+                          // locally in the draft; the green «Готово к
+                          // отправке» badge confirms they're queued for
+                          // server upload at submit time.
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: SparkSpace.sm,
+                              vertical: SparkSpace.xxxs,
+                            ),
+                            decoration: BoxDecoration(
+                              color: kGreenColor.withValues(alpha: 0.12),
+                              borderRadius:
+                                  BorderRadius.circular(SparkRadius.pill),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.check_circle_outline_rounded,
+                                  size: SparkTextSize.label,
+                                  color: kGreenColor,
+                                ),
+                                const SizedBox(width: SparkSpace.xxs),
+                                const MyText(
+                                  text: 'Готово к отправке',
+                                  size: SparkTextSize.chip,
+                                  color: kGreenColor,
+                                  weight: FontWeight.w700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     InkWell(
