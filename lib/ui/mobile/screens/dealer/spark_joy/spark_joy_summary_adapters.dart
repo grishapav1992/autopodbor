@@ -47,13 +47,6 @@ extension _SparkJoySummaryAdapters on _SparkJoyCreateReportScreenState {
     return _buildSparkSummaryNoteCard(this);
   }
 
-  Widget _summaryExpertConclusionCard({bool needsAttention = false}) {
-    return _buildSparkSummaryExpertConclusionCard(
-      this,
-      needsAttention: needsAttention,
-    );
-  }
-
   Widget _stepSummary() => _buildSparkJoyStepSummary(this);
 
   Widget _sectionEditor() => _buildSparkJoySectionEditor(this);

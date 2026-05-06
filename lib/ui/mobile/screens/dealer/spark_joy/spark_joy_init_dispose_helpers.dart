@@ -40,7 +40,6 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     _legalNoteController.dispose();
     _tdNoteController.dispose();
     _summaryController.dispose();
-    _expertController.dispose();
     _inspectorController.dispose();
   }
 

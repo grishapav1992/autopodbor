@@ -39,7 +39,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       _tdIsDictating = false;
       _docsIsDictating = false;
       _legalIsDictating = false;
-      _expertIsDictating = false;
+      _summaryIsDictating = false;
     });
   }
 
@@ -64,7 +64,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     if (_docsIsDictating) return;
     if (_tdIsDictating) await _stopTdDictation();
     if (_legalIsDictating) await _stopLegalDictation();
-    if (_expertIsDictating) await _stopExpertDictation();
+    if (_summaryIsDictating) await _stopSummaryDictation();
     await _ensureTdSpeech();
     if (!_tdSpeechAvailable || !_docsShouldDictate) return;
 
@@ -107,7 +107,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     if (_legalIsDictating) return;
     if (_tdIsDictating) await _stopTdDictation();
     if (_docsIsDictating) await _stopDocsDictation();
-    if (_expertIsDictating) await _stopExpertDictation();
+    if (_summaryIsDictating) await _stopSummaryDictation();
     await _ensureTdSpeech();
     if (!_tdSpeechAvailable || !_legalShouldDictate) return;
 
@@ -147,7 +147,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     if (_tdIsDictating) return;
     if (_docsIsDictating) await _stopDocsDictation();
     if (_legalIsDictating) await _stopLegalDictation();
-    if (_expertIsDictating) await _stopExpertDictation();
+    if (_summaryIsDictating) await _stopSummaryDictation();
     await _ensureTdSpeech();
     if (!_tdSpeechAvailable || !_tdShouldDictate) return;
 
@@ -182,14 +182,17 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     _setStateSafely(() => _tdIsDictating = false);
   }
 
-  Future<void> _startExpertDictation() async {
-    _expertShouldDictate = true;
-    if (_expertIsDictating) return;
+  /// Dictation for the unified «Итог осмотра» field — replaced the
+  /// old expert dictation after the «Сводка» + «Итог специалиста»
+  /// cards were merged. Writes recognized text into `_summaryController`.
+  Future<void> _startSummaryDictation() async {
+    _summaryShouldDictate = true;
+    if (_summaryIsDictating) return;
     if (_tdIsDictating) await _stopTdDictation();
     if (_docsIsDictating) await _stopDocsDictation();
     if (_legalIsDictating) await _stopLegalDictation();
     await _ensureTdSpeech();
-    if (!_tdSpeechAvailable || !_expertShouldDictate) return;
+    if (!_tdSpeechAvailable || !_summaryShouldDictate) return;
 
     try {
       await _tdSpeechToText.listen(
@@ -201,111 +204,27 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         ),
         onResult: (result) {
           if (!result.finalResult) return;
-          _appendRecognizedText(_expertController, result.recognizedWords);
+          _appendRecognizedText(_summaryController, result.recognizedWords);
         },
       );
       if (!mounted) return;
-      _setStateSafely(() => _expertIsDictating = true);
+      _setStateSafely(() => _summaryIsDictating = true);
     } catch (_) {
-      _expertShouldDictate = false;
+      _summaryShouldDictate = false;
       _showErrorSnack('Не удалось запустить надиктовку');
     }
   }
 
-  Future<void> _stopExpertDictation() async {
-    _expertShouldDictate = false;
-    if (!_expertIsDictating) return;
+  Future<void> _stopSummaryDictation() async {
+    _summaryShouldDictate = false;
+    if (!_summaryIsDictating) return;
     try {
       await _tdSpeechToText.stop();
     } catch (_) {}
     if (!mounted) return;
-    _setStateSafely(() => _expertIsDictating = false);
+    _setStateSafely(() => _summaryIsDictating = false);
   }
 
-
-  /// Real AI summary via AiQueue: pulls every per-element chat
-  /// history accumulated by the inspection editor, builds a single
-  /// context block from the assistant turns, opens a fresh chatId and
-  /// asks the model for a section-structured conclusion. Result lands
-  /// directly in the expert-conclusion field.
-  Future<void> _generateExpertSummaryWithAi() async {
-    if (_expertSummaryAiBusy) return;
-    final messenger = ScaffoldMessenger.of(context);
-    _setStateSafely(() => _expertSummaryAiBusy = true);
-    try {
-      final chatIds = _reportController.aiChatIdBySourceKey.values
-          .where((id) => id > 0)
-          .toSet()
-          .toList();
-      if (chatIds.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text(
-              'AI пока не из чего собирать заключение — сначала отформатируйте заметки по элементам через ИИ-кнопку в осмотре.',
-            ),
-          ),
-        );
-        return;
-      }
-
-      final histories = await AiQueueApi.getChatHistories(ids: chatIds);
-      final contextChunks = <String>[];
-      for (final session in histories.chats.values) {
-        final assistantTurns = session.messages
-            .where((m) => m.role.toLowerCase() == 'assistant')
-            .map((m) => m.content.trim())
-            .where((s) => s.isNotEmpty)
-            .toList();
-        if (assistantTurns.isEmpty) continue;
-        contextChunks.add(assistantTurns.join('\n'));
-      }
-      if (contextChunks.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('AI ещё не сформулировал замечаний по элементам.'),
-          ),
-        );
-        return;
-      }
-
-      final summaryCliche = AiQueueClicheBuilder.buildSummaryCliche(
-        reportLabel: _reportNameController.text.trim(),
-        carContext: _carContextForAi(),
-      );
-      final newChatId = SparkJoyReportController.aiSourceKey(
-        groupKey: '__summary',
-        elementType: _draftId,
-      ).hashCode.toUnsigned(32);
-      final result = await AiQueueApi.chatCompletions(
-        chatId: newChatId,
-        text: contextChunks.join('\n\n---\n\n'),
-        cliche: summaryCliche,
-      );
-      final summary = result.text.trim();
-      if (summary.isEmpty) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('AI вернул пустой ответ. Попробуйте ещё раз.')),
-        );
-        return;
-      }
-      _expertController
-        ..text = summary
-        ..selection = TextSelection.collapsed(offset: summary.length);
-      _markDraftDirty();
-    } on storage_api.SessionExpiredException {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Сессия истекла — войдите заново')),
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('AI-помощник недоступен. Попробуйте позже.')),
-      );
-    } finally {
-      if (mounted) {
-        _setStateSafely(() => _expertSummaryAiBusy = false);
-      }
-    }
-  }
 
   /// AI-fill for the «Комментарий по расхождениям» field in the
   /// docs check step. The three yes/no values above are baked into
@@ -530,6 +449,19 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         contextParts.add(
           '=== AI-комментарии по элементам ===\n'
           '${historyChunks.join('\n---\n')}',
+        );
+      }
+      // Inspector's current text — feed it back to the model as
+      // «previous draft» so regeneration preserves their manual edits
+      // (corrections, dictation notes, deletions). Without this block
+      // the AI overwrites their work each time the button is pressed.
+      // Goes LAST in the context so the model treats it as the most
+      // recent state and the structured/AI blocks as supporting info.
+      final previousDraft = _summaryController.text.trim();
+      if (previousDraft.isNotEmpty) {
+        contextParts.add(
+          '=== Предыдущий черновик инспектора (учитывай его правки и стиль, '
+          'обновляй только устаревшие факты) ===\n$previousDraft',
         );
       }
       if (contextParts.isEmpty) {

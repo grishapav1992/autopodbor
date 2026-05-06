@@ -151,12 +151,25 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
       text: _read(draft, 'legalNote'),
     );
     _tdNoteController = TextEditingController(text: _read(draft, 'tdNote'));
-    _summaryController = TextEditingController(
-      text: _read(draft, 'summaryNote', fallback: _read(draft, 'summary')),
-    );
-    _expertController = TextEditingController(
-      text: _normalizeInitialExpertConclusion(draft),
-    );
+    // Single «Итог осмотра» field — supersedes the old двойник
+    // «Сводка» + «Итог специалиста». For legacy drafts where both
+    // wire keys (`summaryNote`/`summary` and `expertConclusion`) are
+    // populated, merge them via `\n\n` so nothing is lost. New drafts
+    // pre-2026-05-06 had only `summaryNote`; freshly-saved drafts
+    // post-merge replicate the same text into both keys, so reading
+    // either key alone is correct for them.
+    final legacySummary = _read(
+      draft,
+      'summaryNote',
+      fallback: _read(draft, 'summary'),
+    ).trim();
+    final legacyExpert = _normalizeInitialExpertConclusion(draft).trim();
+    final mergedSummary = (legacySummary == legacyExpert)
+        ? legacySummary
+        : <String>[legacySummary, legacyExpert]
+            .where((s) => s.isNotEmpty)
+            .join('\n\n');
+    _summaryController = TextEditingController(text: mergedSummary);
     _inspectorController = TextEditingController(
       text: _read(draft, 'inspector', fallback: 'Специалист'),
     );

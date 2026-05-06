@@ -84,7 +84,7 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
     await _stopTdDictation();
     await _stopDocsDictation();
     await _stopLegalDictation();
-    await _stopExpertDictation();
+    await _stopSummaryDictation();
     _dismissKeyboard();
     await _saveDraft(showToast: false);
     if (!mounted) return;
@@ -110,7 +110,7 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
     await _stopTdDictation();
     await _stopDocsDictation();
     await _stopLegalDictation();
-    await _stopExpertDictation();
+    await _stopSummaryDictation();
     _dismissKeyboard();
     if (save) {
       await _saveDraft(showToast: false);

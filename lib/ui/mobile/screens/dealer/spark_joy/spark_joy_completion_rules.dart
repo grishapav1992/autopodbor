@@ -62,8 +62,10 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     // hardcoded VIN) — серверу прилетал валидный, но фактически
     // пустой отчёт. Гейтим save строго: пусто — кричим юзеру.
     final hasReportName = _reportNameController.text.trim().isNotEmpty;
+    // After «Сводка» + «Итог специалиста» were merged into a single
+    // «Итог осмотра», there's only one text gate here. The previous
+    // `hasExpertNote` second gate is retired.
     final hasSummaryNote = _summaryController.text.trim().isNotEmpty;
-    final hasExpertNote = _expertController.text.trim().isNotEmpty;
     final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
     // Both the field must be non-empty AND the value must match a
@@ -139,10 +141,7 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
       reasons.add('Характеристики — укажите комплектацию');
     }
     if (!hasSummaryNote) {
-      reasons.add('Итог — заполните сводку осмотра');
-    }
-    if (!hasExpertNote) {
-      reasons.add('Итог — заполните заключение специалиста');
+      reasons.add('Итог — заполните итог осмотра');
     }
     if (!hasDocs) {
       reasons.add('Сверка документов — ответьте на все вопросы');
@@ -228,12 +227,7 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
         ),
         _ProfanityCheckTarget(
           controller: _summaryController,
-          fieldLabel: 'Сводка осмотра',
-          section: 'Итог',
-        ),
-        _ProfanityCheckTarget(
-          controller: _expertController,
-          fieldLabel: 'Заключение специалиста',
+          fieldLabel: 'Итог осмотра',
           section: 'Итог',
         ),
       ];

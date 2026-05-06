@@ -16,7 +16,7 @@ extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
       await _stopTdDictation();
       await _stopDocsDictation();
       await _stopLegalDictation();
-      await _stopExpertDictation();
+      await _stopSummaryDictation();
       await _stopActiveCommentRecordingOnPause();
 
       if (_hasUnsavedDraftChanges || _draftSaveFailed) {
@@ -55,7 +55,6 @@ extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
         _legalNoteController,
         _tdNoteController,
         _summaryController,
-        _expertController,
         _inspectorController,
       ]);
     for (final controller in _autosaveControllers) {

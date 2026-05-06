@@ -195,39 +195,6 @@ class AiQueueClicheBuilder {
         'Дополнительный контекст от инспектора: {text}';
   }
 
-  /// Cliche for the final report-level summary, called once after the
-  /// per-element histories are aggregated. Renders the expert's
-  /// recommendation (purchase / with reservations / decline) along
-  /// with section breakdown.
-  ///
-  /// [carContext] — same shape as in [buildElementClicheFromLabels].
-  /// Optional; when present the verdict can lean on model-specific
-  /// known issues for severity.
-  static String buildSummaryCliche({
-    required String reportLabel,
-    String? carContext,
-  }) {
-    final label = reportLabel.trim().isEmpty ? 'Отчёт об осмотре авто' : reportLabel.trim();
-    final carLine = _carContextBlock(carContext);
-    return 'Ты эксперт по техническому осмотру автомобилей. '
-        'Собери итоговое заключение по отчёту "$label" из контекста по '
-        'отдельным элементам. Структурируй по разделам: кузов, салон, '
-        'тест-драйв, юридическая проверка. Будь краток и по делу.\n\n'
-        '$carLine'
-        '$_kAudienceTone'
-        '$_kLongLengthCap'
-        '$_kAntiHallucination'
-        '$_kCoverageHonesty'
-        'В САМОМ КОНЦЕ ответа обязательно одна строка с маркером '
-        '«РЕКОМЕНДАЦИЯ:» по одному из вариантов:\n'
-        '- РЕКОМЕНДАЦИЯ: автомобиль рекомендуется к покупке\n'
-        '- РЕКОМЕНДАЦИЯ: рекомендуется с оговорками — [что именно]\n'
-        '- РЕКОМЕНДАЦИЯ: не рекомендуется без устранения [чего]\n'
-        'После строки «РЕКОМЕНДАЦИЯ:» больше НИЧЕГО НЕ ПИШИ — она '
-        'должна быть последней в ответе.\n\n'
-        'Контекст из историй чата по элементам: {text}';
-  }
-
   /// Cliche for the docs-check «Комментарий по расхождениям» field.
   /// The three yes/no answers above the comment input (Владелец /
   /// VIN / Двигатель) plus the inspector's typed text are baked
@@ -258,12 +225,14 @@ class AiQueueClicheBuilder {
         'Комментарий дилера: {text}';
   }
 
-  /// Cliche for the data-summary card («Сводка по данным осмотра»).
-  /// Distinct from [buildSummaryCliche]: that one renders the
-  /// expert's recommendation (мнение); this one renders just the
-  /// facts — what's in the report, by section, no buy/don't-buy
-  /// advice. Both can run in the same report and should not
-  /// duplicate each other.
+  /// Cliché for the unified «Итог осмотра» field — replaces the old
+  /// двойник `buildSummaryCliche` + factual-facts split. Renders:
+  ///   • перечисление зафиксированных замечаний по разделам
+  ///   • явные блоки «Осмотрено без замечаний» / «Не осмотрено»
+  ///     (см. _kCoverageHonesty)
+  ///   • обязательный verdict-маркер «РЕКОМЕНДАЦИЯ:» в конце
+  ///   • уважает «Предыдущий черновик инспектора» если он есть в
+  ///     контексте — сохраняет его правки и стиль
   static String buildReportFactsCliche({
     required String reportLabel,
     String? carContext,
@@ -272,21 +241,29 @@ class AiQueueClicheBuilder {
         ? 'Отчёт об осмотре авто'
         : reportLabel.trim();
     final carLine = _carContextBlock(carContext);
-    return 'Ты ассистент по техническому осмотру автомобилей. '
-        'Сформируй фактологическую сводку по данным отчёта "$label". '
+    return 'Ты эксперт по техническому осмотру автомобилей. '
+        'Сформируй итог осмотра по отчёту "$label". '
         'Перечисли что именно зафиксировано по разделам: кузов, остекление, '
         'светотехника, подкапотное пространство, салон, колёса, диагностика, '
         'тест-драйв, юридическая проверка. '
-        'Только факты из контекста: что осмотрено, какие замечания/теги, '
-        'какие комментарии. Не давай оценок, рекомендаций по покупке или торгу — '
-        'это будет в отдельном поле «Итог специалиста».\n\n'
+        'Если в контексте есть блок «Предыдущий черновик инспектора» — '
+        'это уже отредактированный человеком текст; сохрани его правки, '
+        'формулировки и стиль, обновляй только устаревшие или '
+        'противоречащие фактам части.\n\n'
         '$carLine'
         '$_kAudienceTone'
         '$_kLongLengthCap'
         '$_kAntiHallucination'
         '$_kCoverageHonesty'
+        'В САМОМ КОНЦЕ ответа обязательно одна строка с маркером '
+        '«РЕКОМЕНДАЦИЯ:» по одному из вариантов:\n'
+        '- РЕКОМЕНДАЦИЯ: автомобиль рекомендуется к покупке\n'
+        '- РЕКОМЕНДАЦИЯ: рекомендуется с оговорками — [что именно]\n'
+        '- РЕКОМЕНДАЦИЯ: не рекомендуется без устранения [чего]\n'
+        'После строки «РЕКОМЕНДАЦИЯ:» больше НИЧЕГО НЕ ПИШИ — она '
+        'должна быть последней в ответе.\n\n'
         'Без преамбулы, без markdown-форматирования. '
-        'Контекст из историй чата по элементам и полям отчёта: {text}';
+        'Контекст: {text}';
   }
 
   /// Cliché for the «Комментарий специалиста» field on the «Материалы

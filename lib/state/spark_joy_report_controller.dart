@@ -160,8 +160,11 @@ class SparkJoyReportController extends GetxController {
   final RxBool docsShouldDictate = false.obs;
   final RxBool legalIsDictating = false.obs;
   final RxBool legalShouldDictate = false.obs;
-  final RxBool expertIsDictating = false.obs;
-  final RxBool expertShouldDictate = false.obs;
+  // Dictation state for the unified «Итог осмотра» field
+  // (`_summaryController`). Replaced the old `expertIsDictating` after
+  // the «Сводка» + «Итог специалиста» cards were merged into one.
+  final RxBool summaryIsDictating = false.obs;
+  final RxBool summaryShouldDictate = false.obs;
 
   // ──────────────────────────────────────────────────────────────────
   // Chunk 10 — Currently-playing audio index per comment list

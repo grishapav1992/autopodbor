@@ -599,135 +599,31 @@ Widget _buildSparkSummarySectionsList(
   );
 }
 
+/// Unified «Итог осмотра» card — supersedes the old two-card layout
+/// («Сводка по данным осмотра» + «Итог специалиста»). One AI button,
+/// one dictation toggle, one source of truth. AI regeneration treats
+/// the inspector's current text as a «previous draft» so manual edits
+/// survive perigeneration.
 Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
   final note = s._summaryController.text.trim();
-  // Read-only completed view doesn't need the edit-mode placeholder
-  // ("Заполните разделы осмотра…") — if the dealer didn't fill the
-  // recap text, the card is just noise to the buyer.
+  // Read-only completed view: nothing useful when the dealer didn't
+  // fill the conclusion — collapse the card so the buyer doesn't see
+  // an empty placeholder.
   if (s.widget.readOnly && note.isEmpty) return const SizedBox.shrink();
   final isReadOnly = s.widget.readOnly;
-  final aiBusy = s._summaryNoteAiBusy;
   return s._card(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         s._sectionHeading(
-          'Сводка по данным осмотра',
-          icon: Icons.summarize_outlined,
-          subtitle: isReadOnly
-              ? 'Сводка из данных осмотра'
-              : 'Соберите фактологическую сводку через ИИ или допишите вручную',
-        ),
-        SparkCard(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.lg,
-            vertical: SparkSpace.lg,
-          ),
-          radius: SparkRadius.md,
-          backgroundColor: kInputBgColor,
-          child: isReadOnly
-              ? MyText(
-                  text: note,
-                  size: SparkTextSize.bodyLg,
-                  color: kTertiaryColor,
-                  lineHeight: 1.35,
-                )
-              : TextField(
-                  controller: s._summaryController,
-                  minLines: 3,
-                  maxLines: 12,
-                  enabled: !aiBusy,
-                  decoration: const InputDecoration(
-                    hintText:
-                        'Сводка по разделам — нажмите «Сформировать через ИИ» или введите вручную.',
-                    hintStyle: TextStyle(
-                      color: kGreyColor,
-                      fontSize: SparkTextSize.bodyLg,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                  style: const TextStyle(
-                    fontSize: SparkTextSize.bodyLg,
-                    color: kTertiaryColor,
-                    height: 1.35,
-                  ),
-                ),
-        ),
-        if (!isReadOnly) ...[
-          const SizedBox(height: SparkSpace.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: aiBusy
-                  ? null
-                  : () => unawaited(s._generateSummaryNoteWithAi()),
-              icon: aiBusy
-                  ? const SizedBox(
-                      width: SparkSize.iconSm,
-                      height: SparkSize.iconSm,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(kSecondaryColor),
-                      ),
-                    )
-                  : const Icon(
-                      Icons.auto_awesome_rounded,
-                      size: SparkSize.iconSm,
-                    ),
-              label: Text(
-                aiBusy
-                    ? 'AI собирает сводку...'
-                    : (note.isEmpty
-                        ? 'Сформировать через ИИ'
-                        : 'Перегенерировать через ИИ'),
-              ),
-              style: TextButton.styleFrom(
-                foregroundColor: kSecondaryColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.md,
-                  vertical: SparkSpace.xs,
-                ),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-            ),
-          ),
-        ],
-      ],
-    ),
-  );
-}
-
-Widget _buildSparkSummaryExpertConclusionCard(
-  _SparkJoyCreateReportScreenState s, {
-  bool needsAttention = false,
-}) {
-  final isReadOnly = s.widget.readOnly;
-  final conclusion = s._expertController.text.trim();
-  return s._card(
-    borderColor: !isReadOnly && needsAttention
-        ? kYellowColor.withValues(alpha: 0.6)
-        : null,
-    backgroundColor: !isReadOnly && needsAttention
-        ? kYellowColor.withValues(alpha: 0.06)
-        : null,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        s._sectionHeading(
-          'Итог специалиста',
+          'Итог осмотра',
           icon: Icons.rate_review_outlined,
           subtitle: isReadOnly
-              ? 'Финальный комментарий специалиста'
-              : 'Финальный комментарий перед выгрузкой отчёта',
+              ? 'Финальный итог по результатам осмотра'
+              : 'Соберите итог через ИИ или введите вручную; ваши правки '
+                    'сохранятся при перегенерации',
         ),
         if (isReadOnly)
-          // Completed reports are non-editable: render the conclusion as
-          // static text (mirrors the read-only treatment of the summary
-          // note card above). No dictation / AI format / audio controls.
           SparkCard(
             padding: const EdgeInsets.symmetric(
               horizontal: SparkSpace.lg,
@@ -736,35 +632,27 @@ Widget _buildSparkSummaryExpertConclusionCard(
             radius: SparkRadius.md,
             backgroundColor: kInputBgColor,
             child: MyText(
-              text: conclusion.isEmpty
-                  ? 'Заключение не указано'
-                  : conclusion,
+              text: note,
               size: SparkTextSize.bodyLg,
-              color: conclusion.isEmpty ? kGreyColor : kTertiaryColor,
+              color: kTertiaryColor,
               lineHeight: 1.35,
             ),
           )
-        else ...[
+        else
           s._commentInputPanel(
-            controller: s._expertController,
-            hint:
-                'Ваш вывод, рекомендации, условия сделки, комментарий для клиента...',
-            isDictating: s._expertIsDictating,
-            aiBusy: s._expertSummaryAiBusy,
+            controller: s._summaryController,
+            hint: 'Итог по разделам — нажмите ИИ или введите вручную.',
+            isDictating: s._summaryIsDictating,
+            aiBusy: s._summaryNoteAiBusy,
             onToggleDictation: () async {
-              if (s._expertIsDictating) {
-                await s._stopExpertDictation();
+              if (s._summaryIsDictating) {
+                await s._stopSummaryDictation();
               } else {
-                await s._startExpertDictation();
+                await s._startSummaryDictation();
               }
             },
-            // Раньше тут был фейк-форматтер. Теперь — реальный
-            // summary через AiQueue: подтянуть истории всех
-            // per-element чатов и сгенерировать заключение по
-            // разделам.
-            onAiFormat: () => unawaited(s._generateExpertSummaryWithAi()),
+            onAiFormat: () => unawaited(s._generateSummaryNoteWithAi()),
           ),
-        ],
       ],
     ),
   );

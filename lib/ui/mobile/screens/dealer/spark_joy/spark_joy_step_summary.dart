@@ -10,16 +10,16 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
   final missingReasons = isReadOnly ? const <String>[] : s._summaryMissingReasons();
   final attentionStepIds = <String>{};
   final attentionGroupKeys = <String>{};
-  var expertNeedsAttention = false;
   for (final reason in missingReasons) {
     final stepId = s._summaryReasonStepId(reason);
     if (stepId != null) {
-      if (_SparkJoySummaryRegistry.isSummaryStep(stepId)) {
-        expertNeedsAttention = true;
-      } else if (!_SparkJoySummaryRegistry.isMediaStep(stepId)) {
+      // Раньше здесь выставлялся флаг expertNeedsAttention для жёлтой
+      // подсветки карточки «Итог специалиста». После слияния в единый
+      // «Итог осмотра» отдельной карточки нет — её missing-reasons
+      // показываются в общей gap-сводке выше.
+      if (!_SparkJoySummaryRegistry.isSummaryStep(stepId) &&
+          !_SparkJoySummaryRegistry.isMediaStep(stepId)) {
         attentionStepIds.add(stepId);
-      } else {
-        // For "Осмотр" highlight only конкретные группы по ключу.
       }
     }
     final mediaGroupKey = s._summaryReasonMediaGroupKey(reason);
@@ -43,9 +43,10 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
         attentionGroupKeys: attentionGroupKeys,
       ),
       const SizedBox(height: SparkSpace.lg),
+      // Единый блок «Итог осмотра» — заменил пару карточек «Сводка по
+      // данным осмотра» + «Итог специалиста». ИИ + надиктовка + ручной
+      // ввод в одном поле. См. _buildSparkSummaryNoteCard.
       s._summaryNoteCard(),
-      const SizedBox(height: SparkSpace.lg),
-      s._summaryExpertConclusionCard(needsAttention: expertNeedsAttention),
     ],
   );
 }

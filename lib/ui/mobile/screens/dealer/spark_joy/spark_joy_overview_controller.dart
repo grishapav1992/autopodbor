@@ -108,9 +108,7 @@ class _SparkJoyOverviewController {
         if (done) return SparkJoySectionFillState.done;
         return SparkJoySectionFillState.partial;
       case _SparkJoyStepRegistry.idSummary:
-        final hasAny =
-            s._summaryController.text.trim().isNotEmpty ||
-            s._expertController.text.trim().isNotEmpty;
+        final hasAny = s._summaryController.text.trim().isNotEmpty;
         final done = s._summaryMissingReasons().isEmpty;
         if (done) return SparkJoySectionFillState.done;
         if (hasAny) return SparkJoySectionFillState.partial;

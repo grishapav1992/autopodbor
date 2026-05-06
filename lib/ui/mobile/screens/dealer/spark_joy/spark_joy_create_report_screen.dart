@@ -161,8 +161,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final TextEditingController _legalNoteController;
   late final TextEditingController _tdNoteController;
   late final TextEditingController _summaryController;
-  late final TextEditingController _expertController;
-  bool _expertSummaryAiBusy = false;
   bool _summaryNoteAiBusy = false;
   bool _docsCommentAiBusy = false;
   bool _legalCommentAiBusy = false;
@@ -400,13 +398,13 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _legalShouldDictate(bool value) =>
       _reportController.legalShouldDictate.value = value;
 
-  bool get _expertIsDictating => _reportController.expertIsDictating.value;
-  set _expertIsDictating(bool value) =>
-      _reportController.expertIsDictating.value = value;
+  bool get _summaryIsDictating => _reportController.summaryIsDictating.value;
+  set _summaryIsDictating(bool value) =>
+      _reportController.summaryIsDictating.value = value;
 
-  bool get _expertShouldDictate => _reportController.expertShouldDictate.value;
-  set _expertShouldDictate(bool value) =>
-      _reportController.expertShouldDictate.value = value;
+  bool get _summaryShouldDictate => _reportController.summaryShouldDictate.value;
+  set _summaryShouldDictate(bool value) =>
+      _reportController.summaryShouldDictate.value = value;
 
   // ┌─ Phase 4.1 · Chunk 5: paintwork thickness ranges → controller ───────┐
   // │ Body and body-reinforcement μm ranges, 24 refs across 4 files.       │

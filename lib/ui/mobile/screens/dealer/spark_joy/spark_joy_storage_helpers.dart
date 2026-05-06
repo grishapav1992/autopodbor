@@ -1689,11 +1689,16 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   Map<String, dynamic> _buildResultStepPayload() {
-    // Без silent-fallback. Если до сюда дошли с пустыми полями —
-    // это баг в `_summaryMissingReasons`, не лечим тут заглушками.
+    // After «Сводка» + «Итог специалиста» were merged into a single
+    // «Итог осмотра» field, we still send the same text into BOTH
+    // wire keys for backwards-compat with backend consumers that may
+    // expect `resultSpecialistNote` populated (it's required in the
+    // OpenRPC schema). Once the server release stabilizes the schema
+    // around `summaryInspectionNote` only, the second key can drop.
+    final note = _summaryController.text.trim();
     return <String, dynamic>{
-      'summaryInspectionNote': _summaryController.text.trim(),
-      'resultSpecialistNote': _expertController.text.trim(),
+      'summaryInspectionNote': note,
+      'resultSpecialistNote': note,
     };
   }
 
@@ -2292,9 +2297,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'tdBrakeTags': _tdBrakeTags,
       'tdNote': _tdNoteController.text.trim(),
       'tdCommentAudioFiles': _uploadedToJson(_tdCommentAudioFiles),
+      // Merged «Итог осмотра» — single text replicated into both
+      // legacy draft keys for back-compat. See _buildResultStepPayload.
       'summaryNote': _summaryController.text.trim(),
-      'expertConclusion': _expertController.text.trim(),
-      'expertConclusionTouched': _expertController.text.trim().isNotEmpty,
+      'expertConclusion': _summaryController.text.trim(),
+      'expertConclusionTouched': _summaryController.text.trim().isNotEmpty,
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
       'inspector': _inspectorController.text.trim(),
       'companyId': _hasBusinessStatus() ? kSparkCompanyId : '',
@@ -2600,9 +2607,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'legalCommentAudioFiles': _uploadedToJson(_legalCommentAudioFiles),
       'tdCommentAudioFiles': _uploadedToJson(_tdCommentAudioFiles),
       'expertAudioFiles': _uploadedToJson(_expertAudioFiles),
+      // Same merged-field treatment as in _buildDraftPayload.
       'summaryNote': _summaryController.text.trim(),
-      'expertConclusion': _expertController.text.trim(),
-      'expertConclusionTouched': _expertController.text.trim().isNotEmpty,
+      'expertConclusion': _summaryController.text.trim(),
+      'expertConclusionTouched': _summaryController.text.trim().isNotEmpty,
       'fullInspection': summary.fullInspection,
       'businessType': _accountBusinessType ?? '',
       'verifiedInn': _accountVerifiedInn ?? '',
@@ -2745,7 +2753,6 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           _legalNoteController.text,
           _tdNoteController.text,
           _summaryController.text,
-          _expertController.text,
         ].join('\n'),
       );
       if (profanityFinalCheck.isBlock) {

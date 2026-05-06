@@ -42,7 +42,9 @@ Widget _buildSparkJoyCompletedReportView(_SparkJoyCreateReportScreenState s) {
       }).toList(growable: false),
     ),
     if (hasCleanMedia) s._summaryNoDamageMediaCard(),
-    s._summaryExpertConclusionCard(),
+    // _summaryExpertConclusionCard был удалён вместе со слиянием
+    // «Сводка» + «Итог специалиста» в единый «Итог осмотра», который
+    // уже рендерится через _summaryNoteCard ниже / выше в потоке.
   ];
 
   return Column(
