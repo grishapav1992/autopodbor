@@ -258,6 +258,10 @@ extension _SparkJoyMediaInspectionEditorMethods
           // реальный замер — передавать их в cliché было бы враньём.
           paintFrom: supportsPaint ? paintFrom : null,
           paintTo: supportsPaint ? paintTo : null,
+          // Brand/model/generation/engine/transmission — даём модели
+          // возможность учесть возраст модели + калибровать норму
+          // замеров. Cliché сам безопасно пропустит блок если null.
+          carContext: _carContextForAi(),
         );
 
         final sourceKey = SparkJoyReportController.aiSourceKey(

@@ -124,6 +124,45 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return parts.join(' · ');
   }
 
+  /// Compact `brand, model, generation, restyling, engine + transmission`
+  /// string for AI cliché. Empty → returns `null` so the cliché can
+  /// skip the «Контекст автомобиля» block entirely instead of
+  /// rendering an awkward `Контекст автомобиля: .` line.
+  String? _carContextForAi() {
+    final brand = _brandController.text.trim();
+    final model = _modelController.text.trim();
+    final generation = _generationController.text.trim();
+    final restyling = _restylingLabel.trim();
+    final frames = _carFrames.trim();
+    final volume = _engineVolumeController.text.trim();
+    final engineType = _engineTypeController.text.trim();
+    final gearbox = _gearboxTypeController.text.trim();
+    final drive = _driveTypeController.text.trim();
+
+    final core = [brand, model].where((s) => s.isNotEmpty).join(' ');
+    final genPart = generation.isEmpty ? '' : 'поколение $generation';
+    final yearPart = frames.isEmpty ? '' : frames; // e.g. «2014-2017»
+    final engineParts = <String>[
+      if (volume.isNotEmpty) volume,
+      if (engineType.isNotEmpty) engineType,
+    ].join(' ');
+    final transmissionParts = <String>[
+      if (gearbox.isNotEmpty) gearbox,
+      if (drive.isNotEmpty) drive,
+    ].join(' ');
+
+    final segments = <String>[
+      if (core.isNotEmpty) core,
+      if (genPart.isNotEmpty) genPart,
+      if (restyling.isNotEmpty) restyling,
+      if (yearPart.isNotEmpty) yearPart,
+      if (engineParts.isNotEmpty) engineParts,
+      if (transmissionParts.isNotEmpty) transmissionParts,
+    ];
+    if (segments.isEmpty) return null;
+    return segments.join(', ');
+  }
+
   String _sanitizeVin(String value) {
     final cleaned = value
         .toUpperCase()

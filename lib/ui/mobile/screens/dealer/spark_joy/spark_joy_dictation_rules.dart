@@ -270,6 +270,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
 
       final summaryCliche = AiQueueClicheBuilder.buildSummaryCliche(
         reportLabel: _reportNameController.text.trim(),
+        carContext: _carContextForAi(),
       );
       final newChatId = SparkJoyReportController.aiSourceKey(
         groupKey: '__summary',
@@ -439,6 +440,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
           'ride': _tdRideTags,
           'brake': _tdBrakeTags,
         },
+        carContext: _carContextForAi(),
       );
       final inputText = _tdNoteController.text.trim();
       final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
@@ -543,6 +545,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
 
       final cliche = AiQueueClicheBuilder.buildReportFactsCliche(
         reportLabel: _reportNameController.text.trim(),
+        carContext: _carContextForAi(),
       );
       // Fresh chatId per generation so the model gets a clean slate
       // and doesn't keep "polishing" the same answer.
