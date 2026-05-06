@@ -85,6 +85,20 @@ extension _SparkJoyMediaInspectionEditorMethods
     var speechAvailable = false;
     var dialogActive = true;
     var shouldDictate = false;
+    // Tracks whether the user actually modified anything in the
+    // editor. The seed values (note, noDamage, elementType, paint…)
+    // come from per-item or group state and are NOT considered "user
+    // input" — they're just defaults the editor renders. Without this
+    // flag, the post-fix per-item note seed (item.inspection.note='')
+    // makes the partInspection's serialized form differ from
+    // basePartInspection (which carries a non-empty group note from
+    // earlier edits), and the dismiss-without-save path
+    // (`shouldPersist = saveDraftOnClose && hasData && !unchanged`)
+    // ends up writing the group-level elementType / paint values
+    // through `_applyPartInspectionToFiles` to the target file —
+    // so a freshly-added photo would appear "with data" (green dot)
+    // even though the user just opened-and-closed the editor.
+    var editorTouched = false;
 
     // Заметки строго per-item. Новое фото открывается с пустым полем,
     // ранее отредактированное — со своей сохранённой заметкой. Раньше
@@ -96,6 +110,13 @@ extension _SparkJoyMediaInspectionEditorMethods
     final noteController = TextEditingController(
       text: item.inspection.note,
     );
+    // Mark the editor as touched on any keystroke. addListener fires for
+    // every text change, including programmatic ones from dictation /
+    // AI replace — both are forms of user-initiated content, so the
+    // flag flipping is correct in those cases too.
+    noteController.addListener(() {
+      editorTouched = true;
+    });
     var paintToolsExpanded = false;
     final speechToText = SpeechToText();
 
@@ -434,6 +455,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                         );
                                       }).toList(),
                                       onChanged: (value) {
+                                        editorTouched = true;
                                         setLocalState(() {
                                           elementType = value;
                                           selectedTags = [];
@@ -486,6 +508,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                               from: paintFrom,
                                               to: paintTo,
                                               onChanged: (values) {
+                                                editorTouched = true;
                                                 setLocalState(() {
                                                   paintFrom = values.start
                                                       .roundToDouble();
@@ -502,6 +525,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                       const SizedBox(height: SparkSpace.lg),
                                       InkWell(
                                         onTap: () {
+                                          editorTouched = true;
                                           setLocalState(() {
                                             noDamage = !noDamage;
                                             if (noDamage) {
@@ -773,6 +797,7 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                       !context.mounted) {
                                                     return;
                                                   }
+                                                  editorTouched = true;
                                                   setLocalState(() {
                                                     selectedTags = result;
                                                   });
@@ -977,17 +1002,29 @@ extension _SparkJoyMediaInspectionEditorMethods
     );
 
     // No-op-save guard: dismiss-without-changes БОЛЬШЕ не персистит
-    // черновик. Раньше открыть inspection editor и нажать «Назад»
-    // (saved=false) всё равно сохраняло partInspection с дефолтным
-    // `noDamage`, и пользователь видел badge «Есть заметка» хотя
-    // ничего не вводил. Сравниваем serialised baseline vs current —
-    // если совпадают, ничего не делаем.
+    // черновик. Сравниваем serialised baseline vs current — если
+    // совпадают, ничего не делаем.
+    //
+    // ВАЖНО: одного `partInspectionUnchanged` сравнения уже мало.
+    // После фикса note-seed (2026-05-05) noteController инициализируется
+    // из item.inspection.note, который для нового фото пустой; а
+    // basePartInspection.note несёт group-level значение из предыдущих
+    // правок. Их json-encoded формы НЕ равны → unchanged=false →
+    // dismiss-without-save всё равно проходил через persist и писал
+    // group-level elementType / paint значения в target file. Юзер
+    // видел зелёную точку «есть данные» на фотке, к которой не
+    // прикасался. Чиним добавлением `editorTouched` флага — выставляется
+    // в true любым явным взаимодействием пользователя (text change в
+    // noteController, выбор тега, toggle noDamage, выбор elementType,
+    // движение слайдера толщиномера). Если флаг false — никакого
+    // persist не делаем независимо от serialized diff.
     final partInspectionUnchanged =
         json.encode(partInspection.toJson()) ==
         json.encode(basePartInspection.toJson());
     final shouldPersist =
         saved == true ||
         (saveDraftOnClose &&
+            editorTouched &&
             _mediaPartInspectionHasData(partInspection) &&
             !partInspectionUnchanged);
     if (!shouldPersist) return false;
