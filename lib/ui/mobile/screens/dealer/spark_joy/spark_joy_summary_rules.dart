@@ -294,11 +294,25 @@ extension _SparkJoySummaryRulesMethods on _SparkJoyCreateReportScreenState {
         notInspectedLabels.add(config.title);
         continue;
       }
-      // Has coverage. If no issue tags AND has files → inspected_clean.
-      if (!_groupHasIssue(state)) {
+      // Strict «без замечаний»: only when EVERY file in the group has
+      // an explicit `noDamage=true` flag — i.e. the inspector tapped
+      // «Нет повреждений» as a deliberate confirmation. Just dropping
+      // photos into the group without entering the editor does NOT
+      // qualify as «осмотрено без замечаний» — that would overstate
+      // the inspection in the same way that omitting a group would
+      // (which we explicitly reject for «Не осмотрено»). Symmetry:
+      // we only claim what the inspector explicitly confirmed.
+      //
+      // Groups that fall between (have photos, no explicit no-damage,
+      // no tags) are silently absent from this block — they show up
+      // for the inspector in the «Итог» gap checklist instead.
+      final allFilesNoDamage = state.files.isNotEmpty &&
+          state.files.every((file) => file.inspection.noDamage);
+      if (allFilesNoDamage) {
         inspectedCleanLabels.add(config.title);
       }
-      // Else: issues — already rendered via appendIssues above.
+      // Else: either issues (already rendered via appendIssues above)
+      // or photos-without-confirmation (intentionally omitted).
     }
     if (inspectedCleanLabels.isNotEmpty) {
       hasMeaningfulBlocks = true;
