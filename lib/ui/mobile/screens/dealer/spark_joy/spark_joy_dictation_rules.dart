@@ -460,8 +460,9 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       final previousDraft = _summaryController.text.trim();
       if (previousDraft.isNotEmpty) {
         contextParts.add(
-          '=== Предыдущий черновик инспектора (учитывай его правки и стиль, '
-          'обновляй только устаревшие факты) ===\n$previousDraft',
+          '=== Предыдущий черновик инспектора (сохрани факты и правки '
+          'инспектора, но переоформи в шаблон с заголовками) ===\n'
+          '$previousDraft',
         );
       }
       if (contextParts.isEmpty) {
