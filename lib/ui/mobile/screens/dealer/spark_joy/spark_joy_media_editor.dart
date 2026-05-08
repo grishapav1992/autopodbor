@@ -106,6 +106,32 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// Возвращает ключ следующей по порядку группы из
+  /// `_SparkJoyMediaGroupRegistry.groups`, либо null если текущая —
+  /// последняя в реестре.
+  String? _nextMediaGroupKey(String currentKey) {
+    final groups = _SparkJoyMediaGroupRegistry.groups;
+    final idx = groups.indexWhere((g) => g.key == currentKey);
+    if (idx < 0 || idx >= groups.length - 1) return null;
+    return groups[idx + 1].key;
+  }
+
+  /// Прямой прыжок editor→editor по кнопке «К следующей группе».
+  /// В отличие от `_runOpenMediaGroupEditor`, сохраняет
+  /// `_mediaGroupListScrollOffset` — иначе при выходе обычным «назад»
+  /// инспектор окажется не там, где оставил список групп. Дополнительно
+  /// сбрасывает скролл нового редактора в начало и принудительно
+  /// сохраняет черновик (autosave имеет debounce 900мс — без явного
+  /// сохранения при крэше есть окно потери данных).
+  Future<void> _jumpToMediaGroup(String nextKey) async {
+    final preservedListOffset = _mediaGroupListScrollOffset;
+    await _saveDraft(showToast: false);
+    if (!mounted) return;
+    _runOpenMediaGroupEditor(nextKey);
+    _mediaGroupListScrollOffset = preservedListOffset;
+    _scrollEditorToTop();
+  }
+
   void _runOpenMediaGroupEditor(String groupKey) {
     final currentOffset = _pageScrollController.hasClients
         ? _pageScrollController.offset
@@ -705,6 +731,12 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         .where((file) => file.inspection.note.trim().isNotEmpty)
         .length;
     final issueFiles = files.where(_mediaItemHasIssue).length;
+    final nextGroupKey = _nextMediaGroupKey(groupKey);
+    final nextGroupTitle = nextGroupKey == null
+        ? null
+        : _SparkJoyMediaGroupRegistry.groups
+              .firstWhere((g) => g.key == nextGroupKey)
+              .title;
 
     return Column(
       children: [
@@ -1091,6 +1123,14 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
           const SparkHintCard(
             text: 'Добавьте фото или видео, затем нажмите «Заметка».',
             icon: Icons.info_outline_rounded,
+          ),
+        ],
+        if (nextGroupKey != null && nextGroupTitle != null) ...[
+          const SizedBox(height: SparkSpace.xl),
+          SparkPrimaryActionButton(
+            label: 'К следующей группе: $nextGroupTitle',
+            icon: Icons.arrow_forward_rounded,
+            onTap: () => unawaited(_jumpToMediaGroup(nextGroupKey)),
           ),
         ],
       ],
