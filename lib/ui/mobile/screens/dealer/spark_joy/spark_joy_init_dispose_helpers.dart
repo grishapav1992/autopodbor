@@ -5,7 +5,7 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     if (_SparkJoyStepRegistry.isSummaryStepId(
       _SparkJoyStepRegistry.idAt(_stepIndex),
     )) {
-      _ensureSummaryAutofill(force: true);
+      _ensureSummaryAutofill();
     }
     _attachAutosaveListeners();
     // Audio recording / playback инфраструктура удалена; раньше здесь

@@ -371,9 +371,12 @@ extension _SparkJoySummaryRulesMethods on _SparkJoyCreateReportScreenState {
     return lines.join('\n').trim();
   }
 
-  void _ensureSummaryAutofill({bool force = false}) {
-    final summary = _calculateSummary();
-    if (!force && _summaryController.text.trim().isNotEmpty) return;
-    _summaryController.text = _summaryTemplate(summary);
+  /// Заполняет «Итог осмотра» rule-based шаблоном ТОЛЬКО если поле
+  /// пустое. После merge «Сводка» + «Итог специалиста» в один блок
+  /// (commit b6c98a5) поле теперь хранит и AI/ручной финальный итог,
+  /// поэтому force-refresh здесь нельзя — он сотрёт работу инспектора.
+  void _ensureSummaryAutofill() {
+    if (_summaryController.text.trim().isNotEmpty) return;
+    _summaryController.text = _summaryTemplate(_calculateSummary());
   }
 }

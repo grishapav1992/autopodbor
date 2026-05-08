@@ -16,7 +16,7 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
       if (_reportFlowController.isSummaryStep(
         totalSteps: _SparkJoyStepRegistry.steps.length,
       )) {
-        _ensureSummaryAutofill(force: true);
+        _ensureSummaryAutofill();
       }
     });
     _scrollEditorToTop();
@@ -50,7 +50,7 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
       if (_reportFlowController.isSummaryStep(
         totalSteps: _SparkJoyStepRegistry.steps.length,
       )) {
-        _ensureSummaryAutofill(force: true);
+        _ensureSummaryAutofill();
       }
     });
     _scrollEditorToTop();
@@ -100,7 +100,7 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
       if (_reportFlowController.isSummaryStep(
         totalSteps: _SparkJoyStepRegistry.steps.length,
       )) {
-        _ensureSummaryAutofill(force: true);
+        _ensureSummaryAutofill();
       }
     });
     _scrollEditorToTop();
@@ -142,7 +142,7 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
           _activeMediaGroupKey = null;
           _mediaGroupSelectMode = false;
           _mediaGroupSelectedIndexes = <int>{};
-          _ensureSummaryAutofill(force: true);
+          _ensureSummaryAutofill();
         });
         _scrollEditorToTop();
         return;

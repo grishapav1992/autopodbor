@@ -2674,7 +2674,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       return;
     }
 
-    _ensureSummaryAutofill(force: true);
+    _ensureSummaryAutofill();
     final canProceed = await _flushAiQueueBeforeSubmit();
     if (!canProceed) return;
     // Online-only: after finalizing on the server we don't persist a
