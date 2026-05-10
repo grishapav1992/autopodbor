@@ -1,6 +1,38 @@
 part of 'spark_joy_create_report_screen.dart';
 
 Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
+  if (!s.widget.readOnly) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!s.mounted) return;
+      SparkJoyOnboarding.showOnce(
+        s.context,
+        flagKey: UserSimplePreferences.sparkOnbMediaStepKey,
+        titleI18nKey: 'spark.onboarding.mediaStep.title',
+        titleFallback: 'Осмотр: фото и видео',
+        bullets: const [
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.mediaStep.b1',
+            fallback:
+                'Группы делятся на обязательные и дополнительные — обязательные нужны для завершения отчёта.',
+            icon: Icons.checklist_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.mediaStep.b2',
+            fallback:
+                'К каждому файлу добавьте теги дефектов или отметку «без повреждений», если всё в порядке.',
+            icon: Icons.label_outline_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.mediaStep.b3',
+            fallback:
+                'Заметки и комментарии можно надиктовать голосом или дописать вручную.',
+            icon: Icons.mic_none_rounded,
+          ),
+        ],
+      );
+    });
+  }
+
   final requiredGroups = _SparkJoyMediaGroupRegistry.groups
       .where((config) => config.required)
       .toList();

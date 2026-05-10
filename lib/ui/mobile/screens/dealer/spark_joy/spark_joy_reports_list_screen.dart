@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -15,6 +16,7 @@ import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_i18n.dart';
 import 'spark_joy_new_report_name_screen.dart';
+import 'spark_joy_onboarding.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -57,6 +59,35 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
     _controller.load();
     widget.tabRequest?.addListener(_handleExternalTabRequest);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      SparkJoyOnboarding.showOnce(
+        context,
+        flagKey: UserSimplePreferences.sparkOnbReportsListKey,
+        titleI18nKey: 'spark.onboarding.reportsList.title',
+        titleFallback: 'Отчёты осмотров',
+        bullets: const [
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.reportsList.b1',
+            fallback:
+                'Здесь вы видите свои черновики и завершённые отчёты по всем машинам.',
+            icon: Icons.list_alt_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.reportsList.b2',
+            fallback:
+                'Чтобы создать новый отчёт — нажмите «+» и заполните VIN или госномер.',
+            icon: Icons.add_circle_outline_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.reportsList.b3',
+            fallback:
+                'Завершённый отчёт можно открыть в просмотре или поделиться им по ссылке.',
+            icon: Icons.ios_share_rounded,
+          ),
+        ],
+      );
+    });
   }
 
   @override

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_onboarding.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
 
@@ -42,6 +44,35 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!context.mounted) return;
+      SparkJoyOnboarding.showOnce(
+        context,
+        flagKey: UserSimplePreferences.sparkOnbCommentAiKey,
+        titleI18nKey: 'spark.onboarding.commentAi.title',
+        titleFallback: 'Голос и ИИ-помощник',
+        bullets: const [
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.commentAi.b1',
+            fallback:
+                'Микрофон — надиктовка комментария голосом, удобно прямо во время осмотра.',
+            icon: Icons.mic_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.commentAi.b2',
+            fallback:
+                'Кнопка «ИИ» переформулирует ваш черновик в аккуратный текст для отчёта.',
+            icon: Icons.auto_awesome_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.commentAi.b3',
+            fallback:
+                'Исходные слова всегда сохраняются — ИИ только улучшает формулировки.',
+            icon: Icons.edit_note_rounded,
+          ),
+        ],
+      );
+    });
     return SparkCard(
       padding: const EdgeInsets.fromLTRB(
         SparkSpace.xl,

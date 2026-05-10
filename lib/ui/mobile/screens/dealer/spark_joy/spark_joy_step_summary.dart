@@ -1,6 +1,38 @@
 part of 'spark_joy_create_report_screen.dart';
 
 Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
+  if (!s.widget.readOnly) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!s.mounted) return;
+      SparkJoyOnboarding.showOnce(
+        s.context,
+        flagKey: UserSimplePreferences.sparkOnbSummaryStepKey,
+        titleI18nKey: 'spark.onboarding.summaryStep.title',
+        titleFallback: 'Итог осмотра',
+        bullets: const [
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.summaryStep.b1',
+            fallback:
+                'Здесь собирается финальный вердикт и чек-лист по всем разделам отчёта.',
+            icon: Icons.fact_check_outlined,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.summaryStep.b2',
+            fallback:
+                'Проверьте автоматически собранный итог и при необходимости поправьте текст.',
+            icon: Icons.edit_outlined,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.summaryStep.b3',
+            fallback:
+                'После «Завершить» отчёт уйдёт в выгрузку и переедет в «Завершённые».',
+            icon: Icons.cloud_upload_outlined,
+          ),
+        ],
+      );
+    });
+  }
+
   final summary = s._calculateSummary();
   // Attention highlights are work-in-progress signals: they turn
   // section cards yellow and drive the "Дополнить: N" chip. A

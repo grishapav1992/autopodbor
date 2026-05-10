@@ -336,4 +336,56 @@ const Map<String, String> ruRu = {
   "password": "Пароль",
   "eu": "Европа",
   "cars": "Авто",
+
+  // Spark Joy onboarding (Specialist role) — contextual bottom sheets
+  // shown once per device on first encounter with a major section.
+  "spark.onboarding.cta": "Понятно",
+
+  "spark.onboarding.reportsList.title": "Отчёты осмотров",
+  "spark.onboarding.reportsList.b1":
+      "Здесь вы видите свои черновики и завершённые отчёты по всем машинам.",
+  "spark.onboarding.reportsList.b2":
+      "Чтобы создать новый отчёт — нажмите «+» и заполните VIN или госномер.",
+  "spark.onboarding.reportsList.b3":
+      "Завершённый отчёт можно открыть в просмотре или поделиться им по ссылке.",
+
+  "spark.onboarding.reportEditor.title": "Заполнение отчёта по шагам",
+  "spark.onboarding.reportEditor.b1":
+      "Отчёт собирается по разделам: автомобиль, параметры, документы, осмотр, тест-драйв и итог.",
+  "spark.onboarding.reportEditor.b2":
+      "Можно заполнять разделы в любом порядке — данные сохраняются автоматически.",
+  "spark.onboarding.reportEditor.b3":
+      "Чтобы выгрузить отчёт, дойдите до раздела «Итог» и нажмите «Завершить».",
+
+  "spark.onboarding.vinScanner.title": "Сканирование VIN",
+  "spark.onboarding.vinScanner.b1":
+      "Поднесите камеру к VIN-коду на кузове или ПТС — он распознается автоматически.",
+  "spark.onboarding.vinScanner.b2":
+      "Совместите рамку с VIN: подсветка и резкость фокусируются на области внутри неё.",
+  "spark.onboarding.vinScanner.b3":
+      "Если распознать не удалось — введите VIN вручную, ничего не потеряется.",
+
+  "spark.onboarding.mediaStep.title": "Осмотр: фото и видео",
+  "spark.onboarding.mediaStep.b1":
+      "Группы делятся на обязательные и дополнительные — обязательные нужны для завершения отчёта.",
+  "spark.onboarding.mediaStep.b2":
+      "К каждому файлу добавьте теги дефектов или отметку «без повреждений», если всё в порядке.",
+  "spark.onboarding.mediaStep.b3":
+      "Заметки и комментарии можно надиктовать голосом или дописать вручную.",
+
+  "spark.onboarding.commentAi.title": "Голос и ИИ-помощник",
+  "spark.onboarding.commentAi.b1":
+      "Микрофон — надиктовка комментария голосом, удобно прямо во время осмотра.",
+  "spark.onboarding.commentAi.b2":
+      "Кнопка «ИИ» переформулирует ваш черновик в аккуратный текст для отчёта.",
+  "spark.onboarding.commentAi.b3":
+      "Исходные слова всегда сохраняются — ИИ только улучшает формулировки.",
+
+  "spark.onboarding.summaryStep.title": "Итог осмотра",
+  "spark.onboarding.summaryStep.b1":
+      "Здесь собирается финальный вердикт и чек-лист по всем разделам отчёта.",
+  "spark.onboarding.summaryStep.b2":
+      "Проверьте автоматически собранный итог и при необходимости поправьте текст.",
+  "spark.onboarding.summaryStep.b3":
+      "После «Завершить» отчёт уйдёт в выгрузку и переедет в «Завершённые».",
 };

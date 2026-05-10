@@ -321,4 +321,55 @@ const Map<String, String> enUS = {
   'keyChooseLanguageDescription':
       'Choose your preferred language for the app to personalize your experience.',
   'chooseYourLocation': 'Choose Your Location',
+
+  // Spark Joy onboarding (Specialist role) — one-time contextual sheets.
+  'spark.onboarding.cta': 'Got it',
+
+  'spark.onboarding.reportsList.title': 'Inspection reports',
+  'spark.onboarding.reportsList.b1':
+      'This is the list of your drafts and completed reports for every car.',
+  'spark.onboarding.reportsList.b2':
+      'Tap "+" to start a new report — VIN or plate is enough to begin.',
+  'spark.onboarding.reportsList.b3':
+      'Open a completed report to review it or share via a link.',
+
+  'spark.onboarding.reportEditor.title': 'Filling a report step by step',
+  'spark.onboarding.reportEditor.b1':
+      'A report has sections: vehicle, params, documents, inspection, test drive and summary.',
+  'spark.onboarding.reportEditor.b2':
+      'You can fill them in any order — everything is saved automatically.',
+  'spark.onboarding.reportEditor.b3':
+      'When the summary is ready, hit "Finish" to upload the report.',
+
+  'spark.onboarding.vinScanner.title': 'VIN scanner',
+  'spark.onboarding.vinScanner.b1':
+      'Point the camera at the VIN on the body or registration — it is recognised automatically.',
+  'spark.onboarding.vinScanner.b2':
+      'Align the VIN with the on-screen frame — focus and lighting target the area inside it.',
+  'spark.onboarding.vinScanner.b3':
+      'If recognition fails, type the VIN by hand — your work is preserved.',
+
+  'spark.onboarding.mediaStep.title': 'Inspection: photos and video',
+  'spark.onboarding.mediaStep.b1':
+      'Groups are split into required and optional — the required ones must be filled to finish the report.',
+  'spark.onboarding.mediaStep.b2':
+      'Tag each file with defect markers, or mark it as "no damage" if everything is fine.',
+  'spark.onboarding.mediaStep.b3':
+      'Notes and comments can be dictated by voice or typed manually.',
+
+  'spark.onboarding.commentAi.title': 'Voice and AI helper',
+  'spark.onboarding.commentAi.b1':
+      'The microphone records dictation directly into the comment field — handy during inspection.',
+  'spark.onboarding.commentAi.b2':
+      'The "AI" button rewrites your draft into clean text for the report.',
+  'spark.onboarding.commentAi.b3':
+      'Your original words are always kept — AI only polishes the wording.',
+
+  'spark.onboarding.summaryStep.title': 'Inspection summary',
+  'spark.onboarding.summaryStep.b1':
+      'This is where the final verdict and per-section checklist come together.',
+  'spark.onboarding.summaryStep.b2':
+      'Review the auto-built summary and adjust the wording if you need to.',
+  'spark.onboarding.summaryStep.b3':
+      'After "Finish" the report uploads and moves to the "Completed" tab.',
 };

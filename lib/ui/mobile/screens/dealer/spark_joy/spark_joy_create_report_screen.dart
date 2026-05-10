@@ -15,6 +15,7 @@ import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
@@ -26,6 +27,7 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_i18n.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_onboarding.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_plate_formats.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
@@ -639,6 +641,40 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(_saveDraft(showToast: false));
+      });
+    }
+
+    // First-time stepper explainer — only in edit mode (read-only viewers
+    // do not need a tour of the editing flow).
+    if (!widget.readOnly) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        SparkJoyOnboarding.showOnce(
+          context,
+          flagKey: UserSimplePreferences.sparkOnbReportEditorKey,
+          titleI18nKey: 'spark.onboarding.reportEditor.title',
+          titleFallback: 'Заполнение отчёта по шагам',
+          bullets: const [
+            SparkJoyOnboardingBullet(
+              i18nKey: 'spark.onboarding.reportEditor.b1',
+              fallback:
+                  'Отчёт собирается по разделам: автомобиль, параметры, документы, осмотр, тест-драйв и итог.',
+              icon: Icons.view_list_rounded,
+            ),
+            SparkJoyOnboardingBullet(
+              i18nKey: 'spark.onboarding.reportEditor.b2',
+              fallback:
+                  'Можно заполнять разделы в любом порядке — данные сохраняются автоматически.',
+              icon: Icons.save_outlined,
+            ),
+            SparkJoyOnboardingBullet(
+              i18nKey: 'spark.onboarding.reportEditor.b3',
+              fallback:
+                  'Чтобы выгрузить отчёт, дойдите до раздела «Итог» и нажмите «Завершить».',
+              icon: Icons.task_alt_rounded,
+            ),
+          ],
+        );
       });
     }
   }

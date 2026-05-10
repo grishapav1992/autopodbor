@@ -76,6 +76,25 @@ class UserSimplePreferences {
   static const _notificationTokenKey = 'notificationToken';
   static const _userRoleKey = 'userRole';
 
+  // Spark Joy onboarding "shown once" flags. Each key corresponds to a
+  // contextual bottom sheet that appears at the first encounter with a
+  // major Spark Joy section for users in the Specialist (dealer) role.
+  static const sparkOnbReportsListKey = 'sparkOnb.reportsList';
+  static const sparkOnbReportEditorKey = 'sparkOnb.reportEditor';
+  static const sparkOnbVinScannerKey = 'sparkOnb.vinScanner';
+  static const sparkOnbMediaStepKey = 'sparkOnb.mediaStep';
+  static const sparkOnbCommentAiKey = 'sparkOnb.commentAi';
+  static const sparkOnbSummaryStepKey = 'sparkOnb.summaryStep';
+
+  static const List<String> sparkOnboardingKeys = <String>[
+    sparkOnbReportsListKey,
+    sparkOnbReportEditorKey,
+    sparkOnbVinScannerKey,
+    sparkOnbMediaStepKey,
+    sparkOnbCommentAiKey,
+    sparkOnbSummaryStepKey,
+  ];
+
   static Future init() async {
     pref = await SharedPreferences.getInstance();
   }
@@ -377,5 +396,20 @@ class UserSimplePreferences {
   static Future<String?> getUserRole() async {
     // ignore: await_only_futures
     return (await _prefs()).getString(_userRoleKey);
+  }
+
+  static Future<bool> isSparkOnboardingSeen(String key) async {
+    return (await _prefs()).getBool(key) ?? false;
+  }
+
+  static Future<void> setSparkOnboardingSeen(String key) async {
+    await (await _prefs()).setBool(key, true);
+  }
+
+  static Future<void> resetSparkOnboarding() async {
+    final prefs = await _prefs();
+    for (final key in sparkOnboardingKeys) {
+      await prefs.remove(key);
+    }
   }
 }
