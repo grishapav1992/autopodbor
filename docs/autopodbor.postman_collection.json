@@ -889,14 +889,12 @@
           }
         },
         "url": {
-          "raw": "https://podbor-av.ru.tuna.am/",
+          "raw": "https://77.83.92.234:8085/",
           "protocol": "https",
           "host": [
-            "podbor-av",
-            "ru",
-            "tuna",
-            "am"
+            "77.83.92.234"
           ],
+          "port": "8085",
           "path": [
             ""
           ]

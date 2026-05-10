@@ -910,8 +910,8 @@ class StorageApi {
   static Future<SpecialistReportCompletionResult> completeSpecialistReport({
     required String reportNumber,
     // Heavy endpoint: verifies checksums of every uploaded file against S3
-    // and flips `isDraft = false`. Bumped from 20 s after 90-s timeouts
-    // showed up in the field under slow tuna.am tunnels.
+    // and flips `isDraft = false`. 120 s accommodates large report bundles
+    // on slow networks; 20 s timed out in the field.
     Duration timeout = const Duration(seconds: 120),
   }) async {
     final data = await _postRpc(
