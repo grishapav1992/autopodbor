@@ -325,6 +325,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _plateCountry(PlateCountry value) =>
       _reportController.plateCountry.value = value;
 
+  bool get _plateCountryLocked => _reportController.plateCountryLocked.value;
+  set _plateCountryLocked(bool value) =>
+      _reportController.plateCountryLocked.value = value;
+
+  /// Поле было хотя бы раз потеряно фокусом — после этого валидация
+  /// формата начинает показывать ошибку. До первого blur ошибку
+  /// прячем чтобы не дёргать инспектора по мере набора. State
+  /// эфемерный (не сохраняется в черновик).
+  bool _plateBlurred = false;
+
   PlateFormat get _plateFormat => plateFormatFor(_plateCountry);
 
   bool? _docsOwnerMatch;

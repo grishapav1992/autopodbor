@@ -137,108 +137,88 @@ Widget _buildSparkJoyStepVehicle(
               weight: FontWeight.w700,
             ),
             const SizedBox(height: SparkSpace.md),
-            // Country chip-row. Tapping a flag re-runs sanitize/format
-            // for the new country — switching alphabets (e.g. RU→KZ)
-            // wipes characters that don't fit the new whitelist.
-            SizedBox(
-              height: 36,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: kPlateFormats.length,
-                separatorBuilder: (_, _) =>
-                    const SizedBox(width: SparkSpace.sm),
-                itemBuilder: (context, i) {
-                  final fmt = kPlateFormats[i];
-                  final selected = fmt.country == s._plateCountry;
-                  return InkWell(
-                    onTap: () {
-                      setStateFn(() {
-                        s._plateCountry = fmt.country;
-                        // Re-sanitize current text under new alphabet.
-                        final resanitized = s._sanitizePlate(
-                          s._plateController.text,
-                        );
-                        final reformatted = s._formatPlate(resanitized);
-                        s._plateController.value = TextEditingValue(
-                          text: reformatted,
-                          selection: TextSelection.collapsed(
-                            offset: reformatted.length,
-                          ),
-                        );
-                      });
-                      s._markDraftDirty();
-                    },
-                    borderRadius: BorderRadius.circular(SparkRadius.pill),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: SparkSpace.lg,
+            Focus(
+              onFocusChange: (hasFocus) {
+                // Помечаем blur — после первого ухода с поля включается
+                // показ ошибки валидации формата (для известных стран).
+                if (!hasFocus && !s._plateBlurred) {
+                  setStateFn(() => s._plateBlurred = true);
+                }
+              },
+              child: TextField(
+                controller: s._plateController,
+                focusNode: s._plateFocusNode,
+                // 14 = max formatted length across all formats
+                // (РФ "А 123 БВ 777" = 12 / KZ "123 ABC 02" = 10 etc).
+                maxLength: 14,
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) {
+                  FocusScope.of(s.context).requestFocus(s._adLinkFocusNode);
+                },
+                onTapOutside: (_) => s._dismissKeyboard(),
+                onChanged: (value) {
+                  // Auto-mode: permissive sanitize (Cyr+Lat+digits, до 14)
+                  // → детект страны → если матч, переключаемся на формат
+                  // и применяем его раскладку. Если не определилось —
+                  // остаёмся в `other` (без раскладки), prefix покажет
+                  // «Не определено».
+                  // Locked-mode: sanitize/format строго под выбранную
+                  // страну (RU→KZ выкидывает кириллицу и т.п.).
+                  String formatted;
+                  if (s._plateCountryLocked) {
+                    final sanitized = s._sanitizePlate(value);
+                    formatted = s._formatPlate(sanitized);
+                  } else {
+                    final permissive = sanitizePlatePermissive(value);
+                    final detected = detectPlateCountry(permissive);
+                    final nextCountry = detected ?? PlateCountry.other;
+                    if (nextCountry != s._plateCountry) {
+                      s._plateCountry = nextCountry;
+                    }
+                    if (detected != null) {
+                      final fmt = plateFormatFor(detected);
+                      final sanitized = sanitizePlate(permissive, fmt);
+                      formatted = formatPlate(sanitized, fmt);
+                    } else {
+                      formatted = permissive;
+                    }
+                  }
+                  if (formatted != value) {
+                    s._plateController.value = TextEditingValue(
+                      text: formatted,
+                      selection: TextSelection.collapsed(
+                        offset: formatted.length,
                       ),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? kSecondaryColor
-                            : kSecondaryColor.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(SparkRadius.pill),
-                        border: Border.all(
-                          color: selected
-                              ? kSecondaryColor
-                              : kBorderColor,
+                      composing: TextRange.empty,
+                    );
+                  }
+                  setStateFn(() {});
+                },
+                textCapitalization: TextCapitalization.characters,
+                autocorrect: false,
+                enableSuggestions: false,
+                textAlign: TextAlign.center,
+                decoration: s
+                    ._fieldDecoration(_plateInputHint(s))
+                    .copyWith(
+                      counterText: '',
+                      // Префикс-pill с флагом и кодом страны слева внутри
+                      // инпута. Тап → bottom sheet со списком всех стран
+                      // плюс пунктом «Авто». В auto-mode когда детектор
+                      // не определил страну — показываем «?» «Не определено».
+                      prefixIcon: _PlateCountryPrefix(
+                        flag: _plateInputFlag(s),
+                        label: _plateInputLabel(s),
+                        onTap: () => unawaited(
+                          s._showPlateCountryPicker(s.context, setStateFn),
                         ),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            fmt.flag,
-                            style: const TextStyle(fontSize: 16),
-                          ),
-                          const SizedBox(width: SparkSpace.xs),
-                          MyText(
-                            text: fmt.label,
-                            size: SparkTextSize.chip,
-                            weight: FontWeight.w700,
-                            color: selected ? kWhiteColor : kTertiaryColor,
-                          ),
-                        ],
+                      prefixIconConstraints: const BoxConstraints(
+                        minWidth: 0,
+                        minHeight: 0,
                       ),
                     ),
-                  );
-                },
               ),
-            ),
-            const SizedBox(height: SparkSpace.md),
-            TextField(
-              controller: s._plateController,
-              focusNode: s._plateFocusNode,
-              // 14 = max formatted length across all formats
-              // (РФ "А 123 БВ 777" = 12 / KZ "123 ABC 02" = 10 etc).
-              maxLength: 14,
-              textInputAction: TextInputAction.next,
-              onSubmitted: (_) {
-                FocusScope.of(s.context).requestFocus(s._adLinkFocusNode);
-              },
-              onTapOutside: (_) => s._dismissKeyboard(),
-              onChanged: (value) {
-                final sanitized = s._sanitizePlate(value);
-                final formatted = s._formatPlate(sanitized);
-                if (formatted != value) {
-                  s._plateController.value = TextEditingValue(
-                    text: formatted,
-                    selection: TextSelection.collapsed(
-                      offset: formatted.length,
-                    ),
-                    composing: TextRange.empty,
-                  );
-                }
-                setStateFn(() {});
-              },
-              textCapitalization: TextCapitalization.characters,
-              autocorrect: false,
-              enableSuggestions: false,
-              textAlign: TextAlign.center,
-              decoration: s
-                  ._fieldDecoration(s._plateFormat.placeholder)
-                  .copyWith(counterText: ''),
             ),
             if (plateError != null) ...[
               const SizedBox(height: SparkSpace.sm),
@@ -341,4 +321,265 @@ Widget _buildSparkJoyStepVehicle(
       ),
     ],
   );
+}
+
+// ── Plate prefix display helpers ───────────────────────────────────────
+//
+// Описывают что именно показать в prefix-pill инпута госномера:
+// - locked → флаг и label выбранной страны
+// - auto + детектор сработал → флаг и label определённой страны
+// - auto + детектор НЕ сработал (PlateCountry.other) → «?» «Не определено»
+
+String _plateInputFlag(_SparkJoyCreateReportScreenState s) {
+  if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
+    return '❓';
+  }
+  return s._plateFormat.flag;
+}
+
+String _plateInputLabel(_SparkJoyCreateReportScreenState s) {
+  if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
+    return 'Не определено';
+  }
+  return s._plateFormat.label;
+}
+
+String _plateInputHint(_SparkJoyCreateReportScreenState s) {
+  if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
+    return 'Введите номер';
+  }
+  return s._plateFormat.placeholder;
+}
+
+/// Префикс-pill внутри инпута госномера: флаг + короткий код страны +
+/// chevron вниз. Тап открывает picker. Сжатый размер благодаря
+/// `prefixIconConstraints: minWidth=0, minHeight=0` на InputDecoration.
+class _PlateCountryPrefix extends StatelessWidget {
+  const _PlateCountryPrefix({
+    required this.flag,
+    required this.label,
+    required this.onTap,
+  });
+
+  final String flag;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: SparkSpace.sm, right: SparkSpace.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.md,
+            vertical: SparkSpace.xs,
+          ),
+          decoration: BoxDecoration(
+            color: kSecondaryColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(flag, style: const TextStyle(fontSize: 16)),
+              const SizedBox(width: SparkSpace.xs),
+              MyText(
+                text: label,
+                size: SparkTextSize.chip,
+                weight: FontWeight.w700,
+                color: kTertiaryColor,
+              ),
+              const SizedBox(width: SparkSpace.xxs),
+              const Icon(
+                Icons.expand_more_rounded,
+                size: 16,
+                color: kTertiaryColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Результат выбора в picker-bottom-sheet:
+/// - `auto: true` + `country: null` → инспектор выбрал «Автоматически»
+///   (lock снимается, детектор снова рулит).
+/// - `auto: false` + `country: SOME` → конкретная страна (lock включается).
+typedef _PlatePicked = ({bool auto, PlateCountry? country});
+
+/// Modal bottom sheet со списком стран + пункт «Автоматически» сверху.
+/// Текущий выбор подсвечивается галочкой (либо «Авто» если lock=false).
+class _PlateCountryPickerSheet extends StatelessWidget {
+  const _PlateCountryPickerSheet({required this.current, required this.locked});
+
+  /// Текущая страна (для подсветки в locked-mode).
+  final PlateCountry current;
+
+  /// Если false → подсвечен пункт «Автоматически», иначе — [current].
+  final bool locked;
+
+  @override
+  Widget build(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.all(SparkSpace.md),
+        // Высота — не больше 75% экрана, чтобы инспектор всегда видел
+        // и заголовок, и часть списка. Ниже список скроллится.
+        constraints: BoxConstraints(maxHeight: mq.size.height * 0.75),
+        decoration: BoxDecoration(
+          color: kWhiteColor,
+          borderRadius: BorderRadius.circular(SparkRadius.xl),
+        ),
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.lg,
+          vertical: SparkSpace.lg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: kBorderColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: SparkSpace.md),
+            const MyText(
+              text: 'Страна регистрации',
+              size: SparkTextSize.title,
+              weight: FontWeight.w700,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Авто-режим первым пунктом — детектор пытается
+                    // определить страну по номеру; работает для
+                    // РФ / Беларусь / Украина / Казахстан / Армения /
+                    // Киргизия / Узбекистан / Абхазия. Если не
+                    // определилось — prefix покажет «Не определено»,
+                    // инспектор может вручную выбрать страну ниже.
+                    InkWell(
+                      onTap: () => Navigator.of(
+                        context,
+                      ).pop<_PlatePicked>((auto: true, country: null)),
+                      borderRadius: BorderRadius.circular(SparkRadius.md),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: SparkSpace.sm,
+                          vertical: SparkSpace.md,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.auto_awesome_rounded,
+                              size: 22,
+                              color: kSecondaryColor,
+                            ),
+                            const SizedBox(width: SparkSpace.md),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  MyText(
+                                    text: 'Автоматически',
+                                    size: SparkTextSize.body,
+                                    weight: FontWeight.w600,
+                                    color: kTertiaryColor,
+                                  ),
+                                  SizedBox(height: 2),
+                                  MyText(
+                                    text: 'Определить страну по номеру',
+                                    size: SparkTextSize.caption,
+                                    color: kBorderColor,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (!locked)
+                              const Icon(
+                                Icons.check_rounded,
+                                color: kSecondaryColor,
+                                size: 22,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Divider(color: kBorderColor, height: SparkSpace.md),
+                    ...kPlateFormats.map((fmt) {
+                      final selected = locked && fmt.country == current;
+                      return InkWell(
+                        onTap: () => Navigator.of(context).pop<_PlatePicked>((
+                          auto: false,
+                          country: fmt.country,
+                        )),
+                        borderRadius: BorderRadius.circular(SparkRadius.md),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: SparkSpace.sm,
+                            vertical: SparkSpace.md,
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                fmt.flag,
+                                style: const TextStyle(fontSize: 22),
+                              ),
+                              const SizedBox(width: SparkSpace.md),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    MyText(
+                                      text: fmt.name,
+                                      size: SparkTextSize.body,
+                                      weight: FontWeight.w600,
+                                      color: kTertiaryColor,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    MyText(
+                                      text: fmt.placeholder,
+                                      size: SparkTextSize.caption,
+                                      color: kBorderColor,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (selected)
+                                const Icon(
+                                  Icons.check_rounded,
+                                  color: kSecondaryColor,
+                                  size: 22,
+                                ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

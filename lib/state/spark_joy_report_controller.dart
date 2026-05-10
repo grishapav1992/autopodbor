@@ -84,10 +84,17 @@ class SparkJoyReportController extends GetxController {
   final Rxn<bool> mileageMismatch = Rxn<bool>();
 
   /// Country whose plate-format rules apply to the госномер field.
-  /// Defaults to RF; persisted in the draft as a wire-string under
-  /// `gosNumberCountry`. See `spark_joy_plate_formats.dart` for the
-  /// full RF + 5 СНГ catalog.
+  /// Defaults to RF; persisted в черновике как wire-string под ключом
+  /// `gosNumberCountry`. См. `spark_joy_plate_formats.dart` для полного
+  /// каталога (РФ + СНГ + АБХ + Ю.Осетия + «Другая»).
   final Rx<PlateCountry> plateCountry = Rx<PlateCountry>(PlateCountry.ru);
+
+  /// Был ли выбор страны для plate'а зафиксирован вручную через picker.
+  /// false → детектор управляет [plateCountry] на каждый keystroke.
+  /// true → инспектор явно выбрал страну, авто-детект отключён до
+  /// возврата в режим «Авто». Persisted в черновике как
+  /// `gosNumberCountryLocked`.
+  final RxBool plateCountryLocked = false.obs;
 
   // ──────────────────────────────────────────────────────────────────
   // Chunk 5 — Paintwork thickness ranges

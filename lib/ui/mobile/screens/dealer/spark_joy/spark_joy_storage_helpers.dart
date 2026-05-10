@@ -1758,7 +1758,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           : _sanitizePlate(_plateController.text.trim()),
       // Country of the gosNumber — needed downstream so the server
       // can interpret a non-РФ plate without re-running heuristics.
-      'gosNumberCountry': _plateCountry.name,
+      // Для picker-only стран (skipValidation=true: ЕС/Азия/часть
+      // постсоветского) отправляем "other" вместо точного кода —
+      // в схеме `gosNumberCountry` нет (см. PrepareSpecialistReport.md),
+      // и мы не хотим засорять wire-format новыми ISO-кодами на случай
+      // если бэк начнёт строго валидировать. В draft (вторая запись
+      // ниже) сохраняем точную страну для локального восстановления.
+      'gosNumberCountry': _plateFormat.skipValidation
+          ? PlateCountry.other.name
+          : _plateCountry.name,
       'uriListing': _adLinkController.text.trim().isEmpty
           ? null
           : _adLinkController.text.trim(),
@@ -2249,6 +2257,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),
       'gosNumberCountry': _plateCountry.name,
+      'gosNumberCountryLocked': _plateCountryLocked,
       'adLink': _adLinkController.text.trim(),
       'mileage': _mileageController.text.trim(),
       'mileageMismatch': _mileageMismatch,
@@ -2588,6 +2597,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'vin': _vinController.text.trim(),
       'plate': _sanitizePlate(_plateController.text.trim()),
       'gosNumberCountry': _plateCountry.name,
+      'gosNumberCountryLocked': _plateCountryLocked,
       'mileage': _mileageController.text.trim(),
       'owners': _ownersCountController.text.trim(),
       'docsMismatchComment': _docsMismatchCommentController.text.trim(),
