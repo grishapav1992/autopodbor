@@ -8,7 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:flutter_application_1/data/api/notification_api_models.dart';
 
 /// Singleton long-lived WebSocket client for the realtime notification
-/// channel at `wss://77.83.92.234:2350/auth`.
+/// channel at `wss://carreports.ru:2350/auth`.
 ///
 /// Lifecycle:
 ///   1. App boot: bootstrap calls [start] with the persisted
@@ -35,7 +35,7 @@ class NotificationWebsocketService {
   static final NotificationWebsocketService instance =
       NotificationWebsocketService._internal();
 
-  static const String _wsBase = 'wss://77.83.92.234:2350/auth';
+  static const String _wsBase = 'wss://carreports.ru:2350/auth';
   static const Duration _initialBackoff = Duration(seconds: 1);
   static const Duration _maxBackoff = Duration(seconds: 30);
 

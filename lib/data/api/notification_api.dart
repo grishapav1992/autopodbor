@@ -11,7 +11,7 @@ import 'storage_api.dart' show StorageApi, SessionExpiredException;
 export 'notification_api_models.dart';
 
 /// Client for the `Notification.*` RPC family on the storage backend
-/// (`https://77.83.92.234:8085`).
+/// (`https://carreports.ru:8085`).
 ///
 /// Same JSON-RPC 2.0 transport as [StorageApi] (POST,
 /// `application/json`, `{jsonrpc, id, method, params}`). Auth Bearer
@@ -27,7 +27,7 @@ export 'notification_api_models.dart';
 class NotificationApi {
   NotificationApi._();
 
-  static const String _endpoint = 'https://77.83.92.234:8085';
+  static const String _endpoint = 'https://carreports.ru:8085';
   static int _rpcSeq = 0;
 
   // ── Public surface ────────────────────────────────────────────────────

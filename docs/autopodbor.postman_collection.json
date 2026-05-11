@@ -889,10 +889,10 @@
           }
         },
         "url": {
-          "raw": "https://77.83.92.234:8085/",
+          "raw": "https://carreports.ru:8085/",
           "protocol": "https",
           "host": [
-            "77.83.92.234"
+            "carreports.ru"
           ],
           "port": "8085",
           "path": [

@@ -11,7 +11,7 @@ import 'storage_api.dart' show StorageApi, SessionExpiredException;
 
 export 'ai_queue_api_models.dart';
 
-/// Client for the AiQueue RPC API (`https://77.83.92.234:8092`).
+/// Client for the AiQueue RPC API (`https://carreports.ru:8092`).
 ///
 /// Transport differs from [StorageApi] — see the contrast table:
 ///
@@ -34,7 +34,7 @@ export 'ai_queue_api_models.dart';
 class AiQueueApi {
   AiQueueApi._();
 
-  static const String _endpoint = 'https://77.83.92.234:8092';
+  static const String _endpoint = 'https://carreports.ru:8092';
   static int _rpcSeq = 0;
 
   // ── Lazy model resolution ─────────────────────────────────────────────

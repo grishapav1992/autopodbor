@@ -1,5 +1,5 @@
 /// Domain models for the `Notification.*` RPC family on the storage
-/// backend (`https://77.83.92.234:8085`).
+/// backend (`https://carreports.ru:8085`).
 ///
 /// Mirrors the OpenRPC schema returned by `Doc({getMethodByName: ...})`:
 ///   • [NotificationType] — wire enum: task, invitation, reminder, system.
