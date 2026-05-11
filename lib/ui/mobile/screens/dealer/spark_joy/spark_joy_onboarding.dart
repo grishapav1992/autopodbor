@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/design_tokens.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
-import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:get/get.dart';
 
 import 'spark_joy_i18n.dart';
 
@@ -38,12 +36,11 @@ class SparkJoyOnboarding {
     if (_shownThisSession.contains(flagKey)) return;
     _shownThisSession.add(flagKey);
 
-    if (!Get.isRegistered<UserController>()) {
-      _shownThisSession.remove(flagKey);
-      return;
-    }
-    final userController = Get.find<UserController>();
-    if (userController.role != UserRole.dealer) {
+    // Gate by Spark Joy role (specialist / company) stored in prefs.
+    // UserController.role is a different (unused) enum in this codebase —
+    // the auth flow only ever writes the role string here.
+    final role = await UserSimplePreferences.getUserRole();
+    if (role != 'specialist' && role != 'company') {
       _shownThisSession.remove(flagKey);
       return;
     }
