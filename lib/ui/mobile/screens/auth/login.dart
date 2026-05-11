@@ -15,6 +15,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -38,6 +39,7 @@ class _LoginState extends State<Login> {
   String _statusText = '';
   bool _isAuthLoading = false;
   bool _isVerifyLoading = false;
+  bool _pdnConsentAccepted = false;
   int _opId = 0;
 
   @override
@@ -81,6 +83,10 @@ class _LoginState extends State<Login> {
 
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
+    if (!_pdnConsentAccepted) {
+      _showError('Подтвердите согласие на обработку персональных данных.');
+      return;
+    }
     final phone = _normalizePhone(_phoneController.text.trim());
     final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
     if (digitsLen < 11) {
@@ -192,6 +198,10 @@ class _LoginState extends State<Login> {
 
   Future<void> _verifyOnceManually() async {
     if (_isAuthLoading || _isVerifyLoading) return;
+    if (!_pdnConsentAccepted) {
+      _showError('Подтвердите согласие на обработку персональных данных.');
+      return;
+    }
     final phone = _normalizePhone(_phoneController.text.trim());
     final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
     if (digitsLen < 11) {
@@ -323,6 +333,12 @@ class _LoginState extends State<Login> {
     await _techSignIn();
   }
 
+  void _openPersonalDataConsent() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+  }
+
   Future<void> _proceedAfterCheck() async {
     final sparkRole = await SparkJoyStorage.currentRole();
     await SparkJoyStorage.login(sparkRole);
@@ -355,6 +371,13 @@ class _LoginState extends State<Login> {
                 'Введите номер телефона. Затем позвоните на выданный номер для автоматической проверки.',
           ),
           PhoneField(controller: _phoneController),
+          _PersonalDataConsentCheckbox(
+            value: _pdnConsentAccepted,
+            onChanged: (value) {
+              setState(() => _pdnConsentAccepted = value ?? false);
+            },
+            onOpenConsent: _openPersonalDataConsent,
+          ),
           if (_callPhone.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
@@ -444,7 +467,9 @@ class _LoginState extends State<Login> {
             MyButton(
               onTap: _startAuth,
               buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
-              bgColor: _isAuthLoading ? kGreyColor : kSecondaryColor,
+              bgColor: _isAuthLoading || !_pdnConsentAccepted
+                  ? kGreyColor
+                  : kSecondaryColor,
             )
           else
             Padding(
@@ -483,6 +508,95 @@ class _LoginState extends State<Login> {
               ],
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _PersonalDataConsentCheckbox extends StatelessWidget {
+  const _PersonalDataConsentCheckbox({
+    required this.value,
+    required this.onChanged,
+    required this.onOpenConsent,
+  });
+
+  final bool value;
+  final ValueChanged<bool?> onChanged;
+  final VoidCallback onOpenConsent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: InkWell(
+        onTap: () => onChanged(!value),
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: kWhiteColor,
+            border: Border.all(color: kBorderColor),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 36,
+                height: 36,
+                child: Checkbox(
+                  value: value,
+                  onChanged: onChanged,
+                  activeColor: kSecondaryColor,
+                  side: const BorderSide(color: kBorderColor),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(
+                        color: kGreyColor,
+                        fontSize: 12,
+                        height: 1.35,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      children: [
+                        const TextSpan(
+                          text:
+                              'Я согласен на обработку персональных данных в соответствии с ',
+                        ),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: GestureDetector(
+                            onTap: onOpenConsent,
+                            child: const Text(
+                              'Согласием на обработку персональных данных',
+                              style: TextStyle(
+                                color: kSecondaryColor,
+                                fontSize: 12,
+                                height: 1.35,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const TextSpan(
+                          text: ' и Политикой обработки персональных данных.',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

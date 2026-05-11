@@ -1,113 +1,176 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 
 class PrivacyPolicy extends StatelessWidget {
   const PrivacyPolicy({super.key});
 
+  static const _operatorName = '[Индивидуальный предприниматель ФИО]';
+  static const _ogrnip = '[ОГРНИП]';
+  static const _inn = '[ИНН]';
+  static const _operatorAddress = '[АДРЕС]';
+  static const _privacyEmail = '[EMAIL]';
+  static const _policyUrl = '[ССЫЛКА НА ПОЛИТИКУ]';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: "privacyPolicy".tr),
+      appBar: simpleAppBar(title: 'Персональные данные'),
       body: ListView(
         shrinkWrap: true,
         padding: AppSizes.listPaddingWithBottomBar(),
-        physics: BouncingScrollPhysics(),
-        children: [
-          MyText(
-            text: "introduction".tr,
-            size: 16,
-            weight: FontWeight.w600,
-            paddingBottom: 8,
+        physics: const BouncingScrollPhysics(),
+        children: const [
+          _PolicyTitle('Согласие на обработку персональных данных'),
+          _PolicyParagraph(
+            'Настоящим я, пользователь сервиса [НАЗВАНИЕ СЕРВИСА], свободно, своей волей и в своём интересе даю согласие на обработку моих персональных данных следующему оператору:',
           ),
-          MyText(
-            text:
-                "loremIpsumDolorSitAmetConsecteturAdipiscingElitSedDoEiusmodTemporIncididuntUtLaboreEtDoloreMagnaAliq"
-                    .tr,
-            size: 12,
-            weight: FontWeight.w500,
-            color: kGreyColor,
-            lineHeight: 1.5,
-            paddingBottom: 14,
+          _PolicyParagraph(
+            '$_operatorName\n'
+            'ОГРНИП: $_ogrnip\n'
+            'ИНН: $_inn\n'
+            'Адрес: $_operatorAddress\n'
+            'Email для обращений по вопросам персональных данных: $_privacyEmail',
           ),
-          ...List.generate(3, (index) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MyText(
-                  paddingTop: 3,
-                  text: "".tr,
-                  size: 12,
-                  weight: FontWeight.w500,
-                  color: kGreyColor,
-                  lineHeight: 1.5,
-                ),
-                Expanded(
-                  child: MyText(
-                    paddingLeft: 10,
-                    paddingBottom: 8,
-                    text:
-                        "loremIpsumDolorSitAmetConsecteturAdipiscingElitSedDoEiusmodTemporIncididunt"
-                            .tr,
-                    size: 12,
-                    weight: FontWeight.w500,
-                    color: kGreyColor,
-                    lineHeight: 1.5,
-                  ),
-                ),
-              ],
-            );
-          }),
-          MyText(
-            paddingTop: 10,
-            text: "informationWeCollect".tr,
-            size: 16,
-            weight: FontWeight.w600,
-            paddingBottom: 8,
+          _PolicySection(
+            title:
+                '1. Персональные данные, на обработку которых даётся согласие',
+            paragraphs: [
+              'Оператор вправе обрабатывать следующие персональные данные:',
+              '1.1. номер телефона;',
+              '1.2. имя, если оно предоставлено пользователем;',
+              '1.3. город или населённый пункт, если он предоставлен пользователем;',
+              '1.4. сведения, указанные пользователем в заявке или сообщении, если такие сведения относятся к пользователю или позволяют определить пользователя;',
+              '1.5. технические данные, автоматически передаваемые при использовании сервиса: IP-адрес, сведения о браузере, устройстве, операционной системе, дата и время использования сервиса, cookie-файлы и иные аналогичные технические данные.',
+            ],
           ),
-          MyText(
-            text:
-                "loremIpsumDolorSitAmetConsecteturAdipiscingElitSedDoEiusmodTemporIncididuntUtLaboreEtDoloreMagnaAliq"
-                    .tr,
-            size: 12,
-            weight: FontWeight.w500,
-            color: kGreyColor,
-            lineHeight: 1.5,
-            paddingBottom: 14,
+          _PolicySection(
+            title: '2. Цели обработки персональных данных',
+            paragraphs: [
+              'Персональные данные обрабатываются в следующих целях:',
+              '2.1. приём и обработка заявок пользователя;',
+              '2.2. связь с пользователем по оставленной заявке, включая звонки, сообщения, уведомления и ответы на обращения;',
+              '2.3. предоставление доступа к функциям сервиса;',
+              '2.4. идентификация пользователя в сервисе;',
+              '2.5. исполнение пользовательского соглашения, оферты или иного договора с пользователем;',
+              '2.6. обеспечение безопасности сервиса, предотвращение злоупотреблений и технических сбоев;',
+              '2.7. исполнение требований законодательства Российской Федерации.',
+              'Настоящее согласие не является согласием на получение рекламных рассылок. Согласие на рекламные и маркетинговые сообщения оформляется отдельно, если такие сообщения направляются пользователю.',
+            ],
           ),
-          ...List.generate(1, (index) {
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                MyText(
-                  paddingTop: 3,
-                  text: "".tr,
-                  size: 12,
-                  weight: FontWeight.w500,
-                  color: kGreyColor,
-                  lineHeight: 1.5,
-                ),
-                Expanded(
-                  child: MyText(
-                    paddingLeft: 10,
-                    paddingBottom: 8,
-                    text:
-                        "loremIpsumDolorSitAmetConsecteturAdipiscingElitSedDoEiusmodTemporIncididunt"
-                            .tr,
-                    size: 12,
-                    weight: FontWeight.w500,
-                    color: kGreyColor,
-                    lineHeight: 1.5,
-                  ),
-                ),
-              ],
-            );
-          }),
+          _PolicySection(
+            title: '3. Действия с персональными данными',
+            paragraphs: [
+              'Оператор вправе совершать с персональными данными следующие действия: сбор, запись, систематизацию, накопление, хранение, уточнение, обновление, изменение, извлечение, использование, передачу в случаях, предусмотренных настоящим согласием и Политикой обработки персональных данных, обезличивание, блокирование, удаление и уничтожение.',
+              'Обработка персональных данных может осуществляться как с использованием средств автоматизации, так и без использования таких средств.',
+            ],
+          ),
+          _PolicySection(
+            title: '4. Передача персональных данных третьим лицам',
+            paragraphs: [
+              'Оператор вправе поручать обработку персональных данных третьим лицам, если это необходимо для работы сервиса, обработки заявок, связи с пользователем, хостинга, хранения данных, технической поддержки, телефонии, отправки сообщений и обеспечения безопасности сервиса.',
+              'Такие лица обязаны соблюдать конфиденциальность и обеспечивать безопасность персональных данных.',
+              'Оператор не передаёт персональные данные третьим лицам для самостоятельного использования в рекламных целях без отдельного согласия пользователя, если такое согласие требуется по закону.',
+            ],
+          ),
+          _PolicySection(
+            title: '5. Хранение персональных данных',
+            paragraphs: [
+              'Персональные данные граждан Российской Федерации обрабатываются с использованием баз данных, находящихся на территории Российской Федерации, в случаях и порядке, предусмотренных Федеральным законом № 152-ФЗ «О персональных данных».',
+              'Персональные данные хранятся до достижения целей обработки, до отзыва согласия пользователем либо до истечения сроков хранения, предусмотренных законодательством Российской Федерации.',
+            ],
+          ),
+          _PolicySection(
+            title: '6. Отзыв согласия',
+            paragraphs: [
+              'Пользователь вправе в любое время отозвать настоящее согласие, направив оператору заявление на email: $_privacyEmail.',
+              'Заявление об отзыве согласия должно позволять идентифицировать пользователя и может содержать номер телефона, указанный при использовании сервиса.',
+              'После получения отзыва оператор прекращает обработку персональных данных и уничтожает их, если сохранение персональных данных больше не требуется для целей, предусмотренных законодательством Российской Федерации, исполнения договора, защиты прав оператора или рассмотрения возможных требований и споров.',
+            ],
+          ),
+          _PolicySection(
+            title: '7. Последствия отказа от согласия',
+            paragraphs: [
+              'В случае отказа от предоставления персональных данных или отзыва настоящего согласия оператор может быть не в состоянии принять заявку пользователя, связаться с пользователем, предоставить доступ к отдельным функциям сервиса или исполнить договор с пользователем.',
+            ],
+          ),
+          _PolicySection(
+            title: '8. Срок действия согласия',
+            paragraphs: [
+              'Настоящее согласие действует с момента его предоставления пользователем и до момента его отзыва либо до прекращения обработки персональных данных оператором.',
+              'Пользователь подтверждает, что ознакомлен с Политикой обработки персональных данных, размещённой по адресу: $_policyUrl.',
+            ],
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _PolicyTitle extends StatelessWidget {
+  const _PolicyTitle(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return MyText(
+      text: text,
+      size: 20,
+      weight: FontWeight.w800,
+      color: kTertiaryColor,
+      lineHeight: 1.2,
+      paddingBottom: 16,
+    );
+  }
+}
+
+class _PolicySection extends StatelessWidget {
+  const _PolicySection({required this.title, required this.paragraphs});
+
+  final String title;
+  final List<String> paragraphs;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MyText(
+            text: title,
+            size: 15,
+            weight: FontWeight.w700,
+            color: kTertiaryColor,
+            lineHeight: 1.3,
+            paddingBottom: 8,
+          ),
+          for (final paragraph in paragraphs)
+            _PolicyParagraph(paragraph, paddingBottom: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _PolicyParagraph extends StatelessWidget {
+  const _PolicyParagraph(this.text, {this.paddingBottom = 12});
+
+  final String text;
+  final double paddingBottom;
+
+  @override
+  Widget build(BuildContext context) {
+    return MyText(
+      text: text,
+      size: 13,
+      weight: FontWeight.w500,
+      color: kGreyColor,
+      lineHeight: 1.45,
+      paddingBottom: paddingBottom,
     );
   }
 }
