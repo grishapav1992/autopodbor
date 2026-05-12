@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart';
 import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
@@ -46,19 +49,33 @@ class _SparkJoySpecialistProfileScreenState
 
   final _profileFormKey = GlobalKey<FormState>();
   final _innController = TextEditingController();
-  final _nameController = TextEditingController();
+  // ФИО раздельно (server schema: firstName/lastName/middleName).
+  // Legacy single `name` мигрируется в _applyProfileToControllers.
+  final _lastNameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _middleNameController = TextEditingController();
   final _cityController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _experienceController = TextEditingController();
   // Free-form «описание услуг». Chip-suggestions below the textarea
   // just append their label into this controller — the textarea is
-  // the single source of truth.
+  // the single source of truth. Маппится в server `description`.
   final _specializationController = TextEditingController();
+  // Название компании. Парная companyInn (см. _verifiedInn) — пара
+  // имя+ИНН отправляется на сервер атомарно (server требует оба).
+  final _companyNameController = TextEditingController();
+
+  // LLM-guard для description — проверяет на «контакты в обход
+  // платформы» перед push'ом на сервер.
+  final _llmGuard = LocalLlmProfileGuardApi();
 
   bool _isVerifying = false;
   bool _isSavingProfile = false;
   bool _profileDirty = false;
+  // Server-side флаг модерации компании (поле `isVerifyCompany` из
+  // GetProfile). null до первой синхронизации; true/false после.
+  bool? _isVerifyCompany;
 
   // View-by-default for "Информация". The profile opens as a read-only
   // summary (SparkInfoRow list + non-interactive specialization chips);
@@ -111,12 +128,15 @@ class _SparkJoySpecialistProfileScreenState
   @override
   void dispose() {
     _innController.dispose();
-    _nameController.dispose();
+    _lastNameController.dispose();
+    _firstNameController.dispose();
+    _middleNameController.dispose();
     _cityController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
     _specializationController.dispose();
     _experienceController.dispose();
+    _companyNameController.dispose();
     super.dispose();
   }
 
@@ -137,12 +157,46 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   void _applyProfileToControllers(Map<String, dynamic> profile) {
-    _nameController.text = sjRead(profile, 'name');
+    // Сначала пробуем структурированные поля; если их нет — мигрируем
+    // legacy single `name` (Фамилия Имя Отчество, разделённые пробелами).
+    final structuredFirst = sjRead(profile, 'firstName').trim();
+    final structuredLast = sjRead(profile, 'lastName').trim();
+    final structuredMiddle = sjRead(profile, 'middleName').trim();
+    if (structuredFirst.isNotEmpty ||
+        structuredLast.isNotEmpty ||
+        structuredMiddle.isNotEmpty) {
+      _firstNameController.text = structuredFirst;
+      _lastNameController.text = structuredLast;
+      _middleNameController.text = structuredMiddle;
+    } else {
+      final parts = sjRead(profile, 'name')
+          .trim()
+          .split(RegExp(r'\s+'))
+          .where((s) => s.isNotEmpty)
+          .toList();
+      _lastNameController.text = parts.isNotEmpty ? parts[0] : '';
+      _firstNameController.text = parts.length > 1 ? parts[1] : '';
+      _middleNameController.text = parts.length > 2
+          ? parts.sublist(2).join(' ')
+          : '';
+    }
     _cityController.text = sjRead(profile, 'city');
     _phoneController.text = sjRead(profile, 'phone');
     _emailController.text = sjRead(profile, 'email');
     _experienceController.text = sjRead(profile, 'experience');
     _specializationController.text = _extractSpecializationText(profile);
+    _companyNameController.text = sjRead(profile, 'companyName');
+  }
+
+  /// Собирает ФИО обратно в одну строку «Фамилия Имя Отчество» для
+  /// legacy-полей которые ещё ожидают `name` (карточки, summary и т.п.).
+  String _composeFullName() {
+    final parts = <String>[
+      _lastNameController.text.trim(),
+      _firstNameController.text.trim(),
+      _middleNameController.text.trim(),
+    ].where((p) => p.isNotEmpty);
+    return parts.join(' ');
   }
 
   /// Reads the profile's specialization as a plain-text description.
@@ -196,6 +250,118 @@ class _SparkJoySpecialistProfileScreenState
       _specialistProfile = profile;
       _profileDirty = false;
     });
+    // Параллельно пытаемся подтянуть данные с сервера. На ошибку
+    // (offline / 401) тихо откатываемся к локальным — никакого
+    // блокирующего UI.
+    unawaited(_fetchServerProfile());
+  }
+
+  /// Тянет профиль с сервера и перезаписывает контроллеры —
+  /// server-данные приоритетнее локальных. Если поле инспектор уже
+  /// редактирует (_profileDirty), НЕ затираем — иначе потеряются
+  /// несохранённые правки.
+  Future<void> _fetchServerProfile() async {
+    try {
+      final result = await storage_api.StorageApi.getProfile();
+      if (!mounted) return;
+      if (_profileDirty) {
+        // Инспектор уже что-то правит — обновляем только метаданные
+        // (флаг модерации), сами поля не трогаем.
+        setState(() {
+          _isVerifyCompany = result['isVerifyCompany'] == true;
+        });
+        return;
+      }
+      // Маппим server fields в текущий profile-map поверх локальных,
+      // потом переприменяем через _applyProfileToControllers — это
+      // переиспользует мигратор legacy `name` если структурированных
+      // полей нет.
+      final merged = <String, dynamic>{
+        ...(_specialistProfile ?? const <String, dynamic>{}),
+        if (result['firstName'] != null) 'firstName': result['firstName'],
+        if (result['lastName'] != null) 'lastName': result['lastName'],
+        if (result['middleName'] != null) 'middleName': result['middleName'],
+        if (result['email'] != null) 'email': result['email'],
+        if (result['phone'] != null) 'phone': result['phone'],
+        if (result['description'] != null)
+          'specialization': result['description'],
+        // Server отдаёт companyInn как int — приводим к строке для
+        // унификации с _verifiedInn (тоже String).
+        if (result['companyName'] != null)
+          'companyName': result['companyName'].toString(),
+      };
+      // city пока не в GetProfile response, но возможно появится —
+      // на всякий случай маппим.
+      if (result['city'] != null) merged['city'] = result['city'];
+      _applyProfileToControllers(merged);
+      final serverInn = result['companyInn'];
+      setState(() {
+        _specialistProfile = merged;
+        _isVerifyCompany = result['isVerifyCompany'] == true;
+        if (serverInn != null) {
+          final innStr = serverInn.toString();
+          _verifiedInn = innStr;
+          _innController.text = innStr;
+        }
+      });
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (e) {
+      // Offline / network / parsing — silently fall back to local.
+      if (kDebugMode) {
+        debugPrint('[profile] GetProfile failed: $e');
+      }
+    }
+  }
+
+  /// Fire-and-forget push изменений профиля на сервер. Локально уже
+  /// сохранено к этому моменту — на ошибку показываем тонкий снэк
+  /// (или silent если можно).
+  Future<void> _pushProfileToServer({required bool descriptionAllowed}) async {
+    final payload = <String, dynamic>{};
+    final lastName = _lastNameController.text.trim();
+    final firstName = _firstNameController.text.trim();
+    final middleName = _middleNameController.text.trim();
+    final email = _emailController.text.trim();
+    final city = _cityController.text.trim();
+    final description = _specializationController.text.trim();
+    final companyName = _companyNameController.text.trim();
+    final companyInn = (_verifiedInn ?? '').trim();
+
+    if (lastName.isNotEmpty) payload['lastName'] = lastName;
+    if (firstName.isNotEmpty) payload['firstName'] = firstName;
+    if (middleName.isNotEmpty) payload['middleName'] = middleName;
+    if (email.isNotEmpty) payload['email'] = email;
+    if (city.isNotEmpty) payload['city'] = city;
+    if (descriptionAllowed && description.isNotEmpty) {
+      payload['description'] = description;
+    }
+    // companyName и companyInn сервер сохраняет только парой — если
+    // оба заполнены, шлём оба; иначе пропускаем оба.
+    if (companyName.isNotEmpty && companyInn.isNotEmpty) {
+      payload['companyName'] = companyName;
+      // Server ожидает companyInn как строку (см. UpdateProfile
+      // schema), хотя в GetProfile возвращается как integer.
+      payload['companyInn'] = companyInn;
+    }
+    if (payload.isEmpty) return;
+
+    try {
+      await storage_api.StorageApi.updateProfile(profile: payload);
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[profile] UpdateProfile failed: $e');
+      }
+      // Молча — локально уже сохранено, ретрай при следующем save.
+    }
   }
 
   Future<void> _loadBusinessStatus() async {
@@ -203,11 +369,16 @@ class _SparkJoySpecialistProfileScreenState
     final businessType = await SparkJoyStorage.currentBusinessType();
     if (!mounted) return;
     setState(() {
-      _verifiedInn = inn;
-      _businessType = businessType;
-      if (inn != null && inn.isNotEmpty) {
+      // Race-guard: если server fetch уже установил _verifiedInn —
+      // не затираем свежее серверное значение локальным стейл-кэшем.
+      // Когда инспектор делает Сбросить (см. _resetBusinessStatus),
+      // он явно ставит _verifiedInn = null, и тогда локальное значение
+      // всё равно не подхватится — но это ожидаемое поведение reset'а.
+      if (_verifiedInn == null && inn != null && inn.isNotEmpty) {
+        _verifiedInn = inn;
         _innController.text = inn;
       }
+      _businessType ??= businessType;
     });
   }
 
@@ -427,16 +598,6 @@ class _SparkJoySpecialistProfileScreenState
     return null;
   }
 
-  String? _phoneValidator(String? value) {
-    final raw = (value ?? '').trim();
-    if (raw.isEmpty) return null;
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length < 10) {
-      return 'Введите корректный телефон';
-    }
-    return null;
-  }
-
   String? _emailValidator(String? value) {
     final raw = (value ?? '').trim();
     if (raw.isEmpty) return null;
@@ -454,20 +615,61 @@ class _SparkJoySpecialistProfileScreenState
 
     HapticFeedback.mediumImpact();
     setState(() => _isSavingProfile = true);
+
+    // Запоминаем «до»-снимок email чтобы после save показать подсказку
+    // «требует повторной верификации» если значение изменилось. Server
+    // при смене email инвалидирует подтверждение, инспектор должен
+    // открыть письмо и подтвердить новый адрес.
+    final previousEmail = sjRead(_specialist(), 'email').trim();
+    final newEmail = _emailController.text.trim();
+    final emailChanged =
+        newEmail.isNotEmpty && newEmail.toLowerCase() != previousEmail.toLowerCase();
+
+    // Прогоняем description («Описание услуг») через локальный
+    // LLM-guard перед server push — он блокирует контакты в обход
+    // платформы (phone/email/@-handle). Локально description
+    // сохраняется в любом случае; на сервер шлём только если guard
+    // не заблокировал.
+    final description = _specializationController.text.trim();
+    var descriptionAllowed = true;
+    String? guardWarning;
+    if (description.isNotEmpty) {
+      try {
+        final guard = await _llmGuard.checkAboutText(description);
+        if (guard.blocked) {
+          descriptionAllowed = false;
+          guardWarning = guard.errors.isNotEmpty
+              ? guard.errors.join('; ')
+              : (guard.note ?? 'Описание содержит контактные данные');
+        }
+      } catch (e) {
+        // Guard offline — не блокируем save, отправляем как есть.
+        if (kDebugMode) {
+          debugPrint('[profile] LLM guard failed: $e');
+        }
+      }
+    }
+
     final current = _specialist();
     final next = {
       ...current,
       'id': sjRead(current, 'id', fallback: kSparkSpecialistId),
-      'name': _nameController.text.trim(),
+      // Структурированные ФИО + legacy `name` для совместимости с
+      // остальным кодом, который ещё читает sjRead(profile, 'name').
+      'lastName': _lastNameController.text.trim(),
+      'firstName': _firstNameController.text.trim(),
+      'middleName': _middleNameController.text.trim(),
+      'name': _composeFullName(),
       'city': _cityController.text.trim(),
       'phone': _phoneController.text.trim(),
       'email': _emailController.text.trim(),
-      'specialization': _specializationController.text.trim(),
+      'specialization': description,
       // Explicitly drop the legacy `specializations` list — the
       // string above is now the single source of truth. Without this
       // the stored list from older saves would keep drifting.
       'specializations': const <String>[],
       'experience': _experienceController.text.trim(),
+      'companyName': _companyNameController.text.trim(),
     };
     await SparkJoyStorage.saveSpecialistProfile(next);
 
@@ -481,9 +683,34 @@ class _SparkJoySpecialistProfileScreenState
       // edit-mode with the same buttons.
       _profileEditMode = false;
     });
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Профиль сохранен')));
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Профиль сохранен')),
+    );
+    if (emailChanged) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Email изменён — проверьте почту, потребуется повторное '
+            'подтверждение.',
+          ),
+        ),
+      );
+    }
+    if (guardWarning != null) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Описание услуг не отправлено на сервер: $guardWarning',
+          ),
+          backgroundColor: kRedColor,
+        ),
+      );
+    }
+
+    // Server push — fire-and-forget; локально уже сохранено.
+    unawaited(_pushProfileToServer(descriptionAllowed: descriptionAllowed));
   }
 
   // «Проверка компании» — verified state.
@@ -516,6 +743,24 @@ class _SparkJoySpecialistProfileScreenState
         ),
         const SizedBox(height: SparkSpace.md),
         SparkInfoRow(label: 'ИНН', value: _verifiedInn ?? ''),
+        if (_companyNameController.text.trim().isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.md),
+          SparkInfoRow(
+            label: 'Название',
+            value: _companyNameController.text.trim(),
+          ),
+        ],
+        // Server-side флаг модерации (isVerifyCompany) — серый pending
+        // или зелёное «Компания подтверждена». Локальный
+        // «verifyInnAndPromote» — это только проверка длины ИНН, а
+        // настоящую модерацию делает бэк. Поле «Название компании»
+        // редактируется в основной форме edit-mode (см.
+        // _buildProfileInfoEdit) — рядом с ФИО / email / city, чтобы
+        // save-кнопка профиля захватывала все поля сразу.
+        if (_isVerifyCompany != null) ...[
+          const SizedBox(height: SparkSpace.md),
+          _buildCompanyVerifyBadge(_isVerifyCompany!),
+        ],
         const SizedBox(height: SparkSpace.md),
         Align(
           alignment: Alignment.centerLeft,
@@ -534,6 +779,28 @@ class _SparkJoySpecialistProfileScreenState
             ),
             child: const Text('Сбросить статус'),
           ),
+        ),
+      ],
+    );
+  }
+
+  /// Бейдж статуса модерации компании. Отображает что сервер сказал
+  /// про `isVerifyCompany`: true → подтверждено (зелёный), false →
+  /// на модерации (оранжевый). Бейдж не показывается пока сервер
+  /// не вернул значение (`_isVerifyCompany == null`).
+  Widget _buildCompanyVerifyBadge(bool verified) {
+    final color = verified ? kGreenColor : Colors.orange;
+    final icon = verified ? Icons.verified_rounded : Icons.pending_outlined;
+    final label = verified ? 'Компания подтверждена' : 'На модерации';
+    return Row(
+      children: [
+        Icon(icon, size: SparkSize.iconSm, color: color),
+        const SizedBox(width: SparkSpace.sm),
+        MyText(
+          text: label,
+          size: SparkTextSize.caption,
+          weight: FontWeight.w600,
+          color: color,
         ),
       ],
     );
@@ -661,9 +928,9 @@ class _SparkJoySpecialistProfileScreenState
         SparkInfoRow(
           label: 'ФИО',
           value: valueOrDash(
-            _nameController.text.isEmpty
+            _composeFullName().isEmpty
                 ? sjRead(specialist, 'name')
-                : _nameController.text,
+                : _composeFullName(),
           ),
         ),
         SparkInfoRow(
@@ -725,10 +992,21 @@ class _SparkJoySpecialistProfileScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _profileTextField(
-            controller: _nameController,
-            label: 'ФИО',
-            hint: 'Имя специалиста',
-            validator: (value) => _requiredValidator(value, 'ФИО'),
+            controller: _lastNameController,
+            label: 'Фамилия',
+            hint: 'Иванов',
+            validator: (value) => _requiredValidator(value, 'Фамилия'),
+          ),
+          _profileTextField(
+            controller: _firstNameController,
+            label: 'Имя',
+            hint: 'Иван',
+            validator: (value) => _requiredValidator(value, 'Имя'),
+          ),
+          _profileTextField(
+            controller: _middleNameController,
+            label: 'Отчество',
+            hint: 'Иванович',
           ),
           _profileTextField(
             controller: _cityController,
@@ -747,7 +1025,8 @@ class _SparkJoySpecialistProfileScreenState
             label: 'Телефон',
             hint: '+7...',
             keyboardType: TextInputType.phone,
-            validator: _phoneValidator,
+            readOnly: true,
+            helperText: 'Авторизация по номеру — менять нельзя',
           ),
           _profileTextField(
             controller: _emailController,
@@ -755,6 +1034,16 @@ class _SparkJoySpecialistProfileScreenState
             hint: 'name@example.com',
             keyboardType: TextInputType.emailAddress,
             validator: _emailValidator,
+          ),
+          // Название компании парная к ИНН (ниже на экране, в карточке
+          // «Проверка компании»). Server сохраняет companyName +
+          // companyInn только атомарно. Если ИНН не подтверждён —
+          // companyName проигнорируется при server push.
+          _profileTextField(
+            controller: _companyNameController,
+            label: 'Название компании',
+            hint: 'ООО «Авто-Подбор»',
+            helperText: 'Сохраняется только если подтверждён ИНН ниже',
           ),
           const SizedBox(height: SparkSpace.xs),
           // Same explicit RoundedRectangleBorder on both Cancel + Save
@@ -804,6 +1093,8 @@ class _SparkJoySpecialistProfileScreenState
     TextInputType? keyboardType,
     List<TextInputFormatter>? inputFormatters,
     String? Function(String?)? validator,
+    bool readOnly = false,
+    String? helperText,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.lg),
@@ -821,9 +1112,14 @@ class _SparkJoySpecialistProfileScreenState
             keyboardType: keyboardType,
             inputFormatters: inputFormatters,
             validator: validator,
+            readOnly: readOnly,
+            // Не помечаем dirty при изменении read-only-полей (теоретически
+            // их и нельзя поменять, но защищаемся от программных setText).
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
-            onChanged: (_) => _setProfileDirty(),
-            decoration: sparkInputDecoration(hint ?? label),
+            onChanged: readOnly ? null : (_) => _setProfileDirty(),
+            decoration: sparkInputDecoration(
+              hint ?? label,
+            ).copyWith(helperText: helperText),
           ),
         ],
       ),
@@ -907,9 +1203,10 @@ class _SparkJoySpecialistProfileScreenState
   @override
   Widget build(BuildContext context) {
     final specialist = _specialist();
-    final profileName = _nameController.text.trim().isEmpty
+    final composedName = _composeFullName();
+    final profileName = composedName.isEmpty
         ? sjRead(specialist, 'name', fallback: 'Специалист')
-        : _nameController.text.trim();
+        : composedName;
     final hasVerifiedBusiness = (_verifiedInn ?? '').isNotEmpty;
 
     return SparkScreenList(
