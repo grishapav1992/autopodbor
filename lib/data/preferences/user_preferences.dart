@@ -85,6 +85,10 @@ class UserSimplePreferences {
   static const sparkOnbMediaStepKey = 'sparkOnb.mediaStep';
   static const sparkOnbCommentAiKey = 'sparkOnb.commentAi';
   static const sparkOnbSummaryStepKey = 'sparkOnb.summaryStep';
+  // Company-role-only sheets — staff management and per-report
+  // assignment flow.
+  static const sparkOnbStaffKey = 'sparkOnb.staff';
+  static const sparkOnbAssignReportKey = 'sparkOnb.assignReport';
 
   static const List<String> sparkOnboardingKeys = <String>[
     sparkOnbReportsListKey,
@@ -93,6 +97,8 @@ class UserSimplePreferences {
     sparkOnbMediaStepKey,
     sparkOnbCommentAiKey,
     sparkOnbSummaryStepKey,
+    sparkOnbStaffKey,
+    sparkOnbAssignReportKey,
   ];
 
   static Future init() async {

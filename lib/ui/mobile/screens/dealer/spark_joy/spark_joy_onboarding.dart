@@ -32,6 +32,10 @@ class SparkJoyOnboarding {
     required List<SparkJoyOnboardingBullet> bullets,
     String buttonI18nKey = 'spark.onboarding.cta',
     String buttonFallback = 'Понятно',
+    // Roles allowed to see this onboarding. Default covers both Spark
+    // Joy roles; call sites that are company-only (staff screen,
+    // assignee field) pass `const ['company']`.
+    List<String> allowedRoles = const ['specialist', 'company'],
   }) async {
     if (_shownThisSession.contains(flagKey)) return;
     _shownThisSession.add(flagKey);
@@ -40,7 +44,7 @@ class SparkJoyOnboarding {
     // UserController.role is a different (unused) enum in this codebase —
     // the auth flow only ever writes the role string here.
     final role = await UserSimplePreferences.getUserRole();
-    if (role != 'specialist' && role != 'company') {
+    if (role == null || !allowedRoles.contains(role)) {
       _shownThisSession.remove(flagKey);
       return;
     }

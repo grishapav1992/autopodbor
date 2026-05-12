@@ -372,4 +372,21 @@ const Map<String, String> enUS = {
       'Review the auto-built summary and adjust the wording if you need to.',
   'spark.onboarding.summaryStep.b3':
       'After "Finish" the report uploads and moves to the "Completed" tab.',
+
+  // Company-only onboarding (staff management + per-report assignment).
+  'spark.onboarding.staff.title': 'Company staff',
+  'spark.onboarding.staff.b1':
+      'This is your roster of in-house specialists, external contractors, and pending invitations.',
+  'spark.onboarding.staff.b2':
+      'To invite a new staff member, share an invitation link from any draft report.',
+  'spark.onboarding.staff.b3':
+      'External contractors who deliver work for you can be promoted to in-house via the «Add to staff» button.',
+
+  'spark.onboarding.assignReport.title': 'Assign an inspector',
+  'spark.onboarding.assignReport.b1':
+      'Pick someone from your staff, send the task by phone, or generate an invitation link for an external specialist.',
+  'spark.onboarding.assignReport.b2':
+      'If you skip the picker, the report opens in your own editor so you can fill it in yourself.',
+  'spark.onboarding.assignReport.b3':
+      'An assigned report shows up on the assignee\'s device — your side only sees its status and final summary.',
 };

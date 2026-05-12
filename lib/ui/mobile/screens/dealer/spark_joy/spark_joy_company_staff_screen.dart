@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_staff_detail_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_onboarding.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -55,6 +57,36 @@ class _SparkJoyCompanyStaffScreenState
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      SparkJoyOnboarding.showOnce(
+        context,
+        flagKey: UserSimplePreferences.sparkOnbStaffKey,
+        titleI18nKey: 'spark.onboarding.staff.title',
+        titleFallback: 'Сотрудники компании',
+        allowedRoles: const ['company'],
+        bullets: const [
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.staff.b1',
+            fallback:
+                'Здесь видны ваши штатные специалисты, внешние исполнители и приглашения, которые ждут отклика.',
+            icon: Icons.groups_2_outlined,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.staff.b2',
+            fallback:
+                'Чтобы пригласить нового сотрудника — отправьте ему ссылку-приглашение из любого черновика отчёта.',
+            icon: Icons.send_to_mobile_rounded,
+          ),
+          SparkJoyOnboardingBullet(
+            i18nKey: 'spark.onboarding.staff.b3',
+            fallback:
+                'Внешнего специалиста, который выполнил вашу задачу, можно перевести в штат кнопкой «Добавить в штат».',
+            icon: Icons.person_add_alt_1_outlined,
+          ),
+        ],
+      );
+    });
   }
 
   bool _isCompanyDraft(Map<String, dynamic> draft) {

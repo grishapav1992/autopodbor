@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_onboarding.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 
 import 'spark_joy_assignee_picker.dart';
@@ -26,6 +28,43 @@ class _SparkJoyNewReportNameScreenState
   final _formKey = GlobalKey<FormState>();
   final _controller = TextEditingController();
   SparkJoyAssigneeSelection _assignee = const SparkJoyAssigneeSelection();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.companyMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        SparkJoyOnboarding.showOnce(
+          context,
+          flagKey: UserSimplePreferences.sparkOnbAssignReportKey,
+          titleI18nKey: 'spark.onboarding.assignReport.title',
+          titleFallback: 'Назначьте исполнителя',
+          allowedRoles: const ['company'],
+          bullets: const [
+            SparkJoyOnboardingBullet(
+              i18nKey: 'spark.onboarding.assignReport.b1',
+              fallback:
+                  'Выберите штатного сотрудника, отправьте задачу по телефону или сгенерируйте ссылку-приглашение для внешнего специалиста.',
+              icon: Icons.assignment_ind_outlined,
+            ),
+            SparkJoyOnboardingBullet(
+              i18nKey: 'spark.onboarding.assignReport.b2',
+              fallback:
+                  'Если исполнителя не выбрать — отчёт откроется в вашем редакторе, и вы сможете заполнить его сами.',
+              icon: Icons.edit_note_rounded,
+            ),
+            SparkJoyOnboardingBullet(
+              i18nKey: 'spark.onboarding.assignReport.b3',
+              fallback:
+                  'Назначенный отчёт появится у исполнителя и не открывает вам шаги для редактирования — только статус и итог.',
+              icon: Icons.task_alt_outlined,
+            ),
+          ],
+        );
+      });
+    }
+  }
 
   @override
   void dispose() {
