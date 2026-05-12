@@ -565,17 +565,14 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                       children: [
-                        const TextSpan(
-                          text:
-                              'Я согласен на обработку персональных данных в соответствии с ',
-                        ),
+                        const TextSpan(text: 'Согласен на обработку '),
                         WidgetSpan(
                           alignment: PlaceholderAlignment.baseline,
                           baseline: TextBaseline.alphabetic,
                           child: GestureDetector(
                             onTap: onOpenConsent,
                             child: const Text(
-                              'Согласием на обработку персональных данных',
+                              'персональных данных',
                               style: TextStyle(
                                 color: kSecondaryColor,
                                 fontSize: 12,
@@ -585,9 +582,6 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
                               ),
                             ),
                           ),
-                        ),
-                        const TextSpan(
-                          text: ' и Политикой обработки персональных данных.',
                         ),
                       ],
                     ),
