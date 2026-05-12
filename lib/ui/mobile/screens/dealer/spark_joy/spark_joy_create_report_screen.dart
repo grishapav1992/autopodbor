@@ -515,6 +515,18 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
   String? _activeMediaGroupKey;
   double? _mediaGroupListScrollOffset;
+  // Контроллер скролла stepper'а группы Осмотра — нужен для auto-scroll
+  // к активному шагу при переключении (иначе текущий может оказаться
+  // за пределами viewport'а если он далеко в списке).
+  final ScrollController _mediaGroupChipScrollController = ScrollController();
+  // Ключ группы для которой auto-scroll уже отработал. Без этого stepper
+  // перестраивался бы на каждый keystroke в заметке/тег/файл и каждый
+  // раз планировал бы ensureVisible — конфликтуя с ручным скроллом.
+  String? _mediaGroupChipLastScrolledKey;
+  // Стабильные GlobalKey для каждого шага stepper'а — нужны для
+  // `Scrollable.ensureVisible(stepKeyContext)` точного центрирования.
+  // Создаются лениво, хранятся в state чтобы переживать rebuild'ы.
+  final Map<String, GlobalKey> _mediaGroupStepKeys = <String, GlobalKey>{};
   bool _mediaGroupSelectMode = false;
   Set<int> _mediaGroupSelectedIndexes = <int>{};
   bool _mediaPickerOpening = false;

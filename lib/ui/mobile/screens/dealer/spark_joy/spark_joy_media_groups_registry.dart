@@ -23,6 +23,7 @@ class _SparkJoyMediaGroupRegistry {
     MediaGroupConfig(
       key: keyStructural,
       title: 'Силовые элементы кузова',
+      shortLabel: 'Силовые',
       description: 'Лонжероны, стойки, пороги, геометрия',
       required: false,
       severeIfIssue: true,
@@ -37,6 +38,7 @@ class _SparkJoyMediaGroupRegistry {
     MediaGroupConfig(
       key: keyLighting,
       title: 'Светотехника',
+      shortLabel: 'Свет',
       description: 'Фары, фонари, ПТФ, корректоры',
       required: false,
       severeIfIssue: false,
@@ -44,6 +46,7 @@ class _SparkJoyMediaGroupRegistry {
     MediaGroupConfig(
       key: keyUnderhood,
       title: 'Подкапотное пространство',
+      shortLabel: 'Подкапот.',
       description: 'Течи, крепеж, ремни, агрегаты',
       required: false,
       severeIfIssue: true,
@@ -58,6 +61,7 @@ class _SparkJoyMediaGroupRegistry {
     MediaGroupConfig(
       key: keyWheels,
       title: 'Колёса и тормозные механизмы',
+      shortLabel: 'Колёса',
       description: 'Резина, диски, тормоза, подвеска',
       required: false,
       severeIfIssue: false,
@@ -65,6 +69,7 @@ class _SparkJoyMediaGroupRegistry {
     MediaGroupConfig(
       key: keyDiagnostics,
       title: 'Компьютерная диагностика',
+      shortLabel: 'Диагностика',
       description: 'Ошибки блоков, коды, комментарии',
       required: false,
       severeIfIssue: true,

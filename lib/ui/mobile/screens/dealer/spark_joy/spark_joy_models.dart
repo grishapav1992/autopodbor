@@ -211,13 +211,18 @@ class MediaGroupConfig {
     required this.description,
     required this.required,
     required this.severeIfIssue,
-  });
+    String? shortLabel,
+  }) : shortLabel = shortLabel ?? title;
 
   final String key;
   final String title;
   final String description;
   final bool required;
   final bool severeIfIssue;
+
+  /// Короткое название для компактных UI — stepper, breadcrumbs.
+  /// Если не задано в registry — fallback на полный [title].
+  final String shortLabel;
 }
 
 class MediaGroupState {

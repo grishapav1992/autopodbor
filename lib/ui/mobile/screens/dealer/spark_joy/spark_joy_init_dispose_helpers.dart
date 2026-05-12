@@ -14,6 +14,7 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
 
   void _disposeInputResources() {
     _pageScrollController.dispose();
+    _mediaGroupChipScrollController.dispose();
     _vinFocusNode.dispose();
     _plateFocusNode.dispose();
     _adLinkFocusNode.dispose();

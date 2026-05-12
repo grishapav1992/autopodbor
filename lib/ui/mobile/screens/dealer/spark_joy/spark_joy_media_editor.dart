@@ -67,9 +67,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
               },
             );
       if (timedOut) {
-        _showErrorSnack(
-          'Галерея не ответила вовремя. Попробуйте снова.',
-        );
+        _showErrorSnack('Галерея не ответила вовремя. Попробуйте снова.');
       }
       if (items.isEmpty || !mounted) return 0;
       _setStateSafely(() {
@@ -106,17 +104,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
-  /// Возвращает ключ следующей по порядку группы из
-  /// `_SparkJoyMediaGroupRegistry.groups`, либо null если текущая —
-  /// последняя в реестре.
-  String? _nextMediaGroupKey(String currentKey) {
-    final groups = _SparkJoyMediaGroupRegistry.groups;
-    final idx = groups.indexWhere((g) => g.key == currentKey);
-    if (idx < 0 || idx >= groups.length - 1) return null;
-    return groups[idx + 1].key;
-  }
-
-  /// Прямой прыжок editor→editor по кнопке «К следующей группе».
+  /// Прямой прыжок editor→editor по тапу на шаг в `_runMediaGroupStepper`.
   /// В отличие от `_runOpenMediaGroupEditor`, сохраняет
   /// `_mediaGroupListScrollOffset` — иначе при выходе обычным «назад»
   /// инспектор окажется не там, где оставил список групп. Дополнительно
@@ -130,6 +118,186 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     _runOpenMediaGroupEditor(nextKey);
     _mediaGroupListScrollOffset = preservedListOffset;
     _scrollEditorToTop();
+  }
+
+  /// Stepper-индикатор для навигации между группами Осмотра. Заменяет
+  /// прежнюю chip-row: 8 «шагов» соединены горизонтальной линией, активный
+  /// шаг выделен тёмным кругом и bold-label'ом, заполненные — зелёным
+  /// checkmark, проблемные — красным priority_high, пустые будущие —
+  /// outlined кругом. Соединительные линии-сегменты окрашены по статусу
+  /// предыдущего шага (зелёная/красная сплошная для пройденных, серая
+  /// для будущих). Тап на любой шаг → `_jumpToMediaGroup`. Auto-scroll
+  /// к активному шагу через `Scrollable.ensureVisible` (точное
+  /// центрирование, без estimate-based фокусов).
+  Widget _runMediaGroupStepper(String currentKey) {
+    final groups = _SparkJoyMediaGroupRegistry.groups;
+    final currentIndex = groups.indexWhere((g) => g.key == currentKey);
+
+    // Auto-scroll к активному шагу через Scrollable.ensureVisible —
+    // точное центрирование на основании реального RenderObject шага,
+    // без estimate-based math. Срабатывает только когда активная
+    // группа реально сменилась (guard через _mediaGroupChipLastScrolledKey).
+    if (currentKey != _mediaGroupChipLastScrolledKey) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || currentIndex < 0) return;
+        final stepKey = _mediaGroupStepKeys[currentKey];
+        final keyContext = stepKey?.currentContext;
+        if (keyContext == null) return;
+        Scrollable.ensureVisible(
+          keyContext,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+        );
+        _mediaGroupChipLastScrolledKey = currentKey;
+      });
+    }
+
+    return SizedBox(
+      // 36 (circle) + 6 (gap) + ~28 (2-line label) + 6 (top/bottom padding)
+      height: 80,
+      child: SingleChildScrollView(
+        controller: _mediaGroupChipScrollController,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.md,
+          vertical: SparkSpace.xs,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < groups.length; i++) ...[
+              _stepNode(
+                config: groups[i],
+                isCurrent: groups[i].key == currentKey,
+                isPast: i < currentIndex,
+              ),
+              if (i < groups.length - 1)
+                _stepConnector(
+                  // Сегмент между i и i+1 — пройден если предыдущий шаг
+                  // (i) либо текущий, либо левее текущего. Цвет — по
+                  // status'у i-го шага.
+                  completed: i < currentIndex,
+                  hasIssue: _groupHasIssueByKey(groups[i].key),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Один шаг stepper'а: круг (36px) с status-иконкой + короткий label
+  /// под ним. Whole-tap-area = переход в группу через `_jumpToMediaGroup`.
+  /// GlobalKey берётся из state-map'а `_mediaGroupStepKeys` (создаётся
+  /// лениво, чтобы пережил rebuild'ы и `Scrollable.ensureVisible` работал
+  /// по стабильному context'у).
+  Widget _stepNode({
+    required MediaGroupConfig config,
+    required bool isCurrent,
+    required bool isPast,
+  }) {
+    final state = _mediaState[config.key];
+    final hasIssue = state != null && _groupHasIssue(state);
+    final hasFiles = state != null && state.files.isNotEmpty;
+
+    // Стиль кружка по приоритету: active > issue > done > empty.
+    final Color circleBg;
+    final Color circleBorder;
+    final IconData circleIcon;
+    final Color iconColor;
+    if (isCurrent) {
+      circleBg = kTertiaryColor;
+      circleBorder = kTertiaryColor;
+      // На активном — checkmark если уже заполнено, иначе нейтральный
+      // dot, чтобы не ложно говорить «осмотрено».
+      circleIcon = hasIssue
+          ? Icons.priority_high_rounded
+          : (hasFiles ? Icons.check_rounded : Icons.circle);
+      iconColor = kWhiteColor;
+    } else if (hasIssue) {
+      circleBg = kRedColor;
+      circleBorder = kRedColor;
+      circleIcon = Icons.priority_high_rounded;
+      iconColor = kWhiteColor;
+    } else if (hasFiles) {
+      circleBg = kGreenColor;
+      circleBorder = kGreenColor;
+      circleIcon = Icons.check_rounded;
+      iconColor = kWhiteColor;
+    } else {
+      circleBg = kWhiteColor;
+      circleBorder = isPast ? kBorderColor : kBorderColor;
+      circleIcon = Icons.circle_outlined;
+      iconColor = kBorderColor;
+    }
+
+    final stepKey = _mediaGroupStepKeys.putIfAbsent(
+      config.key,
+      () => GlobalKey(),
+    );
+
+    return InkWell(
+      key: stepKey,
+      onTap: isCurrent
+          ? null
+          : () {
+              HapticFeedback.selectionClick();
+              unawaited(_jumpToMediaGroup(config.key));
+            },
+      borderRadius: BorderRadius.circular(SparkRadius.md),
+      child: SizedBox(
+        width: 72,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: circleBg,
+                shape: BoxShape.circle,
+                border: Border.all(color: circleBorder, width: 2),
+              ),
+              alignment: Alignment.center,
+              child: Icon(circleIcon, size: 18, color: iconColor),
+            ),
+            const SizedBox(height: SparkSpace.xs),
+            MyText(
+              text: config.shortLabel,
+              size: SparkTextSize.caption,
+              weight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+              color: kTertiaryColor,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              textOverflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Соединительная линия между двумя шагами stepper'а. Толщина 2px,
+  /// ширина 24px, выравнивание по центру круга (top: 17 = 36/2 - 1).
+  /// Цвет: зелёный/красный сплошной для пройденных, серый для будущих.
+  Widget _stepConnector({required bool completed, required bool hasIssue}) {
+    final Color color;
+    if (completed) {
+      color = hasIssue ? kRedColor : kGreenColor;
+    } else {
+      color = kBorderColor.withValues(alpha: 0.5);
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 17),
+      child: Container(width: 24, height: 2, color: color),
+    );
+  }
+
+  /// Безопасный wrapper над `_groupHasIssue` — обрабатывает null state.
+  bool _groupHasIssueByKey(String key) {
+    final state = _mediaState[key];
+    return state != null && _groupHasIssue(state);
   }
 
   void _runOpenMediaGroupEditor(String groupKey) {
@@ -361,15 +529,17 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     final cardBackground = isPressed
         ? kSecondaryColor.withValues(alpha: 0.02)
         : (hasIssue
-            ? kWhiteColor
-            : (fullyMarked ? kGreenColor.withValues(alpha: 0.04) : kWhiteColor));
+              ? kWhiteColor
+              : (fullyMarked
+                    ? kGreenColor.withValues(alpha: 0.04)
+                    : kWhiteColor));
     final cardBorder = hasIssue
         ? kRedColor.withValues(alpha: 0.3)
         : (fullyMarked
-            ? kGreenColor.withValues(alpha: 0.55)
-            : (isPressed
-                ? kSecondaryColor.withValues(alpha: 0.28)
-                : kBorderColor));
+              ? kGreenColor.withValues(alpha: 0.55)
+              : (isPressed
+                    ? kSecondaryColor.withValues(alpha: 0.28)
+                    : kBorderColor));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.lg),
@@ -731,12 +901,6 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         .where((file) => file.inspection.note.trim().isNotEmpty)
         .length;
     final issueFiles = files.where(_mediaItemHasIssue).length;
-    final nextGroupKey = _nextMediaGroupKey(groupKey);
-    final nextGroupTitle = nextGroupKey == null
-        ? null
-        : _SparkJoyMediaGroupRegistry.groups
-              .firstWhere((g) => g.key == nextGroupKey)
-              .title;
 
     return Column(
       children: [
@@ -805,6 +969,12 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
             ],
           ),
         ),
+        const SizedBox(height: SparkSpace.md),
+        // Stepper-индикатор прогресса осмотра по 8 группам.
+        // Заменяет прежний chip-row + старую кнопку «К следующей
+        // группе». Инспектор сразу видит сколько пройдено и куда
+        // дальше, тапом по любому шагу прыгает в эту группу.
+        _runMediaGroupStepper(groupKey),
         const SizedBox(height: SparkSpace.lg),
         // Unified swap slot: compact select toolbar in multi-select mode,
         // otherwise the "long-press" hint (or nothing when only one file).
@@ -1123,14 +1293,6 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
           const SparkHintCard(
             text: 'Добавьте фото или видео, затем нажмите «Заметка».',
             icon: Icons.info_outline_rounded,
-          ),
-        ],
-        if (nextGroupKey != null && nextGroupTitle != null) ...[
-          const SizedBox(height: SparkSpace.xl),
-          SparkPrimaryActionButton(
-            label: 'К следующей группе: $nextGroupTitle',
-            icon: Icons.arrow_forward_rounded,
-            onTap: () => unawaited(_jumpToMediaGroup(nextGroupKey)),
           ),
         ],
       ],
