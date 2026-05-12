@@ -10,6 +10,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_data.dart';
+import 'spark_joy_feedback_screen.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -1376,7 +1377,41 @@ class _SparkJoySpecialistProfileScreenState
               ? _buildBusinessVerified()
               : _buildBusinessUnverified(),
         ),
+        const SparkSectionTitle('Поддержка', top: SparkSpace.xxl),
+        SparkCard(
+          onTap: _openFeedback,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.feedback_outlined,
+                color: kSecondaryColor,
+                size: SparkSize.iconLg,
+              ),
+              const SizedBox(width: SparkSpace.md),
+              const Expanded(
+                child: MyText(
+                  text: 'Оставить обратную связь',
+                  size: SparkTextSize.body,
+                  weight: FontWeight.w600,
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: kGreyColor,
+                size: SparkSize.iconMd,
+              ),
+            ],
+          ),
+        ),
       ],
+    );
+  }
+
+  void _openFeedback() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SparkJoyFeedbackScreen(),
+      ),
     );
   }
 }
