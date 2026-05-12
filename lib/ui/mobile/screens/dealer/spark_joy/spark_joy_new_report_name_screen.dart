@@ -30,46 +30,43 @@ class _SparkJoyNewReportNameScreenState
   SparkJoyAssigneeSelection _assignee = const SparkJoyAssigneeSelection();
 
   @override
-  void initState() {
-    super.initState();
-    if (widget.companyMode) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        SparkJoyOnboarding.showOnce(
-          context,
-          flagKey: UserSimplePreferences.sparkOnbAssignReportKey,
-          titleI18nKey: 'spark.onboarding.assignReport.title',
-          titleFallback: 'Назначьте исполнителя',
-          allowedRoles: const ['company'],
-          bullets: const [
-            SparkJoyOnboardingBullet(
-              i18nKey: 'spark.onboarding.assignReport.b1',
-              fallback:
-                  'Выберите штатного сотрудника, отправьте задачу по телефону или сгенерируйте ссылку-приглашение для внешнего специалиста.',
-              icon: Icons.assignment_ind_outlined,
-            ),
-            SparkJoyOnboardingBullet(
-              i18nKey: 'spark.onboarding.assignReport.b2',
-              fallback:
-                  'Если исполнителя не выбрать — отчёт откроется в вашем редакторе, и вы сможете заполнить его сами.',
-              icon: Icons.edit_note_rounded,
-            ),
-            SparkJoyOnboardingBullet(
-              i18nKey: 'spark.onboarding.assignReport.b3',
-              fallback:
-                  'Назначенный отчёт появится у исполнителя и не открывает вам шаги для редактирования — только статус и итог.',
-              icon: Icons.task_alt_outlined,
-            ),
-          ],
-        );
-      });
-    }
-  }
-
-  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  /// Surfaces the «Назначьте исполнителя» onboarding the first time a
+  /// company user opens the assignee picker. Hooked into
+  /// `SparkJoyAssigneeField.onBeforeOpen` so the explanation lands at
+  /// the exact moment it's contextually useful — not on screen mount.
+  Future<void> _showAssignOnboardingIfFirstTap() {
+    return SparkJoyOnboarding.showOnce(
+      context,
+      flagKey: UserSimplePreferences.sparkOnbAssignReportKey,
+      titleI18nKey: 'spark.onboarding.assignReport.title',
+      titleFallback: 'Назначьте исполнителя',
+      allowedRoles: const ['company'],
+      bullets: const [
+        SparkJoyOnboardingBullet(
+          i18nKey: 'spark.onboarding.assignReport.b1',
+          fallback:
+              'Выберите штатного сотрудника, отправьте задачу по телефону или сгенерируйте ссылку-приглашение для внешнего специалиста.',
+          icon: Icons.assignment_ind_outlined,
+        ),
+        SparkJoyOnboardingBullet(
+          i18nKey: 'spark.onboarding.assignReport.b2',
+          fallback:
+              'Если исполнителя не выбрать — отчёт откроется в вашем редакторе, и вы сможете заполнить его сами.',
+          icon: Icons.edit_note_rounded,
+        ),
+        SparkJoyOnboardingBullet(
+          i18nKey: 'spark.onboarding.assignReport.b3',
+          fallback:
+              'Назначенный отчёт появится у исполнителя и не открывает вам шаги для редактирования — только статус и итог.',
+          icon: Icons.task_alt_outlined,
+        ),
+      ],
+    );
   }
 
   /// "Создать" action. Branches on the assignee selection:
@@ -301,6 +298,7 @@ class _SparkJoyNewReportNameScreenState
                       SparkJoyAssigneeField(
                         companyId: kSparkCompanyId,
                         selection: _assignee,
+                        onBeforeOpen: _showAssignOnboardingIfFirstTap,
                         onChanged: (sel) =>
                             setState(() => _assignee = sel),
                       ),

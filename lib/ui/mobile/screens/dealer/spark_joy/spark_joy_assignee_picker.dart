@@ -1341,13 +1341,24 @@ class SparkJoyAssigneeField extends StatelessWidget {
     required this.companyId,
     required this.selection,
     required this.onChanged,
+    this.onBeforeOpen,
   });
 
   final String companyId;
   final SparkJoyAssigneeSelection selection;
   final ValueChanged<SparkJoyAssigneeSelection> onChanged;
 
+  /// Optional callback fired right before the picker sheet opens. Used by
+  /// the new-report screen to surface the «Назначьте исполнителя»
+  /// onboarding only when the user actually engages with the picker —
+  /// not on screen mount. If it returns a Future the open is awaited.
+  final Future<void> Function()? onBeforeOpen;
+
   Future<void> _open(BuildContext context) async {
+    if (onBeforeOpen != null) {
+      await onBeforeOpen!();
+      if (!context.mounted) return;
+    }
     final result = await showSparkJoyAssigneePickerSheet(
       context,
       companyId: companyId,

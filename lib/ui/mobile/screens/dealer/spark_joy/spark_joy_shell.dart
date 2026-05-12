@@ -14,6 +14,7 @@ import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_notifications_screen.dart';
 import 'spark_joy_notifications_storage.dart';
+import 'spark_joy_onboarding.dart';
 import 'spark_joy_reports_list_screen.dart';
 import 'spark_joy_specialist_profile_screen.dart';
 import 'spark_joy_storage.dart';
@@ -53,6 +54,43 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   void dispose() {
     _requestedReportsTab.dispose();
     super.dispose();
+  }
+
+  /// Fires tab-specific onboarding bottom sheets that don't belong on
+  /// shell mount. The staff tab (index 1 for `company`) is pre-built
+  /// inside the IndexedStack — without this hook its onboarding would
+  /// trigger immediately on login while the user is still on the reports
+  /// tab. We trigger it instead when the user actually selects the tab.
+  void _maybeShowTabOnboarding(int newIndex) {
+    if (_role != SparkJoyRole.company) return;
+    if (newIndex != 1) return;
+    SparkJoyOnboarding.showOnce(
+      context,
+      flagKey: UserSimplePreferences.sparkOnbStaffKey,
+      titleI18nKey: 'spark.onboarding.staff.title',
+      titleFallback: 'Сотрудники компании',
+      allowedRoles: const ['company'],
+      bullets: const [
+        SparkJoyOnboardingBullet(
+          i18nKey: 'spark.onboarding.staff.b1',
+          fallback:
+              'Здесь видны ваши штатные специалисты, внешние исполнители и приглашения, которые ждут отклика.',
+          icon: Icons.groups_2_outlined,
+        ),
+        SparkJoyOnboardingBullet(
+          i18nKey: 'spark.onboarding.staff.b2',
+          fallback:
+              'Чтобы пригласить нового сотрудника — отправьте ему ссылку-приглашение из любого черновика отчёта.',
+          icon: Icons.send_to_mobile_rounded,
+        ),
+        SparkJoyOnboardingBullet(
+          i18nKey: 'spark.onboarding.staff.b3',
+          fallback:
+              'Внешнего специалиста, который выполнил вашу задачу, можно перевести в штат кнопкой «Добавить в штат».',
+          icon: Icons.person_add_alt_1_outlined,
+        ),
+      ],
+    );
   }
 
   Future<void> _bootstrap() async {
@@ -412,6 +450,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                     HapticFeedback.selectionClick();
                   }
                   setState(() => _index = value);
+                  _maybeShowTabOnboarding(value);
                 },
                 destinations: destinations,
               ),
