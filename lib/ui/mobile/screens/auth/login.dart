@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/core/config/feature_flags.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
@@ -28,11 +27,6 @@ class Login extends StatefulWidget {
 
 class _LoginState extends State<Login> {
   final TextEditingController _phoneController = TextEditingController();
-  static const String _techCodePassword = '12112016';
-  static const String _techAccessToken =
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzA0MTAyOTMuNTU1NzQ0LCJleHAiOjE3NzA0NTM0OTMuNTU1NzQ0LCJzdWIiOiIyOCIsInR5cGUiOiJhdXRoIn0.aqlVCZtLzKWXCNoOXJOYxYdgY0cxX-LLKyH4aMil8Pkz3eNibKtnUuba017tfzY150Ov52ZCe6FMO5UH0spBUTR9aNYsb-KSemTECEGQvoqOvHQQmtoOV0bBYsa1WNprkbXnhPmQmdgmuCv9ss7RcHk9Uq758_3xS1kI9-y06OVHjNe8fyBInzF6ThxFQwfk24Ntcn2bBsssAEzZHTD1tOfTR5NcwdlNxuX5MQ-Z8t1drNVKm5nn32r4clwwoFmnYNmN0e90kh-NiXVO6i37AE9jTtyJo8jaM2rXu2MGGTz3oYnZS_w_yRM9pikaN5pMBsE0G-N1OkWJE3Acr9Ptug';
-  static const String _techRefreshToken =
-      'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJpYXQiOjE3NzAyMjk0MjYuMzc5Mjk5LCJleHAiOjE3NzI4MjE0MjYuMzc5Mjk5LCJzdWIiOiIyOCIsInR5cGUiOiJyZWZyZXNoIn0.lueu7sU6ZR3rgbsB1Q1r1ryX0hnP68wlMSqaH6sI4IMs1AaEQUAtguFKJhAuFYEz8ay-ruLHMXw_-v413bgl6jsqP3RTlZ04JY2RCpuPScADY1w9R6o9tixfLjuSH572JkEHgHnCSxbx5UKuR-NOlkLvweRhjSesRCQBy2CMy8chUJX7cbPmyXe3fnaYUjzo-mVWkva2ZBab6fu1QPf-8O9pj2DXWAbpHisvdUJDArhUVQKZm3GSch56MZzG8C-3GSEyrRTQ-SN5AqgXMH0KPiiw6pOmaKlDkEklRHF-ZO9kzIv7lLo8Vy-EIzz3dBDb78ih-nQtvbrOhzSBkZbdyw';
 
   String _callPhone = '';
   String? _sessionId;
@@ -259,79 +253,6 @@ class _LoginState extends State<Login> {
     }
   }
 
-  Future<void> _techSignIn() async {
-    // Tech-sign-in switches identity without going through Storage.Auth,
-    // so any notification token persisted from the previous user is now
-    // invalid. Wipe it explicitly — without this, NotificationController
-    // would reconnect WebSocket with a stale JWT and loop on rejection.
-    await UserSimplePreferences.clearNotificationToken();
-    await UserSimplePreferences.setAuthTokens(
-      accessToken: _techAccessToken,
-      refreshToken: _techRefreshToken,
-    );
-    if (!mounted) return;
-    setState(() {
-      _statusText =
-          'Технический вход активирован. Используем фиксированный токен.';
-    });
-    await _proceedAfterCheck();
-  }
-
-  Future<void> _promptTechPasswordAndSignIn() async {
-    if (_isAuthLoading || _isVerifyLoading) return;
-
-    var passwordValue = '';
-    String? passwordError;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setLocalState) {
-            void submit() {
-              final value = passwordValue.trim();
-              if (value != _techCodePassword) {
-                setLocalState(() {
-                  passwordError = 'Неверный пароль';
-                });
-                return;
-              }
-              Navigator.of(dialogContext).pop(true);
-            }
-
-            return AlertDialog(
-              title: const Text('Технический код'),
-              content: TextField(
-                autofocus: true,
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                decoration: InputDecoration(
-                  hintText: 'Введите пароль',
-                  errorText: passwordError,
-                ),
-                onChanged: (value) {
-                  passwordValue = value;
-                  if (passwordError == null) return;
-                  setLocalState(() {
-                    passwordError = null;
-                  });
-                },
-                onSubmitted: (_) => submit(),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
-                  child: const Text('Отмена'),
-                ),
-                ElevatedButton(onPressed: submit, child: const Text('Войти')),
-              ],
-            );
-          },
-        );
-      },
-    );
-    if (confirmed != true || !mounted) return;
-    await _techSignIn();
-  }
 
   void _openPersonalDataConsent() {
     Navigator.of(
@@ -481,31 +402,6 @@ class _LoginState extends State<Login> {
                     : 'Проверить статус звонка',
                 textSize: 12,
               ),
-            ),
-          const SizedBox(height: 14),
-          // «Технический вход» — bypass с жёстко зашитыми JWT
-          // (`_techAccessToken` / `_techRefreshToken` в этом файле).
-          // В релизном билде скрываем: токены в бинаре — security leak.
-          // В debug-сборках оставлен на время отладки реального phone-
-          // auth flow. Геттер `FeatureFlags.devTechLogin` возвращает
-          // `kDebugMode`, так что release автоматически не увидит этот
-          // блок, и никаких отдельных билд-конфигов не надо.
-          if (FeatureFlags.devTechLogin)
-            ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              title: const MyText(
-                text: 'Технический вход (dev only)',
-                size: 12,
-                color: kGreyColor,
-              ),
-              childrenPadding: const EdgeInsets.only(bottom: 4),
-              children: [
-                MyBorderButton(
-                  onTap: _promptTechPasswordAndSignIn,
-                  buttonText: 'Войти по техническому коду',
-                  textSize: 12,
-                ),
-              ],
             ),
         ],
       ),
