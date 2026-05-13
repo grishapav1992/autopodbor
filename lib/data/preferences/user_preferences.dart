@@ -391,6 +391,16 @@ class UserSimplePreferences {
     // Pending email verify тоже привязан к сессии пользователя — чтобы
     // banner из прошлого аккаунта не утёк в новый при logout/re-login.
     await prefs.remove(_pendingEmailVerifyKey);
+    // Profile snapshot (cache-as-seed для Spark Joy profile screen) —
+    // содержит email/имя/телефон/companyName предыдущего юзера.
+    // clearAuthTokens вызывается из storage_api.dart на 5 путях
+    // session-expiry / refresh-fail; SparkJoyStorage.logout() при этом
+    // НЕ дёргается (только при ручном logout-кнопке в shell). Без
+    // явной очистки тут новый юзер на том же девайсе увидел бы кеш
+    // предыдущего до прихода первого GetProfile. Ключ держим в sync
+    // с SparkJoyStorage._specialistProfileKey (не импортируем UI-слой
+    // в data-слой ради избежания cycle).
+    await prefs.remove('spark_joy_specialist_profile_v1');
   }
 
   static Future<void> setNotificationToken(String token) async {

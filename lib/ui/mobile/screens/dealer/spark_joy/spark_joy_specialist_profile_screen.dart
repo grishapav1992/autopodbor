@@ -875,10 +875,17 @@ class _SparkJoySpecialistProfileScreenState
     final confirmed = await _showCancelCompanyDialog(summary);
     if (confirmed != true) return;
     setState(() => _isVerifying = true);
+    // Флаг для catch'а: server downgrade уже применился (БД пишет
+    // specialist), последующий fail — это уже local-sync проблема,
+    // НЕ "не удалось сбросить". Без флага юзер видит «не удалось»,
+    // но при заходе через секунду статус оказывается сброшенным —
+    // путаница.
+    var serverDowngraded = false;
     try {
       await storage_api.StorageApi.updateProfile(
         profile: <String, dynamic>{'role': 'specialist'},
       );
+      serverDowngraded = true;
       await SparkJoyStorage.cancelCompanyMode();
       // Sync local prefs role + RefreshToken. Раньше делалось через
       // unawaited(_fetchServerProfile()) → _syncServerRoleToLocal,
@@ -927,7 +934,12 @@ class _SparkJoySpecialistProfileScreenState
       setState(() => _isVerifying = false);
       messenger.showSnackBar(
         SnackBar(
-          content: Text('Не удалось сбросить статус: $e'),
+          content: Text(
+            serverDowngraded
+                ? 'Статус сброшен на сервере, но локальная синхронизация '
+                    'не удалась. Перезайдите в профиль для обновления.'
+                : 'Не удалось сбросить статус: $e',
+          ),
           backgroundColor: kRedColor,
         ),
       );

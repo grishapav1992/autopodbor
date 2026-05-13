@@ -56,6 +56,11 @@ class SparkJoyStorage {
   static const String _roleKey = 'spark_joy_role_v1';
   static const String _verifiedInnKey = 'spark_joy_verified_inn_v1';
   static const String _businessTypeKey = 'spark_joy_business_type_v1';
+  // ВАЖНО: literal этого ключа продублирован в
+  // UserSimplePreferences.clearAuthTokens() (см. user_preferences.dart) —
+  // session-expiry path должен очищать profile cache, но импорт
+  // UI-слоя в data-слой создал бы cycle. При любом изменении ключа
+  // обновить и тот хардкод.
   static const String _specialistProfileKey = 'spark_joy_specialist_profile_v1';
   /// External specialists (not originally in the company roster) that
   /// the company has explicitly promoted to staff via "Добавить в штат".
