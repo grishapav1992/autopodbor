@@ -282,41 +282,56 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   Future<void> _loadProfile() async {
-    // API-only режим: локальный SparkJoyStorage.loadSpecialistProfile
-    // больше не используется как источник правды. Seed (sparkSpecialists)
-    // оставляем только для метаданных stat-карточек (rating/reportCount/
-    // experience/status — см. _specialist()). Personal-поля очищаем,
-    // иначе mock-данные («Максим Егоров», «egorov@mail.ru») протекут
-    // через _specialist() в build() header (sjRead(profile, 'name')),
-    // в _cancelProfileEdit() и в emailChanged-detection в _saveProfile.
-    // Form-controllers тоже стартуют пустыми (seed НЕ заливается через
-    // _applyProfileToControllers), заполнение — после _fetchServerProfile().
-    final seed = _fallbackSpecialist();
-    // Используем remove (а не set='') — sjRead возвращает fallback
-    // только на null/missing key. Иначе header «Специалист» (см.
-    // build() — sjRead(specialist, 'name', fallback: 'Специалист'))
-    // станет пустой строкой вместо корректного fallback'а.
-    for (final key in const <String>[
-      'name',
-      'firstName',
-      'lastName',
-      'middleName',
-      'email',
-      'phone',
-      'city',
-      'specialization',
-      'specializations',
-      'companyName',
-    ]) {
-      seed.remove(key);
-    }
+    // Cache-as-seed: если local cache есть (последний server snapshot),
+    // используем его для мгновенного заполнения form-controllers — юзер
+    // сразу видит свои данные на cold start, не ждёт network round-trip.
+    // На fresh install / logout cache отсутствует: чистим personal-поля
+    // mock seed (rating/reportCount остаются для stat-карточек) чтобы
+    // mock-данные («Максим Егоров», «egorov@mail.ru») не протекли через
+    // _specialist() в build() header, _cancelProfileEdit(), emailChanged-
+    // detection. Form-controllers стартуют пустыми. Параллельно всегда
+    // тянем свежий server snapshot через _fetchServerProfile().
+    final cached = await SparkJoyStorage.loadSpecialistProfileOrNull();
     final pending = await UserSimplePreferences.getPendingEmailVerify();
     if (!mounted) return;
-    setState(() {
-      _specialistProfile = seed;
-      _profileDirty = false;
-      _pendingEmailVerify = pending;
-    });
+    if (cached != null) {
+      // Мерджим cache поверх mock base — base даёт metadata
+      // (rating/reportCount/experience/status), cache перебивает
+      // personal-поля. Apply controllers — UI заполнится сразу.
+      final base = _fallbackSpecialist();
+      final merged = <String, dynamic>{...base, ...cached};
+      _applyProfileToControllers(merged);
+      setState(() {
+        _specialistProfile = merged;
+        _profileDirty = false;
+        _pendingEmailVerify = pending;
+      });
+    } else {
+      final seed = _fallbackSpecialist();
+      // Используем remove (а не set='') — sjRead возвращает fallback
+      // только на null/missing key. Иначе header «Специалист» (см.
+      // build() — sjRead(specialist, 'name', fallback: 'Специалист'))
+      // станет пустой строкой вместо корректного fallback'а.
+      for (final key in const <String>[
+        'name',
+        'firstName',
+        'lastName',
+        'middleName',
+        'email',
+        'phone',
+        'city',
+        'specialization',
+        'specializations',
+        'companyName',
+      ]) {
+        seed.remove(key);
+      }
+      setState(() {
+        _specialistProfile = seed;
+        _profileDirty = false;
+        _pendingEmailVerify = pending;
+      });
+    }
     unawaited(_fetchServerProfile());
   }
 
@@ -374,6 +389,30 @@ class _SparkJoySpecialistProfileScreenState
           _innController.text = innStr;
         }
       });
+      // Authoritative server snapshot → local cache. Полная замена
+      // (не merge) чтобы reset/downgrade корректно очищали cached
+      // company-поля, которых нет в новом response. Сохраняем только
+      // server-полученные поля + computed (без mock metadata),
+      // иначе следующий cold start засосёт mock rating/reportCount
+      // как «cached» — и они никогда не очистятся.
+      final cacheSnapshot = <String, dynamic>{
+        if (result['firstName'] != null) 'firstName': result['firstName'],
+        if (result['lastName'] != null) 'lastName': result['lastName'],
+        if (result['middleName'] != null)
+          'middleName': result['middleName'],
+        if (result['email'] != null) 'email': result['email'],
+        if (result['phone'] != null) 'phone': result['phone'],
+        if (result['description'] != null)
+          'specialization': result['description'],
+        if (result['companyName'] != null)
+          'companyName': result['companyName'].toString(),
+        if (result['city'] != null) 'city': result['city'],
+        if (result['role'] != null) 'role': result['role'],
+        if (serverInn != null) 'companyInn': serverInn.toString(),
+        if (result['isVerifyCompany'] != null)
+          'isVerifyCompany': result['isVerifyCompany'] == true,
+      };
+      unawaited(SparkJoyStorage.saveSpecialistProfile(cacheSnapshot));
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -466,6 +505,12 @@ class _SparkJoySpecialistProfileScreenState
       if (companyNameChanged && companyName.isNotEmpty && companyInn.isNotEmpty) {
         _originalCompanyName = companyName;
       }
+      // Patch local cache новыми server-accepted значениями. Merge
+      // (не replace) — _fetchServerProfile при следующем заходе
+      // переопределит из authoritative source. Сюда попадает только
+      // отправленный payload — server принял эти значения, значит
+      // отражение в cache корректное.
+      unawaited(SparkJoyStorage.mergeIntoSpecialistProfileCache(payload));
       if (emailChanged) {
         // Email сменился — сервер отправил код подтверждения. Если
         // pending уже указывает на тот же email (повторный save без

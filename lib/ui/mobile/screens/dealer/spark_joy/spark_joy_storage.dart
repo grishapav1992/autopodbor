@@ -173,6 +173,11 @@ class SparkJoyStorage {
     await pref.remove(_userTagsKey);
     await pref.remove(_userTagsSyncedAtKey);
     await pref.remove(_pendingTagDeletesKey);
+    // Profile snapshot — per-user (имя/email/телефон/companyName).
+    // Без этого новый юзер на том же девайсе увидел бы кешированный
+    // профиль предыдущего до прихода первого GetProfile (cold start
+    // в profile screen использует cache как seed для form-controllers).
+    await pref.remove(_specialistProfileKey);
   }
 
   static Future<String?> currentBusinessType() async {
@@ -380,6 +385,41 @@ class SparkJoyStorage {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
     await pref.setString(_specialistProfileKey, jsonEncode(profile));
+  }
+
+  /// Возвращает ТОЛЬКО сохранённый snapshot (без merge с mock base).
+  /// Нужен для cache-as-seed pattern в profile screen: если cache
+  /// есть — используем как реальные user-данные; если нет — UI
+  /// рисует пустые поля и не подменяет их mock'ом «Максим Егоров»
+  /// (см. fix Bug 1 в spark_joy_specialist_profile_screen.dart).
+  /// `loadSpecialistProfile` мёрджит mock+saved и поэтому не годится:
+  /// на свежем install вернул бы чистый mock и протёк бы в инпуты.
+  static Future<Map<String, dynamic>?> loadSpecialistProfileOrNull() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_specialistProfileKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Сливает patch поверх существующего cached snapshot и сохраняет
+  /// результат. Используется после успешных API-call'ов в profile
+  /// screen чтобы local cache всегда отражал последнее серверное
+  /// состояние. На пустом cache patch становится первым snapshot'ом.
+  static Future<void> mergeIntoSpecialistProfileCache(
+    Map<String, dynamic> patch,
+  ) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final existing = await loadSpecialistProfileOrNull() ?? <String, dynamic>{};
+    final merged = <String, dynamic>{...existing, ...patch};
+    await pref.setString(_specialistProfileKey, jsonEncode(merged));
   }
 
   static Future<List<String>> loadHiddenCompanyStaffIds() async {
