@@ -367,11 +367,11 @@ const Map<String, String> enUS = {
 
   'spark.onboarding.summaryStep.title': 'Inspection summary',
   'spark.onboarding.summaryStep.b1':
-      'This is where the final verdict and per-section checklist come together.',
+      'The final summary of the whole inspection — everything from every section in one place.',
   'spark.onboarding.summaryStep.b2':
-      'Review the auto-built summary and adjust the wording if you need to.',
+      'Make sure every required field is filled — missing ones are flagged in the checklist below.',
   'spark.onboarding.summaryStep.b3':
-      'After "Finish" the report uploads and moves to the "Completed" tab.',
+      'Tap "Finish and upload" — once it uploads, the report moves to the "Completed" tab.',
 
   // Company-only onboarding (staff management + per-report assignment).
   'spark.onboarding.staff.title': 'Company staff',

@@ -13,19 +13,19 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.summaryStep.b1',
             fallback:
-                'Здесь собирается финальный вердикт и чек-лист по всем разделам отчёта.',
+                'Это финальный итог всего осмотра — сводка по всем разделам отчёта в одном месте.',
             icon: Icons.fact_check_outlined,
           ),
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.summaryStep.b2',
             fallback:
-                'Проверьте автоматически собранный итог и при необходимости поправьте текст.',
-            icon: Icons.edit_outlined,
+                'Проверьте, что все обязательные поля заполнены — нехватка показана в чек-листе ниже.',
+            icon: Icons.checklist_rounded,
           ),
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.summaryStep.b3',
             fallback:
-                'После «Завершить» отчёт уйдёт в выгрузку и переедет в «Завершённые».',
+                'Тапните «Завершить и выгрузить» — после загрузки отчёт переедет в раздел «Завершённые».',
             icon: Icons.cloud_upload_outlined,
           ),
         ],

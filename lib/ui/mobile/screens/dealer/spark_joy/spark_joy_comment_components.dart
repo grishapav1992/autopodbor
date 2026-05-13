@@ -26,6 +26,7 @@ class SparkJoyCommentInputPanel extends StatefulWidget {
     this.minLines = 12,
     this.maxLines = 16,
     this.aiBusy = false,
+    this.suppressOnboarding = false,
   });
 
   final TextEditingController controller;
@@ -42,6 +43,11 @@ class SparkJoyCommentInputPanel extends StatefulWidget {
   /// `onAiFormat` вызывает реальный сетевой запрос к AiQueue.
   final bool aiBusy;
 
+  /// Если true — не запускать onboarding-шит про микрофон/ИИ. Нужно для
+  /// экранов, у которых есть свой первичный онбординг (например, шаг
+  /// «Итог»), чтобы юзеру не показывали два шита подряд.
+  final bool suppressOnboarding;
+
   @override
   State<SparkJoyCommentInputPanel> createState() =>
       _SparkJoyCommentInputPanelState();
@@ -51,6 +57,7 @@ class _SparkJoyCommentInputPanelState extends State<SparkJoyCommentInputPanel> {
   @override
   void initState() {
     super.initState();
+    if (widget.suppressOnboarding) return;
     // Onboarding sheet must be scheduled exactly once per mount — running
     // it from `build` schedules a post-frame callback on every rebuild,
     // and some of those callbacks fire after the BuildContext has been

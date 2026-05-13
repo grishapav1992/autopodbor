@@ -644,6 +644,10 @@ Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
             hint: 'Итог по разделам — нажмите ИИ или введите вручную.',
             isDictating: s._summaryIsDictating,
             aiBusy: s._summaryNoteAiBusy,
+            // Шаг «Итог» имеет свой собственный онбординг про выгрузку
+            // и обязательные поля — не показываем дублирующий шит
+            // «Голос и ИИ-помощник» поверх него.
+            suppressOnboarding: true,
             onToggleDictation: () async {
               if (s._summaryIsDictating) {
                 await s._stopSummaryDictation();

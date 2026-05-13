@@ -526,6 +526,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     required VoidCallback onAiFormat,
     String hint = 'Добавьте комментарий',
     bool aiBusy = false,
+    bool suppressOnboarding = false,
   }) {
     return SparkJoyCommentInputPanel(
       controller: controller,
@@ -535,6 +536,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       aiBusy: aiBusy,
       onDismissKeyboard: _dismissKeyboard,
       hint: hint,
+      suppressOnboarding: suppressOnboarding,
     );
   }
 
