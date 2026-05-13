@@ -7,6 +7,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/core/utils/global_instances.dart';
 import 'package:flutter_application_1/ui/mobile/screens/auth/login.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
@@ -46,6 +47,13 @@ class _SplashScreenState extends State<SplashScreen> {
       if (!mounted) return;
       final Widget target;
       if (hasSession) {
+        // Синкаем роль с сервера ДО показа nav-bar, чтобы AppBar и
+        // tab-set отражали актуальную роль с первого фрейма. Без этого
+        // если бэк перевёл пользователя specialist→company между
+        // запусками — nav-bar бы открылся в старом режиме до первого
+        // open profile screen. Offline-фолбэк уже внутри метода.
+        await SparkJoyStorage.syncRoleFromServer();
+        if (!mounted) return;
         target = const DealerNavBar();
       } else {
         target = const Login();

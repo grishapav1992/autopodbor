@@ -11,7 +11,6 @@ import 'package:flutter_application_1/ui/common/widgets/headings_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_field_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
@@ -261,11 +260,10 @@ class _LoginState extends State<Login> {
   }
 
   Future<void> _proceedAfterCheck() async {
-    final sparkRole = await SparkJoyStorage.currentRole();
-    await SparkJoyStorage.login(sparkRole);
-    await UserSimplePreferences.setUserRole(
-      sparkRole == SparkJoyRole.company ? 'company' : 'specialist',
-    );
+    // Server — source of truth для role. GetProfile внутри
+    // syncRoleFromServer ловит offline и фолбэк-ит на локальный кэш,
+    // так что вход не блокируется отсутствием сети.
+    await SparkJoyStorage.syncRoleFromServer();
     // (Re)bootstrap the realtime notification channel with the freshly
     // persisted notification token. No-op if the controller wasn't
     // registered yet (very early launch path) or no token exists.

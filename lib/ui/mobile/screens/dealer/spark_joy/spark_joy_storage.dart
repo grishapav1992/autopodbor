@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'spark_joy_data.dart';
@@ -100,6 +101,56 @@ class SparkJoyStorage {
     if (pref == null) return;
     await pref.setBool(_loggedInKey, true);
     await pref.setString(_roleKey, sparkJoyRoleKey(role));
+  }
+
+  /// Тянет GetProfile и синкает локальный кэш роли + INN с серверной
+  /// правдой. Вызывается из login flow (после AuthVerify) и splash
+  /// (после hasSavedSession). На сетевую ошибку — fallback на текущий
+  /// локальный role-кэш (offline / первый запуск без сети не должен
+  /// блокировать вход в приложение).
+  static Future<void> syncRoleFromServer() async {
+    try {
+      // Короткий timeout (5s vs default 12s) — это bootstrap-call, и
+      // никакой UI не открывается пока он не вернётся. На offline /
+      // медленной сети лучше быстрее упасть и зайти на локальном
+      // кэше, чем висеть 12-18 секунд на splash'е до nav-bar.
+      final result = await StorageApi.getProfile(
+        timeout: const Duration(seconds: 5),
+      );
+      final serverRole = (result['role'] ?? '').toString().toLowerCase();
+      final isCompany = serverRole == 'company';
+      await UserSimplePreferences.setUserRole(
+        isCompany ? 'company' : 'specialist',
+      );
+      await login(isCompany ? SparkJoyRole.company : SparkJoyRole.specialist);
+      // Для company синкаем companyInn + businessType, чтобы spark_joy
+      // экраны (assignee-picker, completed-reports) видели бизнес-
+      // статус сразу, без ожидания первого open'а профиля.
+      if (isCompany) {
+        final inn = result['companyInn']?.toString().trim() ?? '';
+        if (inn.length == 10 || inn.length == 12) {
+          final pref = UserSimplePreferences.pref;
+          if (pref != null) {
+            await pref.setString(_verifiedInnKey, inn);
+            await pref.setString(
+              _businessTypeKey,
+              inn.length == 10 ? 'ip' : 'company',
+            );
+          }
+        }
+      }
+    } catch (e) {
+      // Network/offline — оставляем локальный кэш. Будущие GetProfile
+      // (при open profile screen) подтянут роль когда сеть вернётся.
+      if (kDebugMode) {
+        debugPrint('[bootstrap] GetProfile failed during role sync: $e');
+      }
+      final localRole = await currentRole();
+      await login(localRole);
+      await UserSimplePreferences.setUserRole(
+        localRole == SparkJoyRole.company ? 'company' : 'specialist',
+      );
+    }
   }
 
   static Future<void> logout() async {
