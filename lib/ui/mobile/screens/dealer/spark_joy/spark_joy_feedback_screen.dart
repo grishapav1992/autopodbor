@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/design_tokens.dart';
+import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/api/feedback_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart'
     show SessionExpiredException;
@@ -146,6 +147,20 @@ class _SparkJoyFeedbackScreenState extends State<SparkJoyFeedbackScreen> {
     if (text.length > SparkJoyFeedbackScreen.maxTextLength) {
       _showSnack(
         'Слишком длинно — лимит ${SparkJoyFeedbackScreen.maxTextLength} символов.',
+      );
+      return;
+    }
+    // Антимат-гейт перед отправкой — тот же фильтр, что блокирует
+    // публикацию профиля / отчётов. Письмо команде поддержки не
+    // должно содержать мат.
+    final profanity = ProfanityModerator.moderateText(
+      text,
+      fieldLabel: 'описание',
+    );
+    if (profanity.isBlock) {
+      _showSnack(
+        profanity.userMessage ??
+            'В тексте обнаружены недопустимые слова. Поправьте и попробуйте снова.',
       );
       return;
     }
