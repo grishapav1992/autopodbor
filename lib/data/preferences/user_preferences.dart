@@ -90,13 +90,6 @@ class UserSimplePreferences {
   static const sparkOnbStaffKey = 'sparkOnb.staff';
   static const sparkOnbAssignReportKey = 'sparkOnb.assignReport';
 
-  // Locally-stored user feedback entries. Each entry is a JSON object:
-  // {type, text, imagePaths, submittedAt, role}. TODO: replace with an
-  // RPC submit when the backend exposes a feedback method — for now the
-  // submit flow only persists the entry into this list so we don't lose
-  // submissions during the offline window.
-  static const _feedbackEntriesKey = 'sparkJoy.feedback.entries';
-  static const int _feedbackEntriesCap = 50;
 
   static const List<String> sparkOnboardingKeys = <String>[
     sparkOnbReportsListKey,
@@ -418,32 +411,6 @@ class UserSimplePreferences {
 
   static Future<void> setSparkOnboardingSeen(String key) async {
     await (await _prefs()).setBool(key, true);
-  }
-
-  /// Append a user-feedback entry to the local queue (FIFO, capped at
-  /// `_feedbackEntriesCap`). TODO: replace with an RPC submit when a
-  /// backend feedback method is available — for now this is the only
-  /// place feedback lives.
-  static Future<void> addFeedbackEntry(Map<String, dynamic> entry) async {
-    final list = await getFeedbackEntries();
-    list.add(entry);
-    while (list.length > _feedbackEntriesCap) {
-      list.removeAt(0);
-    }
-    final encoded = list.map(jsonEncode).toList();
-    await (await _prefs()).setStringList(_feedbackEntriesKey, encoded);
-  }
-
-  static Future<List<Map<String, dynamic>>> getFeedbackEntries() async {
-    final raw = (await _prefs()).getStringList(_feedbackEntriesKey) ?? [];
-    final result = <Map<String, dynamic>>[];
-    for (final item in raw) {
-      try {
-        final decoded = jsonDecode(item);
-        if (decoded is Map<String, dynamic>) result.add(decoded);
-      } catch (_) {}
-    }
-    return result;
   }
 
   static Future<void> resetSparkOnboarding() async {
