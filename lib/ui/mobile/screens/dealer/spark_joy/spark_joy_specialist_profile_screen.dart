@@ -283,14 +283,16 @@ class _SparkJoySpecialistProfileScreenState
 
   Future<void> _loadProfile() async {
     // API-only режим: локальный SparkJoyStorage.loadSpecialistProfile
-    // больше не используется как источник правды. Стартуем с seed-
-    // fallback (sparkSpecialists) — это плейсхолдер для UI на время
-    // server fetch'а, а не персистентный кэш профиля. Сразу же тянем
-    // реальные данные через GetProfile.
+    // больше не используется как источник правды. Seed (sparkSpecialists)
+    // оставляем только для метаданных stat-карточек (rating/reportCount —
+    // см. _specialist()). В form-controllers seed НЕ заливаем, иначе
+    // mock-personal-данные («Максим Егоров», «egorov@mail.ru») протекут
+    // в инпуты до прихода server response, а на network-fail так и
+    // останутся. Controllers стартуют пустыми, заполняются после
+    // _fetchServerProfile().
     final seed = _fallbackSpecialist();
     final pending = await UserSimplePreferences.getPendingEmailVerify();
     if (!mounted) return;
-    _applyProfileToControllers(seed);
     setState(() {
       _specialistProfile = seed;
       _profileDirty = false;
@@ -359,10 +361,20 @@ class _SparkJoySpecialistProfileScreenState
         const SnackBar(content: Text('Сессия истекла — войдите заново')),
       );
     } catch (e) {
-      // Offline / network / parsing — silently fall back to local.
+      // Offline / network / parsing. Раньше silent — но controllers
+      // теперь стартуют пустыми (см. _loadProfile), и без обратной связи
+      // юзер видит просто пустую форму и не понимает что произошло.
+      // Показываем тонкий снэк, дальнейшее редактирование возможно —
+      // на save UpdateProfile сам ретрайнется.
       if (kDebugMode) {
         debugPrint('[profile] GetProfile failed: $e');
       }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось загрузить профиль. Проверьте соединение'),
+        ),
+      );
     }
   }
 
@@ -777,8 +789,14 @@ class _SparkJoySpecialistProfileScreenState
   /// Hard-reset the company role. Shows a confirmation dialog
   /// enumerating every piece of local data that will be wiped
   /// (drafts, pending invites, staff preferences) so the user can't
-  /// lose work by accident. On confirm, [SparkJoyStorage.cancelCompanyMode]
-  /// deletes the drafts and resets the business verification.
+  /// lose work by accident. На confirm сначала шлём UpdateProfile
+  /// с role='specialist' (зеркально к _verifyInn — server-first), и
+  /// только после server success делаем локальный cleanup через
+  /// [SparkJoyStorage.cancelCompanyMode]. Иначе при server fail у
+  /// юзера удалились бы локальные drafts/staff prefs, а сервер всё
+  /// ещё видел бы его как company. RefreshToken не дёргаем вручную —
+  /// _syncServerRoleToLocal внутри _fetchServerProfile() сам ротирует
+  /// токены при детекте смены роли company → specialist.
   Future<void> _resetBusinessStatus() async {
     if (_isVerifying) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -786,22 +804,52 @@ class _SparkJoySpecialistProfileScreenState
     if (!mounted) return;
     final confirmed = await _showCancelCompanyDialog(summary);
     if (confirmed != true) return;
-    await SparkJoyStorage.cancelCompanyMode();
-    if (!mounted) return;
-    setState(() {
-      _verifiedInn = null;
-      _businessType = null;
-      // Сбрасываем и связанное состояние компании, иначе в unverified-
-      // карточке остался бы prefilled старый companyName + протёкший
-      // badge модерации (исправление утечки из ревью).
-      _isVerifyCompany = null;
-      _companyNameController.clear();
-      _innController.clear();
-    });
-    widget.onBusinessStatusChanged?.call(null);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Статус сброшен: теперь вы специалист')),
-    );
+    setState(() => _isVerifying = true);
+    try {
+      await storage_api.StorageApi.updateProfile(
+        profile: <String, dynamic>{'role': 'specialist'},
+      );
+      await SparkJoyStorage.cancelCompanyMode();
+      if (!mounted) return;
+      setState(() {
+        _isVerifying = false;
+        _verifiedInn = null;
+        _businessType = null;
+        // Сбрасываем и связанное состояние компании, иначе в unverified-
+        // карточке остался бы prefilled старый companyName + протёкший
+        // badge модерации.
+        _isVerifyCompany = null;
+        _companyNameController.clear();
+        _innController.clear();
+        // Diff baseline: следующий save с пустым companyName не должен
+        // считаться «изменением» (всё равно отсечётся проверкой на
+        // непустоту в _pushProfileToServer, но семантически правильно).
+        _originalCompanyName = '';
+      });
+      widget.onBusinessStatusChanged?.call(null);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Статус сброшен: теперь вы специалист')),
+      );
+      // Re-sync с сервером: _syncServerRoleToLocal внутри увидит смену
+      // company → specialist и дёрнет tryRefreshTokens(); подтянет
+      // актуальный профиль без companyName/companyInn.
+      unawaited(_fetchServerProfile());
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isVerifying = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Не удалось сбросить статус: $e'),
+          backgroundColor: kRedColor,
+        ),
+      );
+    }
   }
 
   Future<bool?> _showCancelCompanyDialog(CompanyCancelSummary s) {
