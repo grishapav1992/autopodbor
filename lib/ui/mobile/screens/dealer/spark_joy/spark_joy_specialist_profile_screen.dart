@@ -73,6 +73,12 @@ class _SparkJoySpecialistProfileScreenState
   bool _isVerifying = false;
   bool _isSavingProfile = false;
   bool _profileDirty = false;
+  // Generation counter для invalidation in-flight _fetchServerProfile.
+  // Каждый запрос захватывает myGen в начале и проверяет перед apply.
+  // Если кто-то bumped (например _resetBusinessStatus) — fetch больше
+  // не имеет права писать в state. Без этого in-flight fetch с
+  // company-snapshot откатывал UI обратно после успешного reset.
+  int _fetchGeneration = 0;
   // Server-side флаг модерации компании (поле `isVerifyCompany` из
   // GetProfile). null до первой синхронизации; true/false после.
   bool? _isVerifyCompany;
@@ -339,16 +345,22 @@ class _SparkJoySpecialistProfileScreenState
   /// server-данные приоритетнее локальных. Если поле инспектор уже
   /// редактирует (_profileDirty), НЕ затираем — иначе потеряются
   /// несохранённые правки.
+  ///
+  /// Race-protection: каждый вызов захватывает `myGen` в начале.
+  /// Если кто-то bumped `_fetchGeneration` (например _resetBusinessStatus
+  /// invalidate'ил in-flight fetch'ы), результат тихо отбрасывается —
+  /// мы не имеем права писать в state, иначе stale snapshot откатит UI.
   Future<void> _fetchServerProfile() async {
+    final myGen = ++_fetchGeneration;
     try {
       final result = await storage_api.StorageApi.getProfile();
-      if (!mounted) return;
+      if (!mounted || myGen != _fetchGeneration) return;
       // Server-side role («specialist» / «company» / «client») — единый
       // источник правды для роли. Синкаем в локальные prefs до setState,
       // чтобы shell-callback увидел консистентное состояние.
       final serverRole = (result['role'] ?? '').toString().trim();
       await _syncServerRoleToLocal(serverRole, result['companyInn']);
-      if (!mounted) return;
+      if (!mounted || myGen != _fetchGeneration) return;
       if (_profileDirty) {
         // Инспектор уже что-то правит — обновляем только метаданные
         // (флаг модерации), сами поля не трогаем.
@@ -507,10 +519,21 @@ class _SparkJoySpecialistProfileScreenState
       }
       // Patch local cache новыми server-accepted значениями. Merge
       // (не replace) — _fetchServerProfile при следующем заходе
-      // переопределит из authoritative source. Сюда попадает только
-      // отправленный payload — server принял эти значения, значит
-      // отражение в cache корректное.
-      unawaited(SparkJoyStorage.mergeIntoSpecialistProfileCache(payload));
+      // переопределит из authoritative source.
+      //
+      // Email НЕ кешируем: после UpdateProfile с новым email сервер
+      // уходит в pending-verify, primary email в БД остаётся прежним.
+      // Если запатчить cache новым (неподтверждённым) email — на
+      // cold start юзер увидит pending-значение, потом GetProfile
+      // вернёт primary, и controller снова обновится. Хуже, если
+      // юзер ввёл некорректный email (опечатка `.ru` вместо `.com`)
+      // — он застрянет в cache навсегда. Email обновляется только
+      // через _fetchServerProfile.success (authoritative).
+      final cachePatch = Map<String, dynamic>.from(payload);
+      cachePatch.remove('email');
+      if (cachePatch.isNotEmpty) {
+        unawaited(SparkJoyStorage.mergeIntoSpecialistProfileCache(cachePatch));
+      }
       if (emailChanged) {
         // Email сменился — сервер отправил код подтверждения. Если
         // pending уже указывает на тот же email (повторный save без
@@ -874,6 +897,13 @@ class _SparkJoySpecialistProfileScreenState
     if (!mounted) return;
     final confirmed = await _showCancelCompanyDialog(summary);
     if (confirmed != true) return;
+    // Invalidate любой in-flight _fetchServerProfile. Без этого fetch,
+    // запущенный из _loadProfile (или другого пути) до клика «Сбросить»,
+    // мог вернуться с stale company-snapshot после нашего setState reset
+    // и восстановить _verifiedInn/_isVerifyCompany — UI откатился бы
+    // обратно в company. Generation guard в _fetchServerProfile тихо
+    // отбрасывает результат при mismatch.
+    _fetchGeneration++;
     setState(() => _isVerifying = true);
     // Флаг для catch'а: server downgrade уже применился (БД пишет
     // specialist), последующий fail — это уже local-sync проблема,
@@ -1270,6 +1300,12 @@ class _SparkJoySpecialistProfileScreenState
       messenger.showSnackBar(
         const SnackBar(content: Text('Email подтверждён')),
       );
+      // После verify backend начинает возвращать новый email как primary
+      // в GetProfile. Мы не кешируем email из push payload (см. комментарий
+      // в _pushProfileToServer.success), так что cache всё ещё имеет
+      // старый primary. Re-fetch обновит cache на новый verified email
+      // и подтянет актуальные флаги модерации.
+      unawaited(_fetchServerProfile());
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
       messenger.showSnackBar(
