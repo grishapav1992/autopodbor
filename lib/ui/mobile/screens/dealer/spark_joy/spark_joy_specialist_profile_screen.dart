@@ -284,13 +284,32 @@ class _SparkJoySpecialistProfileScreenState
   Future<void> _loadProfile() async {
     // API-only режим: локальный SparkJoyStorage.loadSpecialistProfile
     // больше не используется как источник правды. Seed (sparkSpecialists)
-    // оставляем только для метаданных stat-карточек (rating/reportCount —
-    // см. _specialist()). В form-controllers seed НЕ заливаем, иначе
-    // mock-personal-данные («Максим Егоров», «egorov@mail.ru») протекут
-    // в инпуты до прихода server response, а на network-fail так и
-    // останутся. Controllers стартуют пустыми, заполняются после
-    // _fetchServerProfile().
+    // оставляем только для метаданных stat-карточек (rating/reportCount/
+    // experience/status — см. _specialist()). Personal-поля очищаем,
+    // иначе mock-данные («Максим Егоров», «egorov@mail.ru») протекут
+    // через _specialist() в build() header (sjRead(profile, 'name')),
+    // в _cancelProfileEdit() и в emailChanged-detection в _saveProfile.
+    // Form-controllers тоже стартуют пустыми (seed НЕ заливается через
+    // _applyProfileToControllers), заполнение — после _fetchServerProfile().
     final seed = _fallbackSpecialist();
+    // Используем remove (а не set='') — sjRead возвращает fallback
+    // только на null/missing key. Иначе header «Специалист» (см.
+    // build() — sjRead(specialist, 'name', fallback: 'Специалист'))
+    // станет пустой строкой вместо корректного fallback'а.
+    for (final key in const <String>[
+      'name',
+      'firstName',
+      'lastName',
+      'middleName',
+      'email',
+      'phone',
+      'city',
+      'specialization',
+      'specializations',
+      'companyName',
+    ]) {
+      seed.remove(key);
+    }
     final pending = await UserSimplePreferences.getPendingEmailVerify();
     if (!mounted) return;
     setState(() {
