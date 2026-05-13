@@ -2224,6 +2224,24 @@ class StorageApi {
     return _asMap(data['result']);
   }
 
+  /// Подтверждение email-адреса кодом из письма. Code приходит на email
+  /// пользователя автоматически после смены email через UpdateProfile.
+  /// Контракт получен от backend через пример payload'а — `Doc` пока
+  /// возвращает `Storage.VerifyEmail` как голую строку без полного
+  /// schema, поэтому result-структура здесь толерантна (пробрасываем
+  /// результат как Map для будущего расширения).
+  static Future<Map<String, dynamic>> verifyEmail({
+    required String code,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.VerifyEmail',
+      params: <String, dynamic>{'code': code},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
   // ---------------------------------------------------------------------------
   // Promo
   // ---------------------------------------------------------------------------

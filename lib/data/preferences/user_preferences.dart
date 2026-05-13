@@ -75,6 +75,12 @@ class UserSimplePreferences {
   static const _refreshTokenKey = 'refreshToken';
   static const _notificationTokenKey = 'notificationToken';
   static const _userRoleKey = 'userRole';
+  // Email, ожидающий подтверждения через Storage.VerifyEmail.
+  // Set когда пользователь сменил email через UpdateProfile, clear при
+  // успешной верификации или logout. Local-only — backend пока не даёт
+  // флаг isVerifyEmail в GetProfile, поэтому состояние «pending» живёт
+  // тут. Переживает рестарт приложения.
+  static const _pendingEmailVerifyKey = 'pendingEmailVerify';
 
   // Spark Joy onboarding "shown once" flags. Each key corresponds to a
   // contextual bottom sheet that appears at the first encounter with a
@@ -378,9 +384,13 @@ class UserSimplePreferences {
   }
 
   static Future<void> clearAuthTokens() async {
-    await (await _prefs()).remove(_accessTokenKey);
-    await (await _prefs()).remove(_refreshTokenKey);
-    await (await _prefs()).remove(_notificationTokenKey);
+    final prefs = await _prefs();
+    await prefs.remove(_accessTokenKey);
+    await prefs.remove(_refreshTokenKey);
+    await prefs.remove(_notificationTokenKey);
+    // Pending email verify тоже привязан к сессии пользователя — чтобы
+    // banner из прошлого аккаунта не утёк в новый при logout/re-login.
+    await prefs.remove(_pendingEmailVerifyKey);
   }
 
   static Future<void> setNotificationToken(String token) async {
@@ -403,6 +413,23 @@ class UserSimplePreferences {
   static Future<String?> getUserRole() async {
     // ignore: await_only_futures
     return (await _prefs()).getString(_userRoleKey);
+  }
+
+  /// Сохраняет email, который ожидает подтверждения через
+  /// Storage.VerifyEmail. Передача null или пустой строки удаляет ключ —
+  /// банер «⚠️ Не подтверждён» исчезает.
+  static Future<void> setPendingEmailVerify(String? email) async {
+    final prefs = await _prefs();
+    if (email == null || email.trim().isEmpty) {
+      await prefs.remove(_pendingEmailVerifyKey);
+    } else {
+      await prefs.setString(_pendingEmailVerifyKey, email.trim());
+    }
+  }
+
+  static Future<String?> getPendingEmailVerify() async {
+    // ignore: await_only_futures
+    return (await _prefs()).getString(_pendingEmailVerifyKey);
   }
 
   static Future<bool> isSparkOnboardingSeen(String key) async {
