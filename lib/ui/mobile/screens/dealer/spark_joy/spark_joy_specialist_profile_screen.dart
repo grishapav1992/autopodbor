@@ -934,7 +934,10 @@ class _SparkJoySpecialistProfileScreenState
       cached.remove('companyName');
       cached.remove('companyInn');
       cached.remove('isVerifyCompany');
-      cached['role'] = 'specialist';
+      // role в cache не сохраняем — никто из cache его не читает
+      // (role — это UserSimplePreferences.userRole, синкается через
+      // _syncServerRoleToLocal). Раньше тут было cached['role']='specialist',
+      // но это dead-write — убрал чтобы не путать.
       unawaited(SparkJoyStorage.saveSpecialistProfile(cached));
       if (!mounted) return;
       setState(() {
@@ -2016,14 +2019,20 @@ class _SparkJoySpecialistProfileScreenState
         // async — refresh-индикатор схлопнулся бы до прихода свежих
         // данных, а юзер увидел кэш. Дёргаем _fetchServerProfile
         // напрямую и await'им — индикатор уезжает только когда server
-        // response применился. Bump generation чтобы invalidate любой
-        // уже-летящий fetch (если был).
-        _fetchGeneration++;
+        // response применился. _fetchServerProfile сам бампит generation,
+        // поэтому любой уже-летящий fetch invalidate'ится автоматически.
         await Future.wait([
           _fetchServerProfile(),
           _loadBusinessStatus(),
           _loadReportCounts(),
         ]);
+        // Re-sync pendingEmailVerify из prefs — на случай если verify
+        // прошёл через внешний канал (deep-link, push) пока юзер был
+        // на этом экране. Сейчас такого канала нет, но defensive.
+        if (!mounted) return;
+        final pending = await UserSimplePreferences.getPendingEmailVerify();
+        if (!mounted || pending == _pendingEmailVerify) return;
+        setState(() => _pendingEmailVerify = pending);
       },
       children: [
         // Persistent banner «Email ждёт подтверждения» — рендерится
