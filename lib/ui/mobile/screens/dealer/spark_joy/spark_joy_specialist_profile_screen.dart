@@ -916,13 +916,16 @@ class _SparkJoySpecialistProfileScreenState
         profile: <String, dynamic>{'role': 'specialist'},
       );
       serverDowngraded = true;
-      await SparkJoyStorage.cancelCompanyMode();
-      // Sync local prefs role + RefreshToken. Раньше делалось через
-      // unawaited(_fetchServerProfile()) → _syncServerRoleToLocal,
-      // но fetch триггерит race с server-side eventual consistency
-      // (см. doc-комментарий выше). Зовём напрямую — уже знаем
-      // что после успешного UpdateProfile role обязана быть specialist.
+      // Sync local prefs role + RefreshToken. **ПЕРЕД** cancelCompanyMode:
+      // последний внутри вызывает resetBusinessVerification который сам
+      // ставит UserSimplePreferences.setUserRole('specialist'). Если
+      // _syncServerRoleToLocal позвать ПОСЛЕ — он прочитает previousRole=
+      // 'specialist' (только что установленный), localRoleChanged=false,
+      // и tryRefreshTokens НЕ вызовется. JWT claim role останется stale
+      // 'company'. Зеркально к _verifyInn: refresh нужен на смене role
+      // в обе стороны (specialist ↔ company), per UpdateProfile docs.
       await _syncServerRoleToLocal('specialist', null);
+      await SparkJoyStorage.cancelCompanyMode();
       // Patch local profile cache — удаляем company-поля и
       // фиксируем role='specialist'. Иначе следующий cold start
       // в profile screen использовал бы stale cache как seed.
