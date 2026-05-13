@@ -6,7 +6,7 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
 
-class SparkJoyCommentInputPanel extends StatelessWidget {
+class SparkJoyCommentInputPanel extends StatefulWidget {
   const SparkJoyCommentInputPanel({
     super.key,
     required this.controller,
@@ -43,9 +43,23 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
   final bool aiBusy;
 
   @override
-  Widget build(BuildContext context) {
+  State<SparkJoyCommentInputPanel> createState() =>
+      _SparkJoyCommentInputPanelState();
+}
+
+class _SparkJoyCommentInputPanelState extends State<SparkJoyCommentInputPanel> {
+  @override
+  void initState() {
+    super.initState();
+    // Onboarding sheet must be scheduled exactly once per mount — running
+    // it from `build` schedules a post-frame callback on every rebuild,
+    // and some of those callbacks fire after the BuildContext has been
+    // deactivated (e.g. when the media editor's parent rebuilds while
+    // opening the image picker), throwing
+    // «Looking up a deactivated widget's ancestor is unsafe» and the
+    // `_dependents.isEmpty` assertion on Flutter web.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       SparkJoyOnboarding.showOnce(
         context,
         flagKey: UserSimplePreferences.sparkOnbCommentAiKey,
@@ -73,6 +87,10 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
         ],
       );
     });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return SparkCard(
       padding: const EdgeInsets.fromLTRB(
         SparkSpace.xl,
@@ -84,13 +102,13 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           TextField(
-            controller: controller,
-            minLines: minLines,
-            maxLines: maxLines,
-            onTapOutside: (_) => onDismissKeyboard(),
+            controller: widget.controller,
+            minLines: widget.minLines,
+            maxLines: widget.maxLines,
+            onTapOutside: (_) => widget.onDismissKeyboard(),
             style: const TextStyle(fontSize: SparkTextSize.label),
             decoration: InputDecoration(
-              hintText: hint,
+              hintText: widget.hint,
               hintStyle: const TextStyle(
                 fontSize: SparkTextSize.label,
                 color: kGreyColor,
@@ -102,7 +120,7 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: SparkSpace.lg),
-          if (isDictating) ...[
+          if (widget.isDictating) ...[
             const MyText(
               text: 'Идёт надиктовка...',
               size: SparkTextSize.caption,
@@ -118,7 +136,7 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
               runSpacing: SparkSpace.md,
               children: [
                 InkWell(
-                  onTap: onToggleDictation,
+                  onTap: widget.onToggleDictation,
                   borderRadius: BorderRadius.circular(SparkRadius.pill),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -128,11 +146,11 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(SparkRadius.pill),
                       border: Border.all(
-                        color: isDictating
+                        color: widget.isDictating
                             ? kRedColor.withValues(alpha: 0.45)
                             : kBorderColor,
                       ),
-                      color: isDictating
+                      color: widget.isDictating
                           ? kRedColor.withValues(alpha: 0.08)
                           : kInputBgColor,
                     ),
@@ -140,25 +158,29 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Icon(
-                          isDictating
+                          widget.isDictating
                               ? Icons.mic_off_rounded
                               : Icons.mic_rounded,
                           size: SparkTextSize.bodyLg,
-                          color: isDictating ? kRedColor : kSecondaryColor,
+                          color: widget.isDictating
+                              ? kRedColor
+                              : kSecondaryColor,
                         ),
                         const SizedBox(width: SparkSpace.xs),
                         MyText(
-                          text: isDictating ? 'Стоп' : 'Голос',
+                          text: widget.isDictating ? 'Стоп' : 'Голос',
                           size: SparkTextSize.chip,
                           weight: FontWeight.w700,
-                          color: isDictating ? kRedColor : kTertiaryColor,
+                          color: widget.isDictating
+                              ? kRedColor
+                              : kTertiaryColor,
                         ),
                       ],
                     ),
                   ),
                 ),
                 InkWell(
-                  onTap: aiBusy ? null : onAiFormat,
+                  onTap: widget.aiBusy ? null : widget.onAiFormat,
                   borderRadius: BorderRadius.circular(SparkRadius.pill),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
@@ -175,7 +197,7 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (aiBusy)
+                        if (widget.aiBusy)
                           const SizedBox(
                             width: SparkTextSize.bodyLg,
                             height: SparkTextSize.bodyLg,
@@ -192,7 +214,7 @@ class SparkJoyCommentInputPanel extends StatelessWidget {
                           ),
                         const SizedBox(width: SparkSpace.xs),
                         MyText(
-                          text: aiBusy ? 'ИИ...' : 'ИИ',
+                          text: widget.aiBusy ? 'ИИ...' : 'ИИ',
                           size: SparkTextSize.chip,
                           weight: FontWeight.w700,
                           color: kSecondaryColor,
