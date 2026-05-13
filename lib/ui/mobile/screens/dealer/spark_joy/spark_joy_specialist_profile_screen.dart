@@ -856,11 +856,17 @@ class _SparkJoySpecialistProfileScreenState
   /// lose work by accident. На confirm сначала шлём UpdateProfile
   /// с role='specialist' (зеркально к _verifyInn — server-first), и
   /// только после server success делаем локальный cleanup через
-  /// [SparkJoyStorage.cancelCompanyMode]. Иначе при server fail у
-  /// юзера удалились бы локальные drafts/staff prefs, а сервер всё
-  /// ещё видел бы его как company. RefreshToken не дёргаем вручную —
-  /// _syncServerRoleToLocal внутри _fetchServerProfile() сам ротирует
-  /// токены при детекте смены роли company → specialist.
+  /// [SparkJoyStorage.cancelCompanyMode] + явный _syncServerRoleToLocal
+  /// (для refreshTokens + role-prefs sync) + cache patch.
+  ///
+  /// **НЕ** вызываем _fetchServerProfile() сразу: backend имеет
+  /// eventual consistency на смене role, его GetProfile в окне
+  /// нескольких секунд после downgrade всё ещё возвращает stale
+  /// company-state (companyName/companyInn/role='company') — и
+  /// _applyProfileToControllers перезаписал бы только что очищенные
+  /// controllers, а setState восстановил бы _verifiedInn. UI откатился
+  /// бы обратно в company. На следующем заходе в профиль
+  /// _fetchServerProfile сам подтянет актуальное.
   Future<void> _resetBusinessStatus() async {
     if (_isVerifying) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -874,6 +880,22 @@ class _SparkJoySpecialistProfileScreenState
         profile: <String, dynamic>{'role': 'specialist'},
       );
       await SparkJoyStorage.cancelCompanyMode();
+      // Sync local prefs role + RefreshToken. Раньше делалось через
+      // unawaited(_fetchServerProfile()) → _syncServerRoleToLocal,
+      // но fetch триггерит race с server-side eventual consistency
+      // (см. doc-комментарий выше). Зовём напрямую — уже знаем
+      // что после успешного UpdateProfile role обязана быть specialist.
+      await _syncServerRoleToLocal('specialist', null);
+      // Patch local profile cache — удаляем company-поля и
+      // фиксируем role='specialist'. Иначе следующий cold start
+      // в profile screen использовал бы stale cache как seed.
+      final cached = await SparkJoyStorage.loadSpecialistProfileOrNull() ??
+          <String, dynamic>{};
+      cached.remove('companyName');
+      cached.remove('companyInn');
+      cached.remove('isVerifyCompany');
+      cached['role'] = 'specialist';
+      unawaited(SparkJoyStorage.saveSpecialistProfile(cached));
       if (!mounted) return;
       setState(() {
         _isVerifying = false;
@@ -894,10 +916,6 @@ class _SparkJoySpecialistProfileScreenState
       messenger.showSnackBar(
         const SnackBar(content: Text('Статус сброшен: теперь вы специалист')),
       );
-      // Re-sync с сервером: _syncServerRoleToLocal внутри увидит смену
-      // company → specialist и дёрнет tryRefreshTokens(); подтянет
-      // актуальный профиль без companyName/companyInn.
-      unawaited(_fetchServerProfile());
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
       setState(() => _isVerifying = false);
