@@ -2010,8 +2010,17 @@ class _SparkJoySpecialistProfileScreenState
     return SparkScreenList(
       bottomInset: 56,
       onRefresh: () async {
+        // Pull-to-refresh = принудительный pull с сервера. _loadProfile
+        // здесь не годится: он показал бы cached snapshot мгновенно
+        // (cache-as-seed), и unawaited(_fetchServerProfile) уехал бы
+        // async — refresh-индикатор схлопнулся бы до прихода свежих
+        // данных, а юзер увидел кэш. Дёргаем _fetchServerProfile
+        // напрямую и await'им — индикатор уезжает только когда server
+        // response применился. Bump generation чтобы invalidate любой
+        // уже-летящий fetch (если был).
+        _fetchGeneration++;
         await Future.wait([
-          _loadProfile(),
+          _fetchServerProfile(),
           _loadBusinessStatus(),
           _loadReportCounts(),
         ]);
