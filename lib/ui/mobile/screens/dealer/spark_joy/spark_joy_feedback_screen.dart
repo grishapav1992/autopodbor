@@ -186,9 +186,28 @@ class _SparkJoyFeedbackScreenState extends State<SparkJoyFeedbackScreen> {
     } on SessionExpiredException {
       if (!mounted) return;
       _showSnack('Сессия истекла. Войдите снова и повторите.');
+    } on TimeoutException {
+      if (!mounted) return;
+      _showSnack('Сервер долго не отвечает. Попробуйте позже.');
     } catch (e) {
       if (!mounted) return;
-      _showSnack('Не удалось отправить: $e');
+      // SocketException (mobile) и http.ClientException (web) стрингифицируются
+      // c узнаваемыми маркерами «socket»/«failed host lookup»/«clientexception».
+      // Распознаём их по toString() — это позволяет не тянуть `dart:io`
+      // (несовместимо с web) и не зависеть от типов package:http.
+      final msg = e.toString().toLowerCase();
+      final isNetwork = msg.contains('socket') ||
+          msg.contains('failed host lookup') ||
+          msg.contains('connection refused') ||
+          msg.contains('connection reset') ||
+          msg.contains('connection closed') ||
+          msg.contains('xmlhttprequest') ||
+          msg.contains('clientexception');
+      if (isNetwork) {
+        _showSnack('Нет соединения. Проверьте интернет и попробуйте снова.');
+      } else {
+        _showSnack('Не удалось отправить обращение. Попробуйте позже.');
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

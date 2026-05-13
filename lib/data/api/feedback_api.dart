@@ -107,14 +107,13 @@ class FeedbackApi {
     }
     headers['Authorization'] = 'Bearer $accessToken';
 
-    http.Response response;
-    try {
-      response = await http
-          .post(Uri.parse(_endpoint), headers: headers, body: bytes)
-          .timeout(timeout);
-    } on TimeoutException catch (e) {
-      throw Exception('Timeout on $method after ${timeout.inSeconds}s: $e');
-    }
+    // Не оборачиваем TimeoutException — экран ловит этот тип отдельно
+    // и показывает дружелюбный текст «Долго не отвечает сервер».
+    // SocketException / http.ClientException пробрасываем как есть —
+    // экран распознаёт их по toString() и подменяет на «Нет соединения».
+    final response = await http
+        .post(Uri.parse(_endpoint), headers: headers, body: bytes)
+        .timeout(timeout);
 
     // 401 → try to refresh once and retry.
     if (response.statusCode == 401 && allowRefresh) {
