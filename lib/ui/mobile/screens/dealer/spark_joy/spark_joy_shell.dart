@@ -10,6 +10,7 @@ import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:get/get.dart';
 
+import 'spark_joy_company_requests_screen.dart';
 import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_notifications_screen.dart';
@@ -130,19 +131,19 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     // Preserve the user's semantic tab across role transitions.
     // Tab layout depends on role:
     //   specialist → 0=Reports, 1=Profile
-    //   company    → 0=Reports, 1=Staff, 2=Profile
+    //   company    → 0=Reports, 1=Staff, 2=Заявки, 3=Profile
     // If we left `_index` untouched, verifying INN on Profile (1→1)
-    // would land on Staff, and resetting on Profile (2→clamped→0)
+    // would land on Staff, and resetting on Profile (3→clamped→0)
     // would land on Reports. Both jarring. So we keep the user on
     // Profile when they started on Profile; keep Reports on Reports;
-    // and for the company-only Staff tab, fall back to Profile when
-    // the user demotes (there is no Staff in specialist mode).
+    // for company-only tabs (Staff, Заявки) fall back to Profile when
+    // user demotes (these tabs don't exist in specialist mode).
     int nextIndex = _index;
     if (_role != newRole) {
       final wasProfile = (_role == SparkJoyRole.specialist && _index == 1) ||
-          (_role == SparkJoyRole.company && _index == 2);
+          (_role == SparkJoyRole.company && _index == 3);
       final wasReports = _index == 0;
-      final profileIndex = newRole == SparkJoyRole.specialist ? 1 : 2;
+      final profileIndex = newRole == SparkJoyRole.specialist ? 1 : 3;
       if (wasProfile || !wasReports) {
         nextIndex = profileIndex;
       } else {
@@ -234,6 +235,11 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         label: 'Сотрудники',
       ),
       NavigationDestination(
+        icon: Icon(Icons.assignment_outlined),
+        selectedIcon: Icon(Icons.assignment_rounded),
+        label: 'Заявки',
+      ),
+      NavigationDestination(
         icon: Icon(Icons.person_outline),
         selectedIcon: Icon(Icons.person_rounded),
         label: 'Профиль',
@@ -255,6 +261,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       case 1:
         return 'Сотрудники';
       case 2:
+        return 'Заявки';
+      case 3:
         return 'Профиль';
       case 0:
       default:
@@ -267,6 +275,73 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       return 'ИП';
     }
     return sparkJoyRoleLabel(_role);
+  }
+
+  /// Tap по role-чипу в AppBar открывает короткое объяснение: какая
+  /// сейчас роль, чем company отличается от specialist, как сменить.
+  /// Реальный role-switch — через «Профиль → Проверка компании» (ввод
+  /// ИНН / сброс статуса), здесь только nav-hint, чтобы юзер не
+  /// тапал чип и не ожидал dropdown.
+  void _showRoleInfoSheet(BuildContext context) {
+    final isCompany = _role == SparkJoyRole.company;
+    final label = _roleBadgeLabel();
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kWhiteColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(SparkRadius.lg),
+        ),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(SparkSpace.xxxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      isCompany
+                          ? Icons.business_rounded
+                          : Icons.person_rounded,
+                      size: SparkSize.iconLg,
+                      color: kSecondaryColor,
+                    ),
+                    const SizedBox(width: SparkSpace.md),
+                    MyText(
+                      text: 'Роль: $label',
+                      size: SparkTextSize.titleLg,
+                      weight: FontWeight.w800,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SparkSpace.lg),
+                MyText(
+                  text: isCompany
+                      ? 'Аккаунт оформлен как ${_businessType == 'ip' ? 'ИП' : 'юридическое лицо'}. Отчёты публикуются от имени компании, доступен раздел «Сотрудники».'
+                      : 'Индивидуальный профиль автоподборщика. Чтобы переключиться на работу от лица компании или ИП, укажите ИНН в «Профиль → Проверка компании».',
+                  size: SparkTextSize.body,
+                  color: kGreyColor,
+                  lineHeight: 1.40,
+                ),
+                const SizedBox(height: SparkSpace.lg),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Понятно'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -286,15 +361,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       return _SparkJoyLogin(onLogin: _login);
     }
 
-    void openCompletedReports() {
-      if (!mounted) return;
-      setState(() => _index = 0);
-      // The reports list is already mounted inside the IndexedStack so a
-      // plain index flip doesn't rebuild it — push the tab request
-      // through the notifier so its controller reacts.
-      _requestedReportsTab.value = 'completed';
-    }
-
     final tabs = _role == SparkJoyRole.specialist
         ? <Widget>[
             SparkJoyReportsListScreen(
@@ -303,7 +369,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
             ),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
-              onOpenCompletedReports: openCompletedReports,
+              onLogout: _logout,
             ),
           ]
         : <Widget>[
@@ -312,9 +378,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               tabRequest: _requestedReportsTab,
             ),
             const SparkJoyCompanyStaffScreen(),
+            const SparkJoyCompanyRequestsScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
-              onOpenCompletedReports: openCompletedReports,
+              onLogout: _logout,
             ),
           ];
     final destinations = _navDestinations();
@@ -363,13 +430,17 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           Padding(
             padding: const EdgeInsets.only(right: SparkSpace.md),
             child: Center(
-              child: SparkChip(
-                text: _roleBadgeLabel(),
-                background: kSecondaryColor.withValues(alpha: 0.08),
-                color: kSecondaryColor,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.xl,
-                  vertical: SparkSpace.sm,
+              child: InkWell(
+                onTap: () => _showRoleInfoSheet(context),
+                borderRadius: BorderRadius.circular(SparkRadius.pill),
+                child: SparkChip(
+                  text: _roleBadgeLabel(),
+                  background: kSecondaryColor.withValues(alpha: 0.08),
+                  color: kSecondaryColor,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.xl,
+                    vertical: SparkSpace.sm,
+                  ),
                 ),
               ),
             ),
@@ -381,11 +452,11 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               icon: Icons.notifications_none_rounded,
             ),
           ),
-          IconButton(
-            tooltip: 'Выйти',
-            onPressed: _logout,
-            icon: const Icon(Icons.logout, size: SparkSize.iconLg),
-          ),
+          // Logout-кнопка раньше жила прямо в AppBar — самый «легко
+          // доступный» угол экрана, случайный тап = выход из аккаунта.
+          // Теперь действие переехало вглубь Профиля (см.
+          // SparkJoySpecialistProfileScreen → onLogout callback) с
+          // обязательным confirm-диалогом.
         ],
       ),
       body: SparkShellInsets(

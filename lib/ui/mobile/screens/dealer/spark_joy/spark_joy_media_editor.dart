@@ -216,8 +216,8 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
           : (hasFiles ? Icons.check_rounded : Icons.circle);
       iconColor = kWhiteColor;
     } else if (hasIssue) {
-      circleBg = kRedColor;
-      circleBorder = kRedColor;
+      circleBg = kSecondaryColor;
+      circleBorder = kSecondaryColor;
       circleIcon = Icons.priority_high_rounded;
       iconColor = kWhiteColor;
     } else if (hasFiles) {
@@ -284,7 +284,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
   Widget _stepConnector({required bool completed, required bool hasIssue}) {
     final Color color;
     if (completed) {
-      color = hasIssue ? kRedColor : kGreenColor;
+      color = hasIssue ? kSecondaryColor : kGreenColor;
     } else {
       color = kBorderColor.withValues(alpha: 0.5);
     }
@@ -479,19 +479,23 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         : (hasIssue
               ? 'Замечания'
               : (notesCount > 0 ? 'Есть заметки' : 'Готово'));
+    // «Замечания» сигналим брендовым синим (kSecondaryColor) —
+    // «здесь есть данные», без warning-вибраций. Красный остаётся
+    // только для блокирующих ошибок (валидация, session expired).
+    // Зелёный — для «без замечаний», нормально-OK состояния.
     final statusColor = !hasFiles
         ? kGreyColor
         : (hasIssue
-              ? kRedColor
+              ? kSecondaryColor
               : (notesCount > 0 ? kGreenColor : kSecondaryColor));
+    // leadBg/leadColor — единая брендовая заливка для любой
+    // заполненной группы. Дифференциация issue vs ok-with-notes
+    // идёт через cardBackground/cardBorder + status pill сверху,
+    // дублировать leading-icon цветом смысла нет.
     final leadBg = hasFiles
-        ? (hasIssue
-              ? kRedColor.withValues(alpha: 0.1)
-              : kSecondaryColor.withValues(alpha: 0.1))
+        ? kSecondaryColor.withValues(alpha: 0.10)
         : kInputBgColor;
-    final leadColor = hasFiles
-        ? (hasIssue ? kRedColor : kSecondaryColor)
-        : kGreyColor;
+    final leadColor = hasFiles ? kSecondaryColor : kGreyColor;
 
     Widget? footer;
     if (groupKey == 'body') {
@@ -520,21 +524,21 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
       );
     }
 
-    // Визуальная дифференциация заполненных vs пустых секций:
-    // 1) Светло-зелёный tint фона карточки → секция взгляду читается
-    //    как «✓ done» даже без скролла к правой части карточки.
-    // 2) Зелёная рамка чуть плотнее (0.55 vs 0.3) — было слишком
-    //    блекло на фоне 8-разделового списка осмотра.
+    // Визуальная дифференциация секций осмотра:
+    // 1) Синий tint фона + рамка → «есть замечания, инспектор
+    //    зафиксировал»; нейтральный info-сигнал, не warning.
+    // 2) Светло-зелёный tint + плотная зелёная рамка → fullyMarked
+    //    без замечаний. Секция взгляду читается как «✓ done».
     // 3) Trailing chevron заменяется на ✓ когда секция fullyMarked.
     final cardBackground = isPressed
         ? kSecondaryColor.withValues(alpha: 0.02)
         : (hasIssue
-              ? kWhiteColor
+              ? kSecondaryColor.withValues(alpha: 0.05)
               : (fullyMarked
                     ? kGreenColor.withValues(alpha: 0.04)
                     : kWhiteColor));
     final cardBorder = hasIssue
-        ? kRedColor.withValues(alpha: 0.3)
+        ? kSecondaryColor.withValues(alpha: 0.35)
         : (fullyMarked
               ? kGreenColor.withValues(alpha: 0.55)
               : (isPressed
@@ -651,9 +655,9 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                                   ),
                                 if (issueCount > 0)
                                   _runMediaMetaPill(
-                                    icon: Icons.report_problem_outlined,
+                                    icon: Icons.local_offer,
                                     text: 'Замечания $issueCount',
-                                    color: kRedColor,
+                                    color: kSecondaryColor,
                                   ),
                               ],
                             ),
@@ -953,8 +957,8 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                         if (issueFiles > 0)
                           SparkChip(
                             text: 'Замечания: $issueFiles',
-                            background: kRedColor.withValues(alpha: 0.12),
-                            color: kRedColor,
+                            background: kSecondaryColor.withValues(alpha: 0.12),
+                            color: kSecondaryColor,
                             textSize: SparkTextSize.caption,
                             padding: const EdgeInsets.symmetric(
                               horizontal: SparkSpace.md,

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -199,6 +201,80 @@ class SparkListCard extends StatelessWidget {
   }
 }
 
+/// Стилизованный preset-аватар на автотему: Material-иконка на цветном
+/// градиенте в круге. Используется как «подборка» аватаров для юзеров,
+/// у которых нет своего фото. Каждый preset идентифицируется индексом
+/// в [kSparkAvatarPresets] — этот индекс хранится в SharedPreferences,
+/// а сам preset рендерится from-scratch (без bundled-assets — bundle
+/// PNG для каждого preset был бы overkill для иконки).
+class SparkAvatarPreset {
+  const SparkAvatarPreset({
+    required this.icon,
+    required this.background,
+    required this.foreground,
+  });
+
+  final IconData icon;
+  final Color background;
+  final Color foreground;
+}
+
+/// 10 авто-тематических preset-аватаров. Порядок фиксирован — индекс
+/// сохраняется в prefs (не имя), переставлять = ломать существующие
+/// профили. Добавлять только в конец.
+const List<SparkAvatarPreset> kSparkAvatarPresets = <SparkAvatarPreset>[
+  SparkAvatarPreset(
+    icon: Icons.directions_car_rounded,
+    background: Color(0xFFFFE4E4),
+    foreground: Color(0xFFD93131),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.directions_car_filled_rounded,
+    background: Color(0xFFE0F2FF),
+    foreground: Color(0xFF1E78E0),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.local_taxi_rounded,
+    background: Color(0xFFFFF6D6),
+    foreground: Color(0xFFB78B00),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.local_shipping_rounded,
+    background: Color(0xFFF2E7DA),
+    foreground: Color(0xFF8B5A2B),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.two_wheeler_rounded,
+    background: Color(0xFFFFE6CC),
+    foreground: Color(0xFFD2691E),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.electric_car_rounded,
+    background: Color(0xFFD6F2DE),
+    foreground: Color(0xFF1F8A3F),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.build_rounded,
+    background: Color(0xFFE0E0F5),
+    foreground: Color(0xFF4949B0),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.local_gas_station_rounded,
+    background: Color(0xFFFFDED1),
+    foreground: Color(0xFFCB4B16),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.car_repair_rounded,
+    background: Color(0xFFD2EEEC),
+    foreground: Color(0xFF1B7F76),
+  ),
+  SparkAvatarPreset(
+    icon: Icons.speed_rounded,
+    background: Color(0xFFEDDDF7),
+    foreground: Color(0xFF8E44AD),
+  ),
+];
+
 class SparkInitialsAvatar extends StatelessWidget {
   const SparkInitialsAvatar({
     super.key,
@@ -207,6 +283,8 @@ class SparkInitialsAvatar extends StatelessWidget {
     this.textSize = SparkTextSize.label,
     this.backgroundColor,
     this.textColor = kSecondaryColor,
+    this.imageBase64,
+    this.presetIndex,
   });
 
   final String name;
@@ -215,8 +293,73 @@ class SparkInitialsAvatar extends StatelessWidget {
   final Color? backgroundColor;
   final Color textColor;
 
+  /// Optional base64-кодированное JPEG/PNG. Если непустое и
+  /// декодируется — рендерим картинку в круге; иначе fallback на
+  /// preset или инициалы. Поле опциональное — все существующие
+  /// use-site'ы `SparkInitialsAvatar` без `imageBase64`/`presetIndex`
+  /// ведут себя как раньше.
+  final String? imageBase64;
+
+  /// Индекс preset-аватара из [kSparkAvatarPresets]. Применяется
+  /// только если `imageBase64` null/пустой. Out-of-range — игнорируется
+  /// (fallback на инициалы), чтобы поломанный prefs не крашил UI.
+  final int? presetIndex;
+
+  Uint8List? _decode() {
+    final raw = imageBase64;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final bytes = _decode();
+    if (bytes != null) {
+      return ClipOval(
+        child: Image.memory(
+          bytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          // Если bytes окажется битым (corrupted base64 prefs) —
+          // показываем инициалы, не серый стандартный broken-image.
+          errorBuilder: (_, _, _) => _buildInitials(),
+          gaplessPlayback: true,
+        ),
+      );
+    }
+    final preset = _resolvePreset();
+    if (preset != null) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: preset.background,
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          preset.icon,
+          color: preset.foreground,
+          size: size * 0.5,
+        ),
+      );
+    }
+    return _buildInitials();
+  }
+
+  SparkAvatarPreset? _resolvePreset() {
+    final idx = presetIndex;
+    if (idx == null) return null;
+    if (idx < 0 || idx >= kSparkAvatarPresets.length) return null;
+    return kSparkAvatarPresets[idx];
+  }
+
+  Widget _buildInitials() {
     return Container(
       width: size,
       height: size,
@@ -289,12 +432,25 @@ class SparkSectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // iOS-style group header: маленький, серый, с трекингом, UPPERCASE.
+    // Заголовок секции должен направлять глаз, а не соревноваться с
+    // value-текстом в карточке — раньше label-size + чёрный жирный
+    // визуально ставил каждую секцию в один ряд с её содержимым.
     return Padding(
-      padding: EdgeInsets.only(top: top, bottom: SparkSpace.md),
+      padding: EdgeInsets.only(
+        top: top,
+        bottom: SparkSpace.sm,
+        left: SparkSpace.xs,
+      ),
       child: MyText(
-        text: text,
-        size: SparkTextSize.label,
+        text: text.toUpperCase(),
+        size: SparkTextSize.caption,
+        color: kGreyColor,
         weight: FontWeight.w700,
+        // Положительный letterSpacing для UPPERCASE caption — стандарт
+        // iOS group-header. `tracking: true` в MyText даёт -0.4 (для
+        // больших шрифтов), а здесь нужно loose, не tight.
+        letterSpacing: 0.6,
       ),
     );
   }
@@ -419,6 +575,143 @@ class SparkInfoRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tappable iOS-style list row для профиля: leading-иконка, label-сверху
+/// + value-снизу, опциональный trailing-виджет (бейдж/чип), chevron
+/// справа. Tap открывает редактор поля (bottom-sheet/dialog). Если
+/// `onTap == null` — row становится не-интерактивным (без chevron, без
+/// InkWell). Используется как замена двухколоночной view-mode карточки
+/// «Информация», где целая карточка переключалась в edit-mode по одному
+/// pencil-кнопке и пользователь не понимал, какое поле он редактирует.
+class SparkProfileRow extends StatelessWidget {
+  const SparkProfileRow({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.onTap,
+    this.trailing,
+    this.valueIsPlaceholder = false,
+    this.muted = false,
+    this.maxLinesValue,
+    this.required = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+
+  /// Когда value — это placeholder для пустого поля («Не указано»),
+  /// рендерим его серым/regular-весом, чтобы не путать с реальными
+  /// данными.
+  final bool valueIsPlaceholder;
+
+  /// Demote row visually: серая icon, dim-text. Для read-only-полей
+  /// (телефон), которые по идее формально такие же, как остальные, но
+  /// без affordance редактирования — чтобы юзер не пытался тапнуть.
+  final bool muted;
+
+  /// Ограничение количества строк в value. По умолчанию (null) — без
+  /// ограничения. Полезно для «Описание услуг»: 2-3 строки превью с
+  /// «…» — тап открывает полный текст в редакторе.
+  final int? maxLinesValue;
+
+  /// Когда true — рендерим красную `*` после label'а. Для required-
+  /// полей формы (например, «Марка *» в форме создания заявки).
+  final bool required;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = muted
+        ? kGreyColor
+        : (valueIsPlaceholder ? kGreyColor : kSecondaryColor);
+    final Color? valueColor = (muted || valueIsPlaceholder) ? kGreyColor : null;
+    final body = Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xs,
+        vertical: SparkSpace.md,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: SparkSize.iconLg, color: iconColor),
+          const SizedBox(width: SparkSpace.xl),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                required
+                    ? RichText(
+                        text: TextSpan(
+                          children: [
+                            TextSpan(
+                              text: label,
+                              style: const TextStyle(
+                                fontSize: SparkTextSize.caption,
+                                color: kGreyColor,
+                              ),
+                            ),
+                            const TextSpan(
+                              text: ' *',
+                              style: TextStyle(
+                                fontSize: SparkTextSize.caption,
+                                color: kRedColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : MyText(
+                        text: label,
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                      ),
+                const SizedBox(height: SparkSpace.xxs),
+                MyText(
+                  text: value,
+                  size: SparkTextSize.bodyLg,
+                  weight: (valueIsPlaceholder || muted)
+                      ? FontWeight.w400
+                      : FontWeight.w600,
+                  color: valueColor,
+                  lineHeight: 1.30,
+                  maxLines: maxLinesValue,
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: SparkSpace.sm),
+            trailing!,
+          ],
+          if (onTap != null) ...[
+            const SizedBox(width: SparkSpace.xs),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: SparkSize.iconLg,
+              color: kGreyColor,
+            ),
+          ],
+        ],
+      ),
+    );
+
+    if (onTap == null) return body;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+        child: body,
       ),
     );
   }

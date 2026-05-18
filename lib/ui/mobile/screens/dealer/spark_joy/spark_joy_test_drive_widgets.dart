@@ -12,6 +12,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
   }) {
     final selectedTagsCount = selected.length;
     final sectionInvalid = !ok && selectedTagsCount == 0;
+    final hasIssues = !ok && selectedTagsCount > 0;
     final statusLabel = ok
         ? 'Без замечаний'
         : sectionInvalid
@@ -21,7 +22,30 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
         ? kGreenColor
         : sectionInvalid
         ? kRedColor
-        : kYellowColor;
+        // hasIssues → синий (consistency со surface'ом карточки и
+        // row'ом «Повреждения (N)»; амбер ушёл из inspection-flow).
+        : kSecondaryColor;
+    // Card surface отражает статус узла одним взглядом:
+    //   ok=true                 → зелёный wash + зелёный border (ok)
+    //   ok=false, count>0       → синий wash + синий border (filled-info,
+    //                             инспектор зафиксировал замечания)
+    //   sectionInvalid          → красный border (валидация)
+    //   untouched               → белый + дефолтный border
+    // Амбер заменён на kSecondaryColor: амбер читался как «warning /
+    // ты что-то пропустил», а добавление замечаний — это нормальная
+    // часть осмотра, а не пропуск.
+    final Color cardBg = ok
+        ? kGreenColor.withValues(alpha: 0.06)
+        : hasIssues
+        ? kSecondaryColor.withValues(alpha: 0.06)
+        : kWhiteColor;
+    final Color cardBorder = ok
+        ? kGreenColor.withValues(alpha: 0.35)
+        : hasIssues
+        ? kSecondaryColor.withValues(alpha: 0.35)
+        : sectionInvalid
+        ? kRedColor.withValues(alpha: 0.35)
+        : kBorderColor;
     // Picker takes the full catalog (system + custom + previously-
     // disabled defaults) and renders its own filter / search; no need
     // to pre-trim by visibility here.
@@ -29,6 +53,8 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
         _testDriveTagGroups(tagScopeKey, includeDisabledDefaults: true);
 
     return _card(
+      backgroundColor: cardBg,
+      borderColor: cardBorder,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -244,10 +270,18 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                       ),
                       child: Row(
                         children: [
-                          const Icon(
-                            Icons.local_offer_outlined,
+                          Icon(
+                            // Outline tag-иконка → filled (`local_offer`)
+                            // в брендовом синем когда есть выбранные
+                            // повреждения. Filled-вариант + цвет —
+                            // «здесь есть данные» без warning-вибраций.
+                            selectedCount == 0
+                                ? Icons.local_offer_outlined
+                                : Icons.local_offer,
                             size: SparkSize.iconLg,
-                            color: kGreyColor,
+                            color: selectedCount == 0
+                                ? kGreyColor
+                                : kSecondaryColor,
                           ),
                           const SizedBox(width: SparkSpace.md),
                           Expanded(

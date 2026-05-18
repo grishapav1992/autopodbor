@@ -363,3 +363,68 @@ class MultipartListPartsResult {
     required this.result,
   });
 }
+
+/// Возвращается `Storage.GetSpecialists`. Email и phone приходят **только
+/// при точном совпадении** search-параметра — без явного поиска по
+/// конкретному значению эти поля null (privacy by default).
+class SpecialistItem {
+  final int id;
+  final String? firstName;
+  final String? lastName;
+  final String? middleName;
+  final String? urlAvatar;
+  final String? description;
+  final int likeUp;
+  final int likeDown;
+  final double rating;
+  final String? city;
+  final String? email;
+  final String? phone;
+
+  const SpecialistItem({
+    required this.id,
+    this.firstName,
+    this.lastName,
+    this.middleName,
+    this.urlAvatar,
+    this.description,
+    this.likeUp = 0,
+    this.likeDown = 0,
+    this.rating = 0,
+    this.city,
+    this.email,
+    this.phone,
+  });
+
+  /// «Фамилия Имя» (Отчество — не показываем для компактности списка).
+  /// Если ФИО нет вообще — fallback на email/phone или «Специалист #ID».
+  String get displayName {
+    final ln = (lastName ?? '').trim();
+    final fn = (firstName ?? '').trim();
+    if (ln.isNotEmpty || fn.isNotEmpty) {
+      return [ln, fn].where((s) => s.isNotEmpty).join(' ');
+    }
+    final em = (email ?? '').trim();
+    if (em.isNotEmpty) return em;
+    final ph = (phone ?? '').trim();
+    if (ph.isNotEmpty) return ph;
+    return 'Специалист #$id';
+  }
+}
+
+/// Пагинированный ответ `Storage.GetSpecialists`.
+class SpecialistsPage {
+  final List<SpecialistItem> specialists;
+  final int page;
+  final int limit;
+  final int total;
+  final int pages;
+
+  const SpecialistsPage({
+    required this.specialists,
+    required this.page,
+    required this.limit,
+    required this.total,
+    required this.pages,
+  });
+}

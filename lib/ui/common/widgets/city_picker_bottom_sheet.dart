@@ -37,27 +37,15 @@ class _CityPickerSheet extends StatefulWidget {
 }
 
 class _CityPickerSheetState extends State<_CityPickerSheet> {
-  // Country chips. `null` for "Все" (no filter). Order: most-likely
-  // home countries of inspectors first. Keep in sync with the
-  // `_targetCountries` set in scripts/build_cities_dataset.dart.
-  static const List<_CountryChip> _countries = [
-    _CountryChip(code: null, label: 'Все'),
-    _CountryChip(code: 'RU', label: 'Россия'),
-    _CountryChip(code: 'BY', label: 'Беларусь'),
-    _CountryChip(code: 'KZ', label: 'Казахстан'),
-    _CountryChip(code: 'AM', label: 'Армения'),
-    _CountryChip(code: 'AZ', label: 'Азербайджан'),
-    _CountryChip(code: 'KG', label: 'Кыргызстан'),
-    _CountryChip(code: 'MD', label: 'Молдова'),
-    _CountryChip(code: 'TJ', label: 'Таджикистан'),
-    _CountryChip(code: 'TM', label: 'Туркменистан'),
-    _CountryChip(code: 'UZ', label: 'Узбекистан'),
-  ];
+  // Country-фильтр временно жёстко зафиксирован на Россию.
+  // Раньше тут был chip-bar с 11 странами СНГ; продукт сузил скоуп
+  // до РФ. Когда понадобится снова — вернуть chip-UI + dataset уже
+  // содержит все страны (см. `scripts/build_cities_dataset.dart`).
+  static const String _selectedCountry = 'RU';
 
   final TextEditingController _searchController = TextEditingController();
   final FocusNode _searchFocus = FocusNode();
   Timer? _debounce;
-  String? _selectedCountry;
   String _query = '';
   Future<void>? _initFuture;
 
@@ -85,10 +73,6 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
       if (!mounted) return;
       setState(() => _query = value);
     });
-  }
-
-  void _selectCountry(String? code) {
-    setState(() => _selectedCountry = code);
   }
 
   void _pickCity(City city) {
@@ -126,7 +110,6 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
             _buildHeader(),
             if (_shouldShowOutOfListBanner) _buildOutOfListBanner(),
             _buildSearchField(),
-            _buildCountryChips(),
             const Divider(height: 1, color: kBorderColor),
             Expanded(child: _buildResults()),
           ],
@@ -239,43 +222,6 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
     );
   }
 
-  Widget _buildCountryChips() {
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: _countries.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 6),
-        itemBuilder: (context, i) {
-          final c = _countries[i];
-          final selected = _selectedCountry == c.code;
-          return ChoiceChip(
-            label: Text(c.label),
-            selected: selected,
-            onSelected: (_) => _selectCountry(c.code),
-            labelStyle: TextStyle(
-              color: selected ? Colors.white : kTertiaryColor,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-            selectedColor: kSecondaryColor,
-            backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-              side: BorderSide(
-                color: selected ? kSecondaryColor : kBorderColor,
-              ),
-            ),
-            // Compact paddings — fit ~3 chips on a 375px-wide screen.
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            visualDensity: VisualDensity.compact,
-          );
-        },
-      ),
-    );
-  }
-
   Widget _buildResults() {
     return FutureBuilder<void>(
       future: _initFuture,
@@ -347,8 +293,3 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
   }
 }
 
-class _CountryChip {
-  const _CountryChip({required this.code, required this.label});
-  final String? code;
-  final String label;
-}

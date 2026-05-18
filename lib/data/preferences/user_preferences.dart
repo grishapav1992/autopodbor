@@ -82,6 +82,18 @@ class UserSimplePreferences {
   // тут. Переживает рестарт приложения.
   static const _pendingEmailVerifyKey = 'pendingEmailVerify';
 
+  // Avatar profile photo как base64-JPEG. Local-only (backend пока без
+  // upload-endpoint'а; есть только поле urlAvatar в GetProfile). Image
+  // picker берёт фото из галереи/камеры → maxWidth 800 + quality 85,
+  // base64encode → сюда. Очищается на logout вместе с токенами.
+  static const _avatarBase64Key = 'avatarBase64';
+
+  // Индекс preset-аватара (стилизованная авто-плитка из
+  // kSparkAvatarPresets). Альтернатива base64-фото: юзер может выбрать
+  // одну из 10 готовых иконок-на-фоне. Mutual exclusion с base64 — при
+  // выборе фото preset чистится и наоборот.
+  static const _avatarPresetIndexKey = 'avatarPresetIndex';
+
   // Spark Joy onboarding "shown once" flags. Each key corresponds to a
   // contextual bottom sheet that appears at the first encounter with a
   // major Spark Joy section for users in the Specialist (dealer) role.
@@ -95,6 +107,9 @@ class UserSimplePreferences {
   // assignment flow.
   static const sparkOnbStaffKey = 'sparkOnb.staff';
   static const sparkOnbAssignReportKey = 'sparkOnb.assignReport';
+  // Company-only вкладка «Заявки» (4-я в shell) — список + создание
+  // заявок на специалистов.
+  static const sparkOnbCompanyRequestsKey = 'sparkOnb.companyRequests';
 
 
   static const List<String> sparkOnboardingKeys = <String>[
@@ -106,6 +121,7 @@ class UserSimplePreferences {
     sparkOnbSummaryStepKey,
     sparkOnbStaffKey,
     sparkOnbAssignReportKey,
+    sparkOnbCompanyRequestsKey,
   ];
 
   static Future init() async {
@@ -391,6 +407,10 @@ class UserSimplePreferences {
     // Pending email verify тоже привязан к сессии пользователя — чтобы
     // banner из прошлого аккаунта не утёк в новый при logout/re-login.
     await prefs.remove(_pendingEmailVerifyKey);
+    // Аватар привязан к юзеру (local-only) — не должен утечь в
+    // следующего пользователя на том же девайсе.
+    await prefs.remove(_avatarBase64Key);
+    await prefs.remove(_avatarPresetIndexKey);
     // Profile snapshot (cache-as-seed для Spark Joy profile screen) —
     // содержит email/имя/телефон/companyName предыдущего юзера.
     // clearAuthTokens вызывается из storage_api.dart на 5 путях
@@ -440,6 +460,50 @@ class UserSimplePreferences {
   static Future<String?> getPendingEmailVerify() async {
     // ignore: await_only_futures
     return (await _prefs()).getString(_pendingEmailVerifyKey);
+  }
+
+  /// Сохраняет аватар как base64-JPEG. null / пустая строка → удаляет
+  /// ключ (равносильно clearAvatar). Размер строки ограничен только
+  /// SharedPreferences-бэкендом (web localStorage ≥5 MB). Чистит
+  /// preset-индекс — фото и preset взаимоисключающие.
+  static Future<void> setAvatarBase64(String? base64) async {
+    final prefs = await _prefs();
+    await prefs.remove(_avatarPresetIndexKey);
+    if (base64 == null || base64.isEmpty) {
+      await prefs.remove(_avatarBase64Key);
+    } else {
+      await prefs.setString(_avatarBase64Key, base64);
+    }
+  }
+
+  static Future<String?> getAvatarBase64() async {
+    // ignore: await_only_futures
+    return (await _prefs()).getString(_avatarBase64Key);
+  }
+
+  /// Сохраняет preset-индекс (0..N-1, см. kSparkAvatarPresets). null →
+  /// удаляет ключ. Чистит base64 — preset и фото mutual exclusive.
+  static Future<void> setAvatarPresetIndex(int? index) async {
+    final prefs = await _prefs();
+    await prefs.remove(_avatarBase64Key);
+    if (index == null) {
+      await prefs.remove(_avatarPresetIndexKey);
+    } else {
+      await prefs.setInt(_avatarPresetIndexKey, index);
+    }
+  }
+
+  static Future<int?> getAvatarPresetIndex() async {
+    // ignore: await_only_futures
+    return (await _prefs()).getInt(_avatarPresetIndexKey);
+  }
+
+  /// Снести оба представления аватара (и фото, и preset). Используется
+  /// в action-sheet'е «Удалить фото» в Профиле.
+  static Future<void> clearAvatar() async {
+    final prefs = await _prefs();
+    await prefs.remove(_avatarBase64Key);
+    await prefs.remove(_avatarPresetIndexKey);
   }
 
   static Future<bool> isSparkOnboardingSeen(String key) async {

@@ -828,10 +828,28 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                         vertical:
                                                             SparkSpace.md,
                                                       ),
+                                                  // Status surface: row
+                                                  // подкрашивается брендовым
+                                                  // синим когда есть
+                                                  // выбранные повреждения.
+                                                  // «Здесь есть данные»
+                                                  // без warning-семантики
+                                                  // амбера (инспектор сам
+                                                  // зафиксировал, не пропуск).
                                                   decoration: BoxDecoration(
-                                                    color: kInputBgColor,
+                                                    color: selectedCount > 0
+                                                        ? kSecondaryColor
+                                                              .withValues(
+                                                                alpha: 0.06,
+                                                              )
+                                                        : kInputBgColor,
                                                     border: Border.all(
-                                                      color: kBorderColor,
+                                                      color: selectedCount > 0
+                                                          ? kSecondaryColor
+                                                                .withValues(
+                                                                  alpha: 0.35,
+                                                                )
+                                                          : kBorderColor,
                                                     ),
                                                     borderRadius:
                                                         BorderRadius.circular(
@@ -840,12 +858,18 @@ extension _SparkJoyMediaInspectionEditorMethods
                                                   ),
                                                   child: Row(
                                                     children: [
-                                                      const Icon(
-                                                        Icons
-                                                            .local_offer_outlined,
+                                                      Icon(
+                                                        selectedCount == 0
+                                                            ? Icons
+                                                                  .local_offer_outlined
+                                                            : Icons
+                                                                  .local_offer,
                                                         size:
                                                             SparkSize.iconLg,
-                                                        color: kGreyColor,
+                                                        color:
+                                                            selectedCount == 0
+                                                            ? kGreyColor
+                                                            : kSecondaryColor,
                                                       ),
                                                       const SizedBox(
                                                         width: SparkSpace.md,

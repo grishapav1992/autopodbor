@@ -1,5 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Доступ к галерее для выбора аватара и фото осмотра. На
+         Android 13+ нужен новый scoped READ_MEDIA_IMAGES, на старых
+         версиях фолбэк READ_EXTERNAL_STORAGE (maxSdkVersion=32). -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
 
     <application
         android:label="flutter_application_1"

@@ -454,7 +454,7 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
                     text: TextSpan(
                       style: const TextStyle(
                         color: kGreyColor,
-                        fontSize: 12,
+                        fontSize: 14,
                         height: 1.35,
                         fontWeight: FontWeight.w500,
                       ),
@@ -469,7 +469,7 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
                               'персональных данных',
                               style: TextStyle(
                                 color: kSecondaryColor,
-                                fontSize: 12,
+                                fontSize: 14,
                                 height: 1.35,
                                 fontWeight: FontWeight.w700,
                                 decoration: TextDecoration.underline,

@@ -568,7 +568,25 @@ class StorageApi {
   /// tokens were updated.
   static Future<bool> tryRefreshTokens() => _tryRefreshTokens();
 
-  static Future<bool> _tryRefreshTokens() async {
+  /// Single-flight protection: при одновременных вызовах (pre-send JWT
+  /// skew check + 401-retry + manual из других модулей) все caller'ы
+  /// получают one shared future вместо отдельных network requests.
+  /// Без этого backend получал несколько RefreshToken'ов параллельно,
+  /// и последующий мог invalidate refresh-токен предыдущего (зависит
+  /// от backend logic; safer избегать гонок).
+  static Future<bool>? _inFlightRefresh;
+
+  static Future<bool> _tryRefreshTokens() {
+    final pending = _inFlightRefresh;
+    if (pending != null) return pending;
+    final future = _doRefreshTokens().whenComplete(() {
+      _inFlightRefresh = null;
+    });
+    _inFlightRefresh = future;
+    return future;
+  }
+
+  static Future<bool> _doRefreshTokens() async {
     try {
       final refreshToken = await UserSimplePreferences.getRefreshToken();
       if (refreshToken == null || refreshToken.isEmpty) return false;
@@ -722,6 +740,11 @@ class StorageApi {
     int? maxMileage,
     int? ownersCount,
     List<String>? tags,
+    // Optional: ID специалиста, на которого назначается заявка. Только
+    // для company-роли — backend валидирует что user в роли SPECIALIST
+    // и состоит в той же компании. При успешном назначении специалисту
+    // шлётся system-оповещение `request_assigned`.
+    int? assignedSpecialistId,
     Duration timeout = const Duration(seconds: 12),
   }) async {
     final normalizedDueAt =
@@ -771,6 +794,8 @@ class StorageApi {
       if (maxMileage != null) 'maxMileage': maxMileage,
       if (ownersCount != null) 'ownersCount': ownersCount,
       if (normalizedTags.isNotEmpty) 'tags': normalizedTags,
+      if (assignedSpecialistId != null && assignedSpecialistId > 0)
+        'assignedSpecialistId': assignedSpecialistId,
     };
     final dedupeKey = json.encode(payload);
     _debugCreateRequestLog(
@@ -1602,6 +1627,78 @@ class StorageApi {
       }
     }
     return [];
+  }
+
+  /// `Storage.GetSpecialists` — пагинированный список специалистов с
+  /// фильтрами. Доступен только роли `company`. Закрывает оба
+  /// use-case'а: показать штат (companyOnly=true) и поиск по
+  /// телефону/email (search=phone/email — точное совпадение раскрывает
+  /// контакт). Email/phone приходят только когда search exact-matched.
+  static Future<SpecialistsPage> getSpecialists({
+    int page = 1,
+    int limit = 20,
+    String? search,
+    List<String>? cities,
+    double? minRating,
+    bool? companyOnly,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetSpecialists',
+      params: {
+        'page': page,
+        'limit': limit,
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        if (cities != null && cities.isNotEmpty) 'cities': cities,
+        if (minRating != null) 'minRating': minRating,
+        if (companyOnly != null) 'companyOnly': companyOnly,
+      },
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final rawSpecs = result['specialists'];
+    final specs = <SpecialistItem>[];
+    if (rawSpecs is List) {
+      for (final raw in rawSpecs) {
+        if (raw is! Map) continue;
+        final m = _asMap(raw);
+        final id = m['id'];
+        if (id is! int) continue;
+        // Rating иногда приходит как int (0 / 1), иногда double.
+        final r = m['rating'];
+        final ratingDouble = r is num ? r.toDouble() : 0.0;
+        specs.add(
+          SpecialistItem(
+            id: id,
+            firstName: _asNullableString(m['firstName']),
+            lastName: _asNullableString(m['lastName']),
+            middleName: _asNullableString(m['middleName']),
+            urlAvatar: _asNullableString(m['urlAvatar']),
+            description: _asNullableString(m['description']),
+            likeUp: _asInt(m['likeUp']) ?? 0,
+            likeDown: _asInt(m['likeDown']) ?? 0,
+            rating: ratingDouble,
+            city: _asNullableString(m['city']),
+            email: _asNullableString(m['email']),
+            phone: _asNullableString(m['phone']),
+          ),
+        );
+      }
+    }
+    final pag = _asMap(result['pagination']);
+    return SpecialistsPage(
+      specialists: specs,
+      page: _asInt(pag['page']) ?? page,
+      limit: _asInt(pag['limit']) ?? limit,
+      total: _asInt(pag['total']) ?? specs.length,
+      pages: _asInt(pag['pages']) ?? 1,
+    );
+  }
+
+  static String? _asNullableString(dynamic v) {
+    if (v == null) return null;
+    final s = v.toString();
+    return s.isEmpty ? null : s;
   }
 
   static Future<Map<String, dynamic>> parseCarSourceUrl({
