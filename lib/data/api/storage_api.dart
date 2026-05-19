@@ -1615,7 +1615,6 @@ class StorageApi {
       filename: fn.isNotEmpty ? fn : filename,
       key: key,
       publicUrl: publicUrl,
-      result: result,
     );
   }
 
@@ -1684,7 +1683,6 @@ class StorageApi {
       error: error,
       maxSize: _asInt(result['maxSize']),
       actual: _asInt(result['actual']),
-      result: result,
     );
   }
 
@@ -1709,6 +1707,105 @@ class StorageApi {
       timeout: timeout,
     );
     return _asMap(data['result']);
+  }
+
+  /// Полный multipart-флоу загрузки аватара в персональную папку профиля:
+  /// initiate → presigned PUT → complete (+ abort на любой ошибке).
+  /// Возвращает публичный URL, который вызывающая сторона записывает
+  /// в `urlAvatar` через [updateProfile]. Бросает [ProfileAvatarUploadException].
+  static Future<String> uploadProfileAvatar({
+    required List<int> bytes,
+    required String originalFilename,
+  }) async {
+    final filename = sanitizeAvatarFilename(originalFilename);
+    final session = await initiateProfileMultipartUpload(
+      filename: filename,
+      contentLength: bytes.length,
+    );
+    try {
+      final urlsResult = await getProfilePartUploadUrls(
+        filename: session.filename,
+        uploadId: session.uploadId,
+        partCount: 1,
+      );
+      if (urlsResult.urls.isEmpty) {
+        throw const ProfileAvatarUploadException(
+          code: 'no_url',
+          message: 'Сервер не вернул URL для загрузки',
+        );
+      }
+      final etag = await uploadBytesToPresignedUrl(
+        url: urlsResult.urls.first.url,
+        bytes: bytes,
+        contentType: _avatarContentType(filename),
+      );
+      final complete = await completeProfileMultipartUpload(
+        filename: session.filename,
+        uploadId: session.uploadId,
+        parts: [MultipartUploadedPart(partNumber: 1, etag: etag)],
+      );
+      if (complete.hasError) {
+        throw ProfileAvatarUploadException(
+          code: complete.error!,
+          message: _avatarErrorMessage(complete),
+          maxSize: complete.maxSize,
+          actualSize: complete.actual,
+        );
+      }
+      if (complete.publicUrl.isEmpty) {
+        throw const ProfileAvatarUploadException(
+          code: 'empty_url',
+          message: 'Сервер не вернул публичный URL аватарки',
+        );
+      }
+      return complete.publicUrl;
+    } catch (e) {
+      unawaited(
+        abortProfileMultipartUpload(
+          filename: session.filename,
+          uploadId: session.uploadId,
+        ).catchError((_) {}),
+      );
+      if (e is ProfileAvatarUploadException) rethrow;
+      throw ProfileAvatarUploadException(
+        code: 'transport',
+        message: 'Не удалось загрузить фото: $e',
+      );
+    }
+  }
+
+  /// Нормализует имя файла для S3-ключа аватара: имя всегда `avatar.<ext>`,
+  /// расширение проходит whitelist (latin/цифры до 10 символов), иначе jpg.
+  /// Whitelisting — защита от path-traversal и неожиданных MIME-типов.
+  static String sanitizeAvatarFilename(String original) {
+    final dotIndex = original.lastIndexOf('.');
+    final ext = dotIndex >= 0 && dotIndex < original.length - 1
+        ? original.substring(dotIndex + 1).toLowerCase()
+        : 'jpg';
+    final safeExt = RegExp(r'^[a-z0-9]{1,10}$').hasMatch(ext) ? ext : 'jpg';
+    return 'avatar.$safeExt';
+  }
+
+  static String _avatarContentType(String filename) {
+    if (filename.endsWith('.png')) return 'image/png';
+    if (filename.endsWith('.heic')) return 'image/heic';
+    if (filename.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  static String _avatarErrorMessage(ProfileMultipartCompleteResult complete) {
+    if (complete.error == 'file_too_large') {
+      final maxMb = complete.maxSize != null
+          ? (complete.maxSize! / 1024 / 1024).round()
+          : null;
+      return maxMb != null
+          ? 'Файл слишком большой (максимум $maxMb МБ).'
+          : 'Файл слишком большой.';
+    }
+    if (complete.error == 'checksum_mismatch') {
+      return 'Контрольная сумма не совпала. Попробуйте ещё раз.';
+    }
+    return 'Ошибка при завершении загрузки: ${complete.error}';
   }
 
   static Future<List<Map<String, dynamic>>> getRequests({

@@ -2036,79 +2036,34 @@ class _SparkJoySpecialistProfileScreenState
     }
   }
 
-  Future<void> _uploadAvatarToS3(String originalFilename, List<int> bytes) async {
-    // Безопасное имя файла: только latin + цифры + расширение.
-    final ext = originalFilename.contains('.')
-        ? originalFilename.split('.').last.toLowerCase()
-        : 'jpg';
-    final safeExt = RegExp(r'^[a-z0-9]{1,10}$').hasMatch(ext) ? ext : 'jpg';
-    final filename = 'avatar.$safeExt';
-    String? uploadId;
+  Future<void> _uploadAvatarToS3(
+    String originalFilename,
+    List<int> bytes,
+  ) async {
     try {
-      final session =
-          await storage_api.StorageApi.initiateProfileMultipartUpload(
-        filename: filename,
-        contentLength: bytes.length,
-      );
-      uploadId = session.uploadId;
-      final urlsResult =
-          await storage_api.StorageApi.getProfilePartUploadUrls(
-        filename: session.filename,
-        uploadId: uploadId,
-        partCount: 1,
-      );
-      if (urlsResult.urls.isEmpty) {
-        throw Exception('Сервер не вернул URL для загрузки');
-      }
-      final partUrl = urlsResult.urls.first.url;
-      final contentType = safeExt == 'png' ? 'image/png' : 'image/jpeg';
-      final etag = await storage_api.StorageApi.uploadBytesToPresignedUrl(
-        url: partUrl,
+      final publicUrl = await storage_api.StorageApi.uploadProfileAvatar(
         bytes: bytes,
-        contentType: contentType,
+        originalFilename: originalFilename,
       );
-      final complete =
-          await storage_api.StorageApi.completeProfileMultipartUpload(
-        filename: session.filename,
-        uploadId: uploadId,
-        parts: [storage_api.MultipartUploadedPart(partNumber: 1, etag: etag)],
-      );
-      if (complete.hasError) {
-        final msg = complete.error == 'file_too_large'
-            ? 'Файл слишком большой (максимум 25 МБ).'
-            : 'Ошибка при завершении загрузки: ${complete.error}';
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(msg), backgroundColor: kRedColor),
-        );
-        setState(() => _isUploadingAvatar = false);
-        return;
-      }
-      if (complete.publicUrl.isEmpty) {
-        throw Exception('Сервер не вернул публичный URL аватарки');
-      }
-      // Сохраняем publicUrl в профиле на сервере.
       await storage_api.StorageApi.updateProfile(
-        profile: {'urlAvatar': complete.publicUrl},
+        profile: {'urlAvatar': publicUrl},
       );
       if (!mounted) return;
-      // Чистим base64 — теперь будет грузиться с S3.
+      // Базы64 больше не нужно — теперь рендерим с S3.
       await UserSimplePreferences.clearAvatar();
       if (!mounted) return;
       setState(() {
-        _urlAvatar = complete.publicUrl;
+        _urlAvatar = publicUrl;
         _avatarBase64 = null;
         _isUploadingAvatar = false;
       });
+    } on storage_api.ProfileAvatarUploadException catch (e) {
+      if (!mounted) return;
+      setState(() => _isUploadingAvatar = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: kRedColor),
+      );
     } catch (e) {
-      if (uploadId != null) {
-        unawaited(
-          storage_api.StorageApi.abortProfileMultipartUpload(
-            filename: filename,
-            uploadId: uploadId,
-          ).catchError((_) {}),
-        );
-      }
       if (!mounted) return;
       setState(() => _isUploadingAvatar = false);
       ScaffoldMessenger.of(context).showSnackBar(

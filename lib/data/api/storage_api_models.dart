@@ -437,14 +437,12 @@ class ProfileMultipartSession {
   final String filename;
   final String key;
   final String publicUrl;
-  final Map<String, dynamic> result;
 
   const ProfileMultipartSession({
     required this.uploadId,
     required this.filename,
     required this.key,
     required this.publicUrl,
-    required this.result,
   });
 }
 
@@ -455,7 +453,6 @@ class ProfileMultipartCompleteResult {
   final String? error;
   final int? maxSize;
   final int? actual;
-  final Map<String, dynamic> result;
 
   const ProfileMultipartCompleteResult({
     required this.key,
@@ -464,10 +461,29 @@ class ProfileMultipartCompleteResult {
     this.error,
     this.maxSize,
     this.actual,
-    required this.result,
   });
 
   bool get hasError => error != null && error!.isNotEmpty;
+}
+
+/// Типизированная ошибка флоу загрузки аватара в S3. Поле [code] —
+/// машинно-читаемый идентификатор (`file_too_large`, `checksum_mismatch`,
+/// `no_url`, `empty_url`, `transport`), [message] — готовая строка для UI.
+class ProfileAvatarUploadException implements Exception {
+  final String code;
+  final String message;
+  final int? maxSize;
+  final int? actualSize;
+
+  const ProfileAvatarUploadException({
+    required this.code,
+    required this.message,
+    this.maxSize,
+    this.actualSize,
+  });
+
+  @override
+  String toString() => 'ProfileAvatarUploadException($code): $message';
 }
 
 /// Пагинированный ответ `Storage.GetSpecialists`.
