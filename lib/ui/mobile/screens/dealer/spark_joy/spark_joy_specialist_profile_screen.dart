@@ -414,9 +414,7 @@ class _SparkJoySpecialistProfileScreenState
           result['urlAvatar']?.toString().trim() ?? '';
       setState(() {
         _specialistProfile = merged;
-        if (serverUrlAvatar.isNotEmpty) {
-          _urlAvatar = serverUrlAvatar;
-        }
+        _urlAvatar = serverUrlAvatar.isNotEmpty ? serverUrlAvatar : null;
         if (isCompanyRole) {
           _isVerifyCompany = result['isVerifyCompany'] == true;
           if (serverInn != null) {
@@ -451,7 +449,7 @@ class _SparkJoySpecialistProfileScreenState
           'companyName': result['companyName'].toString(),
         if (result['city'] != null) 'city': result['city'],
         if (result['role'] != null) 'role': result['role'],
-        if (result['urlAvatar'] != null) 'urlAvatar': result['urlAvatar'],
+        'urlAvatar': result['urlAvatar'],
         if (isCompanyRole && serverInn != null)
           'companyInn': serverInn.toString(),
         if (isCompanyRole && result['isVerifyCompany'] != null)
@@ -2083,9 +2081,11 @@ class _SparkJoySpecialistProfileScreenState
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(msg), backgroundColor: kRedColor),
         );
-        if (!mounted) return;
         setState(() => _isUploadingAvatar = false);
         return;
+      }
+      if (complete.publicUrl.isEmpty) {
+        throw Exception('Сервер не вернул публичный URL аватарки');
       }
       // Сохраняем publicUrl в профиле на сервере.
       await storage_api.StorageApi.updateProfile(
@@ -2118,6 +2118,9 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   Future<void> _deleteAvatar() async {
+    // Инвалидируем in-flight _fetchServerProfile — иначе запрос, улетевший
+    // до удаления, вернёт старый urlAvatar и восстановит аватарку на экране.
+    ++_fetchGeneration;
     try {
       await storage_api.StorageApi.deleteProfileAvatar();
     } catch (_) {
