@@ -411,10 +411,23 @@ class _SparkJoySpecialistRequestDetailScreenState
         // Acceptance already succeeded. A stale detail snapshot is better
         // than showing a false negative because the follow-up refresh failed.
       }
+      try {
+        await _ensureRequestDraft(id);
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Заявка принята, но черновик не был создан'),
+          ),
+        );
+        return;
+      }
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Заявка принята')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Заявка принята. Черновик доступен в отчётах'),
+        ),
+      );
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
       _showActionError('Сессия истекла. Войдите заново.');
@@ -470,24 +483,7 @@ class _SparkJoySpecialistRequestDetailScreenState
     HapticFeedback.selectionClick();
     setState(() => _openingReport = true);
     try {
-      if (_cars == null) {
-        await _loadCars();
-        if (!mounted) return;
-      }
-      final drafts = await SparkJoyStorage.loadDrafts();
-      final existing = drafts.where((draft) {
-        final raw = draft['requestId'];
-        final draftRequestId = raw is int
-            ? raw
-            : raw is num
-            ? raw.toInt()
-            : int.tryParse(raw?.toString() ?? '');
-        return draftRequestId == id;
-      }).toList();
-
-      final draft = existing.isNotEmpty
-          ? existing.first
-          : await _createRequestDraft(id);
+      final draft = await _ensureRequestDraft(id);
       if (!mounted) return;
       final changed = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
@@ -504,6 +500,28 @@ class _SparkJoySpecialistRequestDetailScreenState
     } finally {
       if (mounted) setState(() => _openingReport = false);
     }
+  }
+
+  Future<Map<String, dynamic>> _ensureRequestDraft(int requestId) async {
+    if (_cars == null) {
+      await _loadCars();
+      if (!mounted) {
+        throw StateError('screen disposed');
+      }
+    }
+    final drafts = await SparkJoyStorage.loadDrafts();
+    final existing = drafts.where((draft) {
+      return _draftRequestId(draft) == requestId;
+    }).toList();
+    if (existing.isNotEmpty) return existing.first;
+    return _createRequestDraft(requestId);
+  }
+
+  int? _draftRequestId(Map<String, dynamic> draft) {
+    final raw = draft['requestId'];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? '');
   }
 
   Future<Map<String, dynamic>> _createRequestDraft(int requestId) async {

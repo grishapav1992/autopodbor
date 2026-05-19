@@ -5,12 +5,14 @@ import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/ai_queue_api.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:get/get.dart';
 
 import 'spark_joy_company_requests_screen.dart';
+import 'spark_joy_company_request_detail_screen.dart';
 import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
 import 'spark_joy_notifications_screen.dart';
@@ -99,6 +101,9 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     await SparkJoyStorage.ensureSeedData();
     await SparkJoyNotificationsStorage.ensureSeedData();
     final loggedIn = await SparkJoyStorage.isLoggedIn();
+    if (loggedIn) {
+      await SparkJoyStorage.syncRoleFromServer();
+    }
     final role = await SparkJoyStorage.currentRole();
     final businessType = await SparkJoyStorage.currentBusinessType();
     if (!mounted) return;
@@ -213,10 +218,54 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               ),
             ),
           ),
-          body: const SparkJoyNotificationsScreen(),
+          body: SparkJoyNotificationsScreen(
+            onOpenRequest: (requestId) async {
+              Navigator.of(context).pop();
+              await _openRequestFromNotification(requestId);
+            },
+          ),
         ),
       ),
     );
+  }
+
+  int? _readInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    return null;
+  }
+
+  Future<void> _openRequestFromNotification(int requestId) async {
+    if (!mounted) return;
+    final requestTabIndex = _role == SparkJoyRole.specialist ? 1 : 2;
+    setState(() => _index = requestTabIndex);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final requests = await storage_api.StorageApi.getRequests();
+      if (!mounted) return;
+      final matched = requests.where((request) {
+        return _readInt(request['id']) == requestId;
+      }).toList();
+      if (matched.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Заявка не найдена в списке')),
+        );
+        return;
+      }
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (_) => _role == SparkJoyRole.specialist
+              ? SparkJoySpecialistRequestDetailScreen(initial: matched.first)
+              : SparkJoyCompanyRequestDetailScreen(initial: matched.first),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(content: Text('Не удалось открыть заявку: $e')),
+      );
+    }
   }
 
   List<NavigationDestination> _navDestinations() {
@@ -537,6 +586,9 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                     HapticFeedback.selectionClick();
                   }
                   setState(() => _index = value);
+                  if (value == 0) {
+                    _requestedReportsTab.value = 'drafts';
+                  }
                   _maybeShowTabOnboarding(value);
                 },
                 destinations: destinations,

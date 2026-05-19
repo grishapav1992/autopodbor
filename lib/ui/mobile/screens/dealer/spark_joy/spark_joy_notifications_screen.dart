@@ -23,7 +23,9 @@ import 'spark_joy_ui.dart';
 /// transitions (`pending` → `accepted` / `rejected` / `read`) are how
 /// they "leave" the feed visually.
 class SparkJoyNotificationsScreen extends StatefulWidget {
-  const SparkJoyNotificationsScreen({super.key});
+  const SparkJoyNotificationsScreen({super.key, this.onOpenRequest});
+
+  final Future<void> Function(int requestId)? onOpenRequest;
 
   @override
   State<SparkJoyNotificationsScreen> createState() =>
@@ -45,6 +47,19 @@ class _SparkJoyNotificationsScreenState
   }
 
   Future<void> _handleTap(BackendNotification n) async {
+    final requestId = n.requestId;
+    if (requestId != null && widget.onOpenRequest != null) {
+      if (!n.type.isInteractive && n.status == NotificationStatus.pending) {
+        try {
+          await _controller.markRead(n.id);
+        } catch (_) {
+          // Navigation is still useful even if mark-read failed. The
+          // next reload will reconcile notification status.
+        }
+      }
+      await widget.onOpenRequest!(requestId);
+      return;
+    }
     // Interactive types are dismissed via accept/reject — tapping the
     // body should not silently mark them anything.
     if (n.type.isInteractive) return;
@@ -102,10 +117,7 @@ class _SparkJoyNotificationsScreenState
                 ),
               ),
               for (final n in group.items)
-                _NotificationCard(
-                  notification: n,
-                  onTap: () => _handleTap(n),
-                ),
+                _NotificationCard(notification: n, onTap: () => _handleTap(n)),
             ],
             const SizedBox(height: SparkSpace.xl),
           ],
@@ -217,8 +229,7 @@ class _NotificationCard extends StatelessWidget {
                           child: MyText(
                             text: notification.title,
                             size: SparkTextSize.body,
-                            weight:
-                                unread ? FontWeight.w700 : FontWeight.w600,
+                            weight: unread ? FontWeight.w700 : FontWeight.w600,
                           ),
                         ),
                         if (unread) ...[
@@ -285,8 +296,11 @@ String _formatRelative(DateTime ts) {
     final h = diff.inHours;
     return '$h ${_pluralHour(h)} назад';
   }
-  final yesterday = DateTime(now.year, now.month, now.day)
-      .subtract(const Duration(days: 1));
+  final yesterday = DateTime(
+    now.year,
+    now.month,
+    now.day,
+  ).subtract(const Duration(days: 1));
   final tsDate = DateTime(local.year, local.month, local.day);
   if (tsDate == yesterday) {
     return 'вчера, ${_hhmm(local)}';

@@ -39,7 +39,10 @@ class SelectedAssignee {
 }
 
 /// Bottom-sheet picker. Возвращает [SelectedAssignee] или null.
-Future<SelectedAssignee?> showSpecialistPicker(BuildContext context) async {
+Future<SelectedAssignee?> showSpecialistPicker(
+  BuildContext context, {
+  int? currentSpecialistId,
+}) async {
   return await showModalBottomSheet<SelectedAssignee>(
     context: context,
     isScrollControlled: true,
@@ -47,12 +50,15 @@ Future<SelectedAssignee?> showSpecialistPicker(BuildContext context) async {
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(SparkRadius.lg)),
     ),
-    builder: (_) => const _SpecialistPickerSheet(),
+    builder: (_) =>
+        _SpecialistPickerSheet(currentSpecialistId: currentSpecialistId),
   );
 }
 
 class _SpecialistPickerSheet extends StatefulWidget {
-  const _SpecialistPickerSheet();
+  const _SpecialistPickerSheet({this.currentSpecialistId});
+
+  final int? currentSpecialistId;
 
   @override
   State<_SpecialistPickerSheet> createState() => _SpecialistPickerSheetState();
@@ -129,7 +135,10 @@ class _SpecialistPickerSheetState extends State<_SpecialistPickerSheet>
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
-                  children: const [_StaffTab(), _PhoneTab()],
+                  children: [
+                    _StaffTab(currentSpecialistId: widget.currentSpecialistId),
+                    _PhoneTab(currentSpecialistId: widget.currentSpecialistId),
+                  ],
                 ),
               ),
             ],
@@ -143,7 +152,9 @@ class _SpecialistPickerSheetState extends State<_SpecialistPickerSheet>
 // ── Staff tab ────────────────────────────────────────────────────────
 
 class _StaffTab extends StatefulWidget {
-  const _StaffTab();
+  const _StaffTab({this.currentSpecialistId});
+
+  final int? currentSpecialistId;
 
   @override
   State<_StaffTab> createState() => _StaffTabState();
@@ -266,17 +277,27 @@ class _StaffTabState extends State<_StaffTab>
       separatorBuilder: (_, _) => const Divider(height: 1, color: kBorderColor),
       itemBuilder: (_, i) {
         final s = _staff[i];
-        return _StaffRow(spec: s, onTap: () => _pick(s));
+        final isCurrent = s.id == widget.currentSpecialistId;
+        return _StaffRow(
+          spec: s,
+          isCurrent: isCurrent,
+          onTap: isCurrent ? null : () => _pick(s),
+        );
       },
     );
   }
 }
 
 class _StaffRow extends StatelessWidget {
-  const _StaffRow({required this.spec, required this.onTap});
+  const _StaffRow({
+    required this.spec,
+    required this.onTap,
+    this.isCurrent = false,
+  });
 
   final SpecialistItem spec;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
+  final bool isCurrent;
 
   @override
   Widget build(BuildContext context) {
@@ -348,11 +369,18 @@ class _StaffRow extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: SparkSize.iconLg,
-                color: kGreyColor,
-              ),
+              if (isCurrent)
+                const SparkChip(
+                  text: 'Назначен',
+                  background: kChipAssignedBg,
+                  color: kChipAssignedFg,
+                )
+              else
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  size: SparkSize.iconLg,
+                  color: kGreyColor,
+                ),
             ],
           ),
         ),
@@ -364,7 +392,9 @@ class _StaffRow extends StatelessWidget {
 // ── Phone tab ────────────────────────────────────────────────────────
 
 class _PhoneTab extends StatefulWidget {
-  const _PhoneTab();
+  const _PhoneTab({this.currentSpecialistId});
+
+  final int? currentSpecialistId;
 
   @override
   State<_PhoneTab> createState() => _PhoneTabState();
@@ -574,7 +604,13 @@ class _PhoneTabState extends State<_PhoneTab>
       itemCount: results.length,
       separatorBuilder: (_, _) => const Divider(height: 1, color: kBorderColor),
       itemBuilder: (_, i) {
-        return _StaffRow(spec: results[i], onTap: () => _pick(results[i]));
+        final s = results[i];
+        final isCurrent = s.id == widget.currentSpecialistId;
+        return _StaffRow(
+          spec: s,
+          isCurrent: isCurrent,
+          onTap: isCurrent ? null : () => _pick(s),
+        );
       },
     );
   }

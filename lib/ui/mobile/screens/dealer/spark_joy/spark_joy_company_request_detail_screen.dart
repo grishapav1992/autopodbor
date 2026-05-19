@@ -252,19 +252,37 @@ class _SparkJoyCompanyRequestDetailScreenState
     return status == 'created' || status == 'await_payment';
   }
 
+  int? get _assignedSpecialistId {
+    final raw = _request['assignedSpecialist'];
+    final specialist = raw is Map ? raw : null;
+    return _readInt(_request['assignedSpecialistId']) ??
+        _readInt(_request['assignedSpecialistUserId']) ??
+        _readInt(specialist?['id']);
+  }
+
   bool get _hasAssignedSpecialist {
     final raw = _request['assignedSpecialist'];
     if (raw is Map && raw.isNotEmpty) return true;
-    return _readInt(_request['assignedSpecialistId']) != null ||
-        _readInt(_request['assignedSpecialistUserId']) != null;
+    return _assignedSpecialistId != null;
   }
 
   Future<void> _assignSpecialist() async {
     if (_actionBusy) return;
     final requestId = _requestId;
     if (requestId == null) return;
-    final assignee = await showSpecialistPicker(context);
+    final currentAssigneeId = _assignedSpecialistId;
+    final assignee = await showSpecialistPicker(
+      context,
+      currentSpecialistId: currentAssigneeId,
+    );
     if (assignee == null || _actionBusy) return;
+    if (currentAssigneeId != null && assignee.userId == currentAssigneeId) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Этот специалист уже назначен')),
+      );
+      return;
+    }
     HapticFeedback.selectionClick();
     setState(() => _actionBusy = true);
     try {
@@ -711,10 +729,7 @@ class _SparkJoyCompanyRequestDetailScreenState
   Widget _buildSpecialistSection() {
     final raw = _request['assignedSpecialist'];
     final specialist = raw is Map ? Map<String, dynamic>.from(raw) : null;
-    final assignedId =
-        _readInt(_request['assignedSpecialistId']) ??
-        _readInt(_request['assignedSpecialistUserId']) ??
-        _readInt(specialist?['id']);
+    final assignedId = _assignedSpecialistId;
     if (specialist == null && assignedId == null) {
       return const MyText(
         text: 'Специалист не назначен',

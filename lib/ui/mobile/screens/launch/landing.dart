@@ -3,6 +3,7 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
@@ -57,6 +58,8 @@ class _LandingScreenState extends State<LandingScreen> {
     final hasSession = await StorageApi.hasSavedSession();
     if (!mounted) return;
     if (hasSession) {
+      await SparkJoyStorage.syncRoleFromServer();
+      if (!mounted) return;
       Get.offAllNamed(AppLinks.dealerHome);
       return;
     }

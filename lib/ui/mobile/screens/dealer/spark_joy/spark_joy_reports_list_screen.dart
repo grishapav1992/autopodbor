@@ -101,6 +101,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final requested = widget.tabRequest?.value;
     if (requested == null || requested.isEmpty) return;
     _controller.setTab(requested);
+    if (requested == 'drafts') {
+      unawaited(_load());
+    }
     // Reset the notifier so an identical request later (e.g. user taps
     // "Отчётов" again after a manual tab switch) still triggers the
     // listener. Only the shell owns the notifier so this is safe.
@@ -129,9 +132,11 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   /// tapping opens the status sheet, not the stepper.
   bool _isAssignedCompanyDraft(Map<String, dynamic> draft) {
     if (!widget.companyMode) return false;
-    final assigneeId = sjRead(draft, 'assignedSpecialistId',
-            fallback: sjRead(draft, 'specialistId'))
-        .trim();
+    final assigneeId = sjRead(
+      draft,
+      'assignedSpecialistId',
+      fallback: sjRead(draft, 'specialistId'),
+    ).trim();
     final inviteLink = sjRead(draft, 'staffInviteLink').trim();
     return assigneeId.isNotEmpty || inviteLink.isNotEmpty;
   }
@@ -141,19 +146,21 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   /// `in_progress` set in the create flow + future backend updates).
   String _assignedStatusLabel(Map<String, dynamic> draft) {
     final status = sjRead(draft, 'status');
-    final assigneeName = sjRead(draft, 'assignedSpecialistName',
-            fallback: sjRead(draft, 'specialistName'))
-        .trim();
+    final assigneeName = sjRead(
+      draft,
+      'assignedSpecialistName',
+      fallback: sjRead(draft, 'specialistName'),
+    ).trim();
     switch (status) {
       case 'in_progress':
-        return assigneeName.isEmpty
-            ? 'В работе'
-            : '$assigneeName · в работе';
+        return assigneeName.isEmpty ? 'В работе' : '$assigneeName · в работе';
       case 'awaiting_invite':
         return 'Ожидает приглашения';
       case 'assigned':
       default:
-        return assigneeName.isEmpty ? 'Отправлен исполнителю' : 'Отправлен: $assigneeName';
+        return assigneeName.isEmpty
+            ? 'Отправлен исполнителю'
+            : 'Отправлен: $assigneeName';
     }
   }
 
@@ -196,9 +203,11 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       sjRead(draft, 'car'),
       sjRead(draft, 'vin'),
     ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => 'Отчёт');
-    final assigneeName = sjRead(draft, 'assignedSpecialistName',
-            fallback: sjRead(draft, 'specialistName'))
-        .trim();
+    final assigneeName = sjRead(
+      draft,
+      'assignedSpecialistName',
+      fallback: sjRead(draft, 'specialistName'),
+    ).trim();
     final inviteLink = sjRead(draft, 'staffInviteLink').trim();
     final createdAt = sjFormatDate(
       sjRead(draft, 'createdAt', fallback: sjRead(draft, 'updatedAt')),
@@ -367,10 +376,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
     await navigator.push<void>(
       MaterialPageRoute(
-        builder: (_) => SparkJoyCreateReportScreen(
-          draft: fetched,
-          readOnly: true,
-        ),
+        builder: (_) =>
+            SparkJoyCreateReportScreen(draft: fetched, readOnly: true),
       ),
     );
   }
@@ -600,7 +607,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   /// Completion rules target *meaningful* user input, not just step
   /// navigation — visiting a step without typing anything does NOT mark it
   /// as filled.
-  List<_DraftSectionStatus> _computeDraftCompletion(Map<String, dynamic> draft) {
+  List<_DraftSectionStatus> _computeDraftCompletion(
+    Map<String, dynamic> draft,
+  ) {
     bool hasText(String key) => sjRead(draft, key).trim().isNotEmpty;
 
     bool isTrue(Object? value) => value == true;
@@ -635,7 +644,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       //    марка/модель, пробег, владельцы и город осмотра".
       _DraftSectionStatus(
         label: 'Авто',
-        filled: hasText('brand') ||
+        filled:
+            hasText('brand') ||
             hasText('model') ||
             hasText('generation') ||
             hasText('restyling') ||
@@ -660,7 +670,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       //    under the legacy key.
       _DraftSectionStatus(
         label: 'Параметры',
-        filled: hasText('engineVolume') ||
+        filled:
+            hasText('engineVolume') ||
             hasText('engineType') ||
             hasText('engine') ||
             hasText('gearboxType') ||
@@ -675,11 +686,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       //    a user who typed a comment saw the section as "empty".
       _DraftSectionStatus(
         label: 'Документы',
-        filled: anyNonNull([
-              'docsOwnerMatch',
-              'docsVinMatch',
-              'docsEngineMatch',
-            ]) ||
+        filled:
+            anyNonNull(['docsOwnerMatch', 'docsVinMatch', 'docsEngineMatch']) ||
             hasText('docsMismatchComment') ||
             hasUploadedList('docsCommentAudioFiles'),
       ),
@@ -687,22 +695,21 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       //    any note typed, or an attached audio comment.
       _DraftSectionStatus(
         label: 'Юр. проверка',
-        filled: isTrue(draft['legalSkipped']) ||
+        filled:
+            isTrue(draft['legalSkipped']) ||
             isTrue(draft['legalPurchased']) ||
             hasUploadedList('legalFiles') ||
             hasText('legalNote') ||
             hasUploadedList('legalCommentAudioFiles'),
       ),
       // 5) Осмотр — at least one media group has an uploaded file.
-      _DraftSectionStatus(
-        label: 'Осмотр',
-        filled: anyMediaHasFiles(),
-      ),
+      _DraftSectionStatus(label: 'Осмотр', filled: anyMediaHasFiles()),
       // 6) Тест-драйв — user explicitly answered the "был ли тест-драйв"
       //    question, or picked any tag / uploaded any comment audio.
       _DraftSectionStatus(
         label: 'Тест-драйв',
-        filled: draft['tdConducted'] != null ||
+        filled:
+            draft['tdConducted'] != null ||
             hasUploadedList('tdEngineTags') ||
             hasUploadedList('tdGearboxTags') ||
             hasUploadedList('tdSteeringTags') ||
@@ -718,7 +725,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       //    even when the user had typed a summary.
       _DraftSectionStatus(
         label: 'Итог',
-        filled: hasText('summaryNote') ||
+        filled:
+            hasText('summaryNote') ||
             hasText('expertConclusion') ||
             isTrue(draft['expertConclusionTouched']) ||
             hasUploadedList('expertAudioFiles'),
@@ -753,111 +761,113 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     // revealed ones actually get painted.
     return RepaintBoundary(
       child: SparkListCard(
-      onTap: () => _openDraft(draft),
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.xl,
-        vertical: SparkSpace.lg,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // 1) Title (left) + 3) icon-only delete button (top-right).
-          //
-          // Placement follows Material 3 ListTile.trailing + iOS cell
-          // accessory conventions: secondary destructive action sits in
-          // the top-right corner, well away from the primary "continue"
-          // tap target that covers the rest of the card. IconButton
-          // renders a 48×48 logical-px tap area by default, so the icon
-          // can stay visually small (22 pt) without shrinking the hit
-          // zone.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Padding(
-                  // Nudge the title down so it visually aligns with the
-                  // centre of the 48-pt IconButton on the right.
-                  padding: const EdgeInsets.only(top: SparkSpace.xs),
-                  child: MyText(
-                    text: title,
-                    size: SparkTextSize.title,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: SparkSpace.sm),
-              IconButton(
-                onPressed: () => _deleteDraft(sjRead(draft, 'id')),
-                tooltip: 'Удалить черновик',
-                icon: const Icon(Icons.delete_outline_rounded),
-                color: kRedColor,
-                iconSize: 22,
-                visualDensity: VisualDensity.compact,
-                // Keep the IconButton tight to the card edge so it
-                // doesn't steal vertical height but still has the
-                // Material 48×48 minimum tap area via the default
-                // constraints.
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 40,
-                  minHeight: 40,
-                ),
-              ),
-            ],
-          ),
-          // 2) Last-modified date as a subtitle under the title.
-          MyText(
-            text: 'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
-            size: SparkTextSize.caption,
-            color: kGreyColor,
-            paddingTop: SparkSpace.xxs,
-          ),
-          const SizedBox(height: SparkSpace.md),
-          // Single-colour progress bar — just "filled / total" sections with
-          // no required/optional distinction.
-          //
-          // Wrapped in Semantics so VoiceOver / TalkBack announce the
-          // progress as a single coherent node ("Прогресс заполнения,
-          // заполнено X из Y, Z процентов") instead of reading the bare
-          // counter text next to a silent progress bar. `container: true`
-          // promotes this into its own a11y element; `excludeSemantics`
-          // on the children prevents the MyText counter from being read
-          // a second time.
-          Semantics(
-            container: true,
-            label: 'Прогресс заполнения отчёта',
-            value: 'Заполнено $filled из $total',
-            excludeSemantics: true,
-            child: Row(
+        onTap: () => _openDraft(draft),
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.xl,
+          vertical: SparkSpace.lg,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 1) Title (left) + 3) icon-only delete button (top-right).
+            //
+            // Placement follows Material 3 ListTile.trailing + iOS cell
+            // accessory conventions: secondary destructive action sits in
+            // the top-right corner, well away from the primary "continue"
+            // tap target that covers the rest of the card. IconButton
+            // renders a 48×48 logical-px tap area by default, so the icon
+            // can stay visually small (22 pt) without shrinking the hit
+            // zone.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(SparkRadius.pill),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 6,
-                      backgroundColor: kSecondaryColor.withValues(alpha: 0.12),
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        filled == total ? kGreenColor : kSecondaryColor,
-                      ),
+                  child: Padding(
+                    // Nudge the title down so it visually aligns with the
+                    // centre of the 48-pt IconButton on the right.
+                    padding: const EdgeInsets.only(top: SparkSpace.xs),
+                    child: MyText(
+                      text: title,
+                      size: SparkTextSize.title,
+                      weight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(width: SparkSpace.md),
-                MyText(
-                  text: 'Заполнено $filled из $total',
-                  size: SparkTextSize.chip,
-                  color: kGreyColor,
-                  weight: FontWeight.w600,
-                  tabularFigures: true,
+                const SizedBox(width: SparkSpace.sm),
+                IconButton(
+                  onPressed: () => _deleteDraft(sjRead(draft, 'id')),
+                  tooltip: 'Удалить черновик',
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  color: kRedColor,
+                  iconSize: 22,
+                  visualDensity: VisualDensity.compact,
+                  // Keep the IconButton tight to the card edge so it
+                  // doesn't steal vertical height but still has the
+                  // Material 48×48 minimum tap area via the default
+                  // constraints.
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
+            // 2) Last-modified date as a subtitle under the title.
+            MyText(
+              text: 'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+              paddingTop: SparkSpace.xxs,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            // Single-colour progress bar — just "filled / total" sections with
+            // no required/optional distinction.
+            //
+            // Wrapped in Semantics so VoiceOver / TalkBack announce the
+            // progress as a single coherent node ("Прогресс заполнения,
+            // заполнено X из Y, Z процентов") instead of reading the bare
+            // counter text next to a silent progress bar. `container: true`
+            // promotes this into its own a11y element; `excludeSemantics`
+            // on the children prevents the MyText counter from being read
+            // a second time.
+            Semantics(
+              container: true,
+              label: 'Прогресс заполнения отчёта',
+              value: 'Заполнено $filled из $total',
+              excludeSemantics: true,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        backgroundColor: kSecondaryColor.withValues(
+                          alpha: 0.12,
+                        ),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          filled == total ? kGreenColor : kSecondaryColor,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: SparkSpace.md),
+                  MyText(
+                    text: 'Заполнено $filled из $total',
+                    size: SparkTextSize.chip,
+                    color: kGreyColor,
+                    weight: FontWeight.w600,
+                    tabularFigures: true,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -889,10 +899,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   ),
                 ),
                 const SizedBox(width: SparkSpace.sm),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  color: kGreyColor,
-                ),
+                const Icon(Icons.chevron_right_rounded, color: kGreyColor),
               ],
             ),
             MyText(
@@ -956,105 +963,106 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     // completed cards out of the repaint queue.
     return RepaintBoundary(
       child: SparkListCard(
-      onTap: openLoading ? null : () => _openCompleted(report),
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.xl,
-        vertical: SparkSpace.lg,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header: title + meta on the left, date on the right.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MyText(
-                      text: title,
-                      size: SparkTextSize.bodyLg,
-                      weight: FontWeight.w700,
-                    ),
-                    if (metaParts.isNotEmpty)
+        onTap: openLoading ? null : () => _openCompleted(report),
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.xl,
+          vertical: SparkSpace.lg,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header: title + meta on the left, date on the right.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       MyText(
-                        text: metaParts.join(' · '),
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                        paddingTop: SparkSpace.xxs,
+                        text: title,
+                        size: SparkTextSize.bodyLg,
+                        weight: FontWeight.w700,
                       ),
-                  ],
+                      if (metaParts.isNotEmpty)
+                        MyText(
+                          text: metaParts.join(' · '),
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                          paddingTop: SparkSpace.xxs,
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              if (openLoading)
-                const SizedBox(
-                  width: SparkSize.spinner,
-                  height: SparkSize.spinner,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                MyText(
-                  text: sjFormatDate(sjRead(report, 'createdAt')),
-                  size: SparkTextSize.chip,
-                  color: kGreyColor,
-                ),
-            ],
-          ),
-          const SizedBox(height: SparkSpace.md),
-          // Verdict + score chips on the left, share button on the right.
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: SparkSpace.sm,
-                  runSpacing: SparkSpace.xs,
-                  crossAxisAlignment: WrapCrossAlignment.center,
-                  children: [
-                    SparkChip(
-                      text: sparkVerdictLabel(verdict),
-                      background:
-                          sparkVerdictColor(verdict).withValues(alpha: 0.12),
-                      color: sparkVerdictColor(verdict),
-                    ),
-                    if (score.isNotEmpty && score != '—')
+                const SizedBox(width: SparkSpace.md),
+                if (openLoading)
+                  const SizedBox(
+                    width: SparkSize.spinner,
+                    height: SparkSize.spinner,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  MyText(
+                    text: sjFormatDate(sjRead(report, 'createdAt')),
+                    size: SparkTextSize.chip,
+                    color: kGreyColor,
+                  ),
+              ],
+            ),
+            const SizedBox(height: SparkSpace.md),
+            // Verdict + score chips on the left, share button on the right.
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: SparkSpace.sm,
+                    runSpacing: SparkSpace.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
                       SparkChip(
-                        text: score,
-                        background: kSecondaryColor.withValues(alpha: 0.08),
-                        color: kSecondaryColor,
+                        text: sparkVerdictLabel(verdict),
+                        background: sparkVerdictColor(
+                          verdict,
+                        ).withValues(alpha: 0.12),
+                        color: sparkVerdictColor(verdict),
                       ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              InkWell(
-                onTap: shareLoading
-                    ? null
-                    : () => _createAndCopyReportShareLink(report),
-                borderRadius: BorderRadius.circular(SparkRadius.pill),
-                child: Padding(
-                  padding: const EdgeInsets.all(SparkSpace.sm),
-                  child: shareLoading
-                      ? const SizedBox(
-                          width: SparkSize.iconSm,
-                          height: SparkSize.iconSm,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          Icons.share_outlined,
-                          size: SparkSize.iconMd,
+                      if (score.isNotEmpty && score != '—')
+                        SparkChip(
+                          text: score,
+                          background: kSecondaryColor.withValues(alpha: 0.08),
                           color: kSecondaryColor,
                         ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ],
+                const SizedBox(width: SparkSpace.md),
+                InkWell(
+                  onTap: shareLoading
+                      ? null
+                      : () => _createAndCopyReportShareLink(report),
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  child: Padding(
+                    padding: const EdgeInsets.all(SparkSpace.sm),
+                    child: shareLoading
+                        ? const SizedBox(
+                            width: SparkSize.iconSm,
+                            height: SparkSize.iconSm,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            Icons.share_outlined,
+                            size: SparkSize.iconMd,
+                            color: kSecondaryColor,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
     );
   }
 
@@ -1136,36 +1144,34 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   fallback: 'Загрузка отчётов...',
                 ),
               )
-            else if (completed.isEmpty)
-              ...[
-                SparkEmptyState(
-                  icon: Icons.check_circle_outline,
-                  title: sjT(
-                    'spark.empty.noCompleted.title',
-                    fallback: 'Нет завершённых отчётов',
-                  ),
-                  subtitle: _controller.completedSyncFailed
-                      ? 'Не удалось обновить список. Проверьте интернет и повторите.'
-                      : sjT(
-                          'spark.empty.noCompleted.subtitle',
-                          fallback: 'Завершите осмотр, чтобы увидеть результат',
-                        ),
-                  topPadding: SparkSpace.xxxl,
+            else if (completed.isEmpty) ...[
+              SparkEmptyState(
+                icon: Icons.check_circle_outline,
+                title: sjT(
+                  'spark.empty.noCompleted.title',
+                  fallback: 'Нет завершённых отчётов',
                 ),
-                if (_controller.completedSyncFailed) ...[
-                  const SizedBox(height: SparkSpace.xl),
-                  SizedBox(
-                    width: double.infinity,
-                    height: SparkSize.actionHeightMd,
-                    child: OutlinedButton.icon(
-                      onPressed: _load,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Повторить'),
-                    ),
+                subtitle: _controller.completedSyncFailed
+                    ? 'Не удалось обновить список. Проверьте интернет и повторите.'
+                    : sjT(
+                        'spark.empty.noCompleted.subtitle',
+                        fallback: 'Завершите осмотр, чтобы увидеть результат',
+                      ),
+                topPadding: SparkSpace.xxxl,
+              ),
+              if (_controller.completedSyncFailed) ...[
+                const SizedBox(height: SparkSpace.xl),
+                SizedBox(
+                  width: double.infinity,
+                  height: SparkSize.actionHeightMd,
+                  child: OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Повторить'),
                   ),
-                ],
-              ]
-            else ...[
+                ),
+              ],
+            ] else ...[
               // Subtle in-band hint when we're showing cached data because
               // the revalidation failed. Users can still open existing
               // reports + share links, and one tap on "Обновить" re-runs
@@ -1413,4 +1419,3 @@ class _DraftSectionStatus {
   final String label;
   final bool filled;
 }
-

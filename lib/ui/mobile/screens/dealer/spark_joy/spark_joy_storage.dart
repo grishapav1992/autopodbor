@@ -62,6 +62,7 @@ class SparkJoyStorage {
   // UI-слоя в data-слой создал бы cycle. При любом изменении ключа
   // обновить и тот хардкод.
   static const String _specialistProfileKey = 'spark_joy_specialist_profile_v1';
+
   /// External specialists (not originally in the company roster) that
   /// the company has explicitly promoted to staff via "Добавить в штат".
   /// Persists between sessions so the promotion survives app restarts.
@@ -115,6 +116,7 @@ class SparkJoyStorage {
   /// блокировать вход в приложение).
   static Future<void> syncRoleFromServer() async {
     try {
+      final previousRole = await currentRole();
       // Короткий timeout (5s vs default 12s) — это bootstrap-call, и
       // никакой UI не открывается пока он не вернётся. На offline /
       // медленной сети лучше быстрее упасть и зайти на локальном
@@ -124,10 +126,16 @@ class SparkJoyStorage {
       );
       final serverRole = (result['role'] ?? '').toString().toLowerCase();
       final isCompany = serverRole == 'company';
+      final nextRole = isCompany
+          ? SparkJoyRole.company
+          : SparkJoyRole.specialist;
       await UserSimplePreferences.setUserRole(
         isCompany ? 'company' : 'specialist',
       );
-      await login(isCompany ? SparkJoyRole.company : SparkJoyRole.specialist);
+      await login(nextRole);
+      if (previousRole != nextRole) {
+        await StorageApi.tryRefreshTokens();
+      }
       // Для company синкаем companyInn + businessType, чтобы spark_joy
       // экраны (assignee-picker, completed-reports) видели бизнес-
       // статус сразу, без ожидания первого open'а профиля.
@@ -316,7 +324,8 @@ class SparkJoyStorage {
     for (final d in drafts) {
       final companyId = (d['companyId'] ?? '').toString();
       final businessType = (d['businessType'] ?? '').toString();
-      final isCompany = companyId == kSparkCompanyId ||
+      final isCompany =
+          companyId == kSparkCompanyId ||
           businessType == 'company' ||
           businessType == 'ip';
       if (!isCompany) continue;
@@ -351,7 +360,8 @@ class SparkJoyStorage {
     final keep = drafts.where((d) {
       final companyId = (d['companyId'] ?? '').toString();
       final businessType = (d['businessType'] ?? '').toString();
-      final isCompany = companyId == kSparkCompanyId ||
+      final isCompany =
+          companyId == kSparkCompanyId ||
           businessType == 'company' ||
           businessType == 'ip';
       return !isCompany;
@@ -660,7 +670,9 @@ class SparkJoyStorage {
   /// as placeholders for reports completed on other devices. Walking the
   /// entire catalog on demand would cost hundreds of RPCs, so we accept
   /// the tradeoff rather than blocking the open.
-  static Future<Map<String, dynamic>?> loadFrameCatalogEntry(int frameId) async {
+  static Future<Map<String, dynamic>?> loadFrameCatalogEntry(
+    int frameId,
+  ) async {
     if (frameId <= 0) return null;
     final pref = UserSimplePreferences.pref;
     if (pref == null) return null;
@@ -701,7 +713,6 @@ class SparkJoyStorage {
     if (raw == null || raw.trim().isEmpty) return null;
     return DateTime.tryParse(raw);
   }
-
 }
 
 /// Pre-flight summary shown in the "Сбросить статус" confirmation

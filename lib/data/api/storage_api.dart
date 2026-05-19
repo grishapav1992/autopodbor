@@ -2484,12 +2484,21 @@ class StorageApi {
     required Map<String, dynamic> profile,
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    final refreshRoleToken = _profileUpdateChangesRole(profile);
     final data = await _postRpc(
       method: 'Storage.UpdateProfile',
       params: profile,
       timeout: timeout,
     );
+    if (refreshRoleToken) {
+      await _tryRefreshTokens();
+    }
     return _asMap(data['result']);
+  }
+
+  static bool _profileUpdateChangesRole(Map<String, dynamic> profile) {
+    final role = profile['role']?.toString().trim().toLowerCase();
+    return role == 'company' || role == 'specialist';
   }
 
   /// Подтверждение email-адреса кодом из письма. Code приходит на email

@@ -194,11 +194,10 @@ class _SparkJoySpecialistProfileScreenState
       _lastNameController.text = structuredLast;
       _middleNameController.text = structuredMiddle;
     } else {
-      final parts = sjRead(profile, 'name')
-          .trim()
-          .split(RegExp(r'\s+'))
-          .where((s) => s.isNotEmpty)
-          .toList();
+      final parts = sjRead(
+        profile,
+        'name',
+      ).trim().split(RegExp(r'\s+')).where((s) => s.isNotEmpty).toList();
       _lastNameController.text = parts.isNotEmpty ? parts[0] : '';
       _firstNameController.text = parts.length > 1 ? parts[1] : '';
       _middleNameController.text = parts.length > 2
@@ -345,11 +344,12 @@ class _SparkJoySpecialistProfileScreenState
       // обратно. Pending снимается ТОЛЬКО по timeout — окно фиксированное.
       final pendingTarget = _pendingTargetRole;
       final pendingSince = _pendingTargetSince;
-      final pendingExpired = pendingSince != null &&
+      final pendingExpired =
+          pendingSince != null &&
           DateTime.now().difference(pendingSince) > _pendingRoleTimeout;
       final pendingActive = pendingTarget != null && !pendingExpired;
-      final serverMatchesPending = pendingTarget != null &&
-          serverRole.toLowerCase() == pendingTarget;
+      final serverMatchesPending =
+          pendingTarget != null && serverRole.toLowerCase() == pendingTarget;
 
       if (pendingExpired) {
         _pendingTargetRole = null;
@@ -429,8 +429,7 @@ class _SparkJoySpecialistProfileScreenState
       final cacheSnapshot = <String, dynamic>{
         if (result['firstName'] != null) 'firstName': result['firstName'],
         if (result['lastName'] != null) 'lastName': result['lastName'],
-        if (result['middleName'] != null)
-          'middleName': result['middleName'],
+        if (result['middleName'] != null) 'middleName': result['middleName'],
         if (result['email'] != null) 'email': result['email'],
         if (result['phone'] != null) 'phone': result['phone'],
         if (result['description'] != null)
@@ -486,8 +485,8 @@ class _SparkJoySpecialistProfileScreenState
     // каждое присутствие `email` в payload запускает verify-flow —
     // если шлём прежний email при save (например, поменялся только
     // город), пользователь получает лишнее письмо с кодом.
-    final emailChanged = email.isNotEmpty &&
-        email.toLowerCase() != _originalEmail.toLowerCase();
+    final emailChanged =
+        email.isNotEmpty && email.toLowerCase() != _originalEmail.toLowerCase();
     final firstNameChanged = firstName != _originalFirstName;
     final lastNameChanged = lastName != _originalLastName;
     final middleNameChanged = middleName != _originalMiddleName;
@@ -513,9 +512,7 @@ class _SparkJoySpecialistProfileScreenState
     // companyName и companyInn сервер сохраняет только парой — шлём
     // обе если companyName изменилось и обе непустые. ИНН по
     // отдельности не меняется через save: его флоу — `_verifyInn`.
-    if (companyNameChanged &&
-        companyName.isNotEmpty &&
-        companyInn.isNotEmpty) {
+    if (companyNameChanged && companyName.isNotEmpty && companyInn.isNotEmpty) {
       payload['companyName'] = companyName;
       // Server ожидает companyInn как строку (см. UpdateProfile
       // schema), хотя в GetProfile возвращается как integer.
@@ -534,7 +531,9 @@ class _SparkJoySpecialistProfileScreenState
       _originalMiddleName = middleName;
       _originalCity = city;
       if (descriptionAllowed) _originalDescription = description;
-      if (companyNameChanged && companyName.isNotEmpty && companyInn.isNotEmpty) {
+      if (companyNameChanged &&
+          companyName.isNotEmpty &&
+          companyInn.isNotEmpty) {
         _originalCompanyName = companyName;
       }
       // Patch local cache новыми server-accepted значениями. Merge
@@ -646,14 +645,9 @@ class _SparkJoySpecialistProfileScreenState
       isCompany ? SparkJoyRole.company : SparkJoyRole.specialist,
     );
 
-    // RefreshToken на смене роли НЕ зовём явно — `_postRpc` сам
-    // ротирует токены лениво при следующем API-вызове через:
-    //   1) pre-send check истёкшего JWT-skew → refresh до отправки
-    //   2) 401-retry → refresh+retry если claim role stale
-    // Раньше тут был manual `StorageApi.tryRefreshTokens()` — он
-    // дублировал auto-механизмы и приводил к 2-3× лишним RefreshToken-
-    // запросам параллельно (видно в DevTools network log: 3× GetProfile
-    // + 3× RefreshToken на одно нажатие «Сбросить»).
+    // JWT refresh после смены роли централизован в StorageApi.updateProfile:
+    // если payload содержит role='company'/'specialist', токены
+    // ротируются сразу после успешного Storage.UpdateProfile.
 
     if (!mounted) return;
     final roleChanged = _businessType != nextBusinessType;
@@ -768,10 +762,9 @@ class _SparkJoySpecialistProfileScreenState
         ),
       );
       // Re-fetch GetProfile подтянет isVerifyCompany + актуальную роль
-      // от сервера. _syncServerRoleToLocal внутри _fetchServerProfile
-      // увидит смену роли (specialist → company) и сам дёрнет
-      // RefreshToken чтобы JWT claim role обновился. Если backend ещё
-      // не успел реплицировать — pending-guard сохранит local-state.
+      // от сервера. StorageApi.updateProfile уже обновил токены после
+      // role='company'. Если backend ещё не успел реплицировать —
+      // pending-guard сохранит local-state.
       unawaited(_fetchServerProfile());
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
@@ -941,20 +934,20 @@ class _SparkJoySpecialistProfileScreenState
         profile: <String, dynamic>{'role': 'specialist'},
       );
       serverDowngraded = true;
-      // Sync local prefs role + RefreshToken. **ПЕРЕД** cancelCompanyMode:
+      // Sync local prefs role. **ПЕРЕД** cancelCompanyMode:
       // последний внутри вызывает resetBusinessVerification который сам
       // ставит UserSimplePreferences.setUserRole('specialist'). Если
       // _syncServerRoleToLocal позвать ПОСЛЕ — он прочитает previousRole=
-      // 'specialist' (только что установленный), localRoleChanged=false,
-      // и tryRefreshTokens НЕ вызовется. JWT claim role останется stale
-      // 'company'. Зеркально к _verifyInn: refresh нужен на смене role
-      // в обе стороны (specialist ↔ company), per UpdateProfile docs.
+      // 'specialist' (только что установленный), и shell может не увидеть
+      // смену роли. JWT refresh делает StorageApi.updateProfile сразу
+      // после успешного role='specialist'.
       await _syncServerRoleToLocal('specialist', null);
       await SparkJoyStorage.cancelCompanyMode();
       // Patch local profile cache — удаляем company-поля и
       // фиксируем role='specialist'. Иначе следующий cold start
       // в profile screen использовал бы stale cache как seed.
-      final cached = await SparkJoyStorage.loadSpecialistProfileOrNull() ??
+      final cached =
+          await SparkJoyStorage.loadSpecialistProfileOrNull() ??
           <String, dynamic>{};
       cached.remove('companyName');
       cached.remove('companyInn');
@@ -1003,7 +996,7 @@ class _SparkJoySpecialistProfileScreenState
           content: Text(
             serverDowngraded
                 ? 'Статус сброшен на сервере, но локальная синхронизация '
-                    'не удалась. Перезайдите в профиль для обновления.'
+                      'не удалась. Перезайдите в профиль для обновления.'
                 : 'Не удалось сбросить статус: $e',
           ),
           backgroundColor: kRedColor,
@@ -1024,7 +1017,9 @@ class _SparkJoySpecialistProfileScreenState
       if (assigned > 0) breakdown.add('$assigned назначено сотрудникам');
       if (invites > 0) breakdown.add('$invites ожидают приглашения');
       final suffix = breakdown.isEmpty ? '' : ' (${breakdown.join(', ')})';
-      bullets.add('${s.totalDrafts} ${_draftsPlural(s.totalDrafts)} будут удалены$suffix');
+      bullets.add(
+        '${s.totalDrafts} ${_draftsPlural(s.totalDrafts)} будут удалены$suffix',
+      );
     }
     if (s.promotedStaff > 0 || s.hiddenStaff > 0) {
       bullets.add('Настройки штата (повышенные/скрытые) будут очищены');
@@ -1261,18 +1256,13 @@ class _SparkJoySpecialistProfileScreenState
                       keyboardType: TextInputType.number,
                       textInputAction: TextInputAction.done,
                       textAlign: TextAlign.center,
-                      autofillHints: const <String>[
-                        AutofillHints.oneTimeCode,
-                      ],
+                      autofillHints: const <String>[AutofillHints.oneTimeCode],
                       inputFormatters: <TextInputFormatter>[
                         FilteringTextInputFormatter.digitsOnly,
                         // Backend пример показывает 6-значный код.
                         LengthLimitingTextInputFormatter(6),
                       ],
-                      style: const TextStyle(
-                        fontSize: 24,
-                        letterSpacing: 8,
-                      ),
+                      style: const TextStyle(fontSize: 24, letterSpacing: 8),
                       decoration: InputDecoration(
                         hintText: '••••••',
                         errorText: codeError,
@@ -1370,7 +1360,8 @@ class _SparkJoySpecialistProfileScreenState
     final previousEmail = sjRead(_specialist(), 'email').trim();
     final newEmail = _emailController.text.trim();
     final emailChanged =
-        newEmail.isNotEmpty && newEmail.toLowerCase() != previousEmail.toLowerCase();
+        newEmail.isNotEmpty &&
+        newEmail.toLowerCase() != previousEmail.toLowerCase();
 
     // Прогоняем description («Описание услуг») через локальный
     // LLM-guard перед server push — он блокирует контакты в обход
@@ -1434,9 +1425,7 @@ class _SparkJoySpecialistProfileScreenState
     });
 
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Профиль сохранен')),
-    );
+    messenger.showSnackBar(const SnackBar(content: Text('Профиль сохранен')));
     if (emailChanged) {
       messenger.showSnackBar(
         const SnackBar(
@@ -1515,9 +1504,7 @@ class _SparkJoySpecialistProfileScreenState
           onTap: _showInnReadonlySheet,
           // Если pill нет И имя пустое (edge: только ИНН пришёл с
           // сервера) — overflow-menu переезжает сюда.
-          trailing: (!pillVisible && companyName.isEmpty)
-              ? overflowMenu
-              : null,
+          trailing: (!pillVisible && companyName.isEmpty) ? overflowMenu : null,
         ),
       ],
     );
@@ -1917,7 +1904,8 @@ class _SparkJoySpecialistProfileScreenState
                         const SizedBox(width: SparkSpace.md),
                     itemBuilder: (_, idx) {
                       final preset = kSparkAvatarPresets[idx];
-                      final selected = _avatarPresetIndex == idx &&
+                      final selected =
+                          _avatarPresetIndex == idx &&
                           (_avatarBase64 ?? '').isEmpty;
                       return GestureDetector(
                         onTap: () => Navigator.of(ctx).pop('preset:$idx'),
@@ -1956,8 +1944,7 @@ class _SparkJoySpecialistProfileScreenState
                       onPressed: () => Navigator.of(ctx).pop(),
                       style: OutlinedButton.styleFrom(
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(SparkRadius.lg),
+                          borderRadius: BorderRadius.circular(SparkRadius.lg),
                         ),
                       ),
                       child: const Text('Отмена'),
@@ -2024,18 +2011,18 @@ class _SparkJoySpecialistProfileScreenState
       });
     } on PlatformException catch (e) {
       if (!mounted) return;
-      final reason = e.code == 'camera_access_denied' ||
-              e.code == 'photo_access_denied'
+      final reason =
+          e.code == 'camera_access_denied' || e.code == 'photo_access_denied'
           ? 'Нет доступа. Разрешите в Настройках устройства.'
           : 'Не удалось загрузить фото: ${e.code}';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(reason)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось загрузить фото: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Не удалось загрузить фото: $e')));
     }
   }
 
@@ -2068,11 +2055,9 @@ class _SparkJoySpecialistProfileScreenState
                 setLocal(() => lastErrors = errors);
                 return;
               }
-              Navigator.of(sheetCtx).pop({
-                'last': last,
-                'first': first,
-                'middle': middle,
-              });
+              Navigator.of(
+                sheetCtx,
+              ).pop({'last': last, 'first': first, 'middle': middle});
             }
 
             return _SheetScaffold(
@@ -2126,7 +2111,8 @@ class _SparkJoySpecialistProfileScreenState
     final last = saved['last']!;
     final first = saved['first']!;
     final middle = saved['middle']!;
-    final unchanged = last == _lastNameController.text.trim() &&
+    final unchanged =
+        last == _lastNameController.text.trim() &&
         first == _firstNameController.text.trim() &&
         middle == _middleNameController.text.trim();
     if (unchanged) return;
@@ -2143,8 +2129,7 @@ class _SparkJoySpecialistProfileScreenState
       hint: 'Город осмотров',
       initial: _cityController.text,
       textCapitalization: TextCapitalization.words,
-      validate: (value) =>
-          value.trim().isEmpty ? 'Введите город' : null,
+      validate: (value) => value.trim().isEmpty ? 'Введите город' : null,
     );
     if (saved == null) return;
     if (saved.trim() == _cityController.text.trim()) return;
@@ -2363,10 +2348,7 @@ class _SparkJoySpecialistProfileScreenState
         // напрямую и await'им — индикатор уезжает только когда server
         // response применился. _fetchServerProfile сам бампит generation,
         // поэтому любой уже-летящий fetch invalidate'ится автоматически.
-        await Future.wait([
-          _fetchServerProfile(),
-          _loadBusinessStatus(),
-        ]);
+        await Future.wait([_fetchServerProfile(), _loadBusinessStatus()]);
         // Re-sync pendingEmailVerify из prefs — на случай если verify
         // прошёл через внешний канал (deep-link, push) пока юзер был
         // на этом экране. Сейчас такого канала нет, но defensive.
@@ -2430,10 +2412,7 @@ class _SparkJoySpecialistProfileScreenState
                         decoration: BoxDecoration(
                           color: kSecondaryColor,
                           shape: BoxShape.circle,
-                          border: Border.all(
-                            color: kWhiteColor,
-                            width: 2,
-                          ),
+                          border: Border.all(color: kWhiteColor, width: 2),
                         ),
                         alignment: Alignment.center,
                         child: const Icon(
@@ -2481,8 +2460,9 @@ class _SparkJoySpecialistProfileScreenState
                                   ),
                                   child: SparkChip(
                                     text: 'Неактивен',
-                                    background:
-                                        kRedColor.withValues(alpha: 0.12),
+                                    background: kRedColor.withValues(
+                                      alpha: 0.12,
+                                    ),
                                     color: kRedColor,
                                   ),
                                 );
@@ -2613,11 +2593,9 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   void _openFeedback() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const SparkJoyFeedbackScreen(),
-      ),
-    );
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const SparkJoyFeedbackScreen()));
   }
 }
 
@@ -2757,8 +2735,9 @@ class _SheetTextField extends StatelessWidget {
             autofocus: autofocus,
             keyboardType: keyboardType,
             textCapitalization: textCapitalization,
-            textInputAction:
-                onSubmitted != null ? TextInputAction.done : TextInputAction.next,
+            textInputAction: onSubmitted != null
+                ? TextInputAction.done
+                : TextInputAction.next,
             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
             onChanged: onChanged,
             onSubmitted: onSubmitted,

@@ -74,7 +74,9 @@ enum NotificationPushEventType {
 
   static NotificationPushEventType tryParse(Object? raw) {
     final value = raw?.toString();
-    if (value == null || value.isEmpty) return NotificationPushEventType.unknown;
+    if (value == null || value.isEmpty) {
+      return NotificationPushEventType.unknown;
+    }
     for (final e in NotificationPushEventType.values) {
       if (e.name == value) return e;
     }
@@ -120,15 +122,39 @@ class BackendNotification {
   bool get isInteractivePending =>
       type.isInteractive && status == NotificationStatus.pending;
 
+  int? get requestId {
+    final entityType = (payload['entityType'] ?? '').toString();
+    final raw =
+        payload['requestId'] ??
+        payload['request_id'] ??
+        (entityType == 'request' ? payload['entityId'] : null);
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    return null;
+  }
+
+  String get requestNumber {
+    return (payload['requestNumber'] ?? payload['request_number'] ?? '')
+        .toString()
+        .trim();
+  }
+
   factory BackendNotification.fromJson(Map<String, dynamic> json) {
     final payloadRaw = json['payload'];
     final payload = payloadRaw is Map
         ? payloadRaw.map((k, v) => MapEntry(k.toString(), v))
-        : const <String, dynamic>{};
+        : <String, dynamic>{};
+    for (final key in const ['requestId', 'requestNumber']) {
+      if (json[key] != null && payload[key] == null) {
+        payload[key] = json[key];
+      }
+    }
     return BackendNotification(
       id: (json['id'] ?? '').toString(),
       type: NotificationType.tryParse(json['type']) ?? NotificationType.system,
-      status: NotificationStatus.tryParse(json['status']) ??
+      status:
+          NotificationStatus.tryParse(json['status']) ??
           NotificationStatus.pending,
       recipientId: (json['recipientId'] is num)
           ? (json['recipientId'] as num).toInt()
@@ -136,8 +162,8 @@ class BackendNotification {
       senderId: json['senderId'] is num
           ? (json['senderId'] as num).toInt()
           : (json['senderId'] != null
-              ? int.tryParse('${json['senderId']}')
-              : null),
+                ? int.tryParse('${json['senderId']}')
+                : null),
       title: (json['title'] ?? '').toString(),
       body: json['body']?.toString(),
       payload: payload,
@@ -212,7 +238,8 @@ class NotificationActionResult {
   factory NotificationActionResult.fromJson(Map<String, dynamic> json) {
     return NotificationActionResult(
       notificationId: (json['notificationId'] ?? '').toString(),
-      status: NotificationStatus.tryParse(json['status']) ??
+      status:
+          NotificationStatus.tryParse(json['status']) ??
           NotificationStatus.pending,
       action: json['action']?.toString() == 'reject'
           ? NotificationAction.reject
