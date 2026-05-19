@@ -68,25 +68,10 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     final hasSummaryNote = _summaryController.text.trim().isNotEmpty;
     final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
-    // Both the field must be non-empty AND the value must match a
-    // city in the bundled RU+CIS dataset. The validity flag is
-    // maintained by `_SparkJoyCityPickerHelpers` — flipped to true
-    // when the picker writes a selection, recomputed after draft
-    // hydration. Drafts predating the picker may have free-form
-    // strings ("Мск", "Питер") that fail this gate until the
-    // inspector reselects.
-    final hasInspectionCity =
-        _inspectionCityController.text.trim().isNotEmpty &&
-            _isInspectionCityValid;
-    // Characteristics — все required по спеке, ничего nullable.
-    final hasFrameId = _modelGenerationRestylingFrameId != null &&
-        _modelGenerationRestylingFrameId! > 0;
-    final hasEngineVolume = _engineVolumeController.text.trim().isNotEmpty;
-    final hasEngineType = _engineTypeController.text.trim().isNotEmpty;
-    final hasTransmission = _gearboxTypeController.text.trim().isNotEmpty;
-    final hasDriveType = _driveTypeController.text.trim().isNotEmpty;
-    final hasColor = _colorController.text.trim().isNotEmpty;
-    final hasEquipment = _trimController.text.trim().isNotEmpty;
+    // Backend requires only a non-blank city string. The picker-validity
+    // flag is useful for UI hints, but must not block completion for
+    // drafts restored from company requests or older free-form values.
+    final hasInspectionCity = _inspectionCityController.text.trim().isNotEmpty;
     final hasDocs =
         _docsOwnerMatch != null &&
         _docsVinMatch != null &&
@@ -116,29 +101,6 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     }
     if (!hasInspectionCity) {
       reasons.add('Автомобиль — укажите город осмотра');
-    }
-    if (!hasFrameId) {
-      // Brand/model picker now lives on the Автомобиль step alongside
-      // VIN — re-prefix so the missing-reason chip navigates there.
-      reasons.add('Автомобиль — выберите модель из каталога');
-    }
-    if (!hasEngineVolume) {
-      reasons.add('Характеристики — укажите объём двигателя');
-    }
-    if (!hasEngineType) {
-      reasons.add('Характеристики — укажите тип двигателя');
-    }
-    if (!hasTransmission) {
-      reasons.add('Характеристики — укажите коробку');
-    }
-    if (!hasDriveType) {
-      reasons.add('Характеристики — укажите привод');
-    }
-    if (!hasColor) {
-      reasons.add('Характеристики — укажите цвет');
-    }
-    if (!hasEquipment) {
-      reasons.add('Характеристики — укажите комплектацию');
     }
     if (!hasSummaryNote) {
       reasons.add('Итог — заполните итог осмотра');
@@ -205,32 +167,32 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
   /// rebuilt against current state every time `_summaryMissingReasons`
   /// runs — avoids stale references after a controller swap.
   List<_ProfanityCheckTarget> _profanityCheckTargets() => [
-        _ProfanityCheckTarget(
-          controller: _reportNameController,
-          fieldLabel: 'Название отчёта',
-          section: 'Отчёт',
-        ),
-        _ProfanityCheckTarget(
-          controller: _docsMismatchCommentController,
-          fieldLabel: 'Комментарий по документам',
-          section: 'Сверка документов',
-        ),
-        _ProfanityCheckTarget(
-          controller: _legalNoteController,
-          fieldLabel: 'Юридическое заключение',
-          section: 'Юр. проверка',
-        ),
-        _ProfanityCheckTarget(
-          controller: _tdNoteController,
-          fieldLabel: 'Заметка по тест-драйву',
-          section: 'Тест-драйв',
-        ),
-        _ProfanityCheckTarget(
-          controller: _summaryController,
-          fieldLabel: 'Итог осмотра',
-          section: 'Итог',
-        ),
-      ];
+    _ProfanityCheckTarget(
+      controller: _reportNameController,
+      fieldLabel: 'Название отчёта',
+      section: 'Отчёт',
+    ),
+    _ProfanityCheckTarget(
+      controller: _docsMismatchCommentController,
+      fieldLabel: 'Комментарий по документам',
+      section: 'Сверка документов',
+    ),
+    _ProfanityCheckTarget(
+      controller: _legalNoteController,
+      fieldLabel: 'Юридическое заключение',
+      section: 'Юр. проверка',
+    ),
+    _ProfanityCheckTarget(
+      controller: _tdNoteController,
+      fieldLabel: 'Заметка по тест-драйву',
+      section: 'Тест-драйв',
+    ),
+    _ProfanityCheckTarget(
+      controller: _summaryController,
+      fieldLabel: 'Итог осмотра',
+      section: 'Итог',
+    ),
+  ];
 
   String? _summaryReasonStepId(String reason) {
     return _SparkJoySummaryRegistry.stepIdByMissingReason(reason);

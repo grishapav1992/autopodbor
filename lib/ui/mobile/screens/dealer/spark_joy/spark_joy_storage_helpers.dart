@@ -1239,29 +1239,22 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       );
       if (id != null && id > 0) return id;
     }
-    return 1;
+    return 0;
   }
 
   Map<String, dynamic> _buildCharacteristicsStepPayload(
     Map<String, dynamic> payload,
   ) {
-    // Per OpenRPC spec (`docs/openrpc_doc_2026-04-26.json`,
-    // §characteristicsStep.required) **все 7 полей required и
-    // non-nullable**. Раньше тут был `orNull` — для null-tolerant
-    // версии спеки. Сейчас спека ужесточилась: пустые значения
-    // больше не валидны. Гейтим в `_summaryMissingReasons` и
-    // отправляем как есть; если что-то пустое проскочило — server
-    // вернёт honest validation error.
-    return <String, dynamic>{
-      'modelGenerationRestylingFrameId':
-          _resolveModelGenerationRestylingFrameId(payload),
+    final frameId = _resolveModelGenerationRestylingFrameId(payload);
+    return _normalizeOptionalObject(<String, dynamic>{
+      if (frameId > 0) 'modelGenerationRestylingFrameId': frameId,
       'engineVolume': _parseDecimal(_engineVolumeController.text),
       'engineType': _engineTypeController.text.trim(),
       'transmission': _gearboxTypeController.text.trim(),
       'driveType': _driveTypeController.text.trim(),
       'color': _colorController.text.trim(),
       'equipment': _trimController.text.trim(),
-    };
+    });
   }
 
   Map<String, dynamic> _buildDocumentReconciliationStepPayload({
