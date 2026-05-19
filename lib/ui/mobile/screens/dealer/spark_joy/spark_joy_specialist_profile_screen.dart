@@ -113,11 +113,16 @@ class _SparkJoySpecialistProfileScreenState
   // что _originalEmail. Persist в UserSimplePreferences чтобы пережить
   // рестарт приложения.
   String? _pendingEmailVerify;
-  // Аватар (base64-JPEG) — local-only, лежит в UserSimplePreferences.
-  // null до первой загрузки и когда юзер удалил/не ставил фото →
-  // рендерим инициалы. Backend пока без upload-endpoint'а, поле
-  // urlAvatar в GetProfile игнорируем; этот snapshot живёт только на
-  // устройстве владельца.
+  // Публичный URL аватарки из S3 (поле urlAvatar в GetProfile/UpdateProfile).
+  // null до первой синхронизации или если аватарка не установлена.
+  // Приоритетнее _avatarBase64 при рендеринге.
+  String? _urlAvatar;
+  // Идёт ли сейчас загрузка фото в S3 — блокирует повторный тап на аватарку
+  // и показывает spinner поверх виджета.
+  bool _isUploadingAvatar = false;
+  // Аватар (base64-JPEG) — local-only, fallback пока server-URL не получен
+  // или как оптимистичный preview в момент загрузки. Backend теперь
+  // поддерживает upload через ObjectStorage.Profile.*.
   String? _avatarBase64;
   // Альтернатива _avatarBase64 — индекс preset-аватара (стилизованная
   // авто-плитка из kSparkAvatarPresets). Mutual exclusive с base64.
@@ -274,9 +279,12 @@ class _SparkJoySpecialistProfileScreenState
       final base = _fallbackSpecialist();
       final merged = <String, dynamic>{...base, ...cached};
       _applyProfileToControllers(merged);
+      final cachedUrl =
+          (cached['urlAvatar'] as String? ?? '').trim();
       setState(() {
         _specialistProfile = merged;
         _pendingEmailVerify = pending;
+        if (cachedUrl.isNotEmpty) _urlAvatar = cachedUrl;
         _avatarBase64 = avatar;
         _avatarPresetIndex = avatarPreset;
       });
@@ -402,8 +410,13 @@ class _SparkJoySpecialistProfileScreenState
       if (result['city'] != null) merged['city'] = result['city'];
       _applyProfileToControllers(merged);
       final serverInn = result['companyInn'];
+      final serverUrlAvatar =
+          result['urlAvatar']?.toString().trim() ?? '';
       setState(() {
         _specialistProfile = merged;
+        if (serverUrlAvatar.isNotEmpty) {
+          _urlAvatar = serverUrlAvatar;
+        }
         if (isCompanyRole) {
           _isVerifyCompany = result['isVerifyCompany'] == true;
           if (serverInn != null) {
@@ -438,6 +451,7 @@ class _SparkJoySpecialistProfileScreenState
           'companyName': result['companyName'].toString(),
         if (result['city'] != null) 'city': result['city'],
         if (result['role'] != null) 'role': result['role'],
+        if (result['urlAvatar'] != null) 'urlAvatar': result['urlAvatar'],
         if (isCompanyRole && serverInn != null)
           'companyInn': serverInn.toString(),
         if (isCompanyRole && result['isVerifyCompany'] != null)
@@ -1828,7 +1842,9 @@ class _SparkJoySpecialistProfileScreenState
   /// (snackbar / setState) живут здесь, а sheet — чисто UI слой.
   Future<void> _openAvatarPickerSheet() async {
     final hasAvatar =
-        (_avatarBase64 ?? '').isNotEmpty || _avatarPresetIndex != null;
+        (_urlAvatar ?? '').isNotEmpty ||
+        (_avatarBase64 ?? '').isNotEmpty ||
+        _avatarPresetIndex != null;
     final action = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: kWhiteColor,
@@ -1959,12 +1975,7 @@ class _SparkJoySpecialistProfileScreenState
     );
     if (action == null || !mounted) return;
     if (action == 'delete') {
-      await UserSimplePreferences.clearAvatar();
-      if (!mounted) return;
-      setState(() {
-        _avatarBase64 = null;
-        _avatarPresetIndex = null;
-      });
+      await _deleteAvatar();
       return;
     }
     if (action.startsWith('preset:')) {
@@ -1973,6 +1984,7 @@ class _SparkJoySpecialistProfileScreenState
       await UserSimplePreferences.setAvatarPresetIndex(idx);
       if (!mounted) return;
       setState(() {
+        _urlAvatar = null;
         _avatarBase64 = null;
         _avatarPresetIndex = idx;
       });
@@ -1984,46 +1996,140 @@ class _SparkJoySpecialistProfileScreenState
     try {
       final xfile = await ImagePicker().pickImage(
         source: source,
-        // 800px достаточно для аватарки 80px на экране (ретина+overscan).
-        // imageQuality 85 — стандартный «не вижу разницы», JPEG ~50-150 KB.
         maxWidth: 800,
         imageQuality: 85,
       );
       if (xfile == null || !mounted) return;
       final bytes = await xfile.readAsBytes();
-      if (bytes.length > 1500000) {
+      if (bytes.length > 25 * 1024 * 1024) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Слишком большое фото. Выберите другое.'),
+            content: Text('Слишком большое фото (максимум 25 МБ).'),
             backgroundColor: kRedColor,
           ),
         );
         return;
       }
+      // Оптимистичный preview: показываем base64 пока идёт upload.
       final encoded = base64Encode(bytes);
       await UserSimplePreferences.setAvatarBase64(encoded);
       if (!mounted) return;
       setState(() {
         _avatarBase64 = encoded;
-        // setAvatarBase64 уже почистил preset в prefs — синкаем in-memory.
         _avatarPresetIndex = null;
+        _isUploadingAvatar = true;
       });
+      await _uploadAvatarToS3(xfile.name, bytes);
     } on PlatformException catch (e) {
       if (!mounted) return;
       final reason =
           e.code == 'camera_access_denied' || e.code == 'photo_access_denied'
           ? 'Нет доступа. Разрешите в Настройках устройства.'
           : 'Не удалось загрузить фото: ${e.code}';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(reason)));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(reason)),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Не удалось загрузить фото: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось загрузить фото: $e')),
+      );
     }
+  }
+
+  Future<void> _uploadAvatarToS3(String originalFilename, List<int> bytes) async {
+    // Безопасное имя файла: только latin + цифры + расширение.
+    final ext = originalFilename.contains('.')
+        ? originalFilename.split('.').last.toLowerCase()
+        : 'jpg';
+    final safeExt = RegExp(r'^[a-z0-9]{1,10}$').hasMatch(ext) ? ext : 'jpg';
+    final filename = 'avatar.$safeExt';
+    String? uploadId;
+    try {
+      final session =
+          await storage_api.StorageApi.initiateProfileMultipartUpload(
+        filename: filename,
+        contentLength: bytes.length,
+      );
+      uploadId = session.uploadId;
+      final urlsResult =
+          await storage_api.StorageApi.getProfilePartUploadUrls(
+        filename: session.filename,
+        uploadId: uploadId,
+        partCount: 1,
+      );
+      if (urlsResult.urls.isEmpty) {
+        throw Exception('Сервер не вернул URL для загрузки');
+      }
+      final partUrl = urlsResult.urls.first.url;
+      final contentType = safeExt == 'png' ? 'image/png' : 'image/jpeg';
+      final etag = await storage_api.StorageApi.uploadBytesToPresignedUrl(
+        url: partUrl,
+        bytes: bytes,
+        contentType: contentType,
+      );
+      final complete =
+          await storage_api.StorageApi.completeProfileMultipartUpload(
+        filename: session.filename,
+        uploadId: uploadId,
+        parts: [storage_api.MultipartUploadedPart(partNumber: 1, etag: etag)],
+      );
+      if (complete.hasError) {
+        final msg = complete.error == 'file_too_large'
+            ? 'Файл слишком большой (максимум 25 МБ).'
+            : 'Ошибка при завершении загрузки: ${complete.error}';
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(msg), backgroundColor: kRedColor),
+        );
+        if (!mounted) return;
+        setState(() => _isUploadingAvatar = false);
+        return;
+      }
+      // Сохраняем publicUrl в профиле на сервере.
+      await storage_api.StorageApi.updateProfile(
+        profile: {'urlAvatar': complete.publicUrl},
+      );
+      if (!mounted) return;
+      // Чистим base64 — теперь будет грузиться с S3.
+      await UserSimplePreferences.clearAvatar();
+      if (!mounted) return;
+      setState(() {
+        _urlAvatar = complete.publicUrl;
+        _avatarBase64 = null;
+        _isUploadingAvatar = false;
+      });
+    } catch (e) {
+      if (uploadId != null) {
+        unawaited(
+          storage_api.StorageApi.abortProfileMultipartUpload(
+            filename: filename,
+            uploadId: uploadId,
+          ).catchError((_) {}),
+        );
+      }
+      if (!mounted) return;
+      setState(() => _isUploadingAvatar = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось загрузить фото: $e')),
+      );
+    }
+  }
+
+  Future<void> _deleteAvatar() async {
+    try {
+      await storage_api.StorageApi.deleteProfileAvatar();
+    } catch (_) {
+      // Продолжаем даже при ошибке — UI чистим локально.
+    }
+    await UserSimplePreferences.clearAvatar();
+    if (!mounted) return;
+    setState(() {
+      _urlAvatar = null;
+      _avatarBase64 = null;
+      _avatarPresetIndex = null;
+    });
   }
 
   Future<void> _editFullNameSheet() async {
@@ -2392,7 +2498,9 @@ class _SparkJoySpecialistProfileScreenState
             children: [
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: _isSavingProfile ? null : _openAvatarPickerSheet,
+                onTap: (_isSavingProfile || _isUploadingAvatar)
+                    ? null
+                    : _openAvatarPickerSheet,
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -2400,9 +2508,28 @@ class _SparkJoySpecialistProfileScreenState
                       name: profileName,
                       size: SparkSize.icon6xl,
                       textSize: SparkTextSize.modalTitle,
+                      imageUrl: _urlAvatar,
                       imageBase64: _avatarBase64,
                       presetIndex: _avatarPresetIndex,
                     ),
+                    if (_isUploadingAvatar)
+                      Positioned.fill(
+                        child: ClipOval(
+                          child: ColoredBox(
+                            color: Colors.black45,
+                            child: const Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.5,
+                                  color: kWhiteColor,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     Positioned(
                       right: -2,
                       bottom: -2,

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -283,6 +284,7 @@ class SparkInitialsAvatar extends StatelessWidget {
     this.textSize = SparkTextSize.label,
     this.backgroundColor,
     this.textColor = kSecondaryColor,
+    this.imageUrl,
     this.imageBase64,
     this.presetIndex,
   });
@@ -293,16 +295,16 @@ class SparkInitialsAvatar extends StatelessWidget {
   final Color? backgroundColor;
   final Color textColor;
 
-  /// Optional base64-кодированное JPEG/PNG. Если непустое и
-  /// декодируется — рендерим картинку в круге; иначе fallback на
-  /// preset или инициалы. Поле опциональное — все существующие
-  /// use-site'ы `SparkInitialsAvatar` без `imageBase64`/`presetIndex`
-  /// ведут себя как раньше.
+  /// Публичный URL аватарки из S3. Приоритетнее imageBase64 и preset.
+  final String? imageUrl;
+
+  /// Optional base64-кодированное JPEG/PNG. Применяется только если
+  /// imageUrl null/пустой. Fallback при отсутствии сетевого аватара.
   final String? imageBase64;
 
   /// Индекс preset-аватара из [kSparkAvatarPresets]. Применяется
-  /// только если `imageBase64` null/пустой. Out-of-range — игнорируется
-  /// (fallback на инициалы), чтобы поломанный prefs не крашил UI.
+  /// только если imageUrl и imageBase64 отсутствуют. Out-of-range —
+  /// игнорируется (fallback на инициалы).
   final int? presetIndex;
 
   Uint8List? _decode() {
@@ -317,6 +319,19 @@ class SparkInitialsAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final url = imageUrl;
+    if (url != null && url.isNotEmpty) {
+      return ClipOval(
+        child: CachedNetworkImage(
+          imageUrl: url,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          placeholder: (_, _) => _buildInitials(),
+          errorWidget: (_, _, _) => _buildInitials(),
+        ),
+      );
+    }
     final bytes = _decode();
     if (bytes != null) {
       return ClipOval(
@@ -325,8 +340,6 @@ class SparkInitialsAvatar extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          // Если bytes окажется битым (corrupted base64 prefs) —
-          // показываем инициалы, не серый стандартный broken-image.
           errorBuilder: (_, _, _) => _buildInitials(),
           gaplessPlayback: true,
         ),

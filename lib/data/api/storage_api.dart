@@ -1588,6 +1588,129 @@ class StorageApi {
     return MultipartListPartsResult(key: key, parts: parts, result: result);
   }
 
+  // ---------------------------------------------------------------------------
+  // ObjectStorage.Profile — profile-specific multipart upload
+  // ---------------------------------------------------------------------------
+
+  static Future<ProfileMultipartSession> initiateProfileMultipartUpload({
+    required String filename,
+    required int contentLength,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final data = await _postRpc(
+      method: 'ObjectStorage.Profile.InitiateProfileMultipartUpload',
+      params: {'filename': filename, 'contentLength': contentLength},
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final uploadId = _extractString(result, ['uploadId', 'uploadID', 'id']);
+    final fn = _extractString(result, ['filename', 'fileName']);
+    final key = _extractString(result, ['key', 'path', 'objectKey']);
+    final publicUrl = _extractString(result, ['publicUrl', 'url']);
+    if (uploadId.isEmpty) {
+      throw Exception('Profile multipart uploadId is empty');
+    }
+    return ProfileMultipartSession(
+      uploadId: uploadId,
+      filename: fn.isNotEmpty ? fn : filename,
+      key: key,
+      publicUrl: publicUrl,
+      result: result,
+    );
+  }
+
+  static Future<MultipartUploadUrlsResult> getProfilePartUploadUrls({
+    required String filename,
+    required String uploadId,
+    required int partCount,
+    int? expiresInSeconds,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final params = <String, dynamic>{
+      'filename': filename,
+      'uploadId': uploadId,
+      'partCount': partCount,
+      if (expiresInSeconds != null) 'expiresInSeconds': expiresInSeconds,
+    };
+    final data = await _postRpc(
+      method: 'ObjectStorage.Profile.GetProfilePartUploadUrls',
+      params: params,
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final key = _extractString(result, ['key', 'path', 'objectKey']);
+    final urlsRaw = result['urls'];
+    final urls = <MultipartUploadUrl>[];
+    if (urlsRaw is List) {
+      for (final item in urlsRaw) {
+        if (item is! Map) continue;
+        final map = _asMap(item);
+        final partNumber = _asInt(map['partNumber']);
+        final url = _extractString(map, ['url', 'signedUrl', 'uploadUrl']);
+        if (partNumber == null || url.isEmpty) continue;
+        urls.add(MultipartUploadUrl(partNumber: partNumber, url: url));
+      }
+    }
+    urls.sort((a, b) => a.partNumber.compareTo(b.partNumber));
+    return MultipartUploadUrlsResult(key: key, urls: urls, result: result);
+  }
+
+  static Future<ProfileMultipartCompleteResult> completeProfileMultipartUpload({
+    required String filename,
+    required String uploadId,
+    required List<MultipartUploadedPart> parts,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final data = await _postRpc(
+      method: 'ObjectStorage.Profile.CompleteProfileMultipartUpload',
+      params: {
+        'filename': filename,
+        'uploadId': uploadId,
+        'parts': parts.map((e) => e.toJson()).toList(),
+      },
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final key = _extractString(result, ['key', 'path', 'objectKey']);
+    final publicUrl = _extractString(result, ['publicUrl', 'url']);
+    final contentSize = _asInt(result['contentSize']) ?? 0;
+    final errorRaw = result['error']?.toString();
+    final error =
+        (errorRaw != null && errorRaw.isNotEmpty) ? errorRaw : null;
+    return ProfileMultipartCompleteResult(
+      key: key,
+      publicUrl: publicUrl,
+      contentSize: contentSize,
+      error: error,
+      maxSize: _asInt(result['maxSize']),
+      actual: _asInt(result['actual']),
+      result: result,
+    );
+  }
+
+  static Future<void> abortProfileMultipartUpload({
+    required String filename,
+    required String uploadId,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    await _postRpc(
+      method: 'ObjectStorage.Profile.AbortProfileMultipartUpload',
+      params: {'filename': filename, 'uploadId': uploadId},
+      timeout: timeout,
+    );
+  }
+
+  static Future<Map<String, dynamic>> deleteProfileAvatar({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.DeleteProfileAvatar',
+      params: const <String, dynamic>{},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
   static Future<List<Map<String, dynamic>>> getRequests({
     Duration timeout = const Duration(seconds: 12),
   }) async {

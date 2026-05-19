@@ -432,6 +432,44 @@ class SpecialistItem {
   }
 }
 
+class ProfileMultipartSession {
+  final String uploadId;
+  final String filename;
+  final String key;
+  final String publicUrl;
+  final Map<String, dynamic> result;
+
+  const ProfileMultipartSession({
+    required this.uploadId,
+    required this.filename,
+    required this.key,
+    required this.publicUrl,
+    required this.result,
+  });
+}
+
+class ProfileMultipartCompleteResult {
+  final String key;
+  final String publicUrl;
+  final int contentSize;
+  final String? error;
+  final int? maxSize;
+  final int? actual;
+  final Map<String, dynamic> result;
+
+  const ProfileMultipartCompleteResult({
+    required this.key,
+    required this.publicUrl,
+    required this.contentSize,
+    this.error,
+    this.maxSize,
+    this.actual,
+    required this.result,
+  });
+
+  bool get hasError => error != null && error!.isNotEmpty;
+}
+
 /// Пагинированный ответ `Storage.GetSpecialists`.
 class SpecialistsPage {
   final List<SpecialistItem> specialists;
