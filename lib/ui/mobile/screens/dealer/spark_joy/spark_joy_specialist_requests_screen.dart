@@ -439,13 +439,43 @@ class _SparkJoySpecialistRequestDetailScreenState
     }
   }
 
-  Future<void> _reject() async {
-    final note = await _showNoteSheet(
-      context,
+  Future<void> _rejectNewRequest() {
+    return _rejectRequest(
       title: 'Отклонить заявку',
       hint: 'Причина отказа (необязательно)',
       actionLabel: 'Отклонить',
-      actionIcon: Icons.close_rounded,
+      successMessage: 'Заявка отклонена',
+      errorMessage: 'Не удалось отклонить заявку',
+    );
+  }
+
+  Future<void> _cancelAcceptedRequest() {
+    return _rejectRequest(
+      title: 'Отменить работу по заявке',
+      hint: 'Причина отмены для компании (необязательно)',
+      actionLabel: 'Отменить работу',
+      actionIcon: Icons.cancel_outlined,
+      successMessage: 'Работа по заявке отменена',
+      errorMessage: 'Не удалось отменить работу по заявке',
+      removeLocalDrafts: true,
+    );
+  }
+
+  Future<void> _rejectRequest({
+    required String title,
+    required String hint,
+    required String actionLabel,
+    required String successMessage,
+    required String errorMessage,
+    IconData actionIcon = Icons.close_rounded,
+    bool removeLocalDrafts = false,
+  }) async {
+    final note = await _showNoteSheet(
+      context,
+      title: title,
+      hint: hint,
+      actionLabel: actionLabel,
+      actionIcon: actionIcon,
       destructive: true,
     );
     if (note == null || _actionBusy) return;
@@ -454,20 +484,42 @@ class _SparkJoySpecialistRequestDetailScreenState
     HapticFeedback.mediumImpact();
     setState(() => _actionBusy = true);
     try {
-      await storage_api.StorageApi.rejectRequest(requestId: id, note: note);
+      final result = await storage_api.StorageApi.rejectRequest(
+        requestId: id,
+        note: note,
+      );
+      if (!mounted) return;
+      if (result.status.isNotEmpty) {
+        setState(() => _request['status'] = result.status);
+      }
+      if (removeLocalDrafts) {
+        await _deleteLocalDraftsForRequest(id);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Заявка отклонена')));
+      ).showSnackBar(SnackBar(content: Text(successMessage)));
       Navigator.of(context).pop(true);
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
       _showActionError('Сессия истекла. Войдите заново.');
     } catch (e) {
       if (!mounted) return;
-      _showActionError('Не удалось отклонить заявку: $e');
+      _showActionError('$errorMessage: $e');
     } finally {
       if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _deleteLocalDraftsForRequest(int requestId) async {
+    final drafts = await SparkJoyStorage.loadDrafts();
+    final ids = drafts
+        .where((draft) => _draftRequestId(draft) == requestId)
+        .map((draft) => (draft['id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toList();
+    for (final id in ids) {
+      await SparkJoyStorage.deleteDraft(id);
     }
   }
 
@@ -767,7 +819,7 @@ class _SparkJoySpecialistRequestDetailScreenState
             ),
             const SizedBox(height: SparkSpace.md),
             OutlinedButton.icon(
-              onPressed: _actionBusy ? null : _reject,
+              onPressed: _actionBusy ? null : _rejectNewRequest,
               icon: const Icon(Icons.close_rounded),
               label: const Text('Отклонить'),
               style: OutlinedButton.styleFrom(
@@ -787,6 +839,22 @@ class _SparkJoySpecialistRequestDetailScreenState
               icon: Icons.edit_note_rounded,
               busy: _openingReport,
               onTap: _openReportForRequest,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            OutlinedButton.icon(
+              onPressed: _actionBusy ? null : _cancelAcceptedRequest,
+              icon: const Icon(Icons.cancel_outlined),
+              label: Text(_actionBusy ? 'Сохраняем...' : 'Отменить работу'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kRedColor,
+                minimumSize: const Size(
+                  double.infinity,
+                  SparkSize.actionHeight,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                ),
+              ),
             ),
           ],
           const SizedBox(height: SparkSpace.lg),
