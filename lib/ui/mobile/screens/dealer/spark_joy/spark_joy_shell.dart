@@ -17,6 +17,7 @@ import 'spark_joy_notifications_screen.dart';
 import 'spark_joy_notifications_storage.dart';
 import 'spark_joy_onboarding.dart';
 import 'spark_joy_reports_list_screen.dart';
+import 'spark_joy_specialist_requests_screen.dart';
 import 'spark_joy_specialist_profile_screen.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_i18n.dart';
@@ -130,24 +131,32 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         : SparkJoyRole.company;
     // Preserve the user's semantic tab across role transitions.
     // Tab layout depends on role:
-    //   specialist → 0=Reports, 1=Profile
+    //   specialist → 0=Reports, 1=Заявки, 2=Profile
     //   company    → 0=Reports, 1=Staff, 2=Заявки, 3=Profile
-    // If we left `_index` untouched, verifying INN on Profile (1→1)
+    // If we left `_index` untouched, verifying INN on Profile (2→2)
     // would land on Staff, and resetting on Profile (3→clamped→0)
     // would land on Reports. Both jarring. So we keep the user on
-    // Profile when they started on Profile; keep Reports on Reports;
-    // for company-only tabs (Staff, Заявки) fall back to Profile when
-    // user demotes (these tabs don't exist in specialist mode).
+    // the semantic destination: Reports, Заявки, Profile. Company-only
+    // Staff falls back to Profile when user demotes.
     int nextIndex = _index;
     if (_role != newRole) {
-      final wasProfile = (_role == SparkJoyRole.specialist && _index == 1) ||
-          (_role == SparkJoyRole.company && _index == 3);
       final wasReports = _index == 0;
-      final profileIndex = newRole == SparkJoyRole.specialist ? 1 : 3;
-      if (wasProfile || !wasReports) {
+      final wasRequests =
+          (_role == SparkJoyRole.specialist && _index == 1) ||
+          (_role == SparkJoyRole.company && _index == 2);
+      final wasProfile =
+          (_role == SparkJoyRole.specialist && _index == 2) ||
+          (_role == SparkJoyRole.company && _index == 3);
+      final requestsIndex = newRole == SparkJoyRole.specialist ? 1 : 2;
+      final profileIndex = newRole == SparkJoyRole.specialist ? 2 : 3;
+      if (wasReports) {
+        nextIndex = 0;
+      } else if (wasRequests) {
+        nextIndex = requestsIndex;
+      } else if (wasProfile) {
         nextIndex = profileIndex;
       } else {
-        nextIndex = 0;
+        nextIndex = profileIndex;
       }
     }
     setState(() {
@@ -198,8 +207,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
             ),
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(SparkSpace.hairline),
-              child:
-                  Container(height: SparkSpace.hairline, color: kBorderColor),
+              child: Container(
+                height: SparkSpace.hairline,
+                color: kBorderColor,
+              ),
             ),
           ),
           body: const SparkJoyNotificationsScreen(),
@@ -215,6 +226,11 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           icon: Icon(Icons.description_outlined),
           selectedIcon: Icon(Icons.description_rounded),
           label: 'Отчёты',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.assignment_ind_outlined),
+          selectedIcon: Icon(Icons.assignment_ind_rounded),
+          label: 'Заявки',
         ),
         NavigationDestination(
           icon: Icon(Icons.person_outline),
@@ -251,6 +267,8 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     if (_role == SparkJoyRole.specialist) {
       switch (_index) {
         case 1:
+          return 'Заявки';
+        case 2:
           return 'Профиль';
         case 0:
         default:
@@ -305,9 +323,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 Row(
                   children: [
                     Icon(
-                      isCompany
-                          ? Icons.business_rounded
-                          : Icons.person_rounded,
+                      isCompany ? Icons.business_rounded : Icons.person_rounded,
                       size: SparkSize.iconLg,
                       color: kSecondaryColor,
                     ),
@@ -367,6 +383,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
               companyMode: false,
               tabRequest: _requestedReportsTab,
             ),
+            const SparkJoySpecialistRequestsScreen(),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
               onLogout: _logout,
@@ -412,10 +429,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         shape: const Border(
-          bottom: BorderSide(
-            color: kBorderColor,
-            width: SparkSpace.hairline,
-          ),
+          bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
         ),
         title: Text(
           _currentTabTitle(),
@@ -478,7 +492,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           child: DecoratedBox(
             decoration: const BoxDecoration(
               border: Border(
-                top: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
+                top: BorderSide(
+                  color: kBorderColor,
+                  width: SparkSpace.hairline,
+                ),
               ),
             ),
             child: NavigationBarTheme(
@@ -514,8 +531,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 // Labels always visible — pulling them from inactive
                 // destinations read as mystery-meat icons. Height was
                 // bumped to compensate.
-                labelBehavior:
-                    NavigationDestinationLabelBehavior.alwaysShow,
+                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
                 onDestinationSelected: (value) {
                   if (value != index) {
                     HapticFeedback.selectionClick();

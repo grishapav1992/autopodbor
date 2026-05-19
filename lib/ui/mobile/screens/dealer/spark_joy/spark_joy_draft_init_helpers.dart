@@ -25,6 +25,11 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
       'assignmentId',
       fallback: _read(assignment, 'id'),
     );
+    final draftRequestId = _readInt(draft, 'requestId');
+    final assignmentRequestId = _readInt(assignment, 'requestId');
+    _requestId = draftRequestId > 0
+        ? draftRequestId
+        : (assignmentRequestId > 0 ? assignmentRequestId : null);
     final draftBusinessType = _read(draft, 'businessType');
     _accountBusinessType = draftBusinessType.isEmpty ? null : draftBusinessType;
     final draftVerifiedInn = _read(draft, 'verifiedInn');
@@ -120,7 +125,8 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
                   '${characteristics['modelGenerationRestylingFrameId'] ?? ''}',
                 ))
         : null;
-    _modelGenerationRestylingFrameId = (frameIdFromCar != null && frameIdFromCar > 0)
+    _modelGenerationRestylingFrameId =
+        (frameIdFromCar != null && frameIdFromCar > 0)
         ? frameIdFromCar
         : ((frameIdFromChar != null && frameIdFromChar > 0)
               ? frameIdFromChar
@@ -180,9 +186,10 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     final legacyExpert = _normalizeInitialExpertConclusion(draft).trim();
     final mergedSummary = (legacySummary == legacyExpert)
         ? legacySummary
-        : <String>[legacySummary, legacyExpert]
-            .where((s) => s.isNotEmpty)
-            .join('\n\n');
+        : <String>[
+            legacySummary,
+            legacyExpert,
+          ].where((s) => s.isNotEmpty).join('\n\n');
     _summaryController = TextEditingController(text: mergedSummary);
     _inspectorController = TextEditingController(
       text: _read(draft, 'inspector', fallback: 'Специалист'),

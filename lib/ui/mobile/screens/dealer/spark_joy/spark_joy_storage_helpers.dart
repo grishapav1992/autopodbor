@@ -30,8 +30,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         );
         return;
       }
-      final generated = await storage_api.StorageApi
-          .createSpecialistReportShareUrl(reportId: reportId);
+      final generated = await storage_api
+          .StorageApi.createSpecialistReportShareUrl(reportId: reportId);
       final url = generated.url.trim();
       if (url.isEmpty) {
         messenger.showSnackBar(
@@ -122,7 +122,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       for (final e in _mediaCustomTagsByScope.entries) e.key: [...e.value],
     };
     final nextSerious = <String, List<String>>{
-      for (final e in _mediaCustomSeriousTagsByScope.entries) e.key: [...e.value],
+      for (final e in _mediaCustomSeriousTagsByScope.entries)
+        e.key: [...e.value],
     };
     var changed = false;
     for (final entry in byGroup.entries) {
@@ -135,7 +136,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       final existing = next[scope] ?? const <String>[];
       final existingLower = existing.map((s) => s.toLowerCase()).toSet();
       final mergedSerious = nextSerious[scope] ?? <String>[];
-      final mergedSeriousLower = mergedSerious.map((s) => s.toLowerCase()).toSet();
+      final mergedSeriousLower = mergedSerious
+          .map((s) => s.toLowerCase())
+          .toSet();
       final list = [...existing];
       for (final tag in entry.value) {
         final isNameNew = existingLower.add(tag.name.toLowerCase());
@@ -227,10 +230,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     required String tagName,
     required String severity,
   }) {
-    return _tagService.addTestDriveTag(
-      tagName: tagName,
-      severity: severity,
-    );
+    return _tagService.addTestDriveTag(tagName: tagName, severity: severity);
   }
 
   /// Fire-and-forget delete for a user-created inspection tag. Called when
@@ -250,9 +250,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   /// — test-drive tags share one bucket on the server). Returns true
   /// on a successful delete; false routes the deletion through the
   /// pending-delete queue for the next refresh.
-  Future<bool> _removeTestDriveCustomTag({
-    required String tagName,
-  }) {
+  Future<bool> _removeTestDriveCustomTag({required String tagName}) {
     return _tagService.removeTestDriveTag(tagName: tagName);
   }
 
@@ -432,11 +430,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
   /// Resolves inspection-step tag names for a specific API section.
   List<int> _resolveInspectionTagIds(List<String> tagNames, String section) =>
-      _tagService.resolveTagIds(
-        tagNames,
-        step: 'inspection',
-        section: section,
-      );
+      _tagService.resolveTagIds(tagNames, step: 'inspection', section: section);
 
   /// Resolves test-drive-step tag names (no section).
   List<int> _resolveTestDriveTagIds(List<String> tagNames) =>
@@ -1629,10 +1623,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // has different server IDs — see SparkJoyTagService._composeKey.
         final apiSection =
             SparkJoyTagService.groupKeyToApiSection[group.key] ?? '';
-        final seriousTagIds =
-            _resolveInspectionTagIds(seriousTagNames, apiSection);
-        final nonSeriousTagIds =
-            _resolveInspectionTagIds(nonSeriousTagNames, apiSection);
+        final seriousTagIds = _resolveInspectionTagIds(
+          seriousTagNames,
+          apiSection,
+        );
+        final nonSeriousTagIds = _resolveInspectionTagIds(
+          nonSeriousTagNames,
+          apiSection,
+        );
         final note = item.inspection.note.trim();
         final paintFrom =
             (item.inspection.paintFrom ?? state.partInspection.paintFrom)
@@ -2005,8 +2003,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           } else {
             lastEmit = DateTime.now();
           }
-          final sentBytes = partBytesSent.values
-              .fold<int>(0, (acc, v) => acc + v);
+          final sentBytes = partBytesSent.values.fold<int>(
+            0,
+            (acc, v) => acc + v,
+          );
           _updateBackendUploadFileProgress(
             item: item,
             index: index,
@@ -2235,6 +2235,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return {
       'id': _draftId,
       'assignmentId': _assignmentId,
+      if (_requestId != null && _requestId! > 0) 'requestId': _requestId,
       'reportCode': currentReportCode,
       if (backendReportNumber.isNotEmpty) 'reportNumber': backendReportNumber,
       'createdAt': _createdAt,
@@ -2338,8 +2339,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   /// full-draft autosave doesn't drop pending ops the runner accepted.
   Map<String, dynamic> _buildAiQueueSnapshot() {
     final controllerSnapshot = _reportController.exportAiChatStateToDraft();
-    controllerSnapshot['pending'] =
-        AiQueueOfflineRunner.instance.snapshotPendingForDraft(_draftId);
+    controllerSnapshot['pending'] = AiQueueOfflineRunner.instance
+        .snapshotPendingForDraft(_draftId);
     return controllerSnapshot;
   }
 
@@ -2563,6 +2564,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return {
       'id': 'spark_report_${now.microsecondsSinceEpoch}',
       'assignmentId': _assignmentId,
+      if (_requestId != null && _requestId! > 0) 'requestId': _requestId,
       'createdAt': date,
       'reportDate': date,
       'updatedAt': date,
@@ -2643,8 +2645,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       return true;
     } catch (_) {
       if (!mounted) return false;
-      final remaining =
-          AiQueueOfflineRunner.instance.statusOf(_draftId).pendingCount;
+      final remaining = AiQueueOfflineRunner.instance
+          .statusOf(_draftId)
+          .pendingCount;
       final proceed = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
@@ -2779,6 +2782,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
       final prepared = await storage_api.StorageApi.prepareSpecialistReport(
         report: backendReportPayload,
+        requestId: _requestId,
       );
       final reportNumber = prepared.reportNumber.trim();
       if (reportNumber.isEmpty) return false;
@@ -2891,6 +2895,17 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         reportNumber: reportNumber,
       );
       backendReportId ??= completion?.reportId;
+      if (_requestId != null && _requestId! > 0) {
+        _setBackendUploadProgress(
+          inProgress: true,
+          statusText: 'Завершаем заявку...',
+          currentFile: items.length,
+          totalFiles: items.length,
+          currentPart: 0,
+          totalParts: 0,
+        );
+        await storage_api.StorageApi.completeRequest(requestId: _requestId!);
+      }
       if (backendReportId != null) {
         payload['id'] = backendReportId.toString();
         payload['reportId'] = backendReportId.toString();

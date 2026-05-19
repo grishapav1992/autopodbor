@@ -440,7 +440,8 @@ class StorageApi {
         'bad-json',
         seq: seq,
         method: method,
-        extra: 'body=${rawBody.length > 200 ? '${rawBody.substring(0, 200)}…' : rawBody}',
+        extra:
+            'body=${rawBody.length > 200 ? '${rawBody.substring(0, 200)}…' : rawBody}',
       );
       throw Exception('Invalid JSON response from $method: $rawBody');
     }
@@ -682,8 +683,7 @@ class StorageApi {
     return AuthStartResult(
       callPhone: callPhone,
       sessionId: sessionId.isEmpty ? null : sessionId,
-      notificationToken:
-          notificationToken.isEmpty ? null : notificationToken,
+      notificationToken: notificationToken.isEmpty ? null : notificationToken,
     );
   }
 
@@ -724,8 +724,7 @@ class StorageApi {
     return AuthVerifyResult(
       accessToken: accessToken.isEmpty ? null : accessToken,
       refreshToken: refreshToken.isEmpty ? null : refreshToken,
-      notificationToken:
-          notificationToken.isEmpty ? null : notificationToken,
+      notificationToken: notificationToken.isEmpty ? null : notificationToken,
     );
   }
 
@@ -889,6 +888,7 @@ class StorageApi {
 
   static Future<PrepareSpecialistReportResult> prepareSpecialistReport({
     required Map<String, dynamic> report,
+    int? requestId,
     // Heavy endpoint: saves the full draft + generates presigned S3 URLs for
     // every inspection file. Large reports with 20+ media items routinely
     // need 60–150 s server-side; bumped from 90 s after timeouts surfaced
@@ -898,7 +898,10 @@ class StorageApi {
   }) async {
     final data = await _postRpc(
       method: 'Storage.PrepareSpecialistReport',
-      params: {'report': report},
+      params: {
+        'report': report,
+        if (requestId != null && requestId > 0) 'requestId': requestId,
+      },
       timeout: timeout,
     );
     final result = _asMap(data['result']);
@@ -964,9 +967,7 @@ class StorageApi {
       if (errorText.isNotEmpty) {
         throw Exception('Storage.CompleteSpecialistReport: $errorText');
       }
-      throw Exception(
-        'Storage.CompleteSpecialistReport вернул success=false',
-      );
+      throw Exception('Storage.CompleteSpecialistReport вернул success=false');
     }
     final reportId = _asInt(result['id']);
     return SpecialistReportCompletionResult(
@@ -1097,7 +1098,8 @@ class StorageApi {
       normalized['vinUnreadable'] = carStep['unreadableVin'];
     }
     if (carStep['visuallyMileageNotMatchCondition'] is bool) {
-      normalized['mileageMismatch'] = carStep['visuallyMileageNotMatchCondition'];
+      normalized['mileageMismatch'] =
+          carStep['visuallyMileageNotMatchCondition'];
     }
     final cityInspection = _extractString(carStep, ['cityInspection']);
     if (cityInspection.isNotEmpty) {
@@ -1242,7 +1244,11 @@ class StorageApi {
 
     final reportNumber = _readReportNumberFromMap(local);
     final reportName = _extractString(local, ['reportName', 'name', 'title']);
-    final createdAt = _extractString(local, ['createdAt', 'date', 'reportDate']);
+    final createdAt = _extractString(local, [
+      'createdAt',
+      'date',
+      'reportDate',
+    ]);
 
     final remoteReports = await getSpecialistReport(
       page: 1,
@@ -1265,7 +1271,11 @@ class StorageApi {
 
     if (reportName.isNotEmpty) {
       for (final remote in remoteReports) {
-        final remoteName = _extractString(remote, ['reportName', 'name', 'title']);
+        final remoteName = _extractString(remote, [
+          'reportName',
+          'name',
+          'title',
+        ]);
         if (remoteName.trim() != reportName.trim()) continue;
         if (createdAt.isNotEmpty) {
           final remoteCreated = _extractString(remote, [
@@ -1629,42 +1639,159 @@ class StorageApi {
     return [];
   }
 
-  /// `Storage.GetSpecialists` — пагинированный список специалистов с
-  /// фильтрами. Доступен только роли `company`. Закрывает оба
-  /// use-case'а: показать штат (companyOnly=true) и поиск по
-  /// телефону/email (search=phone/email — точное совпадение раскрывает
-  /// контакт). Email/phone приходят только когда search exact-matched.
-  static Future<SpecialistsPage> getSpecialists({
-    int page = 1,
-    int limit = 20,
-    String? search,
-    List<String>? cities,
-    double? minRating,
-    bool? companyOnly,
+  static RequestActionResult _requestActionResultFromMap(
+    Map<String, dynamic> result, {
+    required int fallbackRequestId,
+    String fallbackStatus = '',
+  }) {
+    final success = result['success'] is bool
+        ? result['success'] as bool
+        : true;
+    final status = _extractString(result, ['status']);
+    return RequestActionResult(
+      requestId: _asInt(result['requestId']) ?? fallbackRequestId,
+      requestNumber: _extractString(result, [
+        'requestNumber',
+        'request_number',
+        'number',
+      ]),
+      status: status.isNotEmpty ? status : (success ? fallbackStatus : ''),
+      success: success,
+      error: _asNullableString(result['error']),
+      reportId: _asInt(result['reportId']),
+      reportNumber: _asNullableString(result['reportNumber']),
+    );
+  }
+
+  static Future<RequestActionResult> acceptRequest({
+    required int requestId,
+    String? note,
     Duration timeout = const Duration(seconds: 12),
   }) async {
     final data = await _postRpc(
-      method: 'Storage.GetSpecialists',
+      method: 'Storage.AcceptRequest',
       params: {
-        'page': page,
-        'limit': limit,
-        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-        if (cities != null && cities.isNotEmpty) 'cities': cities,
-        if (minRating != null) 'minRating': minRating,
-        if (companyOnly != null) 'companyOnly': companyOnly,
+        'requestId': requestId,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       },
       timeout: timeout,
     );
-    final result = _asMap(data['result']);
+    return _requestActionResultFromMap(
+      _asMap(data['result']),
+      fallbackRequestId: requestId,
+      fallbackStatus: 'in_work',
+    );
+  }
+
+  static Future<RequestActionResult> rejectRequest({
+    required int requestId,
+    String? note,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.RejectRequest',
+      params: {
+        'requestId': requestId,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      },
+      timeout: timeout,
+    );
+    return _requestActionResultFromMap(
+      _asMap(data['result']),
+      fallbackRequestId: requestId,
+      fallbackStatus: 'created',
+    );
+  }
+
+  static Future<RequestActionResult> assignSpecialist({
+    required int requestId,
+    required int specialistId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.AssignSpecialist',
+      params: {'requestId': requestId, 'specialistId': specialistId},
+      timeout: timeout,
+    );
+    final parsed = _requestActionResultFromMap(
+      _asMap(data['result']),
+      fallbackRequestId: requestId,
+      fallbackStatus: 'created',
+    );
+    if (!parsed.success) {
+      final message = parsed.error?.trim() ?? '';
+      if (message.isNotEmpty) {
+        throw Exception('Storage.AssignSpecialist: $message');
+      }
+      throw Exception('Storage.AssignSpecialist вернул success=false');
+    }
+    return parsed;
+  }
+
+  static Future<RequestActionResult> cancelRequest({
+    required int requestId,
+    required String cancelReason,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.CancelRequest',
+      params: {'requestId': requestId, 'cancelReason': cancelReason},
+      timeout: timeout,
+    );
+    final parsed = _requestActionResultFromMap(
+      _asMap(data['result']),
+      fallbackRequestId: requestId,
+      fallbackStatus: 'canceled',
+    );
+    if (!parsed.success) {
+      final message = parsed.error?.trim() ?? '';
+      if (message.isNotEmpty) {
+        throw Exception('Storage.CancelRequest: $message');
+      }
+      throw Exception('Storage.CancelRequest вернул success=false');
+    }
+    return parsed;
+  }
+
+  static Future<RequestActionResult> completeRequest({
+    required int requestId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.CompleteRequest',
+      params: {'requestId': requestId},
+      timeout: timeout,
+    );
+    final parsed = _requestActionResultFromMap(
+      _asMap(data['result']),
+      fallbackRequestId: requestId,
+      fallbackStatus: 'done',
+    );
+    if (!parsed.success) {
+      final message = parsed.error?.trim() ?? '';
+      if (message.isNotEmpty) {
+        throw Exception('Storage.CompleteRequest: $message');
+      }
+      throw Exception('Storage.CompleteRequest вернул success=false');
+    }
+    return parsed;
+  }
+
+  static SpecialistsPage _parseSpecialistsPage(
+    dynamic rawResult, {
+    required int page,
+    required int limit,
+  }) {
+    final result = _asMap(rawResult);
     final rawSpecs = result['specialists'];
     final specs = <SpecialistItem>[];
     if (rawSpecs is List) {
       for (final raw in rawSpecs) {
         if (raw is! Map) continue;
         final m = _asMap(raw);
-        final id = m['id'];
-        if (id is! int) continue;
-        // Rating иногда приходит как int (0 / 1), иногда double.
+        final id = _asInt(m['id']);
+        if (id == null) continue;
+        // Rating sometimes arrives as int (0 / 1), sometimes double.
         final r = m['rating'];
         final ratingDouble = r is num ? r.toDouble() : 0.0;
         specs.add(
@@ -1693,6 +1820,48 @@ class StorageApi {
       total: _asInt(pag['total']) ?? specs.length,
       pages: _asInt(pag['pages']) ?? 1,
     );
+  }
+
+  /// `Storage.GetSpecialists` — пагинированный список специалистов с
+  /// фильтрами. Доступен только роли `company`.
+  ///
+  /// По актуальному `Doc` это общий поиск по всем специалистам.
+  /// Для штатных специалистов компании используйте
+  /// [getCompanySpecialistsPage]. Email/phone приходят только когда
+  /// search exact-matched.
+  static Future<SpecialistsPage> getSpecialists({
+    int page = 1,
+    int limit = 20,
+    String? search,
+    List<String>? cities,
+    double? minRating,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetSpecialists',
+      params: {
+        'page': page,
+        'limit': limit,
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        if (cities != null && cities.isNotEmpty) 'cities': cities,
+        if (minRating != null) 'minRating': minRating,
+      },
+      timeout: timeout,
+    );
+    return _parseSpecialistsPage(data['result'], page: page, limit: limit);
+  }
+
+  static Future<SpecialistsPage> getCompanySpecialistsPage({
+    int page = 1,
+    int limit = 20,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetCompanySpecialists',
+      params: {'page': page, 'limit': limit},
+      timeout: timeout,
+    );
+    return _parseSpecialistsPage(data['result'], page: page, limit: limit);
   }
 
   static String? _asNullableString(dynamic v) {
@@ -2188,11 +2357,13 @@ class StorageApi {
 
   /// Returns a list of company specialists.
   static Future<List<Map<String, dynamic>>> getCompanySpecialists({
+    int page = 1,
+    int limit = 20,
     Duration timeout = const Duration(seconds: 12),
   }) async {
     final data = await _postRpc(
       method: 'Storage.GetCompanySpecialists',
-      params: const {},
+      params: {'page': page, 'limit': limit},
       timeout: timeout,
     );
     final result = data['result'];

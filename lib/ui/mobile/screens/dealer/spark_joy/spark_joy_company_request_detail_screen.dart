@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import 'spark_joy_company_specialist_picker.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -14,16 +17,8 @@ import 'spark_joy_ui.dart';
 /// дёргается `Storage.GetRequestCar` за детальными авто-полями
 /// (телефон продавца, ссылка на объявление, поколение, рестайлинг).
 ///
-/// Известные backend-gap'ы (placeholder'ы в UI):
-///  * `assignedSpecialistId` НЕ возвращается из `GetRequest` —
-///    нельзя показать кому назначена заявка
-///  * Cancel-flow нет — кнопка отмены disabled с tooltip
-///  * Share-link (`CreateSpecialistReportShareUrl`) появится в slice 6
 class SparkJoyCompanyRequestDetailScreen extends StatefulWidget {
-  const SparkJoyCompanyRequestDetailScreen({
-    super.key,
-    required this.initial,
-  });
+  const SparkJoyCompanyRequestDetailScreen({super.key, required this.initial});
 
   final Map<String, dynamic> initial;
 
@@ -34,24 +29,28 @@ class SparkJoyCompanyRequestDetailScreen extends StatefulWidget {
 
 class _SparkJoyCompanyRequestDetailScreenState
     extends State<SparkJoyCompanyRequestDetailScreen> {
+  late Map<String, dynamic> _request;
   List<Map<String, dynamic>>? _cars; // null = ещё не загружено
   String? _carsError;
+  bool _shareBusy = false;
+  bool _actionBusy = false;
 
   @override
   void initState() {
     super.initState();
+    _request = Map<String, dynamic>.from(widget.initial);
     _loadCars();
   }
 
   int? get _requestId {
-    final v = widget.initial['id'];
+    final v = _request['id'];
     if (v is int) return v;
     if (v is num) return v.toInt();
     if (v is String) return int.tryParse(v);
     return null;
   }
 
-  String _str(String key) => (widget.initial[key] ?? '').toString();
+  String _str(String key) => (_request[key] ?? '').toString();
 
   Future<void> _loadCars() async {
     final id = _requestId;
@@ -63,9 +62,7 @@ class _SparkJoyCompanyRequestDetailScreenState
       return;
     }
     try {
-      final cars = await storage_api.StorageApi.getRequestCars(
-        requestId: id,
-      );
+      final cars = await storage_api.StorageApi.getRequestCars(requestId: id);
       if (!mounted) return;
       setState(() {
         _cars = cars;
@@ -80,6 +77,327 @@ class _SparkJoyCompanyRequestDetailScreenState
     }
   }
 
+  Future<void> _refreshRequestSnapshot() async {
+    final id = _requestId;
+    if (id == null) return;
+    final requests = await storage_api.StorageApi.getRequests();
+    final next = requests.where((r) => _readInt(r['id']) == id).toList();
+    if (!mounted || next.isEmpty) return;
+    setState(() => _request = next.first);
+  }
+
+  Future<void> _refreshAll() async {
+    await _refreshRequestSnapshot();
+    await _loadCars();
+  }
+
+  int? _readInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    return null;
+  }
+
+  int? get _reportId {
+    for (final key in const ['reportId', 'report_id', 'specialistReportId']) {
+      final parsed = _readInt(_request[key]);
+      if (parsed != null && parsed > 0) return parsed;
+    }
+    return null;
+  }
+
+  Future<void> _shareReport() async {
+    if (_shareBusy) return;
+    HapticFeedback.selectionClick();
+    setState(() => _shareBusy = true);
+    try {
+      var reportId = _reportId;
+      var reportNumber = _str('reportNumber').trim();
+      if (reportId == null) {
+        await _refreshRequestSnapshot();
+        if (!mounted) return;
+        reportId = _reportId;
+        reportNumber = _str('reportNumber').trim();
+      }
+      if (reportId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              reportNumber.isEmpty
+                  ? 'Бэкенд пока не вернул ID отчёта для этой заявки'
+                  : 'Бэкенд пока не вернул ID отчёта №$reportNumber',
+            ),
+          ),
+        );
+        return;
+      }
+      final generated = await storage_api
+          .StorageApi.createSpecialistReportShareUrl(reportId: reportId);
+      final url = generated.url.trim();
+      if (!mounted) return;
+      if (url.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Ссылка не была сгенерирована')),
+        );
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: url));
+      if (!mounted) return;
+      await _showShareLinkSheet(url);
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла. Войдите заново.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось сгенерировать ссылку')),
+      );
+    } finally {
+      if (mounted) setState(() => _shareBusy = false);
+    }
+  }
+
+  Future<void> _openShareUrl(String rawUrl) async {
+    final uri = Uri.tryParse(rawUrl.trim());
+    if (uri == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Некорректная ссылка')));
+      return;
+    }
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Не удалось открыть ссылку')));
+  }
+
+  Future<void> _showShareLinkSheet(String url) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.all(SparkSpace.xl),
+            decoration: BoxDecoration(
+              color: kWhiteColor,
+              borderRadius: BorderRadius.circular(SparkRadius.xl),
+              border: Border.all(color: kBorderColor),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(SparkSpace.xxxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const MyText(
+                    text: 'Ссылка на отчёт',
+                    size: SparkTextSize.title,
+                    weight: FontWeight.w700,
+                  ),
+                  const SizedBox(height: SparkSpace.md),
+                  SparkHintCard(text: url, icon: Icons.link_rounded),
+                  const SizedBox(height: SparkSpace.xl),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () async {
+                            await Clipboard.setData(ClipboardData(text: url));
+                            if (!ctx.mounted) return;
+                            Navigator.of(ctx).pop();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Ссылка скопирована'),
+                              ),
+                            );
+                          },
+                          icon: const Icon(Icons.copy_rounded),
+                          label: const Text('Копировать'),
+                        ),
+                      ),
+                      const SizedBox(width: SparkSpace.md),
+                      Expanded(
+                        child: FilledButton.icon(
+                          onPressed: () async {
+                            Navigator.of(ctx).pop();
+                            await _openShareUrl(url);
+                          },
+                          icon: const Icon(Icons.open_in_new_rounded),
+                          label: const Text('Открыть'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  bool get _canManageAssignment {
+    final status = _str('status');
+    return status == 'created' || status == 'await_payment';
+  }
+
+  bool get _hasAssignedSpecialist {
+    final raw = _request['assignedSpecialist'];
+    if (raw is Map && raw.isNotEmpty) return true;
+    return _readInt(_request['assignedSpecialistId']) != null ||
+        _readInt(_request['assignedSpecialistUserId']) != null;
+  }
+
+  Future<void> _assignSpecialist() async {
+    if (_actionBusy) return;
+    final requestId = _requestId;
+    if (requestId == null) return;
+    final assignee = await showSpecialistPicker(context);
+    if (assignee == null || _actionBusy) return;
+    HapticFeedback.selectionClick();
+    setState(() => _actionBusy = true);
+    try {
+      final result = await storage_api.StorageApi.assignSpecialist(
+        requestId: requestId,
+        specialistId: assignee.userId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _request['assignedSpecialistId'] = assignee.userId;
+        if (result.status.isNotEmpty) _request['status'] = result.status;
+      });
+      try {
+        await _refreshRequestSnapshot();
+      } catch (_) {
+        // Assignment already succeeded. Keep the optimistic specialist id
+        // instead of reporting a false failure because refresh failed.
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Назначен специалист: ${assignee.displayName}')),
+      );
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла. Войдите заново.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Не удалось назначить специалиста: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _cancelRequest() async {
+    if (_actionBusy) return;
+    final requestId = _requestId;
+    if (requestId == null) return;
+    final reason = await _showCancelReasonSheet();
+    if (reason == null || _actionBusy) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _actionBusy = true);
+    try {
+      final result = await storage_api.StorageApi.cancelRequest(
+        requestId: requestId,
+        cancelReason: reason,
+      );
+      if (!mounted) return;
+      if (result.status.isNotEmpty) {
+        setState(() => _request['status'] = result.status);
+      }
+      try {
+        await _refreshRequestSnapshot();
+      } catch (_) {
+        // Cancellation already succeeded. A stale history section is less
+        // harmful than showing a false negative after the mutation.
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Заявка отменена')));
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла. Войдите заново.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Не удалось отменить заявку: $e')));
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<String?> _showCancelReasonSheet() {
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: kWhiteColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(SparkRadius.lg),
+        ),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(SparkSpace.xxxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: MyText(
+                        text: 'Отменить заявку',
+                        size: SparkTextSize.titleLg,
+                        weight: FontWeight.w800,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SparkSpace.md),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(ctx).pop('canceled_not_signed'),
+                  icon: const Icon(Icons.assignment_late_outlined),
+                  label: const Text('Договор не подписан'),
+                ),
+                const SizedBox(height: SparkSpace.md),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      Navigator.of(ctx).pop('canceled_signed_unpaid'),
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Подписан, но не оплачен'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final status = _str('status');
@@ -89,15 +407,18 @@ class _SparkJoyCompanyRequestDetailScreenState
     final dueAt = _str('dueAt');
     final note = _str('note').trim();
 
-    final budgetFrom = widget.initial['budgetFrom'];
-    final budgetTo = widget.initial['budgetTo'];
+    final budgetFrom = _request['budgetFrom'];
+    final budgetTo = _request['budgetTo'];
     final city = _str('city').trim();
-    final maxMileage = widget.initial['maxMileage'];
-    final ownersCount = widget.initial['ownersCount'];
+    final maxMileage = _request['maxMileage'];
+    final ownersCount = _request['ownersCount'];
 
-    final histories = widget.initial['requestStatusHistories'];
+    final histories = _request['requestStatusHistories'];
     final history = histories is List
-        ? histories.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
+        ? histories
+              .whereType<Map>()
+              .map((m) => Map<String, dynamic>.from(m))
+              .toList()
         : <Map<String, dynamic>>[];
     // History приходит хронологически от бэка; рендерим newest-first.
     history.sort((a, b) {
@@ -124,6 +445,7 @@ class _SparkJoyCompanyRequestDetailScreenState
       ),
       body: SparkScreenList(
         bottomInset: 24,
+        onRefresh: _refreshAll,
         children: [
           // ── Header card ─────────────────────────────────────────────
           SparkCard(
@@ -225,34 +547,9 @@ class _SparkJoyCompanyRequestDetailScreenState
             ),
           ],
 
-          // ── Специалист (placeholder из-за backend gap) ──────────────
+          // ── Специалист ──────────────────────────────────────────────
           const SparkSectionTitle('Специалист', top: SparkSpace.xxl),
-          SparkCard(
-            backgroundColor: kGreyColor.withValues(alpha: 0.06),
-            borderColor: kBorderColor,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  color: kGreyColor,
-                  size: SparkSize.iconMd,
-                ),
-                const SizedBox(width: SparkSpace.md),
-                const Expanded(
-                  child: MyText(
-                    text:
-                        'Информация о назначенном специалисте появится '
-                        'после расширения API. Сейчас бэкенд не возвращает '
-                        'эти данные в ответе GetRequest.',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    lineHeight: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
+          SparkCard(child: _buildSpecialistSection()),
 
           // ── История ─────────────────────────────────────────────────
           const SparkSectionTitle('История', top: SparkSpace.xxl),
@@ -280,50 +577,63 @@ class _SparkJoyCompanyRequestDetailScreenState
 
           // ── Actions ─────────────────────────────────────────────────
           const SizedBox(height: SparkSpace.xxl),
-          if (status == 'done') ...[
-            SparkPrimaryActionButton(
-              label: 'Поделиться отчётом',
-              icon: Icons.ios_share_rounded,
-              onTap: () {
-                // Slice 6 — CreateSpecialistReportShareUrl
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Share-ссылка появится после интеграции '
-                      'CreateSpecialistReportShareUrl',
-                    ),
-                  ),
-                );
-              },
+          if (_canManageAssignment) ...[
+            OutlinedButton.icon(
+              onPressed: _actionBusy ? null : _assignSpecialist,
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: Text(
+                _hasAssignedSpecialist
+                    ? 'Переназначить специалиста'
+                    : 'Назначить специалиста',
+              ),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size(
+                  double.infinity,
+                  SparkSize.actionHeight,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                ),
+              ),
             ),
             const SizedBox(height: SparkSpace.md),
           ],
-          // Cancel — пока backend не поддерживает.
+          if (status == 'done') ...[
+            SparkPrimaryActionButton(
+              label: _shareBusy ? 'Генерируем...' : 'Поделиться отчётом',
+              icon: Icons.ios_share_rounded,
+              busy: _shareBusy,
+              onTap: _shareReport,
+            ),
+            const SizedBox(height: SparkSpace.md),
+          ],
           OutlinedButton.icon(
-            onPressed: null,
+            onPressed: _canManageAssignment && !_actionBusy
+                ? _cancelRequest
+                : null,
             icon: const Icon(Icons.cancel_outlined),
-            label: const Text('Отменить заявку (недоступно)'),
+            label: Text(_actionBusy ? 'Сохраняем...' : 'Отменить заявку'),
             style: OutlinedButton.styleFrom(
+              foregroundColor: kRedColor,
               minimumSize: const Size(double.infinity, SparkSize.actionHeight),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(SparkRadius.lg),
               ),
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SparkSpace.md,
-              vertical: SparkSpace.sm,
+          if (!_canManageAssignment)
+            const Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: SparkSpace.md,
+                vertical: SparkSpace.sm,
+              ),
+              child: MyText(
+                text: 'Отмена доступна только до оплаты или начала работы.',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+                textAlign: TextAlign.center,
+              ),
             ),
-            child: MyText(
-              text:
-                  'Отмена заявки появится когда backend добавит метод '
-                  'CancelRequest.',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-              textAlign: TextAlign.center,
-            ),
-          ),
           const SizedBox(height: SparkSpace.lg),
         ],
       ),
@@ -335,9 +645,12 @@ class _SparkJoyCompanyRequestDetailScreenState
     // GetRequestCar — детальные объекты с поколением + рестайлингом +
     // телефоном продавца + URL. Показываем оба слоя: пока детали
     // грузятся — fallback на string-список.
-    final rawCarStrings = widget.initial['cars'];
+    final rawCarStrings = _request['cars'];
     final carStrings = rawCarStrings is List
-        ? rawCarStrings.map((e) => e.toString()).where((s) => s.isNotEmpty).toList()
+        ? rawCarStrings
+              .map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toList()
         : <String>[];
 
     final detailedCars = _cars;
@@ -394,6 +707,88 @@ class _SparkJoyCompanyRequestDetailScreenState
       ],
     );
   }
+
+  Widget _buildSpecialistSection() {
+    final raw = _request['assignedSpecialist'];
+    final specialist = raw is Map ? Map<String, dynamic>.from(raw) : null;
+    final assignedId =
+        _readInt(_request['assignedSpecialistId']) ??
+        _readInt(_request['assignedSpecialistUserId']) ??
+        _readInt(specialist?['id']);
+    if (specialist == null && assignedId == null) {
+      return const MyText(
+        text: 'Специалист не назначен',
+        size: SparkTextSize.body,
+        color: kGreyColor,
+      );
+    }
+
+    final firstName = (specialist?['firstName'] ?? '').toString().trim();
+    final lastName = (specialist?['lastName'] ?? '').toString().trim();
+    final middleName = (specialist?['middleName'] ?? '').toString().trim();
+    final fullName = [
+      lastName,
+      firstName,
+      middleName,
+    ].where((part) => part.isNotEmpty).join(' ');
+    final phone = (specialist?['phone'] ?? '').toString().trim();
+    final email = (specialist?['email'] ?? '').toString().trim();
+    final city = (specialist?['city'] ?? '').toString().trim();
+    final rating = specialist?['rating'];
+    final ratingText = rating is num && rating > 0
+        ? rating.toStringAsFixed(rating.truncateToDouble() == rating ? 0 : 1)
+        : '';
+    final avatar = (specialist?['urlAvatar'] ?? '').toString().trim();
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 22,
+          backgroundColor: kSecondaryColor.withValues(alpha: 0.1),
+          backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+          child: avatar.isEmpty
+              ? const Icon(Icons.person_rounded, color: kSecondaryColor)
+              : null,
+        ),
+        const SizedBox(width: SparkSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MyText(
+                text: fullName.isEmpty
+                    ? 'Специалист #${assignedId ?? ''}'.trim()
+                    : fullName,
+                size: SparkTextSize.bodyLg,
+                weight: FontWeight.w700,
+              ),
+              if (phone.isNotEmpty || email.isNotEmpty || city.isNotEmpty) ...[
+                const SizedBox(height: SparkSpace.xxs),
+                MyText(
+                  text: [
+                    if (city.isNotEmpty) city,
+                    if (phone.isNotEmpty) phone,
+                    if (email.isNotEmpty) email,
+                  ].join(' · '),
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+              ],
+              if (ratingText.isNotEmpty) ...[
+                const SizedBox(height: SparkSpace.xs),
+                SparkChip(
+                  text: 'Рейтинг $ratingText',
+                  background: kSecondaryColor.withValues(alpha: 0.08),
+                  color: kSecondaryColor,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Car detail block ──────────────────────────────────────────────────
@@ -412,7 +807,10 @@ class _CarDetailBlock extends StatelessWidget {
     final modelName = (model is Map)
         ? (model['model'] ?? model['name'] ?? '').toString()
         : '';
-    final combined = [brandName, modelName].where((s) => s.isNotEmpty).join(' ');
+    final combined = [
+      brandName,
+      modelName,
+    ].where((s) => s.isNotEmpty).join(' ');
     return combined.isEmpty ? 'Автомобиль' : combined;
   }
 
@@ -426,7 +824,10 @@ class _CarDetailBlock extends StatelessWidget {
   List<Map<String, dynamic>> get _restylings {
     final r = car['restylings'];
     if (r is List) {
-      return r.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+      return r
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
     }
     return [];
   }
@@ -478,19 +879,21 @@ class _CarDetailBlock extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 32),
             child: MyText(
-              text: restylings.map((r) {
-                final name = (r['restyling'] ?? '').toString().trim();
-                final ys = r['yearStart'];
-                final ye = r['yearEnd'];
-                final years = [ys, ye]
-                    .where((y) => y != null)
-                    .map((y) => y.toString())
-                    .join('–');
-                if (name.isEmpty && years.isEmpty) return 'Без рестайлинга';
-                if (years.isEmpty) return name;
-                if (name.isEmpty) return years;
-                return '$name ($years)';
-              }).join(', '),
+              text: restylings
+                  .map((r) {
+                    final name = (r['restyling'] ?? '').toString().trim();
+                    final ys = r['yearStart'];
+                    final ye = r['yearEnd'];
+                    final years = [ys, ye]
+                        .where((y) => y != null)
+                        .map((y) => y.toString())
+                        .join('–');
+                    if (name.isEmpty && years.isEmpty) return 'Без рестайлинга';
+                    if (years.isEmpty) return name;
+                    if (name.isEmpty) return years;
+                    return '$name ($years)';
+                  })
+                  .join(', '),
               size: SparkTextSize.caption,
               color: kGreyColor,
             ),
@@ -502,11 +905,13 @@ class _CarDetailBlock extends StatelessWidget {
             spacing: SparkSpace.xs,
             runSpacing: SparkSpace.xs,
             children: tagList
-                .map((t) => SparkChip(
-                      text: t,
-                      background: kSecondaryColor.withValues(alpha: 0.1),
-                      color: kSecondaryColor,
-                    ))
+                .map(
+                  (t) => SparkChip(
+                    text: t,
+                    background: kSecondaryColor.withValues(alpha: 0.1),
+                    color: kSecondaryColor,
+                  ),
+                )
                 .toList(),
           ),
         ],
@@ -591,10 +996,7 @@ class _HistoryEntry extends StatelessWidget {
           Container(
             width: SparkSize.iconLg,
             height: SparkSize.iconLg,
-            decoration: BoxDecoration(
-              color: badge.bg,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: badge.bg, shape: BoxShape.circle),
             alignment: Alignment.center,
             child: Icon(
               requestStatusIcon(newStatus),
@@ -652,8 +1054,9 @@ String _formatRuDate(String iso) {
 }
 
 String _formatRuDateTime(String iso) {
-  final dm = RegExp(r'^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})')
-      .firstMatch(iso);
+  final dm = RegExp(
+    r'^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})',
+  ).firstMatch(iso);
   if (dm == null) return _formatRuDate(iso);
   return '${dm.group(3)}.${dm.group(2)}.${dm.group(1)} '
       '${dm.group(4)}:${dm.group(5)}';

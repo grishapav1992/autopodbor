@@ -14,7 +14,8 @@ enum AssigneeSource { staff, phone }
 
 /// Результат выбора специалиста.
 ///
-/// `userId` теперь всегда integer (от `Storage.GetSpecialists`), backend
+/// `userId` теперь всегда integer (от `Storage.GetCompanySpecialists` /
+/// `Storage.GetSpecialists`), backend
 /// принимает его как `assignedSpecialistId` в `CreateRequest`. Валидация
 /// бэка: спец должен быть `company_id == текущая компания` — иначе
 /// CreateRequest отвергнет. Tab «По телефону» при найденном НЕ-штатном
@@ -44,9 +45,7 @@ Future<SelectedAssignee?> showSpecialistPicker(BuildContext context) async {
     isScrollControlled: true,
     backgroundColor: kWhiteColor,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(
-        top: Radius.circular(SparkRadius.lg),
-      ),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(SparkRadius.lg)),
     ),
     builder: (_) => const _SpecialistPickerSheet(),
   );
@@ -130,10 +129,7 @@ class _SpecialistPickerSheetState extends State<_SpecialistPickerSheet>
               Expanded(
                 child: TabBarView(
                   controller: _tabController,
-                  children: const [
-                    _StaffTab(),
-                    _PhoneTab(),
-                  ],
+                  children: const [_StaffTab(), _PhoneTab()],
                 ),
               ),
             ],
@@ -176,8 +172,7 @@ class _StaffTabState extends State<_StaffTab>
       _error = null;
     });
     try {
-      final page = await storage_api.StorageApi.getSpecialists(
-        companyOnly: true,
+      final page = await storage_api.StorageApi.getCompanySpecialistsPage(
         limit: 100,
       );
       if (!mounted) return;
@@ -268,8 +263,7 @@ class _StaffTabState extends State<_StaffTab>
     }
     return ListView.separated(
       itemCount: _staff.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, color: kBorderColor),
+      separatorBuilder: (_, _) => const Divider(height: 1, color: kBorderColor),
       itemBuilder: (_, i) {
         final s = _staff[i];
         return _StaffRow(spec: s, onTap: () => _pick(s));
@@ -492,14 +486,10 @@ class _PhoneTabState extends State<_PhoneTab>
           onSubmitted: (_) {
             if (canSearch) _search();
           },
-          onTapOutside: (_) =>
-              FocusManager.instance.primaryFocus?.unfocus(),
+          onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           decoration: sparkInputDecoration(
             '+7-___-___-__-__',
-            prefixIcon: const Icon(
-              Icons.phone_outlined,
-              color: kGreyColor,
-            ),
+            prefixIcon: const Icon(Icons.phone_outlined, color: kGreyColor),
           ),
         ),
         const SizedBox(height: SparkSpace.md),
@@ -582,8 +572,7 @@ class _PhoneTabState extends State<_PhoneTab>
     // >1 match — показываем список (маловероятно, но возможно).
     return ListView.separated(
       itemCount: results.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, color: kBorderColor),
+      separatorBuilder: (_, _) => const Divider(height: 1, color: kBorderColor),
       itemBuilder: (_, i) {
         return _StaffRow(spec: results[i], onTap: () => _pick(results[i]));
       },

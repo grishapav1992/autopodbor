@@ -170,6 +170,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late final TextEditingController _inspectorController;
   late String _assignedSpecialistId;
   late String _assignedSpecialistName;
+  int? _requestId;
 
   late final String _draftId;
   late final String _reportCode;
@@ -188,6 +189,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       ..clear()
       ..addAll(value);
   }
+
   // ┌─ Phase 4.1 · Chunk 11: media-editor tag customization → controller ───┐
   // │ 53 references across 7 files. All usages are wholesale reassignment   │
   // │ (confirmed by grep) so proxying is safe.                              │
@@ -348,16 +350,13 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // │ Together with _tdMode (below) these are 103 references across 11 files.│
   // └────────────────────────────────────────────────────────────────────────┘
   bool get _legalLoading => _reportController.legalLoading.value;
-  set _legalLoading(bool value) =>
-      _reportController.legalLoading.value = value;
+  set _legalLoading(bool value) => _reportController.legalLoading.value = value;
 
   bool get _legalLoaded => _reportController.legalLoaded.value;
-  set _legalLoaded(bool value) =>
-      _reportController.legalLoaded.value = value;
+  set _legalLoaded(bool value) => _reportController.legalLoaded.value = value;
 
   bool get _legalSkipped => _reportController.legalSkipped.value;
-  set _legalSkipped(bool value) =>
-      _reportController.legalSkipped.value = value;
+  set _legalSkipped(bool value) => _reportController.legalSkipped.value = value;
 
   bool get _legalTimedOut => _reportController.legalTimedOut.value;
   set _legalTimedOut(bool value) =>
@@ -414,7 +413,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _summaryIsDictating(bool value) =>
       _reportController.summaryIsDictating.value = value;
 
-  bool get _summaryShouldDictate => _reportController.summaryShouldDictate.value;
+  bool get _summaryShouldDictate =>
+      _reportController.summaryShouldDictate.value;
   set _summaryShouldDictate(bool value) =>
       _reportController.summaryShouldDictate.value = value;
 
@@ -426,8 +426,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       _reportController.bodyPaintFrom.value = value;
 
   double get _bodyPaintTo => _reportController.bodyPaintTo.value;
-  set _bodyPaintTo(double value) =>
-      _reportController.bodyPaintTo.value = value;
+  set _bodyPaintTo(double value) => _reportController.bodyPaintTo.value = value;
   double get _structPaintFrom => _reportController.structPaintFrom.value;
   set _structPaintFrom(double value) =>
       _reportController.structPaintFrom.value = value;
@@ -449,8 +448,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _tdGearboxOk(bool value) => _reportController.tdGearboxOk.value = value;
 
   bool get _tdSteeringOk => _reportController.tdSteeringOk.value;
-  set _tdSteeringOk(bool value) =>
-      _reportController.tdSteeringOk.value = value;
+  set _tdSteeringOk(bool value) => _reportController.tdSteeringOk.value = value;
 
   bool get _tdRideOk => _reportController.tdRideOk.value;
   set _tdRideOk(bool value) => _reportController.tdRideOk.value = value;
@@ -463,7 +461,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // │ Fresh `List<String>` copies are returned on read to preserve the       │
   // │ previous `const []` / non-mutable invariant.                           │
   // └────────────────────────────────────────────────────────────────────────┘
-  List<String> get _tdEngineTags => List<String>.of(_reportController.tdEngineTags);
+  List<String> get _tdEngineTags =>
+      List<String>.of(_reportController.tdEngineTags);
   set _tdEngineTags(List<String> value) =>
       _reportController.setTdEngineTags(value);
 
@@ -478,8 +477,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       _reportController.setTdSteeringTags(value);
 
   List<String> get _tdRideTags => List<String>.of(_reportController.tdRideTags);
-  set _tdRideTags(List<String> value) =>
-      _reportController.setTdRideTags(value);
+  set _tdRideTags(List<String> value) => _reportController.setTdRideTags(value);
 
   List<String> get _tdBrakeTags =>
       List<String>.of(_reportController.tdBrakeTags);
@@ -501,7 +499,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // │ 28 references across 5 files (including the `??=` assign-if-null usage  │
   // │ in vehicle_business_helpers) keep working through these proxies.        │
   // └─────────────────────────────────────────────────────────────────────────┘
-  String? get _accountBusinessType => _reportController.accountBusinessType.value;
+  String? get _accountBusinessType =>
+      _reportController.accountBusinessType.value;
   set _accountBusinessType(String? value) =>
       _reportController.accountBusinessType.value = value;
 
@@ -548,8 +547,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _backendUploadInProgress(bool value) =>
       _reportController.backendUploadInProgress.value = value;
 
-  bool get _backendUploadFailed =>
-      _reportController.backendUploadFailed.value;
+  bool get _backendUploadFailed => _reportController.backendUploadFailed.value;
   set _backendUploadFailed(bool value) =>
       _reportController.backendUploadFailed.value = value;
 
@@ -603,8 +601,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   /// Reactive store for the report's domain state. Currently owns only the
   /// five test-drive tag lists (Phase 4.1 · Chunk 1); further chunks will
   /// migrate additional fields incrementally.
-  final SparkJoyReportController _reportController =
-      SparkJoyReportController();
+  final SparkJoyReportController _reportController = SparkJoyReportController();
 
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;

@@ -159,6 +159,26 @@ class CreateRequestResult {
   const CreateRequestResult({required this.id, required this.requestNumber});
 }
 
+class RequestActionResult {
+  final int requestId;
+  final String requestNumber;
+  final String status;
+  final bool success;
+  final String? error;
+  final int? reportId;
+  final String? reportNumber;
+
+  const RequestActionResult({
+    required this.requestId,
+    required this.requestNumber,
+    required this.status,
+    this.success = true,
+    this.error,
+    this.reportId,
+    this.reportNumber,
+  });
+}
+
 /// User tag returned by `Storage.GetUserTags` / `Storage.AddUserTag`.
 ///
 /// Domain invariant: every tag has a severity. The server's enum is

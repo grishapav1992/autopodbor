@@ -145,8 +145,7 @@ class _SparkJoyCompanyRequestsScreenState
   Future<void> _openDetail(Map<String, dynamic> request) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            SparkJoyCompanyRequestDetailScreen(initial: request),
+        builder: (_) => SparkJoyCompanyRequestDetailScreen(initial: request),
       ),
     );
     if (!mounted) return;
@@ -159,10 +158,7 @@ class _SparkJoyCompanyRequestsScreenState
     if (_loading) {
       return SparkScreenList(
         bottomInset: 24,
-        children: const [
-          SizedBox(height: 60),
-          SparkLoadingState(),
-        ],
+        children: const [SizedBox(height: 60), SparkLoadingState()],
       );
     }
     if (_loadError != null) {
@@ -243,9 +239,7 @@ class _SparkJoyCompanyRequestsScreenState
         Row(
           children: [
             Expanded(
-              child: SparkSectionTitle(
-                'Мои заявки (${requests.length})',
-              ),
+              child: SparkSectionTitle('Мои заявки (${requests.length})'),
             ),
             IconButton(
               onPressed: _openCreateRequest,
@@ -261,10 +255,7 @@ class _SparkJoyCompanyRequestsScreenState
         ...requests.map(
           (r) => Padding(
             padding: const EdgeInsets.only(bottom: SparkSpace.md),
-            child: _RequestCard(
-              data: r,
-              onTap: () => _openDetail(r),
-            ),
+            child: _RequestCard(data: r, onTap: () => _openDetail(r)),
           ),
         ),
       ],
@@ -300,30 +291,63 @@ class _RequestCard extends StatelessWidget {
             : (first['brand'] ?? '').toString();
         final model = (first['model'] is Map)
             ? (first['model']['model'] ?? first['model']['name'] ?? '')
-                .toString()
+                  .toString()
             : (first['model'] ?? '').toString();
-        final combined = [brand.trim(), model.trim()]
-            .where((s) => s.isNotEmpty)
-            .join(' ');
+        final combined = [
+          brand.trim(),
+          model.trim(),
+        ].where((s) => s.isNotEmpty).join(' ');
         if (combined.isNotEmpty) return combined;
       }
     }
     final flatBrand = _str('brand');
     final flatModel = _str('model');
-    final combined = [flatBrand, flatModel]
-        .where((s) => s.isNotEmpty)
-        .join(' ');
+    final combined = [
+      flatBrand,
+      flatModel,
+    ].where((s) => s.isNotEmpty).join(' ');
     return combined.isEmpty ? 'Автомобиль не указан' : combined;
   }
 
   String get _meta {
     final due = _str('dueAt');
-    final parts = <String>[];
+    final specialist = _specialistLabel;
+    final parts = <String>[
+      if (specialist.isNotEmpty) 'Специалист: $specialist',
+    ];
     if (due.isNotEmpty) {
       // dueAt приходит как YYYY-MM-DD от бэка.
       parts.add('Срок: ${_formatRuDate(due)}');
     }
     return parts.join(' · ');
+  }
+
+  int? _int(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    return null;
+  }
+
+  String get _specialistLabel {
+    final raw = data['assignedSpecialist'];
+    final specialist = raw is Map ? Map<String, dynamic>.from(raw) : null;
+    if (specialist != null) {
+      final firstName = (specialist['firstName'] ?? '').toString().trim();
+      final lastName = (specialist['lastName'] ?? '').toString().trim();
+      final middleName = (specialist['middleName'] ?? '').toString().trim();
+      final full = [
+        lastName,
+        firstName,
+        middleName,
+      ].where((part) => part.isNotEmpty).join(' ');
+      if (full.isNotEmpty) return full;
+    }
+    final id =
+        _int(data['assignedSpecialistId']) ??
+        _int(data['assignedSpecialistUserId']) ??
+        _int(specialist?['id']);
+    return id == null ? '' : '#$id';
   }
 
   String _formatRuDate(String iso) {

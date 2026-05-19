@@ -1,0 +1,1227 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+
+import 'spark_joy_create_report_screen.dart';
+import 'spark_joy_request_status.dart';
+import 'spark_joy_storage.dart';
+import 'spark_joy_tokens.dart';
+import 'spark_joy_ui.dart';
+
+class SparkJoySpecialistRequestsScreen extends StatefulWidget {
+  const SparkJoySpecialistRequestsScreen({super.key});
+
+  @override
+  State<SparkJoySpecialistRequestsScreen> createState() =>
+      _SparkJoySpecialistRequestsScreenState();
+}
+
+class _SparkJoySpecialistRequestsScreenState
+    extends State<SparkJoySpecialistRequestsScreen> {
+  List<Map<String, dynamic>>? _requests;
+  bool _loading = true;
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    if (!mounted) return;
+    final hadData = _requests != null;
+    setState(() {
+      _loading = !hadData;
+      _loadError = null;
+    });
+    try {
+      final result = await storage_api.StorageApi.getRequests();
+      if (!mounted) return;
+      setState(() {
+        _requests = result;
+        _loading = false;
+      });
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      const msg = 'Сессия истекла. Войдите заново.';
+      if (hadData) {
+        _showRefreshErrorSnackbar(msg);
+        setState(() => _loading = false);
+      } else {
+        setState(() {
+          _loading = false;
+          _loadError = msg;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final msg = 'Не удалось обновить список: $e';
+      if (hadData) {
+        _showRefreshErrorSnackbar(msg);
+        setState(() => _loading = false);
+      } else {
+        setState(() {
+          _loading = false;
+          _loadError = 'Не удалось загрузить заявки: $e';
+        });
+      }
+    }
+  }
+
+  void _showRefreshErrorSnackbar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: kRedColor,
+        action: SnackBarAction(
+          label: 'Повторить',
+          textColor: kWhiteColor,
+          onPressed: _load,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openDetail(Map<String, dynamic> request) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SparkJoySpecialistRequestDetailScreen(initial: request),
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return SparkScreenList(
+        bottomInset: 24,
+        children: const [SizedBox(height: 60), SparkLoadingState()],
+      );
+    }
+    if (_loadError != null) {
+      return SparkScreenList(
+        bottomInset: 24,
+        onRefresh: _load,
+        children: [
+          const SizedBox(height: 24),
+          SparkErrorState(
+            title: 'Не удалось загрузить заявки',
+            subtitle: _loadError!,
+            onRetry: _load,
+          ),
+        ],
+      );
+    }
+
+    final requests = _requests ?? const [];
+    if (requests.isEmpty) {
+      return SparkScreenList(
+        bottomInset: 24,
+        onRefresh: _load,
+        children: const [SizedBox(height: 60), _EmptyInboxState()],
+      );
+    }
+
+    return SparkScreenList(
+      bottomInset: 24,
+      onRefresh: _load,
+      children: [
+        SparkSectionTitle('Назначенные заявки (${requests.length})'),
+        const SizedBox(height: SparkSpace.md),
+        for (final r in requests)
+          Padding(
+            padding: const EdgeInsets.only(bottom: SparkSpace.md),
+            child: _SpecialistRequestCard(data: r, onTap: () => _openDetail(r)),
+          ),
+      ],
+    );
+  }
+}
+
+class _EmptyInboxState extends StatelessWidget {
+  const _EmptyInboxState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Center(
+          child: Container(
+            width: 84,
+            height: 84,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: kSecondaryColor.withValues(alpha: 0.1),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.assignment_ind_outlined,
+              size: 40,
+              color: kSecondaryColor,
+            ),
+          ),
+        ),
+        const SizedBox(height: SparkSpace.xxl),
+        const MyText(
+          text: 'Назначенных заявок пока нет',
+          size: SparkTextSize.titleLg,
+          weight: FontWeight.w800,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: SparkSpace.sm),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: SparkSpace.xxxl),
+          child: MyText(
+            text:
+                'Когда компания назначит вам заявку, она появится здесь. '
+                'Откройте её, чтобы принять или отклонить работу.',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+            textAlign: TextAlign.center,
+            lineHeight: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SpecialistRequestCard extends StatelessWidget {
+  const _SpecialistRequestCard({required this.data, required this.onTap});
+
+  final Map<String, dynamic> data;
+  final VoidCallback onTap;
+
+  String _str(String key) => (data[key] ?? '').toString();
+
+  String get _title {
+    final number = _str('requestNumber');
+    return number.isNotEmpty ? 'Заявка №$number' : 'Заявка';
+  }
+
+  String get _subtitle {
+    final cars = data['requestCars'] ?? data['cars'];
+    if (cars is List && cars.isNotEmpty) {
+      final first = cars.first;
+      if (first is Map) {
+        final brand = (first['brand'] is Map)
+            ? (first['brand']['name'] ?? '').toString()
+            : (first['brand'] ?? '').toString();
+        final model = (first['model'] is Map)
+            ? (first['model']['model'] ?? first['model']['name'] ?? '')
+                  .toString()
+            : (first['model'] ?? '').toString();
+        final combined = [
+          brand.trim(),
+          model.trim(),
+        ].where((s) => s.isNotEmpty).join(' ');
+        if (combined.isNotEmpty) return combined;
+      } else {
+        final value = first.toString().trim();
+        if (value.isNotEmpty) return value;
+      }
+    }
+    return 'Автомобиль не указан';
+  }
+
+  String get _meta {
+    final due = _str('dueAt');
+    final city = _str('city').trim();
+    final parts = <String>[
+      if (city.isNotEmpty) city,
+      if (due.isNotEmpty) 'Срок: ${_formatRuDate(due)}',
+    ];
+    return parts.join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final badge = requestStatusBadge(_str('status'));
+    return SparkCard(
+      onTap: onTap,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.assignment_ind_outlined,
+            size: SparkSize.iconLg,
+            color: kSecondaryColor,
+          ),
+          const SizedBox(width: SparkSpace.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: MyText(
+                        text: _title,
+                        size: SparkTextSize.bodyLg,
+                        weight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(width: SparkSpace.sm),
+                    SparkChip(
+                      text: badge.label,
+                      background: badge.bg,
+                      color: badge.fg,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SparkSpace.xxs),
+                MyText(
+                  text: _subtitle,
+                  size: SparkTextSize.body,
+                  color: kGreyColor,
+                ),
+                if (_meta.isNotEmpty) ...[
+                  const SizedBox(height: SparkSpace.xxs),
+                  MyText(
+                    text: _meta,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: SparkSpace.sm),
+          const Icon(
+            Icons.chevron_right_rounded,
+            color: kGreyColor,
+            size: SparkSize.iconMd,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SparkJoySpecialistRequestDetailScreen extends StatefulWidget {
+  const SparkJoySpecialistRequestDetailScreen({
+    super.key,
+    required this.initial,
+  });
+
+  final Map<String, dynamic> initial;
+
+  @override
+  State<SparkJoySpecialistRequestDetailScreen> createState() =>
+      _SparkJoySpecialistRequestDetailScreenState();
+}
+
+class _SparkJoySpecialistRequestDetailScreenState
+    extends State<SparkJoySpecialistRequestDetailScreen> {
+  late Map<String, dynamic> _request;
+  List<Map<String, dynamic>>? _cars;
+  String? _carsError;
+  bool _actionBusy = false;
+  bool _openingReport = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _request = Map<String, dynamic>.from(widget.initial);
+    _loadCars();
+  }
+
+  int? get _requestId {
+    final v = _request['id'];
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v);
+    return null;
+  }
+
+  String _str(String key) => (_request[key] ?? '').toString();
+
+  Future<void> _loadCars() async {
+    final id = _requestId;
+    if (id == null) {
+      setState(() {
+        _cars = const [];
+        _carsError = 'Не удалось определить ID заявки';
+      });
+      return;
+    }
+    try {
+      final cars = await storage_api.StorageApi.getRequestCars(requestId: id);
+      if (!mounted) return;
+      setState(() {
+        _cars = cars;
+        _carsError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _cars = const [];
+        _carsError = 'Не удалось загрузить детали авто: $e';
+      });
+    }
+  }
+
+  Future<void> _refreshRequestSnapshot() async {
+    final id = _requestId;
+    if (id == null) return;
+    final requests = await storage_api.StorageApi.getRequests();
+    final next = requests.where((r) {
+      final raw = r['id'];
+      final itemId = raw is int
+          ? raw
+          : raw is num
+          ? raw.toInt()
+          : int.tryParse(raw?.toString() ?? '');
+      return itemId == id;
+    }).toList();
+    if (!mounted || next.isEmpty) return;
+    setState(() => _request = next.first);
+  }
+
+  Future<void> _accept() async {
+    final note = await _showNoteSheet(
+      context,
+      title: 'Принять заявку',
+      hint: 'Комментарий для компании (необязательно)',
+      actionLabel: 'Принять',
+      actionIcon: Icons.check_rounded,
+    );
+    if (note == null || _actionBusy) return;
+    final id = _requestId;
+    if (id == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _actionBusy = true);
+    try {
+      final result = await storage_api.StorageApi.acceptRequest(
+        requestId: id,
+        note: note,
+      );
+      if (!mounted) return;
+      if (result.status.isNotEmpty) {
+        setState(() => _request['status'] = result.status);
+      }
+      try {
+        await _refreshRequestSnapshot();
+      } catch (_) {
+        // Acceptance already succeeded. A stale detail snapshot is better
+        // than showing a false negative because the follow-up refresh failed.
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Заявка принята')));
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      _showActionError('Сессия истекла. Войдите заново.');
+    } catch (e) {
+      if (!mounted) return;
+      _showActionError('Не удалось принять заявку: $e');
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _reject() async {
+    final note = await _showNoteSheet(
+      context,
+      title: 'Отклонить заявку',
+      hint: 'Причина отказа (необязательно)',
+      actionLabel: 'Отклонить',
+      actionIcon: Icons.close_rounded,
+      destructive: true,
+    );
+    if (note == null || _actionBusy) return;
+    final id = _requestId;
+    if (id == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _actionBusy = true);
+    try {
+      await storage_api.StorageApi.rejectRequest(requestId: id, note: note);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Заявка отклонена')));
+      Navigator.of(context).pop(true);
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      _showActionError('Сессия истекла. Войдите заново.');
+    } catch (e) {
+      if (!mounted) return;
+      _showActionError('Не удалось отклонить заявку: $e');
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  void _showActionError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: kRedColor),
+    );
+  }
+
+  Future<void> _openReportForRequest() async {
+    final id = _requestId;
+    if (id == null || _openingReport) return;
+    HapticFeedback.selectionClick();
+    setState(() => _openingReport = true);
+    try {
+      if (_cars == null) {
+        await _loadCars();
+        if (!mounted) return;
+      }
+      final drafts = await SparkJoyStorage.loadDrafts();
+      final existing = drafts.where((draft) {
+        final raw = draft['requestId'];
+        final draftRequestId = raw is int
+            ? raw
+            : raw is num
+            ? raw.toInt()
+            : int.tryParse(raw?.toString() ?? '');
+        return draftRequestId == id;
+      }).toList();
+
+      final draft = existing.isNotEmpty
+          ? existing.first
+          : await _createRequestDraft(id);
+      if (!mounted) return;
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => SparkJoyCreateReportScreen(draft: draft),
+        ),
+      );
+      if (!mounted) return;
+      if (changed == true) {
+        await _refreshRequestSnapshot();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      _showActionError('Не удалось открыть отчёт по заявке: $e');
+    } finally {
+      if (mounted) setState(() => _openingReport = false);
+    }
+  }
+
+  Future<Map<String, dynamic>> _createRequestDraft(int requestId) async {
+    final now = DateTime.now();
+    final car = (_cars != null && _cars!.isNotEmpty) ? _cars!.first : null;
+    final draft = <String, dynamic>{
+      'id': 'spark_draft_${now.microsecondsSinceEpoch}',
+      'requestId': requestId,
+      'requestNumber': _str('requestNumber'),
+      'reportName': _requestReportName(car),
+      'reportNumber': '',
+      'currentStep': 1,
+      'createdAt': _formatRuDate(now.toIso8601String()),
+      'lastSavedAtIso': now.toIso8601String(),
+      'status': 'in_progress',
+      'inspectionCity': _str('city').trim(),
+      if (car != null) ..._draftCarFields(car),
+    };
+    await SparkJoyStorage.upsertDraft(draft);
+    return draft;
+  }
+
+  String _requestReportName(Map<String, dynamic>? car) {
+    final number = _str('requestNumber').trim();
+    final carName = _carTitleFromDetail(car).trim();
+    if (number.isNotEmpty && carName.isNotEmpty) {
+      return 'Заявка №$number · $carName';
+    }
+    if (number.isNotEmpty) return 'Заявка №$number';
+    if (carName.isNotEmpty) return carName;
+    return 'Отчёт по заявке';
+  }
+
+  Map<String, dynamic> _draftCarFields(Map<String, dynamic> car) {
+    final brand = car['brand'];
+    final model = car['model'];
+    final brandName = (brand is Map) ? (brand['name'] ?? '').toString() : '';
+    final modelName = (model is Map)
+        ? (model['model'] ?? model['name'] ?? '').toString()
+        : '';
+    final generation = (car['generation'] ?? '').toString().trim();
+    final restylings = car['restyling'] ?? car['restylings'];
+    var restylingLabel = '';
+    if (restylings is List && restylings.isNotEmpty) {
+      final first = restylings.first;
+      if (first is Map) {
+        restylingLabel = (first['restyling'] ?? '').toString().trim();
+      }
+    }
+    final carTitle = [
+      brandName.trim(),
+      modelName.trim(),
+    ].where((s) => s.isNotEmpty).join(' ');
+    return <String, dynamic>{
+      if (brandName.trim().isNotEmpty) 'brand': brandName.trim(),
+      if (modelName.trim().isNotEmpty) 'model': modelName.trim(),
+      if (generation.isNotEmpty) 'generation': generation,
+      if (restylingLabel.isNotEmpty) 'restyling': restylingLabel,
+      if ((car['url'] ?? '').toString().trim().isNotEmpty)
+        'adLink': (car['url'] ?? '').toString().trim(),
+      if (carTitle.isNotEmpty) 'car': carTitle,
+    };
+  }
+
+  String _carTitleFromDetail(Map<String, dynamic>? car) {
+    if (car == null) {
+      final cars = _request['cars'];
+      if (cars is List && cars.isNotEmpty) return cars.first.toString();
+      return '';
+    }
+    final brand = car['brand'];
+    final model = car['model'];
+    final brandName = (brand is Map) ? (brand['name'] ?? '').toString() : '';
+    final modelName = (model is Map)
+        ? (model['model'] ?? model['name'] ?? '').toString()
+        : '';
+    return [
+      brandName.trim(),
+      modelName.trim(),
+    ].where((s) => s.isNotEmpty).join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _str('status');
+    final badge = requestStatusBadge(status);
+    final number = _str('requestNumber');
+    final createdAt = _str('createdAt');
+    final dueAt = _str('dueAt');
+    final note = _str('note').trim();
+    final city = _str('city').trim();
+    final budgetFrom = _request['budgetFrom'];
+    final budgetTo = _request['budgetTo'];
+    final maxMileage = _request['maxMileage'];
+    final ownersCount = _request['ownersCount'];
+    final history = _historyNewestFirst(_request['requestStatusHistories']);
+    final canRespond = status == 'created';
+
+    return Scaffold(
+      backgroundColor: kPrimaryColor,
+      appBar: AppBar(
+        backgroundColor: kPrimaryColor,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        title: MyText(
+          text: number.isEmpty ? 'Заявка' : 'Заявка №$number',
+          size: SparkTextSize.titleLg,
+          weight: FontWeight.w800,
+        ),
+        shape: const Border(
+          bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
+        ),
+      ),
+      body: SparkScreenList(
+        bottomInset: 24,
+        onRefresh: () async {
+          await _refreshRequestSnapshot();
+          await _loadCars();
+        },
+        children: [
+          SparkCard(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: SparkSize.icon5xl,
+                  height: SparkSize.icon5xl,
+                  decoration: BoxDecoration(
+                    color: kSecondaryColor.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.assignment_ind_outlined,
+                    color: kSecondaryColor,
+                    size: SparkSize.iconLg,
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.lg),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SparkChip(
+                        text: badge.label,
+                        background: badge.bg,
+                        color: badge.fg,
+                      ),
+                      const SizedBox(height: SparkSpace.sm),
+                      MyText(
+                        text: 'Создана: ${_formatRuDateTime(createdAt)}',
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                      ),
+                      if (dueAt.isNotEmpty) ...[
+                        const SizedBox(height: SparkSpace.xxs),
+                        MyText(
+                          text: 'Срок: ${_formatRuDate(dueAt)}',
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SparkSectionTitle('Автомобиль', top: SparkSpace.xxl),
+          SparkCard(child: _buildCarSection()),
+          if (city.isNotEmpty ||
+              budgetFrom != null ||
+              budgetTo != null ||
+              maxMileage != null ||
+              ownersCount != null) ...[
+            const SparkSectionTitle('Параметры подбора', top: SparkSpace.xxl),
+            SparkCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (city.isNotEmpty)
+                    SparkInfoRow(label: 'Город', value: city),
+                  if (budgetFrom != null || budgetTo != null)
+                    SparkInfoRow(
+                      label: 'Бюджет',
+                      value: _formatBudget(budgetFrom, budgetTo),
+                    ),
+                  if (maxMileage != null)
+                    SparkInfoRow(
+                      label: 'Макс. пробег',
+                      value: '${_formatNumber(maxMileage)} км',
+                    ),
+                  if (ownersCount != null)
+                    SparkInfoRow(
+                      label: 'Макс. владельцев',
+                      value: ownersCount.toString(),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          if (note.isNotEmpty) ...[
+            const SparkSectionTitle('Заметка компании', top: SparkSpace.xxl),
+            SparkCard(
+              child: MyText(
+                text: note,
+                size: SparkTextSize.body,
+                lineHeight: 1.5,
+              ),
+            ),
+          ],
+          const SparkSectionTitle('История', top: SparkSpace.xxl),
+          if (history.isEmpty)
+            const SparkCard(
+              child: MyText(
+                text: 'История пуста',
+                size: SparkTextSize.body,
+                color: kGreyColor,
+              ),
+            )
+          else
+            SparkCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (int i = 0; i < history.length; i++) ...[
+                    _HistoryEntry(entry: history[i]),
+                    if (i < history.length - 1)
+                      const Divider(height: 1, color: kBorderColor),
+                  ],
+                ],
+              ),
+            ),
+          const SizedBox(height: SparkSpace.xxl),
+          if (canRespond) ...[
+            SparkPrimaryActionButton(
+              label: _actionBusy ? 'Сохраняем...' : 'Принять заявку',
+              icon: Icons.check_rounded,
+              busy: _actionBusy,
+              onTap: _accept,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            OutlinedButton.icon(
+              onPressed: _actionBusy ? null : _reject,
+              icon: const Icon(Icons.close_rounded),
+              label: const Text('Отклонить'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kRedColor,
+                minimumSize: const Size(
+                  double.infinity,
+                  SparkSize.actionHeight,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                ),
+              ),
+            ),
+          ] else if (status == 'in_work') ...[
+            SparkPrimaryActionButton(
+              label: _openingReport ? 'Открываем...' : 'Начать отчёт',
+              icon: Icons.edit_note_rounded,
+              busy: _openingReport,
+              onTap: _openReportForRequest,
+            ),
+          ],
+          const SizedBox(height: SparkSpace.lg),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCarSection() {
+    final rawCarStrings = _request['cars'];
+    final carStrings = rawCarStrings is List
+        ? rawCarStrings
+              .map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toList()
+        : <String>[];
+    final detailedCars = _cars;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (detailedCars == null) ...[
+          for (final name in carStrings)
+            Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.md),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.directions_car_outlined,
+                    color: kSecondaryColor,
+                    size: SparkSize.iconLg,
+                  ),
+                  const SizedBox(width: SparkSpace.md),
+                  Expanded(
+                    child: MyText(
+                      text: name,
+                      size: SparkTextSize.body,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: SparkSpace.md),
+          const SizedBox(
+            height: SparkSize.spinner,
+            width: SparkSize.spinner,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ] else if (_carsError != null) ...[
+          MyText(
+            text: _carsError!,
+            size: SparkTextSize.caption,
+            color: kRedColor,
+          ),
+        ] else if (detailedCars.isEmpty) ...[
+          const MyText(
+            text: 'Детали автомобиля не загружены',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+          ),
+        ] else
+          for (int i = 0; i < detailedCars.length; i++) ...[
+            if (i > 0) const Divider(height: 24, color: kBorderColor),
+            _CarDetailBlock(car: detailedCars[i]),
+          ],
+      ],
+    );
+  }
+}
+
+class _CarDetailBlock extends StatelessWidget {
+  const _CarDetailBlock({required this.car});
+
+  final Map<String, dynamic> car;
+
+  String _str(String key) => (car[key] ?? '').toString();
+
+  String get _title {
+    final brand = car['brand'];
+    final model = car['model'];
+    final brandName = (brand is Map) ? (brand['name'] ?? '').toString() : '';
+    final modelName = (model is Map)
+        ? (model['model'] ?? model['name'] ?? '').toString()
+        : '';
+    final combined = [
+      brandName,
+      modelName,
+    ].where((s) => s.isNotEmpty).join(' ');
+    return combined.isEmpty ? 'Автомобиль' : combined;
+  }
+
+  String? get _generationLabel {
+    final g = car['generation'];
+    if (g is num) return 'Поколение $g';
+    if (g is String && g.isNotEmpty) return 'Поколение $g';
+    return null;
+  }
+
+  List<Map<String, dynamic>> get _restylings {
+    final r = car['restylings'] ?? car['restyling'];
+    if (r is List) {
+      return r
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+    }
+    return [];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sellerPhone = _str('phone').trim();
+    final sellerUrl = _str('url').trim();
+    final tags = car['tags'];
+    final tagList = tags is List
+        ? tags.map((e) => e.toString()).where((s) => s.isNotEmpty).toList()
+        : <String>[];
+    final gen = _generationLabel;
+    final restylings = _restylings;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.directions_car_outlined,
+              color: kSecondaryColor,
+              size: SparkSize.iconLg,
+            ),
+            const SizedBox(width: SparkSpace.md),
+            Expanded(
+              child: MyText(
+                text: _title,
+                size: SparkTextSize.bodyLg,
+                weight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        if (gen != null) ...[
+          const SizedBox(height: SparkSpace.xs),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: MyText(
+              text: gen,
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+          ),
+        ],
+        if (restylings.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.xs),
+          Padding(
+            padding: const EdgeInsets.only(left: 32),
+            child: MyText(
+              text: restylings
+                  .map((r) {
+                    final name = (r['restyling'] ?? '').toString().trim();
+                    final ys = r['yearStart'];
+                    final ye = r['yearEnd'];
+                    final years = [ys, ye]
+                        .where((y) => y != null)
+                        .map((y) => y.toString())
+                        .join('-');
+                    if (name.isEmpty && years.isEmpty) return 'Без рестайлинга';
+                    if (years.isEmpty) return name;
+                    if (name.isEmpty) return years;
+                    return '$name ($years)';
+                  })
+                  .join(', '),
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+          ),
+        ],
+        if (tagList.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.sm),
+          Wrap(
+            spacing: SparkSpace.xs,
+            runSpacing: SparkSpace.xs,
+            children: tagList
+                .map(
+                  (t) => SparkChip(
+                    text: t,
+                    background: kSecondaryColor.withValues(alpha: 0.1),
+                    color: kSecondaryColor,
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+        if (sellerPhone.isNotEmpty || sellerUrl.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.md),
+          const Divider(height: 1, color: kBorderColor),
+          const SizedBox(height: SparkSpace.md),
+          if (sellerPhone.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.xs),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.phone_outlined,
+                    color: kGreyColor,
+                    size: SparkSize.iconSm,
+                  ),
+                  const SizedBox(width: SparkSpace.sm),
+                  MyText(
+                    text: sellerPhone,
+                    size: SparkTextSize.body,
+                    weight: FontWeight.w600,
+                  ),
+                ],
+              ),
+            ),
+          if (sellerUrl.isNotEmpty)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.link_rounded,
+                    color: kGreyColor,
+                    size: SparkSize.iconSm,
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.sm),
+                Expanded(
+                  child: MyText(
+                    text: sellerUrl,
+                    size: SparkTextSize.caption,
+                    color: kSecondaryColor,
+                    maxLines: 3,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ],
+    );
+  }
+}
+
+class _HistoryEntry extends StatelessWidget {
+  const _HistoryEntry({required this.entry});
+
+  final Map<String, dynamic> entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final oldStatus = (entry['oldStatus'] ?? '').toString();
+    final newStatus = (entry['newStatus'] ?? '').toString();
+    final role = (entry['changedByRole'] ?? '').toString();
+    final reason = (entry['reason'] ?? '').toString().trim();
+    final createdAt = (entry['createdAt'] ?? '').toString();
+    final badge = requestStatusBadge(newStatus);
+    final transition = oldStatus.isEmpty
+        ? badge.label
+        : '${requestStatusBadge(oldStatus).label} -> ${badge.label}';
+    final roleLabel = requestRoleLabel(role);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: SparkSpace.md),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: SparkSize.iconLg,
+            height: SparkSize.iconLg,
+            decoration: BoxDecoration(color: badge.bg, shape: BoxShape.circle),
+            alignment: Alignment.center,
+            child: Icon(
+              requestStatusIcon(newStatus),
+              color: badge.fg,
+              size: SparkSize.iconSm,
+            ),
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                MyText(
+                  text: transition,
+                  size: SparkTextSize.body,
+                  weight: FontWeight.w600,
+                ),
+                if (roleLabel.isNotEmpty || createdAt.isNotEmpty) ...[
+                  const SizedBox(height: SparkSpace.xxs),
+                  MyText(
+                    text: [
+                      if (roleLabel.isNotEmpty) roleLabel,
+                      if (createdAt.isNotEmpty) _formatRuDateTime(createdAt),
+                    ].join(' · '),
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ],
+                if (reason.isNotEmpty) ...[
+                  const SizedBox(height: SparkSpace.xs),
+                  MyText(
+                    text: reason,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    lineHeight: 1.4,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<String?> _showNoteSheet(
+  BuildContext context, {
+  required String title,
+  required String hint,
+  required String actionLabel,
+  required IconData actionIcon,
+  bool destructive = false,
+}) async {
+  final controller = TextEditingController();
+  try {
+    return await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: kWhiteColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(SparkRadius.lg),
+        ),
+      ),
+      builder: (ctx) {
+        final media = MediaQuery.of(ctx);
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: SparkSpace.xxxl,
+              right: SparkSpace.xxxl,
+              top: SparkSpace.xxxl,
+              bottom: media.viewInsets.bottom + SparkSpace.xxxl,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: MyText(
+                        text: title,
+                        size: SparkTextSize.titleLg,
+                        weight: FontWeight.w800,
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SparkSpace.md),
+                TextField(
+                  controller: controller,
+                  minLines: 3,
+                  maxLines: 5,
+                  textInputAction: TextInputAction.newline,
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
+                  decoration: sparkInputDecoration(hint),
+                ),
+                const SizedBox(height: SparkSpace.xl),
+                FilledButton.icon(
+                  onPressed: () =>
+                      Navigator.of(ctx).pop(controller.text.trim()),
+                  icon: Icon(actionIcon),
+                  label: Text(actionLabel),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: destructive ? kRedColor : kSecondaryColor,
+                    foregroundColor: kWhiteColor,
+                    minimumSize: const Size(
+                      double.infinity,
+                      SparkSize.actionHeight,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SparkRadius.lg),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  } finally {
+    controller.dispose();
+  }
+}
+
+List<Map<String, dynamic>> _historyNewestFirst(dynamic raw) {
+  final history = raw is List
+      ? raw.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
+      : <Map<String, dynamic>>[];
+  history.sort((a, b) {
+    final aT = (a['createdAt'] ?? '').toString();
+    final bT = (b['createdAt'] ?? '').toString();
+    return bT.compareTo(aT);
+  });
+  return history;
+}
+
+String _formatRuDate(String iso) {
+  final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(iso);
+  if (m == null) return iso;
+  return '${m.group(3)}.${m.group(2)}.${m.group(1)}';
+}
+
+String _formatRuDateTime(String iso) {
+  final dm = RegExp(
+    r'^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})',
+  ).firstMatch(iso);
+  if (dm == null) return _formatRuDate(iso);
+  return '${dm.group(3)}.${dm.group(2)}.${dm.group(1)} '
+      '${dm.group(4)}:${dm.group(5)}';
+}
+
+String _formatBudget(dynamic from, dynamic to) {
+  final f = from is num ? from.toInt() : null;
+  final t = to is num ? to.toInt() : null;
+  if (f != null && t != null) {
+    return '${_formatNumber(f)} - ${_formatNumber(t)} ₽';
+  }
+  if (f != null) return 'от ${_formatNumber(f)} ₽';
+  if (t != null) return 'до ${_formatNumber(t)} ₽';
+  return '-';
+}
+
+String _formatNumber(dynamic v) {
+  if (v == null) return '';
+  final n = v is num ? v.toInt() : int.tryParse(v.toString()) ?? 0;
+  final s = n.toString();
+  final out = StringBuffer();
+  for (int i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) out.write(' ');
+    out.write(s[i]);
+  }
+  return out.toString();
+}
