@@ -1,14 +1,15 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/notification_api.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/data/api/storage_api_models.dart';
+import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 /// Assignee-picker mode. Stored as enum to keep call sites type-safe.
 enum SparkJoyAssigneeMode { staff, phone, invite }
@@ -70,8 +71,7 @@ class SparkJoyAssigneePicker extends StatefulWidget {
   final ValueChanged<SparkJoyAssigneeSelection> onChanged;
 
   @override
-  State<SparkJoyAssigneePicker> createState() =>
-      _SparkJoyAssigneePickerState();
+  State<SparkJoyAssigneePicker> createState() => _SparkJoyAssigneePickerState();
 }
 
 // Phone-lookup UI states. Kept as a private enum to avoid stringly-
@@ -81,8 +81,8 @@ enum _PhoneLookupState {
   searching,
   found,
   notFound,
-  blockedOwnStaff,
-  blockedOtherCompany,
+  notCompanyStaff,
+  error,
 }
 
 // Which secondary action is currently expanded. Only one at a time —
@@ -103,21 +103,13 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   String _phoneFoundId = '';
   String _phoneFoundName = '';
   String _phoneFoundCity = '';
+  String _phoneError = '';
 
-  bool _inviteBuilding = false;
+  bool _staffLoading = true;
+  String? _staffError;
+  List<SpecialistItem> _staff = const <SpecialistItem>[];
 
   _AltSection _altSection = _AltSection.none;
-
-  List<Map<String, dynamic>> get _staff {
-    return sparkSpecialists
-        .where((s) {
-          final companyId = sjRead(s, 'companyId');
-          final status = sjRead(s, 'status');
-          return companyId == widget.companyId && status != 'blocked';
-        })
-        .map(cloneMap)
-        .toList();
-  }
 
   @override
   void initState() {
@@ -126,6 +118,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     _specialistId = widget.initialSelection.specialistId;
     _specialistName = widget.initialSelection.specialistName;
     _inviteLink = widget.initialSelection.inviteLink;
+    _loadStaff();
   }
 
   @override
@@ -135,12 +128,50 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     super.dispose();
   }
 
+  Future<void> _loadStaff() async {
+    setState(() {
+      _staffLoading = true;
+      _staffError = null;
+    });
+    try {
+      var pageNumber = 1;
+      var totalPages = 1;
+      final staff = <SpecialistItem>[];
+      do {
+        final page = await storage_api.StorageApi.getCompanySpecialistsPage(
+          page: pageNumber,
+          limit: 100,
+        );
+        staff.addAll(page.specialists);
+        totalPages = page.pages <= 0 ? 1 : page.pages;
+        pageNumber += 1;
+      } while (pageNumber <= totalPages);
+      if (!mounted) return;
+      setState(() {
+        _staff = staff;
+        _staffLoading = false;
+      });
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      setState(() {
+        _staffLoading = false;
+        _staffError = 'Сессия истекла. Войдите заново.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _staffLoading = false;
+        _staffError = 'Не удалось загрузить штат: $e';
+      });
+    }
+  }
+
   SparkJoyAssigneeSelection get _currentSelection => SparkJoyAssigneeSelection(
-        mode: _mode,
-        specialistId: _specialistId,
-        specialistName: _specialistName,
-        inviteLink: _inviteLink,
-      );
+    mode: _mode,
+    specialistId: _specialistId,
+    specialistName: _specialistName,
+    inviteLink: _inviteLink,
+  );
 
   void _emit() => widget.onChanged(_currentSelection);
 
@@ -162,6 +193,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     _phoneFoundId = '';
     _phoneFoundName = '';
     _phoneFoundCity = '';
+    _phoneError = '';
   }
 
   /// Resets the entire selection — used by the "Очистить" action on
@@ -234,60 +266,27 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     return tail.length == 10 ? '+7$tail' : '';
   }
 
-  /// Mock lookup — resolves against the in-memory `sparkSpecialists`
-  /// demo data. Rules:
-  ///   • own-staff match   → blockedOwnStaff
-  ///   • other-company match → blockedOtherCompany
-  ///   • free-agent match  → found
-  ///   • no match          → notFound
-  _MockLookupResult _mockLookup(String normalizedPhone) {
-    String d(String v) => v.replaceAll(RegExp(r'\D'), '');
-    final needle = d(normalizedPhone);
-    if (needle.length < 10) return const _MockLookupResult(_PhoneLookupState.notFound);
-    final needleTail = needle.substring(needle.length - 10);
-
-    for (final s in sparkSpecialists) {
-      final raw = sjRead(s, 'phone');
-      final tail = d(raw);
-      if (tail.isEmpty) continue;
-      final last = tail.length >= 10 ? tail.substring(tail.length - 10) : tail;
-      if (last != needleTail) continue;
-
-      final specCompany = sjRead(s, 'companyId');
-      final id = sjRead(s, 'id');
-      final name = sjRead(s, 'name');
-      final city = sjRead(s, 'city');
-      if (specCompany == widget.companyId) {
-        return _MockLookupResult(_PhoneLookupState.blockedOwnStaff,
-            id: id, name: name, city: city);
-      }
-      if (specCompany.isNotEmpty) {
-        return _MockLookupResult(_PhoneLookupState.blockedOtherCompany,
-            id: id, name: name, city: city);
-      }
-      return _MockLookupResult(_PhoneLookupState.found,
-          id: id, name: name, city: city);
-    }
-    return const _MockLookupResult(_PhoneLookupState.notFound);
-  }
-
   void _schedulePhoneLookup(String rawInput) {
     _phoneDebounce?.cancel();
     final normalized = _normalize(rawInput);
 
     if (normalized.isEmpty) {
-      if (_normalizedPhone.isEmpty && _phoneState == _PhoneLookupState.idle) return;
+      if (_normalizedPhone.isEmpty && _phoneState == _PhoneLookupState.idle) {
+        return;
+      }
       setState(() {
         _normalizedPhone = '';
         _phoneState = _PhoneLookupState.idle;
         _phoneFoundId = '';
         _phoneFoundName = '';
         _phoneFoundCity = '';
+        _phoneError = '';
       });
       return;
     }
 
-    final sameNumberResolved = _normalizedPhone == normalized &&
+    final sameNumberResolved =
+        _normalizedPhone == normalized &&
         _phoneState != _PhoneLookupState.idle &&
         _phoneState != _PhoneLookupState.searching;
     if (sameNumberResolved) return;
@@ -298,6 +297,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
       _phoneFoundId = '';
       _phoneFoundName = '';
       _phoneFoundCity = '';
+      _phoneError = '';
     });
     _phoneDebounce = Timer(
       const Duration(milliseconds: 500),
@@ -306,15 +306,59 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   }
 
   Future<void> _runPhoneLookup(String normalized) async {
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    if (!mounted || _normalizedPhone != normalized) return;
-    final result = _mockLookup(normalized);
-    setState(() {
-      _phoneState = result.state;
-      _phoneFoundId = result.id;
-      _phoneFoundName = result.name;
-      _phoneFoundCity = result.city;
-    });
+    try {
+      final page = await storage_api.StorageApi.getSpecialists(
+        search: normalized,
+        limit: 20,
+      );
+      if (!mounted || _normalizedPhone != normalized) return;
+      final needle = normalized.replaceAll(RegExp(r'\D'), '');
+      final needleTail = needle.substring(needle.length - 10);
+      final exact = page.specialists.where((specialist) {
+        final phone = (specialist.phone ?? '').replaceAll(RegExp(r'\D'), '');
+        final tail = phone.length >= 10
+            ? phone.substring(phone.length - 10)
+            : phone;
+        return tail == needleTail;
+      }).toList();
+      if (exact.isEmpty) {
+        setState(() {
+          _phoneState = _PhoneLookupState.notFound;
+          _phoneFoundId = '';
+          _phoneFoundName = '';
+          _phoneFoundCity = '';
+          _phoneError = '';
+        });
+        return;
+      }
+
+      final staffIds = _staff.map((s) => s.id).toSet();
+      final companyStaffMatch = exact.where((s) => staffIds.contains(s.id));
+      final specialist = companyStaffMatch.isNotEmpty
+          ? companyStaffMatch.first
+          : exact.first;
+      setState(() {
+        _phoneState = staffIds.contains(specialist.id)
+            ? _PhoneLookupState.found
+            : _PhoneLookupState.notCompanyStaff;
+        _phoneFoundId = specialist.id.toString();
+        _phoneFoundName = specialist.displayName;
+        _phoneFoundCity = (specialist.city ?? '').trim();
+        _phoneError = '';
+      });
+    } on storage_api.SessionExpiredException {
+      if (!mounted || _normalizedPhone != normalized) return;
+      setState(() {
+        _phoneState = _PhoneLookupState.error;
+        _phoneError = 'Сессия истекла. Войдите заново.';
+      });
+    } catch (e) {
+      if (!mounted || _normalizedPhone != normalized) return;
+      setState(() {
+        _phoneState = _PhoneLookupState.error;
+        _phoneError = 'Не удалось выполнить поиск: $e';
+      });
+    }
   }
 
   void _confirmPhoneAssignee() {
@@ -345,147 +389,78 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     );
   }
 
-  // ── Invite-link helpers ────────────────────────────────────────────
+  // ── Staff invitation helpers ───────────────────────────────────────
 
-  String _buildInviteToken() {
-    final source =
-        '${DateTime.now().microsecondsSinceEpoch}|${widget.companyId}';
-    final encoded = base64Url.encode(utf8.encode(source)).replaceAll('=', '');
-    return encoded.length <= 18 ? encoded : encoded.substring(0, 18);
+  String _normalizeInvitePhone(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    if (digits.length < 10) return '';
+    final tail = digits.substring(digits.length - 10);
+    return '+7$tail';
   }
 
-  Future<void> _generateInviteLink() async {
-    if (_inviteBuilding) return;
-    setState(() => _inviteBuilding = true);
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    final link = Uri.https('app.autocheck.local', '/invite/staff', {
-      'companyId': widget.companyId,
-      'token': _buildInviteToken(),
-      'source': 'new_report',
-    }).toString();
-    if (!mounted) return;
-    setState(() {
-      _mode = SparkJoyAssigneeMode.invite;
-      _inviteLink = link;
-      _specialistId = '';
-      _specialistName = '';
-      _inviteBuilding = false;
-    });
-    _emit();
-    await Clipboard.setData(ClipboardData(text: link));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ссылка приглашения скопирована')),
+  Future<String> _sendStaffInvitationByPhone(String rawPhone) async {
+    final phone = _normalizeInvitePhone(rawPhone);
+    if (phone.isEmpty) {
+      throw Exception('Введите полный номер телефона');
+    }
+
+    final page = await storage_api.StorageApi.getSpecialists(
+      search: phone,
+      limit: 20,
     );
-  }
+    final phoneTail = phone.replaceAll(RegExp(r'\D'), '').substring(1);
+    final exact = page.specialists.where((specialist) {
+      final candidate = (specialist.phone ?? '').replaceAll(RegExp(r'\D'), '');
+      final candidateTail = candidate.length >= 10
+          ? candidate.substring(candidate.length - 10)
+          : candidate;
+      return candidateTail == phoneTail;
+    }).toList();
+    if (exact.isEmpty) {
+      throw Exception(
+        'Специалист с этим номером не найден. Сейчас можно пригласить только зарегистрированного специалиста.',
+      );
+    }
 
-  Future<void> _copyInviteLink() async {
-    if (_inviteLink.isEmpty) return;
-    await Clipboard.setData(ClipboardData(text: _inviteLink));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ссылка скопирована')),
-    );
-  }
+    final specialist = exact.first;
+    if (_staff.any((staff) => staff.id == specialist.id)) {
+      throw Exception('${specialist.displayName} уже в штате компании');
+    }
 
-  Future<void> _shareInviteLink() async {
-    if (_inviteLink.isEmpty) return;
-    if (!mounted) return;
-    final link = _inviteLink;
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheetCtx) {
-        Future<void> launchTarget(String urlStr) async {
-          final messenger = ScaffoldMessenger.of(context);
-          Navigator.of(sheetCtx).pop();
-          var ok = false;
-          try {
-            ok = await launchUrl(
-              Uri.parse(urlStr),
-              mode: LaunchMode.externalApplication,
-            );
-          } catch (_) {
-            ok = false;
-          }
-          if (!ok) {
-            await Clipboard.setData(ClipboardData(text: link));
-            if (!mounted) return;
-            messenger.showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Не удалось открыть мессенджер, ссылка скопирована',
-                ),
-              ),
-            );
-          }
-        }
-
-        final encoded = Uri.encodeComponent(link);
-        final text = 'Приглашение присоединиться к штату компании: $link';
-        final encodedText = Uri.encodeComponent(text);
-        final mailtoSubject = Uri.encodeComponent('Приглашение в штат');
-
-        final targets =
-            <({IconData icon, Color? color, String label, String url})>[
-          (
-            icon: Icons.send_rounded,
-            color: const Color(0xFF0088CC),
-            label: 'Telegram',
-            url: 'https://t.me/share/url?url=$encoded&text=$encodedText',
-          ),
-          (
-            icon: Icons.chat_rounded,
-            color: const Color(0xFF25D366),
-            label: 'WhatsApp',
-            url: 'https://wa.me/?text=$encodedText',
-          ),
-          (
-            icon: Icons.sms_outlined,
-            color: null,
-            label: 'SMS',
-            url: 'sms:?body=$encodedText',
-          ),
-          (
-            icon: Icons.email_outlined,
-            color: null,
-            label: 'Почта',
-            url: 'mailto:?subject=$mailtoSubject&body=$encodedText',
-          ),
-        ];
-
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: SparkSpace.sm),
-                child: MyText(
-                  text: 'Поделиться ссылкой',
-                  size: SparkTextSize.body,
-                  weight: FontWeight.w700,
-                ),
-              ),
-              for (final t in targets)
-                ListTile(
-                  leading: Icon(t.icon, color: t.color),
-                  title: Text(t.label),
-                  onTap: () => launchTarget(t.url),
-                ),
-              ListTile(
-                leading: const Icon(Icons.copy_rounded),
-                title: const Text('Скопировать ссылку'),
-                onTap: () {
-                  Navigator.of(sheetCtx).pop();
-                  _copyInviteLink();
-                },
-              ),
-              const SizedBox(height: SparkSpace.sm),
-            ],
-          ),
-        );
+    await NotificationApi.sendNotification(
+      type: NotificationType.invitation,
+      recipientId: specialist.id,
+      title: 'Приглашение в штат',
+      body:
+          'Компания приглашает вас присоединиться к штату специалистов в Autopodbor.',
+      payload: <String, dynamic>{
+        'source': 'spark_joy_assignee_picker',
+        'phone': phone,
       },
     );
+    return specialist.displayName;
+  }
+
+  Future<void> _openInviteByPhoneDialog() async {
+    final invitedName = await showDialog<String>(
+      context: context,
+      builder: (_) =>
+          _InviteSpecialistByPhoneDialog(onInvite: _sendStaffInvitationByPhone),
+    );
+    if (invitedName == null || !mounted) return;
+    setState(() {
+      _altSection = _AltSection.none;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          invitedName.isEmpty
+              ? 'Приглашение отправлено'
+              : 'Приглашение отправлено: $invitedName',
+        ),
+      ),
+    );
+    await _loadStaff();
   }
 
   // ── Build ──────────────────────────────────────────────────────────
@@ -497,10 +472,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (!selection.isEmpty) ...[
-          _CurrentSelectionBanner(
-            selection: selection,
-            onClear: _clearAll,
-          ),
+          _CurrentSelectionBanner(selection: selection, onClear: _clearAll),
           const SizedBox(height: SparkSpace.lg),
         ],
         _buildStaffSection(),
@@ -531,10 +503,42 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
             weight: FontWeight.w600,
           ),
         ),
-        if (!hasStaff)
-          _EmptyStaffCard(
-            onInvite: () => _toggleAltSection(_AltSection.invite),
+        if (_staffLoading)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(SparkSpace.md),
+            decoration: BoxDecoration(
+              color: kInputBgColor,
+              border: Border.all(color: kBorderColor),
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+            ),
+            child: Row(
+              children: const [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: SparkSpace.sm),
+                MyText(
+                  text: 'Загрузка штата...',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+              ],
+            ),
           )
+        else if (_staffError != null)
+          _HintCard(
+            iconColor: kRedColor,
+            icon: Icons.error_outline_rounded,
+            title: 'Не удалось загрузить штат',
+            description: _staffError!,
+            actionLabel: 'Повторить',
+            onAction: _loadStaff,
+          )
+        else if (!hasStaff)
+          _EmptyStaffCard(onInvite: () => _toggleAltSection(_AltSection.invite))
         else
           Container(
             decoration: BoxDecoration(
@@ -545,16 +549,16 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
             child: Column(
               children: [
                 for (var i = 0; i < staff.length; i++) ...[
-                  if (i > 0)
-                    const Divider(height: 1, indent: SparkSpace.xxxl),
+                  if (i > 0) const Divider(height: 1, indent: SparkSpace.xxxl),
                   _StaffRow(
-                    id: sjRead(staff[i], 'id'),
-                    name: sjRead(staff[i], 'name'),
-                    selected: _mode == SparkJoyAssigneeMode.staff &&
-                        _specialistId == sjRead(staff[i], 'id'),
+                    id: staff[i].id.toString(),
+                    name: staff[i].displayName,
+                    selected:
+                        _mode == SparkJoyAssigneeMode.staff &&
+                        _specialistId == staff[i].id.toString(),
                     onTap: () => _toggleStaff(
-                      sjRead(staff[i], 'id'),
-                      sjRead(staff[i], 'name'),
+                      staff[i].id.toString(),
+                      staff[i].displayName,
                     ),
                   ),
                 ],
@@ -592,8 +596,8 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
         const SizedBox(height: SparkSpace.md),
         _AltCard(
           icon: Icons.link_rounded,
-          title: 'Пригласить по ссылке',
-          subtitle: 'Если ещё нет в приложении',
+          title: 'Пригласить в штат',
+          subtitle: 'По номеру зарегистрированного специалиста',
           expanded: _altSection == _AltSection.invite,
           onToggle: () => _toggleAltSection(_AltSection.invite),
           child: _buildInviteBody(),
@@ -603,7 +607,8 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   }
 
   Widget _buildPhoneBody() {
-    final assigned = _specialistId.isNotEmpty &&
+    final assigned =
+        _specialistId.isNotEmpty &&
         _specialistId == _phoneFoundId &&
         _phoneState == _PhoneLookupState.found;
 
@@ -613,9 +618,9 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
         TextField(
           controller: _phoneController,
           keyboardType: TextInputType.phone,
-          decoration: sparkInputDecoration('(___) ___-__-__').copyWith(
-            prefixText: '+7 ',
-          ),
+          decoration: sparkInputDecoration(
+            '(___) ___-__-__',
+          ).copyWith(prefixText: '+7 '),
           inputFormatters: [_GroupedPhoneFormatter(_formatGrouped)],
           onChanged: _schedulePhoneLookup,
         ),
@@ -656,30 +661,29 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
           icon: Icons.info_outline,
           title: 'Пользователь не найден',
           description:
-              'Пригласите его в приложение — отправьте ссылку-приглашение.',
-          actionLabel: 'Пригласить по ссылке',
-          onAction: () => _toggleAltSection(_AltSection.invite),
+              'Сейчас можно пригласить в штат только зарегистрированного специалиста. Проверьте номер или попросите специалиста зарегистрироваться.',
         );
-      case _PhoneLookupState.blockedOwnStaff:
-        return const _HintCard(
-          iconColor: kYellowColor,
-          icon: Icons.group_outlined,
-          title: 'Пользователь уже в вашем штате',
-          description:
-              'Выберите его в списке сотрудников выше — избежим двойных назначений.',
-        );
-      case _PhoneLookupState.blockedOtherCompany:
+      case _PhoneLookupState.notCompanyStaff:
         return const _HintCard(
           iconColor: kRedColor,
           icon: Icons.block_outlined,
-          title: 'Пользователь состоит в штате другой компании',
+          title: 'Специалист не привязан к вашей компании',
           description:
-              'Назначить его нельзя. Попросите его выйти из штата или выберите другого исполнителя.',
+              'Назначить можно только сотрудника из вашего штата. Пригласите специалиста в компанию или выберите другого исполнителя.',
+        );
+      case _PhoneLookupState.error:
+        return _HintCard(
+          iconColor: kRedColor,
+          icon: Icons.error_outline_rounded,
+          title: 'Ошибка поиска',
+          description: _phoneError.isEmpty
+              ? 'Не удалось выполнить поиск по номеру.'
+              : _phoneError,
         );
       case _PhoneLookupState.idle:
         return const MyText(
           text:
-              'Введите номер существующего пользователя приложения — назначим его исполнителем и отправим push-уведомление.',
+              'Введите номер сотрудника из штата — найдём его через Storage.GetSpecialists и назначим исполнителем.',
           size: SparkTextSize.caption,
           color: kGreyColor,
         );
@@ -687,77 +691,152 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
   }
 
   Widget _buildInviteBody() {
-    final hasLink = _inviteLink.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _inviteBuilding ? null : _generateInviteLink,
-                icon: Icon(
-                  hasLink ? Icons.refresh_rounded : Icons.link_rounded,
-                ),
-                label: Text(
-                  _inviteBuilding
-                      ? 'Формируем...'
-                      : hasLink
-                          ? 'Обновить ссылку'
-                          : 'Сформировать ссылку',
-                ),
-              ),
-            ),
-          ],
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: _openInviteByPhoneDialog,
+            icon: const Icon(Icons.person_add_alt_1_rounded),
+            label: const Text('Пригласить по телефону'),
+          ),
         ),
-        if (hasLink) ...[
-          const SizedBox(height: SparkSpace.md),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.lg,
-              vertical: SparkSpace.md,
-            ),
-            decoration: BoxDecoration(
-              color: kInputBgColor,
-              border: Border.all(color: kBorderColor),
-              borderRadius: BorderRadius.circular(SparkRadius.md),
-            ),
-            child: MyText(
-              text: _inviteLink,
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-            ),
-          ),
-          const SizedBox(height: SparkSpace.md),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _copyInviteLink,
-                  icon: const Icon(Icons.copy_rounded),
-                  label: const Text('Копировать'),
-                ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _shareInviteLink,
-                  icon: const Icon(Icons.share_outlined),
-                  label: const Text('Поделиться'),
-                ),
-              ),
-            ],
-          ),
-        ],
         const SizedBox(height: SparkSpace.md),
         const MyText(
           text:
-              'После перехода по ссылке пользователь установит приложение и получит push-приглашение вступить в штат.',
+              'Специалист получит уведомление-приглашение. После принятия он появится в штате, и его можно будет назначить исполнителем.',
           size: SparkTextSize.caption,
           color: kGreyColor,
         ),
       ],
+    );
+  }
+}
+
+class _InviteSpecialistByPhoneDialog extends StatefulWidget {
+  const _InviteSpecialistByPhoneDialog({required this.onInvite});
+
+  final Future<String> Function(String phone) onInvite;
+
+  @override
+  State<_InviteSpecialistByPhoneDialog> createState() =>
+      _InviteSpecialistByPhoneDialogState();
+}
+
+class _InviteSpecialistByPhoneDialogState
+    extends State<_InviteSpecialistByPhoneDialog> {
+  final _phoneController = TextEditingController();
+  bool _sending = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_sending) return;
+    setState(() {
+      _sending = true;
+      _error = null;
+    });
+    try {
+      final name = await widget.onInvite(_phoneController.text);
+      if (!mounted) return;
+      Navigator.of(context).pop(name);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _sending = false;
+        _error = e.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SparkRadius.xl),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          SparkSpace.xxxl,
+          SparkSpace.xxxl,
+          SparkSpace.xxxl,
+          SparkSpace.xl,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const MyText(
+              text: 'Пригласить в штат',
+              size: SparkTextSize.title,
+              weight: FontWeight.w700,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            const MyText(
+              text:
+                  'Введите телефон зарегистрированного специалиста. Он получит приглашение и после принятия появится в штате компании.',
+              size: SparkTextSize.body,
+              color: kGreyColor,
+            ),
+            const SizedBox(height: SparkSpace.lg),
+            TextField(
+              controller: _phoneController,
+              keyboardType: TextInputType.phone,
+              inputFormatters: [RuPhoneFormatter()],
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              decoration: sparkInputDecoration(
+                '+7___-___-__-__',
+                prefixIcon: const Icon(Icons.phone_outlined, color: kGreyColor),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: SparkSpace.md),
+              MyText(
+                text: _error!,
+                size: SparkTextSize.caption,
+                color: kRedColor,
+              ),
+            ],
+            const SizedBox(height: SparkSpace.xl),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _sending
+                        ? null
+                        : () => Navigator.of(context).pop<String>(),
+                    child: const Text('Отмена'),
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.md),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _sending ? null : _submit,
+                    icon: _sending
+                        ? const SizedBox(
+                            width: SparkSize.spinner,
+                            height: SparkSize.spinner,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: kWhiteColor,
+                            ),
+                          )
+                        : const Icon(Icons.send_rounded),
+                    label: Text(_sending ? 'Отправляем...' : 'Отправить'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -777,7 +856,9 @@ class _CurrentSelectionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasSpecialist = selection.specialistId.isNotEmpty;
-    final icon = hasSpecialist ? Icons.check_circle_outline : Icons.link_rounded;
+    final icon = hasSpecialist
+        ? Icons.check_circle_outline
+        : Icons.link_rounded;
     final label = hasSpecialist
         ? 'Назначен: ${selection.specialistName.isEmpty ? selection.specialistId : selection.specialistName}'
         : 'Ссылка-приглашение сформирована';
@@ -911,7 +992,7 @@ class _EmptyStaffCard extends StatelessWidget {
           const SizedBox(height: SparkSpace.xxs),
           const MyText(
             text:
-                'Пригласите специалиста — он получит ссылку и сможет принять отчёт.',
+                'Пригласите специалиста по телефону — он получит уведомление и сможет вступить в штат.',
             size: SparkTextSize.caption,
             color: kGreyColor,
           ),
@@ -920,8 +1001,8 @@ class _EmptyStaffCard extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: OutlinedButton.icon(
               onPressed: onInvite,
-              icon: const Icon(Icons.link_rounded),
-              label: const Text('Пригласить по ссылке'),
+              icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Пригласить по телефону'),
             ),
           ),
         ],
@@ -1214,14 +1295,6 @@ class _GroupedPhoneFormatter extends TextInputFormatter {
   }
 }
 
-class _MockLookupResult {
-  const _MockLookupResult(this.state, {this.id = '', this.name = '', this.city = ''});
-  final _PhoneLookupState state;
-  final String id;
-  final String name;
-  final String city;
-}
-
 // ══════════════════════════════════════════════════════════════════════
 // Compact trigger row + modal sheet host.
 //
@@ -1381,7 +1454,7 @@ class SparkJoyAssigneeField extends StatelessWidget {
       };
       return (Icons.person_rounded, name, chip);
     }
-    return (Icons.link_rounded, 'Приглашение по ссылке', 'ссылка');
+    return (Icons.mark_email_read_outlined, 'Приглашение отправлено', null);
   }
 
   @override
@@ -1451,13 +1524,9 @@ class SparkJoyAssigneeField extends StatelessWidget {
                   size: SparkSize.iconMd,
                   color: kGreyColor,
                 ),
-                onPressed: () =>
-                    onChanged(const SparkJoyAssigneeSelection()),
+                onPressed: () => onChanged(const SparkJoyAssigneeSelection()),
               ),
-            const Icon(
-              Icons.chevron_right_rounded,
-              color: kGreyColor,
-            ),
+            const Icon(Icons.chevron_right_rounded, color: kGreyColor),
           ],
         ),
       ),

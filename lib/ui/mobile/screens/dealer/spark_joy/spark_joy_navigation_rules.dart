@@ -129,10 +129,14 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
           _SparkJoyStepRegistry.idAt(_stepIndex),
         ) &&
         _activeMediaGroupKey != null) {
+      await _saveDraft(showToast: false);
+      if (!mounted) return;
       _closeMediaGroupEditor();
       return;
     }
     if (_returnToSummaryOnBack) {
+      await _saveDraft(showToast: false);
+      if (!mounted) return;
       final summaryIndex = _stepIndexById(_SparkJoyStepRegistry.idSummary);
       if (_reportFlowController.returnToSummary(
         summaryIndex: summaryIndex,
@@ -148,6 +152,6 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
         return;
       }
     }
-    await _closeSection(save: false);
+    await _closeSection(save: true);
   }
 }
