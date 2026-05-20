@@ -3,8 +3,9 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 
 /// Status enum заявки (`Storage.GetRequest.status`):
 /// `created`, `in_work`, `done`, `canceled`, `await_payment`,
-/// `paid_escrow`, `refund`. Helpers ниже маппят их в UI-метку, цвет
-/// фон/forge для chip'а, иконку для timeline.
+/// `paid_escrow`, `failed`, `refund`. Helpers ниже маппят их в UI-метку, цвет
+/// фон/forge для chip'а, иконку для timeline. Старые/ошибочные значения
+/// нормализуем до canonical status, чтобы на UI не просачивались enum-string.
 ///
 /// Файл-helper нужен чтобы list-screen и detail-screen рендерили
 /// статус идентично — иначе при появлении новых статусов один экран
@@ -12,9 +13,46 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 /// drift в slice 2 и 3 до этого refactor'а).
 
 typedef RequestStatusBadge = ({String label, Color bg, Color fg});
+typedef RequestHistoryReason = ({String label, String? comment});
+
+enum RequestStatusFilter {
+  all('Все', <String>{}),
+  newRequests('Новые', <String>{'created', 'await_payment'}),
+  inProgress('В работе', <String>{'paid_escrow', 'in_work'}),
+  done('Завершены', <String>{'done'}),
+  canceled('Отменены', <String>{'canceled', 'refund'}),
+  failed('Не выполнены', <String>{'failed'});
+
+  const RequestStatusFilter(this.label, this.statuses);
+
+  final String label;
+  final Set<String> statuses;
+
+  bool matches(String status) {
+    if (this == RequestStatusFilter.all) return true;
+    return statuses.contains(normalizeRequestStatus(status));
+  }
+}
+
+String normalizeRequestStatus(String status) {
+  final value = status.trim().toLowerCase();
+  return switch (value) {
+    'failied' => 'failed',
+    'cancelled' => 'canceled',
+    _ => value,
+  };
+}
+
+bool requestMatchesStatusFilter(
+  Map<String, dynamic> request,
+  RequestStatusFilter filter,
+) {
+  return filter.matches((request['status'] ?? '').toString());
+}
 
 RequestStatusBadge requestStatusBadge(String status) {
-  switch (status) {
+  final normalized = normalizeRequestStatus(status);
+  switch (normalized) {
     case 'created':
       return (
         label: 'Создана',
@@ -39,6 +77,12 @@ RequestStatusBadge requestStatusBadge(String status) {
         bg: kRedColor.withValues(alpha: 0.12),
         fg: kRedColor,
       );
+    case 'failed':
+      return (
+        label: 'Не выполнена',
+        bg: kRedColor.withValues(alpha: 0.12),
+        fg: kRedColor,
+      );
     case 'await_payment':
       return (
         label: 'Ожидание оплаты',
@@ -59,7 +103,7 @@ RequestStatusBadge requestStatusBadge(String status) {
       );
     default:
       return (
-        label: status.isEmpty ? '—' : status,
+        label: normalized.isEmpty ? '—' : normalized,
         bg: kGreyColor.withValues(alpha: 0.10),
         fg: kGreyColor,
       );
@@ -67,7 +111,7 @@ RequestStatusBadge requestStatusBadge(String status) {
 }
 
 IconData requestStatusIcon(String status) {
-  switch (status) {
+  switch (normalizeRequestStatus(status)) {
     case 'created':
       return Icons.fiber_new_rounded;
     case 'in_work':
@@ -76,6 +120,8 @@ IconData requestStatusIcon(String status) {
       return Icons.check_rounded;
     case 'canceled':
       return Icons.close_rounded;
+    case 'failed':
+      return Icons.error_outline_rounded;
     case 'await_payment':
     case 'paid_escrow':
       return Icons.payments_outlined;
@@ -103,4 +149,26 @@ String requestRoleLabel(String role) {
     default:
       return role;
   }
+}
+
+RequestHistoryReason requestHistoryReason(String rawReason) {
+  final raw = rawReason.trim();
+  if (raw.isEmpty) return (label: '', comment: null);
+
+  final separator = raw.indexOf(':');
+  final code = (separator >= 0 ? raw.substring(0, separator) : raw).trim();
+  final comment = separator >= 0 ? raw.substring(separator + 1).trim() : '';
+  final label = switch (code) {
+    'specialist_accepted' => 'Специалист принял заявку',
+    'specialist_rejected' => 'Специалист отклонил заявку',
+    'specialist_failed' => 'Специалист отметил заявку как невыполненную',
+    'request_assigned' => 'Назначен специалист',
+    'request_reassigned' => 'Специалист переназначен',
+    'request_canceled' => 'Заявка отменена',
+    'company_canceled' => 'Компания отменила заявку',
+    'request_completed' => 'Заявка завершена',
+    _ => code,
+  };
+
+  return (label: label, comment: comment.isEmpty ? null : comment);
 }

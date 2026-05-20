@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
-import 'spark_joy_create_report_screen.dart';
+import 'spark_joy_company_request_detail_screen.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
@@ -11,84 +12,121 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
   const SparkJoyCompanyStaffDetailScreen({
     super.key,
     required this.specialist,
-    required this.currentDrafts,
+    required this.requests,
   });
 
   final Map<String, dynamic> specialist;
-  final List<Map<String, dynamic>> currentDrafts;
+  final List<Map<String, dynamic>> requests;
 
-  Future<void> _openDraft(
+  Future<void> _openRequest(
     BuildContext context,
-    Map<String, dynamic> draft,
+    Map<String, dynamic> request,
   ) async {
-    await Navigator.of(context).push<bool>(
+    await Navigator.of(context).push<void>(
       MaterialPageRoute(
-        builder: (_) => SparkJoyCreateReportScreen(draft: draft),
+        builder: (_) => SparkJoyCompanyRequestDetailScreen(initial: request),
       ),
     );
   }
 
-  Widget _draftCard(BuildContext context, Map<String, dynamic> draft) {
+  String _str(Map<String, dynamic> data, String key) {
+    return (data[key] ?? '').toString();
+  }
+
+  String _requestTitle(Map<String, dynamic> request) {
+    final number = _str(request, 'requestNumber');
+    return number.isEmpty ? 'Заявка' : 'Заявка №$number';
+  }
+
+  String _requestCarTitle(Map<String, dynamic> request) {
+    final cars = request['requestCars'] ?? request['cars'];
+    if (cars is List && cars.isNotEmpty) {
+      final first = cars.first;
+      if (first is Map) {
+        final brand = first['brand'] is Map
+            ? (first['brand']['name'] ?? '').toString()
+            : (first['brand'] ?? '').toString();
+        final model = first['model'] is Map
+            ? (first['model']['model'] ?? first['model']['name'] ?? '')
+                  .toString()
+            : (first['model'] ?? '').toString();
+        final title = [
+          brand.trim(),
+          model.trim(),
+        ].where((part) => part.isNotEmpty).join(' ');
+        if (title.isNotEmpty) return title;
+      }
+    }
     final title = [
-      sjRead(draft, 'reportName'),
-      sjRead(draft, 'car'),
-      sjRead(draft, 'vin'),
-    ].firstWhere((value) => value.trim().isNotEmpty, orElse: () => 'Отчёт');
-    final step = int.tryParse(sjRead(draft, 'currentStep')) ?? 1;
-    final total = int.tryParse(sjRead(draft, 'totalSteps')) ?? 7;
+      _str(request, 'brand').trim(),
+      _str(request, 'model').trim(),
+    ].where((part) => part.isNotEmpty).join(' ');
+    return title.isEmpty ? 'Автомобиль не указан' : title;
+  }
+
+  String _formatRuDate(String iso) {
+    final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(iso);
+    if (m == null) return iso;
+    return '${m.group(3)}.${m.group(2)}.${m.group(1)}';
+  }
+
+  Widget _requestCard(BuildContext context, Map<String, dynamic> request) {
+    final badge = requestStatusBadge(_str(request, 'status'));
+    final dueAt = _str(request, 'dueAt');
 
     return SparkListCard(
-      onTap: () => _openDraft(context, draft),
+      onTap: () => _openRequest(context, request),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
-            Icons.description_outlined,
+            Icons.assignment_outlined,
             size: SparkSize.iconSm,
-            color: kGreyColor,
+            color: kSecondaryColor,
           ),
           const SizedBox(width: SparkSpace.md),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                MyText(
-                  text: title,
-                  size: SparkTextSize.bodyLg,
-                  weight: FontWeight.w700,
+                Row(
+                  children: [
+                    Expanded(
+                      child: MyText(
+                        text: _requestTitle(request),
+                        size: SparkTextSize.bodyLg,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: SparkSpace.sm),
+                    SparkChip(
+                      text: badge.label,
+                      background: badge.bg,
+                      color: badge.fg,
+                    ),
+                  ],
                 ),
-                if (sjRead(draft, 'vin').isNotEmpty)
+                MyText(
+                  text: _requestCarTitle(request),
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                  paddingTop: SparkSpace.xxs,
+                ),
+                if (dueAt.isNotEmpty)
                   MyText(
-                    text: sjRead(draft, 'vin'),
+                    text: 'Срок: ${_formatRuDate(dueAt)}',
                     size: SparkTextSize.caption,
                     color: kGreyColor,
                     paddingTop: SparkSpace.xxs,
                   ),
-                const SizedBox(height: SparkSpace.xs),
-                SparkChip(
-                  text: 'Шаг $step/$total',
-                  background: kSecondaryColor.withValues(alpha: 0.1),
-                  color: kSecondaryColor,
-                ),
               ],
             ),
           ),
-          const SizedBox(width: SparkSpace.md),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              MyText(
-                text: sjFormatDate(sjRead(draft, 'updatedAt')),
-                size: SparkTextSize.chip,
-                color: kGreyColor,
-              ),
-              const SizedBox(height: SparkSpace.xs),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: SparkSize.iconMd,
-                color: kGreyColor,
-              ),
-            ],
+          const SizedBox(width: SparkSpace.sm),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: SparkSize.iconMd,
+            color: kGreyColor,
           ),
         ],
       ),
@@ -109,7 +147,7 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
         SparkPageHeader(
           title: 'Профиль сотрудника',
           subtitle: specialization.isEmpty
-              ? 'Данные сотрудника и назначенные отчёты'
+              ? 'Данные сотрудника и назначенные заявки'
               : specialization,
         ),
         SparkCard(
@@ -161,16 +199,11 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
           ),
         ],
         const SizedBox(height: SparkSpace.xl),
-        const SparkSectionTitle('Текущие отчёты'),
-        if (currentDrafts.isEmpty)
-          SparkHintCard(
-            text: sjT(
-              'spark.empty.noAssignedReports',
-              fallback: 'Назначенных отчётов пока нет',
-            ),
-          )
+        const SparkSectionTitle('Назначенные заявки'),
+        if (requests.isEmpty)
+          const SparkHintCard(text: 'Назначенных заявок пока нет')
         else
-          ...currentDrafts.map((draft) => _draftCard(context, draft)),
+          ...requests.map((request) => _requestCard(context, request)),
       ],
     );
   }

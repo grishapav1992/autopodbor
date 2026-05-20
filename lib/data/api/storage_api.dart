@@ -1682,8 +1682,7 @@ class StorageApi {
     final publicUrl = _extractString(result, ['publicUrl', 'url']);
     final contentSize = _asInt(result['contentSize']) ?? 0;
     final errorRaw = result['error']?.toString();
-    final error =
-        (errorRaw != null && errorRaw.isNotEmpty) ? errorRaw : null;
+    final error = (errorRaw != null && errorRaw.isNotEmpty) ? errorRaw : null;
     return ProfileMultipartCompleteResult(
       key: key,
       publicUrl: publicUrl,
@@ -1986,6 +1985,31 @@ class StorageApi {
     );
   }
 
+  static Future<RequestActionResult> abandonRequest({
+    required int requestId,
+    required String note,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.AbandonRequest',
+      params: {'requestId': requestId, 'note': note.trim()},
+      timeout: timeout,
+    );
+    final parsed = _requestActionResultFromMap(
+      _asMap(data['result']),
+      fallbackRequestId: requestId,
+      fallbackStatus: 'failed',
+    );
+    if (!parsed.success) {
+      final message = parsed.error?.trim() ?? '';
+      if (message.isNotEmpty) {
+        throw Exception('Storage.AbandonRequest: $message');
+      }
+      throw Exception('Storage.AbandonRequest вернул success=false');
+    }
+    return parsed;
+  }
+
   static Future<RequestActionResult> assignSpecialist({
     required int requestId,
     required int specialistId,
@@ -2145,6 +2169,42 @@ class StorageApi {
       timeout: timeout,
     );
     return _parseSpecialistsPage(data['result'], page: page, limit: limit);
+  }
+
+  static CompanySpecialistUnlinkResult _companySpecialistUnlinkResultFromMap(
+    Map<String, dynamic> result, {
+    required int fallbackSpecialistId,
+  }) {
+    return CompanySpecialistUnlinkResult(
+      success: result['success'] is bool ? result['success'] as bool : true,
+      specialistId: _asInt(result['specialistId']) ?? fallbackSpecialistId,
+      companyId: _asInt(result['companyId']),
+      changed: result['changed'] == true,
+      activeAssignedRequests: _asInt(result['activeAssignedRequests']),
+      error: _asNullableString(result['error']),
+    );
+  }
+
+  static Future<CompanySpecialistUnlinkResult> unlinkCompanySpecialist({
+    required int specialistId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.UnlinkCompanySpecialist',
+      params: {'specialistId': specialistId},
+      timeout: timeout,
+    );
+    final parsed = _companySpecialistUnlinkResultFromMap(
+      _asMap(data['result']),
+      fallbackSpecialistId: specialistId,
+    );
+    if (!parsed.success) {
+      throw CompanySpecialistUnlinkException(
+        code: parsed.error ?? '',
+        activeAssignedRequests: parsed.activeAssignedRequests,
+      );
+    }
+    return parsed;
   }
 
   static String? _asNullableString(dynamic v) {

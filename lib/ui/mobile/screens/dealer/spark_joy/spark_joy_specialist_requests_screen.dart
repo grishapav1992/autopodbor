@@ -5,13 +5,17 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_create_report_screen.dart';
+import 'spark_joy_error_snackbar.dart';
+import 'spark_joy_request_filter_bar.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoySpecialistRequestsScreen extends StatefulWidget {
-  const SparkJoySpecialistRequestsScreen({super.key});
+  const SparkJoySpecialistRequestsScreen({super.key, this.active = false});
+
+  final bool active;
 
   @override
   State<SparkJoySpecialistRequestsScreen> createState() =>
@@ -23,11 +27,33 @@ class _SparkJoySpecialistRequestsScreenState
   List<Map<String, dynamic>>? _requests;
   bool _loading = true;
   String? _loadError;
+  RequestStatusFilter _statusFilter = RequestStatusFilter.all;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.active) {
+      _load();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SparkJoySpecialistRequestsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active && _requests == null) {
+      _load();
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
+    try {
+      return await storage_api.StorageApi.getRequests();
+    } on storage_api.SessionExpiredException {
+      rethrow;
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      return storage_api.StorageApi.getRequests();
+    }
   }
 
   Future<void> _load() async {
@@ -38,7 +64,7 @@ class _SparkJoySpecialistRequestsScreenState
       _loadError = null;
     });
     try {
-      final result = await storage_api.StorageApi.getRequests();
+      final result = await _getRequestsWithRetry();
       if (!mounted) return;
       setState(() {
         _requests = result;
@@ -58,31 +84,23 @@ class _SparkJoySpecialistRequestsScreenState
       }
     } catch (e) {
       if (!mounted) return;
-      final msg = 'Не удалось обновить список: $e';
       if (hadData) {
-        _showRefreshErrorSnackbar(msg);
+        _showRefreshErrorSnackbar(e, fallback: 'Не удалось обновить список');
         setState(() => _loading = false);
       } else {
         setState(() {
           _loading = false;
-          _loadError = 'Не удалось загрузить заявки: $e';
+          _loadError = sparkJoyReadableErrorText(
+            e,
+            fallback: 'Не удалось загрузить заявки',
+          );
         });
       }
     }
   }
 
-  void _showRefreshErrorSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: kRedColor,
-        action: SnackBarAction(
-          label: 'Повторить',
-          textColor: kWhiteColor,
-          onPressed: _load,
-        ),
-      ),
-    );
+  void _showRefreshErrorSnackbar(Object error, {String? fallback}) {
+    showSparkJoyErrorSnackBar(context, error, fallback: fallback);
   }
 
   Future<void> _openDetail(Map<String, dynamic> request) async {
@@ -112,32 +130,47 @@ class _SparkJoySpecialistRequestsScreenState
           SparkErrorState(
             title: 'Не удалось загрузить заявки',
             subtitle: _loadError!,
+            copyText: _loadError,
             onRetry: _load,
           ),
         ],
       );
     }
 
-    final requests = _requests ?? const [];
-    if (requests.isEmpty) {
+    final allRequests = _requests ?? const [];
+    if (allRequests.isEmpty) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
         children: const [SizedBox(height: 60), _EmptyInboxState()],
       );
     }
+    final filteredRequests = allRequests
+        .where((request) => requestMatchesStatusFilter(request, _statusFilter))
+        .toList();
 
     return SparkScreenList(
       bottomInset: 24,
       onRefresh: _load,
       children: [
-        SparkSectionTitle('Назначенные заявки (${requests.length})'),
+        const SparkSectionTitle('Назначенные заявки'),
         const SizedBox(height: SparkSpace.md),
-        for (final r in requests)
-          Padding(
-            padding: const EdgeInsets.only(bottom: SparkSpace.md),
-            child: _SpecialistRequestCard(data: r, onTap: () => _openDetail(r)),
-          ),
+        SparkJoyRequestFilterBar(
+          value: _statusFilter,
+          onChanged: (filter) => setState(() => _statusFilter = filter),
+        ),
+        const SizedBox(height: SparkSpace.lg),
+        if (filteredRequests.isEmpty)
+          const SparkHintCard(text: 'Заявок с таким статусом нет')
+        else
+          for (final r in filteredRequests)
+            Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.md),
+              child: _SpecialistRequestCard(
+                data: r,
+                onTap: () => _openDetail(r),
+              ),
+            ),
       ],
     );
   }
@@ -433,7 +466,7 @@ class _SparkJoySpecialistRequestDetailScreenState
       _showActionError('Сессия истекла. Войдите заново.');
     } catch (e) {
       if (!mounted) return;
-      _showActionError('Не удалось принять заявку: $e');
+      _showActionError(e, fallback: 'Не удалось принять заявку');
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -449,18 +482,6 @@ class _SparkJoySpecialistRequestDetailScreenState
     );
   }
 
-  Future<void> _cancelAcceptedRequest() {
-    return _rejectRequest(
-      title: 'Отменить работу по заявке',
-      hint: 'Причина отмены для компании (необязательно)',
-      actionLabel: 'Отменить работу',
-      actionIcon: Icons.cancel_outlined,
-      successMessage: 'Работа по заявке отменена',
-      errorMessage: 'Не удалось отменить работу по заявке',
-      removeLocalDrafts: true,
-    );
-  }
-
   Future<void> _rejectRequest({
     required String title,
     required String hint,
@@ -468,7 +489,6 @@ class _SparkJoySpecialistRequestDetailScreenState
     required String successMessage,
     required String errorMessage,
     IconData actionIcon = Icons.close_rounded,
-    bool removeLocalDrafts = false,
   }) async {
     final note = await _showNoteSheet(
       context,
@@ -492,9 +512,6 @@ class _SparkJoySpecialistRequestDetailScreenState
       if (result.status.isNotEmpty) {
         setState(() => _request['status'] = result.status);
       }
-      if (removeLocalDrafts) {
-        await _deleteLocalDraftsForRequest(id);
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
@@ -505,7 +522,56 @@ class _SparkJoySpecialistRequestDetailScreenState
       _showActionError('Сессия истекла. Войдите заново.');
     } catch (e) {
       if (!mounted) return;
-      _showActionError('$errorMessage: $e');
+      _showActionError(e, fallback: errorMessage);
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
+
+  Future<void> _abandonRequest() async {
+    final note = await _showNoteSheet(
+      context,
+      title: 'Заявка не выполнена',
+      hint: 'Причина, почему не удалось выполнить заявку',
+      actionLabel: 'Отметить неудачной',
+      actionIcon: Icons.error_outline_rounded,
+      destructive: true,
+    );
+    if (note == null || _actionBusy) return;
+    if (note.trim().isEmpty) {
+      _showActionError('Укажите причину, почему заявку не удалось выполнить');
+      return;
+    }
+    final id = _requestId;
+    if (id == null) return;
+    HapticFeedback.mediumImpact();
+    setState(() => _actionBusy = true);
+    try {
+      final result = await storage_api.StorageApi.abandonRequest(
+        requestId: id,
+        note: note,
+      );
+      if (!mounted) return;
+      setState(
+        () => _request['status'] = result.status.isNotEmpty
+            ? result.status
+            : 'failed',
+      );
+      await _deleteLocalDraftsForRequest(id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Заявка отмечена как не выполненная')),
+      );
+      Navigator.of(context).pop(true);
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      _showActionError('Сессия истекла. Войдите заново.');
+    } catch (e) {
+      if (!mounted) return;
+      _showActionError(
+        e,
+        fallback: 'Не удалось отметить заявку как не выполненную',
+      );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -523,10 +589,8 @@ class _SparkJoySpecialistRequestDetailScreenState
     }
   }
 
-  void _showActionError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: kRedColor),
-    );
+  void _showActionError(Object error, {String? fallback}) {
+    showSparkJoyErrorSnackBar(context, error, fallback: fallback);
   }
 
   Future<void> _openReportForRequest() async {
@@ -548,7 +612,7 @@ class _SparkJoySpecialistRequestDetailScreenState
       }
     } catch (e) {
       if (!mounted) return;
-      _showActionError('Не удалось открыть отчёт по заявке: $e');
+      _showActionError(e, fallback: 'Не удалось открыть отчёт по заявке');
     } finally {
       if (mounted) setState(() => _openingReport = false);
     }
@@ -658,7 +722,7 @@ class _SparkJoySpecialistRequestDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final status = _str('status');
+    final status = normalizeRequestStatus(_str('status'));
     final badge = requestStatusBadge(status);
     final number = _str('requestNumber');
     final createdAt = _str('createdAt');
@@ -671,6 +735,7 @@ class _SparkJoySpecialistRequestDetailScreenState
     final ownersCount = _request['ownersCount'];
     final history = _historyNewestFirst(_request['requestStatusHistories']);
     final canRespond = status == 'created';
+    final canAbandon = status == 'paid_escrow' || status == 'in_work';
 
     return Scaffold(
       backgroundColor: kPrimaryColor,
@@ -833,18 +898,20 @@ class _SparkJoySpecialistRequestDetailScreenState
                 ),
               ),
             ),
-          ] else if (status == 'in_work') ...[
-            SparkPrimaryActionButton(
-              label: _openingReport ? 'Открываем...' : 'Начать отчёт',
-              icon: Icons.edit_note_rounded,
-              busy: _openingReport,
-              onTap: _openReportForRequest,
-            ),
-            const SizedBox(height: SparkSpace.md),
+          ] else if (canAbandon) ...[
+            if (status == 'in_work') ...[
+              SparkPrimaryActionButton(
+                label: _openingReport ? 'Открываем...' : 'Начать отчёт',
+                icon: Icons.edit_note_rounded,
+                busy: _openingReport,
+                onTap: _openReportForRequest,
+              ),
+              const SizedBox(height: SparkSpace.md),
+            ],
             OutlinedButton.icon(
-              onPressed: _actionBusy ? null : _cancelAcceptedRequest,
-              icon: const Icon(Icons.cancel_outlined),
-              label: Text(_actionBusy ? 'Сохраняем...' : 'Отменить работу'),
+              onPressed: _actionBusy ? null : _abandonRequest,
+              icon: const Icon(Icons.error_outline_rounded),
+              label: Text(_actionBusy ? 'Сохраняем...' : 'Отметить неудачной'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: kRedColor,
                 minimumSize: const Size(
@@ -1110,7 +1177,7 @@ class _HistoryEntry extends StatelessWidget {
     final oldStatus = (entry['oldStatus'] ?? '').toString();
     final newStatus = (entry['newStatus'] ?? '').toString();
     final role = (entry['changedByRole'] ?? '').toString();
-    final reason = (entry['reason'] ?? '').toString().trim();
+    final reason = requestHistoryReason((entry['reason'] ?? '').toString());
     final createdAt = (entry['createdAt'] ?? '').toString();
     final badge = requestStatusBadge(newStatus);
     final transition = oldStatus.isEmpty
@@ -1156,10 +1223,19 @@ class _HistoryEntry extends StatelessWidget {
                     color: kGreyColor,
                   ),
                 ],
-                if (reason.isNotEmpty) ...[
+                if (reason.label.isNotEmpty) ...[
                   const SizedBox(height: SparkSpace.xs),
                   MyText(
-                    text: reason,
+                    text: reason.label,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    lineHeight: 1.4,
+                  ),
+                ],
+                if (reason.comment != null) ...[
+                  const SizedBox(height: SparkSpace.xxs),
+                  MyText(
+                    text: 'Комментарий: ${reason.comment}',
                     size: SparkTextSize.caption,
                     color: kGreyColor,
                     lineHeight: 1.4,

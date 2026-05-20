@@ -15,6 +15,7 @@ import 'spark_joy_company_requests_screen.dart';
 import 'spark_joy_company_request_detail_screen.dart';
 import 'spark_joy_company_staff_screen.dart';
 import 'spark_joy_data.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_notifications_screen.dart';
 import 'spark_joy_notifications_storage.dart';
 import 'spark_joy_onboarding.dart';
@@ -78,20 +79,20 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         SparkJoyOnboardingBullet(
           i18nKey: 'spark.onboarding.staff.b1',
           fallback:
-              'Здесь видны ваши штатные специалисты, внешние исполнители и приглашения, которые ждут отклика.',
+              'Здесь отображаются только специалисты, реально привязанные к вашей компании.',
           icon: Icons.groups_2_outlined,
         ),
         SparkJoyOnboardingBullet(
           i18nKey: 'spark.onboarding.staff.b2',
           fallback:
-              'Чтобы пригласить нового сотрудника — отправьте ему ссылку-приглашение из любого черновика отчёта.',
+              'Нового сотрудника можно пригласить по номеру телефона — он появится в списке после принятия приглашения.',
           icon: Icons.send_to_mobile_rounded,
         ),
         SparkJoyOnboardingBullet(
           i18nKey: 'spark.onboarding.staff.b3',
           fallback:
-              'Внешнего специалиста, который выполнил вашу задачу, можно перевести в штат кнопкой «Добавить в штат».',
-          icon: Icons.person_add_alt_1_outlined,
+              'Сотрудника можно удалить из штата, если у него нет активных назначенных заявок.',
+          icon: Icons.person_remove_outlined,
         ),
       ],
     );
@@ -262,8 +263,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       );
     } catch (e) {
       if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(content: Text('Не удалось открыть заявку: $e')),
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось открыть заявку',
       );
     }
   }
@@ -426,13 +429,17 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       return _SparkJoyLogin(onLogin: _login);
     }
 
-    final tabs = _role == SparkJoyRole.specialist
+    final isSpecialist = _role == SparkJoyRole.specialist;
+    final tabCount = isSpecialist ? 3 : 4;
+    final index = _index >= tabCount ? 0 : _index;
+    final tabs = isSpecialist
         ? <Widget>[
             SparkJoyReportsListScreen(
+              active: index == 0,
               companyMode: false,
               tabRequest: _requestedReportsTab,
             ),
-            const SparkJoySpecialistRequestsScreen(),
+            SparkJoySpecialistRequestsScreen(active: index == 1),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
               onLogout: _logout,
@@ -440,18 +447,18 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           ]
         : <Widget>[
             SparkJoyReportsListScreen(
+              active: index == 0,
               companyMode: true,
               tabRequest: _requestedReportsTab,
             ),
-            const SparkJoyCompanyStaffScreen(),
-            const SparkJoyCompanyRequestsScreen(),
+            SparkJoyCompanyStaffScreen(active: index == 1),
+            SparkJoyCompanyRequestsScreen(active: index == 2),
             SparkJoySpecialistProfileScreen(
               onBusinessStatusChanged: _onBusinessStatusChanged,
               onLogout: _logout,
             ),
           ];
     final destinations = _navDestinations();
-    final index = _index >= tabs.length ? 0 : _index;
 
     // Progressive trim: 72 → 60 → 56 (89f65dd icon-only-inactive) →
     // 64 here. User asked the inactive labels back; with always-show

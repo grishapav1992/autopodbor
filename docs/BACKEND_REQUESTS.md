@@ -13,13 +13,19 @@
 |---|---|---|
 | `Storage.GetSpecialists({page, limit, search?, cities?, minRating?})` | live | Поиск специалиста по телефону/email (search exact-match) |
 | `Storage.GetCompanySpecialists({page, limit})` | live | Список штатных специалистов компании |
+| `Storage.UnlinkCompanySpecialist({specialistId})` | live | Удаление сотрудника из штата компании |
 | `Storage.CreateRequest({assignedSpecialistId, ...})` | live | Назначение заявки на специалиста при создании |
-| `Storage.AcceptRequest / RejectRequest / CompleteRequest` | live | Lifecycle заявки |
+| `Storage.AcceptRequest / RejectRequest / AbandonRequest / CompleteRequest` | live | Lifecycle заявки |
 | `Storage.GetRequest.assignedSpecialist/assignedSpecialistId` | live | Компания видит назначенного специалиста в detail-screen |
 | `Storage.GetRequest.reportId/reportNumber` | live | Компания может создать share-ссылку готового отчёта из detail-screen |
 | `Storage.AssignSpecialist` | live | Переназначение специалиста на заявку в `created` / `await_payment` |
 | `Storage.CancelRequest` | live | Отмена заявки до оплаты/начала работы |
 | `GetProfile.isVerifyEmail` | live | Подтверждено 2026-05-20 — флаг приходит в ответе (закрывает бывший P2) |
+
+`RejectRequest` используется специалистом только до взятия заявки в работу.
+Если заявка уже оплачена/в работе (`paid_escrow` / `in_work`) и специалист
+не может её выполнить, фронт вызывает `Storage.AbandonRequest({requestId, note})`;
+`note` обязателен, итоговый статус заявки — `failed`.
 
 ---
 

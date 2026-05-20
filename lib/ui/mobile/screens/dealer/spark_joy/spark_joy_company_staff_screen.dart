@@ -7,16 +7,16 @@ import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.da
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_staff_detail_screen.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
-import 'spark_joy_storage.dart';
+import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
 class _StaffEntry {
-  const _StaffEntry({required this.data, this.assignedDraftCount = 0});
+  const _StaffEntry({required this.data});
 
   final Map<String, dynamic> data;
-  final int assignedDraftCount;
 }
 
 class _InviteSpecialistByPhoneDialog extends StatefulWidget {
@@ -55,7 +55,7 @@ class _InviteSpecialistByPhoneDialogState
       if (!mounted) return;
       setState(() {
         _sending = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = sparkJoyReadableErrorText(e);
       });
     }
   }
@@ -147,7 +147,9 @@ class _InviteSpecialistByPhoneDialogState
 }
 
 class SparkJoyCompanyStaffScreen extends StatefulWidget {
-  const SparkJoyCompanyStaffScreen({super.key});
+  const SparkJoyCompanyStaffScreen({super.key, this.active = false});
+
+  final bool active;
 
   @override
   State<SparkJoyCompanyStaffScreen> createState() =>
@@ -161,21 +163,24 @@ class _SparkJoyCompanyStaffScreenState
   bool _loading = true;
   String? _loadError;
   String _search = '';
-  List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _requests = <Map<String, dynamic>>[];
   List<SpecialistItem> _staff = const <SpecialistItem>[];
+  final Set<int> _unlinkingStaffIds = <int>{};
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.active) {
+      _load();
+    }
   }
 
-  bool _isCompanyDraft(Map<String, dynamic> draft) {
-    final businessType = sjRead(draft, 'businessType').toLowerCase();
-    final companyId = sjRead(draft, 'companyId');
-    return businessType == 'company' ||
-        businessType == 'ip' ||
-        companyId.isNotEmpty;
+  @override
+  void didUpdateWidget(covariant SparkJoyCompanyStaffScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      _load();
+    }
   }
 
   Future<List<SpecialistItem>> _loadCompanyStaff() async {
@@ -196,43 +201,78 @@ class _SparkJoyCompanyStaffScreenState
     return staff;
   }
 
+  Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
+    try {
+      return await storage_api.StorageApi.getRequests();
+    } on storage_api.SessionExpiredException {
+      rethrow;
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      return storage_api.StorageApi.getRequests();
+    }
+  }
+
   Future<void> _load() async {
+    final hadData = _staff.isNotEmpty;
     setState(() {
-      _loading = true;
+      _loading = !hadData;
       _loadError = null;
     });
     try {
-      final result = await Future.wait<dynamic>([
-        SparkJoyStorage.loadDrafts(),
-        _loadCompanyStaff(),
-      ]);
-      final drafts = (result[0] as List<Map<String, dynamic>>)
-          .where(_isCompanyDraft)
-          .toList();
-      final staff = result[1] as List<SpecialistItem>;
+      final staff = await _loadCompanyStaff();
+      var requests = _requests;
+      try {
+        requests = (await _getRequestsWithRetry())
+            .map((request) => Map<String, dynamic>.from(request))
+            .toList();
+      } catch (e) {
+        if (mounted && _requests.isNotEmpty) {
+          _showRefreshErrorSnackbar(
+            e,
+            fallback:
+                'Список сотрудников обновлён, заявки сотрудника обновить не удалось',
+          );
+        }
+      }
       if (!mounted) return;
       setState(() {
-        _drafts = drafts;
+        _requests = requests;
         _staff = staff;
         _loading = false;
       });
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadError = 'Сессия истекла. Войдите заново.';
-      });
-    } catch (_) {
+      const msg = 'Сессия истекла. Войдите заново.';
+      if (hadData) {
+        _showRefreshErrorSnackbar(msg);
+        setState(() => _loading = false);
+      } else {
+        setState(() {
+          _loading = false;
+          _loadError = msg;
+        });
+      }
+    } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _loadError = sjT(
-          'spark.state.error.staff',
-          fallback:
-              'Не удалось загрузить список сотрудников. Проверьте подключение и повторите.',
-        );
-      });
+      final msg = sjT(
+        'spark.state.error.staff',
+        fallback:
+            'Не удалось загрузить список сотрудников. Проверьте подключение и повторите.',
+      );
+      if (hadData) {
+        _showRefreshErrorSnackbar(e, fallback: msg);
+        setState(() => _loading = false);
+      } else {
+        setState(() {
+          _loading = false;
+          _loadError = sparkJoyReadableErrorText(e, fallback: msg);
+        });
+      }
     }
+  }
+
+  void _showRefreshErrorSnackbar(Object error, {String? fallback}) {
+    showSparkJoyErrorSnackBar(context, error, fallback: fallback);
   }
 
   Map<String, dynamic> _specialistMap(SpecialistItem specialist) {
@@ -250,45 +290,50 @@ class _SparkJoyCompanyStaffScreenState
     };
   }
 
-  Map<String, List<Map<String, dynamic>>> _buildDraftsByAssignee() {
-    final index = <String, List<Map<String, dynamic>>>{};
-    for (final d in _drafts) {
-      final id = sjRead(
-        d,
-        'assignedSpecialistId',
-        fallback: sjRead(d, 'specialistId'),
-      );
-      if (id.isEmpty) continue;
-      (index[id] ??= <Map<String, dynamic>>[]).add(d);
-    }
-    return index;
+  int? _readInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    return null;
   }
 
-  List<Map<String, dynamic>> _draftsListForId(String id) {
-    if (id.isEmpty) return const <Map<String, dynamic>>[];
-    return _drafts
-        .where(
-          (d) =>
-              sjRead(
-                d,
-                'assignedSpecialistId',
-                fallback: sjRead(d, 'specialistId'),
-              ) ==
-              id,
-        )
-        .map((draft) => Map<String, dynamic>.from(draft))
+  int? _assignedSpecialistId(Map<String, dynamic> request) {
+    final rawSpecialist = request['assignedSpecialist'];
+    final specialist = rawSpecialist is Map
+        ? Map<String, dynamic>.from(rawSpecialist)
+        : null;
+    return _readInt(request['assignedSpecialistId']) ??
+        _readInt(request['assignedSpecialistUserId']) ??
+        _readInt(specialist?['id']);
+  }
+
+  List<Map<String, dynamic>> _requestsListForId(int specialistId) {
+    return _requests
+        .where((request) => _assignedSpecialistId(request) == specialistId)
+        .map((request) => Map<String, dynamic>.from(request))
         .toList();
   }
 
+  bool _isActiveRequest(Map<String, dynamic> request) {
+    switch (normalizeRequestStatus(sjRead(request, 'status'))) {
+      case 'created':
+      case 'await_payment':
+      case 'paid_escrow':
+      case 'in_work':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  List<Map<String, dynamic>> _activeRequestsListForId(int specialistId) {
+    return _requestsListForId(specialistId).where(_isActiveRequest).toList();
+  }
+
   List<_StaffEntry> _buildEntries() {
-    final draftsByAssignee = _buildDraftsByAssignee();
-    return _staff.map((specialist) {
-      final id = specialist.id.toString();
-      return _StaffEntry(
-        data: _specialistMap(specialist),
-        assignedDraftCount: draftsByAssignee[id]?.length ?? 0,
-      );
-    }).toList();
+    return _staff
+        .map((specialist) => _StaffEntry(data: _specialistMap(specialist)))
+        .toList();
   }
 
   List<_StaffEntry> _filter(List<_StaffEntry> all) {
@@ -307,16 +352,93 @@ class _SparkJoyCompanyStaffScreenState
   }
 
   Future<void> _openSpecialist(Map<String, dynamic> specialist) async {
-    final id = sjRead(specialist, 'id');
+    final specialistId = _specialistId(specialist);
+    if (specialistId == null) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => SparkJoyCompanyStaffDetailScreen(
           specialist: specialist,
-          currentDrafts: _draftsListForId(id),
+          requests: _requestsListForId(specialistId),
         ),
       ),
     );
     await _load();
+  }
+
+  int? _specialistId(Map<String, dynamic> specialist) {
+    return int.tryParse(sjRead(specialist, 'id'));
+  }
+
+  Future<bool> _confirmUnlinkSpecialist(Map<String, dynamic> specialist) async {
+    final name = sjRead(specialist, 'name', fallback: 'сотрудника');
+    final specialistId = _specialistId(specialist);
+    final activeRequests = specialistId == null
+        ? 0
+        : _activeRequestsListForId(specialistId).length;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Удалить из штата?'),
+        content: Text(
+          activeRequests > 0
+              ? '$name будет удалён из штата компании. Если у сотрудника есть активные заявки, сервер не позволит выполнить удаление.'
+              : '$name будет удалён из штата компании.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: FilledButton.styleFrom(backgroundColor: kRedColor),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  Future<void> _unlinkSpecialist(Map<String, dynamic> specialist) async {
+    final specialistId = _specialistId(specialist);
+    if (specialistId == null || specialistId <= 0) {
+      showSparkJoyErrorSnackBar(context, 'Не удалось определить ID сотрудника');
+      return;
+    }
+    if (_unlinkingStaffIds.contains(specialistId)) return;
+
+    final confirmed = await _confirmUnlinkSpecialist(specialist);
+    if (!confirmed || !mounted) return;
+
+    setState(() => _unlinkingStaffIds.add(specialistId));
+    try {
+      await storage_api.StorageApi.unlinkCompanySpecialist(
+        specialistId: specialistId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _staff = _staff.where((staff) => staff.id != specialistId).toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сотрудник удалён из штата')),
+      );
+      await _load();
+    } on storage_api.CompanySpecialistUnlinkException catch (e) {
+      if (!mounted) return;
+      showSparkJoyErrorSnackBar(context, e);
+    } catch (e) {
+      if (!mounted) return;
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось удалить сотрудника',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _unlinkingStaffIds.remove(specialistId));
+      }
+    }
   }
 
   String _normalizePhone(String value) {
@@ -398,38 +520,15 @@ class _SparkJoyCompanyStaffScreenState
     );
   }
 
-  Widget _buildStatTile({
-    required String title,
-    required String value,
-    required IconData icon,
-  }) {
-    return Expanded(
-      child: SparkCard(
-        padding: const EdgeInsets.all(SparkSpace.lg),
-        radius: SparkRadius.md,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: SparkSize.iconSm, color: kSecondaryColor),
-            const SizedBox(height: SparkSpace.xs),
-            MyText(
-              text: value,
-              size: SparkTextSize.title,
-              weight: FontWeight.w700,
-            ),
-            MyText(text: title, size: SparkTextSize.caption, color: kGreyColor),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildPersonCard(_StaffEntry entry) {
     final specialist = entry.data;
     final phone = sjRead(specialist, 'phone');
     final email = sjRead(specialist, 'email');
     final city = sjRead(specialist, 'city');
     final specialization = sjRead(specialist, 'specialization');
+    final specialistId = _specialistId(specialist);
+    final unlinking =
+        specialistId != null && _unlinkingStaffIds.contains(specialistId);
 
     return SparkListCard(
       onTap: () => _openSpecialist(specialist),
@@ -493,21 +592,34 @@ class _SparkJoyCompanyStaffScreenState
                 ),
               ),
               const SizedBox(width: SparkSpace.sm),
+              SizedBox(
+                width: SparkSize.actionHeight,
+                height: SparkSize.actionHeight,
+                child: IconButton(
+                  tooltip: 'Удалить из штата',
+                  onPressed: unlinking
+                      ? null
+                      : () => _unlinkSpecialist(specialist),
+                  icon: unlinking
+                      ? const SizedBox(
+                          width: SparkSize.spinner,
+                          height: SparkSize.spinner,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(
+                          Icons.person_remove_outlined,
+                          size: SparkSize.iconMd,
+                          color: kRedColor,
+                        ),
+                ),
+              ),
+              const SizedBox(width: SparkSpace.xs),
               const Icon(
                 Icons.chevron_right_rounded,
                 size: SparkSize.iconMd,
                 color: kGreyColor,
               ),
             ],
-          ),
-          const SizedBox(height: SparkSpace.md),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: SparkChip(
-              text: 'Текущих отчётов: ${entry.assignedDraftCount}',
-              background: kSecondaryColor.withValues(alpha: 0.08),
-              color: kSecondaryColor,
-            ),
           ),
         ],
       ),
@@ -518,30 +630,11 @@ class _SparkJoyCompanyStaffScreenState
   Widget build(BuildContext context) {
     final all = _buildEntries();
     final entries = _filter(all);
-    final assignedCount = all.fold<int>(
-      0,
-      (sum, entry) => sum + entry.assignedDraftCount,
-    );
 
     return SparkScreenList(
       bottomInset: 56,
+      onRefresh: _load,
       children: [
-        Row(
-          children: [
-            _buildStatTile(
-              title: 'Сотрудников',
-              value: '${all.length}',
-              icon: Icons.badge_outlined,
-            ),
-            const SizedBox(width: SparkSpace.md),
-            _buildStatTile(
-              title: 'Текущих отчётов',
-              value: '$assignedCount',
-              icon: Icons.description_outlined,
-            ),
-          ],
-        ),
-        const SizedBox(height: SparkSpace.lg),
         SizedBox(
           height: SparkSize.actionHeight,
           child: FilledButton.icon(
@@ -572,6 +665,7 @@ class _SparkJoyCompanyStaffScreenState
           SparkErrorState(
             title: sjT('spark.state.error.title', fallback: 'Ошибка загрузки'),
             subtitle: _loadError!,
+            copyText: _loadError,
             onRetry: _load,
           )
         else if (entries.isEmpty)

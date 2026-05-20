@@ -6,7 +6,9 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_create_request_screen.dart';
 import 'spark_joy_company_request_detail_screen.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_onboarding.dart';
+import 'spark_joy_request_filter_bar.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -20,7 +22,9 @@ import 'spark_joy_ui.dart';
 ///  * Онбординг при первом открытии (одноразовый, через
 ///    [SparkJoyOnboarding.showOnce]).
 class SparkJoyCompanyRequestsScreen extends StatefulWidget {
-  const SparkJoyCompanyRequestsScreen({super.key});
+  const SparkJoyCompanyRequestsScreen({super.key, this.active = false});
+
+  final bool active;
 
   @override
   State<SparkJoyCompanyRequestsScreen> createState() =>
@@ -32,13 +36,31 @@ class _SparkJoyCompanyRequestsScreenState
   List<Map<String, dynamic>>? _requests;
   bool _loading = true;
   String? _loadError;
+  RequestStatusFilter _statusFilter = RequestStatusFilter.all;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    if (widget.active) {
+      _load();
+      _showOnboarding();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SparkJoyCompanyRequestsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      if (_requests == null) {
+        _load();
+      }
+      _showOnboarding();
+    }
+  }
+
+  void _showOnboarding() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !widget.active) return;
       SparkJoyOnboarding.showOnce(
         context,
         flagKey: UserSimplePreferences.sparkOnbCompanyRequestsKey,
@@ -49,27 +71,35 @@ class _SparkJoyCompanyRequestsScreenState
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.companyRequests.b1',
             fallback:
-                'Здесь живут все заявки, которые ваша компания '
-                'отправила специалистам.',
+                'Здесь собраны заявки вашей компании: статус, назначенный специалист и результат работы.',
             icon: Icons.assignment_outlined,
           ),
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.companyRequests.b2',
             fallback:
-                'Тапните «+», чтобы создать заявку и назначить её '
-                'специалисту из штата.',
+                'Нажмите «+», выберите автомобиль, срок и назначьте исполнителя из штата или по телефону.',
             icon: Icons.add_circle_outline_rounded,
           ),
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.companyRequests.b3',
             fallback:
-                'После завершения отчёта вы получите ссылку, '
-                'которой можно поделиться с клиентом.',
+                'До начала работы заявку можно переназначить или отменить; после готового отчёта доступна ссылка для клиента.',
             icon: Icons.ios_share_rounded,
           ),
         ],
       );
     });
+  }
+
+  Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
+    try {
+      return await storage_api.StorageApi.getRequests();
+    } on storage_api.SessionExpiredException {
+      rethrow;
+    } catch (_) {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      return storage_api.StorageApi.getRequests();
+    }
   }
 
   Future<void> _load() async {
@@ -83,7 +113,7 @@ class _SparkJoyCompanyRequestsScreenState
       _loadError = null;
     });
     try {
-      final result = await storage_api.StorageApi.getRequests();
+      final result = await _getRequestsWithRetry();
       if (!mounted) return;
       setState(() {
         _requests = result;
@@ -103,31 +133,23 @@ class _SparkJoyCompanyRequestsScreenState
       }
     } catch (e) {
       if (!mounted) return;
-      final msg = 'Не удалось обновить список: $e';
       if (hadData) {
-        _showRefreshErrorSnackbar(msg);
+        _showRefreshErrorSnackbar(e, fallback: 'Не удалось обновить список');
         setState(() => _loading = false);
       } else {
         setState(() {
           _loading = false;
-          _loadError = 'Не удалось загрузить список: $e';
+          _loadError = sparkJoyReadableErrorText(
+            e,
+            fallback: 'Не удалось загрузить список',
+          );
         });
       }
     }
   }
 
-  void _showRefreshErrorSnackbar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: kRedColor,
-        action: SnackBarAction(
-          label: 'Повторить',
-          textColor: kWhiteColor,
-          onPressed: _load,
-        ),
-      ),
-    );
+  void _showRefreshErrorSnackbar(Object error, {String? fallback}) {
+    showSparkJoyErrorSnackBar(context, error, fallback: fallback);
   }
 
   Future<void> _openCreateRequest() async {
@@ -170,13 +192,14 @@ class _SparkJoyCompanyRequestsScreenState
           SparkErrorState(
             title: 'Не удалось загрузить заявки',
             subtitle: _loadError!,
+            copyText: _loadError,
             onRetry: _load,
           ),
         ],
       );
     }
-    final requests = _requests ?? const [];
-    if (requests.isEmpty) {
+    final allRequests = _requests ?? const [];
+    if (allRequests.isEmpty) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
@@ -232,15 +255,16 @@ class _SparkJoyCompanyRequestsScreenState
         ],
       );
     }
+    final filteredRequests = allRequests
+        .where((request) => requestMatchesStatusFilter(request, _statusFilter))
+        .toList();
     return SparkScreenList(
       bottomInset: 24,
       onRefresh: _load,
       children: [
         Row(
           children: [
-            Expanded(
-              child: SparkSectionTitle('Мои заявки (${requests.length})'),
-            ),
+            Expanded(child: SparkSectionTitle('Мои заявки')),
             IconButton(
               onPressed: _openCreateRequest,
               icon: const Icon(
@@ -252,12 +276,20 @@ class _SparkJoyCompanyRequestsScreenState
             ),
           ],
         ),
-        ...requests.map(
-          (r) => Padding(
-            padding: const EdgeInsets.only(bottom: SparkSpace.md),
-            child: _RequestCard(data: r, onTap: () => _openDetail(r)),
-          ),
+        SparkJoyRequestFilterBar(
+          value: _statusFilter,
+          onChanged: (filter) => setState(() => _statusFilter = filter),
         ),
+        const SizedBox(height: SparkSpace.lg),
+        if (filteredRequests.isEmpty)
+          const SparkHintCard(text: 'Заявок с таким статусом нет')
+        else
+          ...filteredRequests.map(
+            (r) => Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.md),
+              child: _RequestCard(data: r, onTap: () => _openDetail(r)),
+            ),
+          ),
       ],
     );
   }

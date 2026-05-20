@@ -376,11 +376,19 @@ const Map<String, String> enUS = {
   // Company-only onboarding (staff management + per-report assignment).
   'spark.onboarding.staff.title': 'Company staff',
   'spark.onboarding.staff.b1':
-      'This is your roster of in-house specialists, external contractors, and pending invitations.',
+      'This section shows only specialists currently linked to your company.',
   'spark.onboarding.staff.b2':
-      'To invite a new staff member, share an invitation link from any draft report.',
+      'Invite a new staff member by phone — they appear here after accepting the invitation.',
   'spark.onboarding.staff.b3':
-      'External contractors who deliver work for you can be promoted to in-house via the «Add to staff» button.',
+      'You can remove a staff member when they have no active assigned requests.',
+
+  'spark.onboarding.companyRequests.title': 'Company requests',
+  'spark.onboarding.companyRequests.b1':
+      'This section shows your company requests: status, assigned specialist, and work result.',
+  'spark.onboarding.companyRequests.b2':
+      'Tap "+" to choose a vehicle, set a due date, and assign a specialist from staff or by phone.',
+  'spark.onboarding.companyRequests.b3':
+      'Before work starts, a request can be reassigned or canceled; after completion, a client share link is available.',
 
   'spark.onboarding.assignReport.title': 'Assign an inspector',
   'spark.onboarding.assignReport.b1':

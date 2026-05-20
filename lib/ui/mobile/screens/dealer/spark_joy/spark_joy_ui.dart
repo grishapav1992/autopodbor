@@ -355,11 +355,7 @@ class SparkInitialsAvatar extends StatelessWidget {
           color: preset.background,
         ),
         alignment: Alignment.center,
-        child: Icon(
-          preset.icon,
-          color: preset.foreground,
-          size: size * 0.5,
-        ),
+        child: Icon(preset.icon, color: preset.foreground, size: size * 0.5),
       );
     }
     return _buildInitials();
@@ -905,8 +901,10 @@ class SparkSegmentedTabs extends StatelessWidget {
                       duration: SparkMotion.regular,
                       curve: Curves.easeOutCubic,
                       left: clampedIndex * tabWidth + SparkSpace.lg,
-                      width: (tabWidth - SparkSpace.lg * 2)
-                          .clamp(24.0, double.infinity),
+                      width: (tabWidth - SparkSpace.lg * 2).clamp(
+                        24.0,
+                        double.infinity,
+                      ),
                       bottom: 0,
                       height: 3,
                       child: Container(
@@ -1276,7 +1274,9 @@ class SparkPrimaryActionButton extends StatelessWidget {
                         height: SparkSize.spinner,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(kWhiteColor),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            kWhiteColor,
+                          ),
                         ),
                       ),
                       const SizedBox(width: SparkSpace.sm),
@@ -2081,6 +2081,7 @@ class SparkErrorState extends StatelessWidget {
     super.key,
     required this.title,
     required this.subtitle,
+    this.copyText,
     this.retryLabel,
     this.onRetry,
     this.topPadding = SparkSize.stateTopError,
@@ -2088,6 +2089,7 @@ class SparkErrorState extends StatelessWidget {
 
   final String title;
   final String subtitle;
+  final String? copyText;
   final String? retryLabel;
   final VoidCallback? onRetry;
   final double topPadding;
@@ -2097,6 +2099,7 @@ class SparkErrorState extends StatelessWidget {
     final actionLabel = (retryLabel ?? '').trim().isEmpty
         ? sjT('spark.action.retry', fallback: 'Повторить')
         : retryLabel!;
+    final effectiveCopyText = (copyText ?? subtitle).trim();
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
       child: SparkCard(
@@ -2125,25 +2128,63 @@ class SparkErrorState extends StatelessWidget {
             ),
             const SizedBox(height: SparkSpace.xs),
             MyText(text: subtitle, size: SparkTextSize.body, color: kGreyColor),
-            if (onRetry != null) ...[
+            if (onRetry != null || effectiveCopyText.isNotEmpty) ...[
               const SizedBox(height: SparkSpace.xl),
-              SizedBox(
-                height: SparkSize.actionHeight,
-                child: OutlinedButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(
-                    Icons.refresh_rounded,
-                    size: SparkSize.iconSm,
-                  ),
-                  label: Text(actionLabel),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: kSecondaryColor,
-                    side: const BorderSide(color: kBorderColor),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SparkRadius.lg),
+              Row(
+                children: [
+                  if (onRetry != null)
+                    Expanded(
+                      child: SizedBox(
+                        height: SparkSize.actionHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: onRetry,
+                          icon: const Icon(
+                            Icons.refresh_rounded,
+                            size: SparkSize.iconSm,
+                          ),
+                          label: Text(actionLabel),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: kSecondaryColor,
+                            side: const BorderSide(color: kBorderColor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                SparkRadius.lg,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  if (onRetry != null && effectiveCopyText.isNotEmpty)
+                    const SizedBox(width: SparkSpace.md),
+                  if (effectiveCopyText.isNotEmpty)
+                    Expanded(
+                      child: SizedBox(
+                        height: SparkSize.actionHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                            Clipboard.setData(
+                              ClipboardData(text: effectiveCopyText),
+                            );
+                          },
+                          icon: const Icon(
+                            Icons.copy_rounded,
+                            size: SparkSize.iconSm,
+                          ),
+                          label: const Text('Скопировать'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: kSecondaryColor,
+                            side: const BorderSide(color: kBorderColor),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                SparkRadius.lg,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ],
           ],
@@ -2215,9 +2256,7 @@ class SparkScreenList extends StatelessWidget {
       controller: controller,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: effectivePadding,
-      physics: onRefresh != null
-          ? const AlwaysScrollableScrollPhysics()
-          : null,
+      physics: onRefresh != null ? const AlwaysScrollableScrollPhysics() : null,
       children: children,
     );
     if (onRefresh != null) {

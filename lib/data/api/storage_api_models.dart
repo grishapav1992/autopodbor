@@ -179,6 +179,53 @@ class RequestActionResult {
   });
 }
 
+class CompanySpecialistUnlinkResult {
+  final bool success;
+  final int? specialistId;
+  final int? companyId;
+  final bool changed;
+  final int? activeAssignedRequests;
+  final String? error;
+
+  const CompanySpecialistUnlinkResult({
+    required this.success,
+    this.specialistId,
+    this.companyId,
+    this.changed = false,
+    this.activeAssignedRequests,
+    this.error,
+  });
+}
+
+class CompanySpecialistUnlinkException implements Exception {
+  final String code;
+  final int? activeAssignedRequests;
+
+  const CompanySpecialistUnlinkException({
+    required this.code,
+    this.activeAssignedRequests,
+  });
+
+  String get message {
+    switch (code) {
+      case 'specialist_has_active_assigned_requests':
+        final count = activeAssignedRequests;
+        return count == null || count <= 0
+            ? 'Нельзя удалить сотрудника: у него есть активные заявки'
+            : 'Нельзя удалить сотрудника: активных заявок $count';
+      case 'specialist_not_found_or_not_linked_to_your_company':
+        return 'Сотрудник не найден в штате компании';
+      default:
+        return code.isEmpty
+            ? 'Не удалось удалить сотрудника из штата'
+            : 'Не удалось удалить сотрудника из штата: $code';
+    }
+  }
+
+  @override
+  String toString() => message;
+}
+
 /// User tag returned by `Storage.GetUserTags` / `Storage.AddUserTag`.
 ///
 /// Domain invariant: every tag has a severity. The server's enum is

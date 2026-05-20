@@ -428,7 +428,10 @@ class _PhoneTabState extends State<_PhoneTab>
 
   void _onChanged() {
     final digits = _phoneController.text.replaceAll(RegExp(r'[^0-9]'), '');
-    final next = digits.length == 10 ? digits : '';
+    final tail = digits.length > 10
+        ? digits.substring(digits.length - 10)
+        : digits;
+    final next = tail.length == 10 ? tail : '';
     if (next == _normalized) return;
     setState(() {
       _normalized = next;

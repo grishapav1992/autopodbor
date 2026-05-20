@@ -24,10 +24,12 @@ import 'spark_joy_ui.dart';
 class SparkJoyReportsListScreen extends StatefulWidget {
   const SparkJoyReportsListScreen({
     super.key,
+    this.active = false,
     this.companyMode = false,
     this.tabRequest,
   });
 
+  final bool active;
   final bool companyMode;
 
   /// Optional external trigger the shell can push into to switch the
@@ -59,8 +61,27 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
     _controller.load();
     widget.tabRequest?.addListener(_handleExternalTabRequest);
+    if (widget.active) _showReportsOnboarding();
+  }
+
+  @override
+  void didUpdateWidget(covariant SparkJoyReportsListScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.active && !oldWidget.active) {
+      _showReportsOnboarding();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.tabRequest?.removeListener(_handleExternalTabRequest);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _showReportsOnboarding() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || !widget.active) return;
       SparkJoyOnboarding.showOnce(
         context,
         flagKey: UserSimplePreferences.sparkOnbReportsListKey,
@@ -88,13 +109,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         ],
       );
     });
-  }
-
-  @override
-  void dispose() {
-    widget.tabRequest?.removeListener(_handleExternalTabRequest);
-    _controller.dispose();
-    super.dispose();
   }
 
   void _handleExternalTabRequest() {

@@ -6,6 +6,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'spark_joy_company_specialist_picker.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -72,7 +73,10 @@ class _SparkJoyCompanyRequestDetailScreenState
       if (!mounted) return;
       setState(() {
         _cars = const [];
-        _carsError = 'Не удалось загрузить детали авто: $e';
+        _carsError = sparkJoyReadableErrorText(
+          e,
+          fallback: 'Не удалось загрузить детали авто',
+        );
       });
     }
   }
@@ -144,15 +148,15 @@ class _SparkJoyCompanyRequestDetailScreenState
       await Clipboard.setData(ClipboardData(text: url));
       if (!mounted) return;
       await _showShareLinkSheet(url);
-    } on storage_api.SessionExpiredException {
+    } on storage_api.SessionExpiredException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сессия истекла. Войдите заново.')),
-      );
-    } catch (_) {
+      showSparkJoyErrorSnackBar(context, e);
+    } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось сгенерировать ссылку')),
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось сгенерировать ссылку',
       );
     } finally {
       if (mounted) setState(() => _shareBusy = false);
@@ -248,7 +252,7 @@ class _SparkJoyCompanyRequestDetailScreenState
   }
 
   bool get _canManageAssignment {
-    final status = _str('status');
+    final status = normalizeRequestStatus(_str('status'));
     return status == 'created' || status == 'await_payment';
   }
 
@@ -305,15 +309,15 @@ class _SparkJoyCompanyRequestDetailScreenState
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Назначен специалист: ${assignee.displayName}')),
       );
-    } on storage_api.SessionExpiredException {
+    } on storage_api.SessionExpiredException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сессия истекла. Войдите заново.')),
-      );
+      showSparkJoyErrorSnackBar(context, e);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось назначить специалиста: $e')),
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось назначить специалиста',
       );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
@@ -347,16 +351,16 @@ class _SparkJoyCompanyRequestDetailScreenState
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Заявка отменена')));
-    } on storage_api.SessionExpiredException {
+    } on storage_api.SessionExpiredException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сессия истекла. Войдите заново.')),
-      );
+      showSparkJoyErrorSnackBar(context, e);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
+      showSparkJoyErrorSnackBar(
         context,
-      ).showSnackBar(SnackBar(content: Text('Не удалось отменить заявку: $e')));
+        e,
+        fallback: 'Не удалось отменить заявку',
+      );
     } finally {
       if (mounted) setState(() => _actionBusy = false);
     }
@@ -994,7 +998,7 @@ class _HistoryEntry extends StatelessWidget {
     final oldStatus = (entry['oldStatus'] ?? '').toString();
     final newStatus = (entry['newStatus'] ?? '').toString();
     final role = (entry['changedByRole'] ?? '').toString();
-    final reason = (entry['reason'] ?? '').toString().trim();
+    final reason = requestHistoryReason((entry['reason'] ?? '').toString());
     final createdAt = (entry['createdAt'] ?? '').toString();
 
     final badge = requestStatusBadge(newStatus);
@@ -1041,10 +1045,19 @@ class _HistoryEntry extends StatelessWidget {
                     color: kGreyColor,
                   ),
                 ],
-                if (reason.isNotEmpty) ...[
+                if (reason.label.isNotEmpty) ...[
                   const SizedBox(height: SparkSpace.xs),
                   MyText(
-                    text: reason,
+                    text: reason.label,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    lineHeight: 1.4,
+                  ),
+                ],
+                if (reason.comment != null) ...[
+                  const SizedBox(height: SparkSpace.xxs),
+                  MyText(
+                    text: 'Комментарий: ${reason.comment}',
                     size: SparkTextSize.caption,
                     color: kGreyColor,
                     lineHeight: 1.4,
