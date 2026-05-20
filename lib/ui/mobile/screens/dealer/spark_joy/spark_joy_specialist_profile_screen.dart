@@ -2040,16 +2040,40 @@ class _SparkJoySpecialistProfileScreenState
     String originalFilename,
     List<int> bytes,
   ) async {
+    final String publicUrl;
+    // Фаза 1 — загрузка байтов в S3 (initiate/PUT/complete).
     try {
-      final publicUrl = await storage_api.StorageApi.uploadProfileAvatar(
+      publicUrl = await storage_api.StorageApi.uploadProfileAvatar(
         bytes: bytes,
         originalFilename: originalFilename,
       );
+    } on storage_api.ProfileAvatarUploadException catch (e) {
+      if (!mounted) return;
+      setState(() => _isUploadingAvatar = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: kRedColor),
+      );
+      return;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[avatar] S3 upload failed: $e');
+      if (!mounted) return;
+      setState(() => _isUploadingAvatar = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось загрузить фото. Попробуйте ещё раз.'),
+          backgroundColor: kRedColor,
+        ),
+      );
+      return;
+    }
+    // Фаза 2 — привязка publicUrl к профилю. Файл уже в S3; если
+    // UpdateProfile упал — оставляем base64-превью локально (юзер видит
+    // своё фото), профиль допривяжется при следующем сохранении.
+    try {
       await storage_api.StorageApi.updateProfile(
         profile: {'urlAvatar': publicUrl},
       );
       if (!mounted) return;
-      // Базы64 больше не нужно — теперь рендерим с S3.
       await UserSimplePreferences.clearAvatar();
       if (!mounted) return;
       setState(() {
@@ -2057,17 +2081,16 @@ class _SparkJoySpecialistProfileScreenState
         _avatarBase64 = null;
         _isUploadingAvatar = false;
       });
-    } on storage_api.ProfileAvatarUploadException catch (e) {
-      if (!mounted) return;
-      setState(() => _isUploadingAvatar = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: kRedColor),
-      );
     } catch (e) {
+      if (kDebugMode) debugPrint('[avatar] UpdateProfile(urlAvatar) failed: $e');
       if (!mounted) return;
+      // Спиннер гасим, base64-превью оставляем как fallback.
       setState(() => _isUploadingAvatar = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось загрузить фото: $e')),
+        const SnackBar(
+          content: Text('Фото загружено, но не сохранилось в профиль.'),
+          backgroundColor: kRedColor,
+        ),
       );
     }
   }

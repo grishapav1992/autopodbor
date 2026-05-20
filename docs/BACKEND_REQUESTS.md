@@ -3,7 +3,7 @@
 Документ собирает API-расширения, нужные фронту для довода флоу
 «Заявки от компании» (новый раздел) и догрейда старых задач.
 
-Состояние на **2026-05-18**, после `f02c4dc`.
+Состояние на **2026-05-20**.
 
 ---
 
@@ -19,10 +19,81 @@
 | `Storage.GetRequest.reportId/reportNumber` | live | Компания может создать share-ссылку готового отчёта из detail-screen |
 | `Storage.AssignSpecialist` | live | Переназначение специалиста на заявку в `created` / `await_payment` |
 | `Storage.CancelRequest` | live | Отмена заявки до оплаты/начала работы |
+| `GetProfile.isVerifyEmail` | live | Подтверждено 2026-05-20 — флаг приходит в ответе (закрывает бывший P2) |
 
 ---
 
 ## Нужно от backend (приоритет ↓)
+
+### 🔴 P0: Аватарка профиля — два блокера в S3-флоу
+
+Клиентский флоу загрузки реализован и протестирован end-to-end
+(2026-05-20, sub=2, role=company, platform=web). Шаги 1–4
+**работают**, но финал и рендеринг падают на бэкенде.
+
+**Что работает ✅**
+
+| Шаг | Метод | Результат |
+|---|---|---|
+| 1 | `ObjectStorage.Profile.InitiateProfileMultipartUpload` | ok — `uploadId`, `key=app/user/2/profile/avatar.png`, `publicUrl` |
+| 2 | `ObjectStorage.Profile.GetProfilePartUploadUrls` | ok — presigned PUT URL |
+| 3 | PUT в S3 (`s3.regru.cloud`) | ok — `ETag "2cd8bde4…8f"` |
+| 4 | `ObjectStorage.Profile.CompleteProfileMultipartUpload` | ok — `publicUrl`, `contentSize: 70` |
+
+---
+
+#### Баг 1 — `Storage.UpdateProfile({urlAvatar})` зависает
+
+Запрос **специфичен для поля `urlAvatar`**: висит >25s, `0 bytes received`.
+Любое другое поле обрабатывается мгновенно.
+
+```jsonc
+// ❌ висит (timeout 25s, 0 байт)
+{"method":"Storage.UpdateProfile","params":{"urlAvatar":"https://s3.regru.cloud/reports/app/user/2/profile/avatar.png"}}
+
+// ✅ возвращается за 0.68s
+{"method":"Storage.UpdateProfile","params":{"city":"Москва"}}
+```
+
+**Гипотеза.** Хэндлер `urlAvatar` синхронно валидирует URL (HEAD/GET
+на S3, чтобы проверить что объект существует в папке юзера), напарывается
+на 403 (см. Баг 2) и виснет в ретраях/ожидании без таймаута.
+
+**Нужно.** Хэндлер `urlAvatar` не должен блокироваться: ограничить
+проверку таймаутом, не делать сетевой fetch на S3 (достаточно проверить
+что URL-префикс == `app/user/{userId}/profile/`), вернуть ответ.
+
+---
+
+#### Баг 2 — `publicUrl` не публично читается (403)
+
+«Публичный» URL из Initiate/Complete отдаёт **403 AccessDenied**:
+
+```
+GET https://s3.regru.cloud/reports/app/user/2/profile/avatar.png
+→ HTTP/1.1 403 Forbidden
+  <Error><Code>AccessDenied</Code><BucketName>reports</BucketName></Error>
+```
+
+Клиент рендерит аватар через `CachedNetworkImage` — обычный GET **без
+авторизации**. С 403 он всегда падает в fallback на инициалы, картинка
+не покажется никогда.
+
+**Нужно (на выбор):**
+
+A. Сделать `app/user/*/profile/*` публично-читаемым (bucket policy /
+   public-read ACL) — тогда `publicUrl` действительно публичный, как
+   обещает имя поля.
+
+B. Если объекты должны оставаться приватными — добавить
+   `ObjectStorage.Profile.GetProfileViewUrl({filename})` → presigned GET
+   URL, и в `GetProfile.urlAvatar` отдавать presigned-ссылку (с TTL),
+   а не «голый» S3-URL.
+
+Вариант A проще для клиента (URL стабильный, кэшируется). Вариант B —
+если приватность аватарок принципиальна.
+
+---
 
 ### 🟢 P2: Phone-flow для НЕ-штатных специалистов
 
@@ -49,26 +120,6 @@ C. **Invitation-первый flow:** добавить `Storage.InviteSpecialist(
    → создаёт user-record (если нет) + invitation → специалист принимает
    → попадает в компанию → потом обычное `CreateRequest`. Самый чистый,
    но требует SMS-инфры.
-
----
-
-### 🟢 P2: `isVerifyEmail` в `GetProfile` response
-
-**Use case.** Email-верификация: после смены email юзер получает код
-на новый адрес, вводит через `Storage.VerifyEmail({code})`. Backend
-успешно верифицирует, **но** не возвращает флаг подтверждения в
-`GetProfile` — фронт не может показать «Email подтверждён» badge
-после рестарта приложения. Pending-state живёт только локально.
-
-**Что нужно:**
-
-```jsonc
-// GetProfile.result добавить:
-"isVerifyEmail": true | false
-```
-
-Аналогично существующему `isVerifyCompany`. Без этого нет positive-
-verification UI cue для email после reopen приложения.
 
 ---
 
