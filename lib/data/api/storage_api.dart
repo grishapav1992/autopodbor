@@ -1698,6 +1698,37 @@ class StorageApi {
     );
   }
 
+  /// CORS-фолбэк для web: возвращает ETag'и загруженных частей профильного
+  /// multipart upload. Ключ строится сервером из JWT
+  /// (`app/user/{userId}/profile/{filename}`) — `reportNumber` не нужен.
+  static Future<MultipartListPartsResult> listProfileParts({
+    required String filename,
+    required String uploadId,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final data = await _postRpc(
+      method: 'ObjectStorage.Profile.ListParts',
+      params: {'filename': filename, 'uploadId': uploadId},
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final key = _extractString(result, ['key', 'path', 'objectKey']);
+    final partsRaw = result['parts'];
+    final parts = <MultipartUploadedPart>[];
+    if (partsRaw is List) {
+      for (final item in partsRaw) {
+        if (item is! Map) continue;
+        final map = _asMap(item);
+        final partNumber = _asInt(map['partNumber']);
+        final etag = _extractString(map, ['etag', 'ETag']);
+        if (partNumber == null || etag.isEmpty) continue;
+        parts.add(MultipartUploadedPart(partNumber: partNumber, etag: etag));
+      }
+    }
+    parts.sort((a, b) => a.partNumber.compareTo(b.partNumber));
+    return MultipartListPartsResult(key: key, parts: parts, result: result);
+  }
+
   static Future<Map<String, dynamic>> deleteProfileAvatar({
     Duration timeout = const Duration(seconds: 12),
   }) async {
@@ -1740,13 +1771,10 @@ class StorageApi {
         contentType: _avatarContentType(filename),
       );
       // На web браузер не отдаёт ETag из ответа S3 (CORS exposedHeaders
-      // не включает ETag). Фолбэк как в репортном флоу: добираем ETag
-      // серверно через ObjectStorage.ListParts. reportNumber выводим из
-      // `key` сессии (`app/user/{id}/profile/avatar.png` → префикс до
-      // последнего `/`).
+      // не включает ETag). Фолбэк: добираем ETag серверно через
+      // ObjectStorage.Profile.ListParts.
       if (etag.isEmpty) {
         etag = await _resolveProfilePartEtag(
-          key: session.key,
           filename: session.filename,
           uploadId: session.uploadId,
         );
@@ -1805,20 +1833,14 @@ class StorageApi {
   }
 
   /// CORS-фолбэк для web: достаёт ETag части серверно через
-  /// `ObjectStorage.ListParts`. `reportNumber` = префикс ключа объекта до
-  /// последнего сегмента (для `app/user/2/profile/avatar.png` →
-  /// `app/user/2/profile`). Возвращает пустую строку если part не нашёлся.
+  /// `ObjectStorage.Profile.ListParts`. Возвращает пустую строку если
+  /// part не нашёлся или запрос упал.
   static Future<String> _resolveProfilePartEtag({
-    required String key,
     required String filename,
     required String uploadId,
   }) async {
-    final slash = key.lastIndexOf('/');
-    if (slash <= 0) return '';
-    final reportNumber = key.substring(0, slash);
     try {
-      final listed = await listMultipartParts(
-        reportNumber: reportNumber,
+      final listed = await listProfileParts(
         filename: filename,
         uploadId: uploadId,
       );
@@ -1828,7 +1850,8 @@ class StorageApi {
         }
       }
     } catch (_) {
-      // Фолбэк не удался — вернём пустую строку, вызывающий бросит no_etag.
+      // Сам сбой ListParts уже залогирован в _postRpc (rpc-error/timeout).
+      // Здесь глотаем — вызывающий бросит no_etag и сделает abort.
     }
     return '';
   }
