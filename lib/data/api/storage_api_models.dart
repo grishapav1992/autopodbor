@@ -375,12 +375,10 @@ class MultipartAbortResult {
 class MultipartListPartsResult {
   final String key;
   final List<MultipartUploadedPart> parts;
-  final Map<String, dynamic> result;
 
   const MultipartListPartsResult({
     required this.key,
     required this.parts,
-    required this.result,
   });
 }
 

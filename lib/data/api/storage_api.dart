@@ -1570,6 +1570,14 @@ class StorageApi {
       },
       timeout: timeout,
     );
+    return _parseListPartsResult(data);
+  }
+
+  /// Парсит ответ ListParts (общего и профильного) в типизированный
+  /// результат: ключ объекта + отсортированный список частей с ETag.
+  static MultipartListPartsResult _parseListPartsResult(
+    Map<String, dynamic> data,
+  ) {
     final result = _asMap(data['result']);
     final key = _extractString(result, ['key', 'path', 'objectKey']);
     final partsRaw = result['parts'];
@@ -1585,7 +1593,7 @@ class StorageApi {
       }
     }
     parts.sort((a, b) => a.partNumber.compareTo(b.partNumber));
-    return MultipartListPartsResult(key: key, parts: parts, result: result);
+    return MultipartListPartsResult(key: key, parts: parts);
   }
 
   // ---------------------------------------------------------------------------
@@ -1711,22 +1719,7 @@ class StorageApi {
       params: {'filename': filename, 'uploadId': uploadId},
       timeout: timeout,
     );
-    final result = _asMap(data['result']);
-    final key = _extractString(result, ['key', 'path', 'objectKey']);
-    final partsRaw = result['parts'];
-    final parts = <MultipartUploadedPart>[];
-    if (partsRaw is List) {
-      for (final item in partsRaw) {
-        if (item is! Map) continue;
-        final map = _asMap(item);
-        final partNumber = _asInt(map['partNumber']);
-        final etag = _extractString(map, ['etag', 'ETag']);
-        if (partNumber == null || etag.isEmpty) continue;
-        parts.add(MultipartUploadedPart(partNumber: partNumber, etag: etag));
-      }
-    }
-    parts.sort((a, b) => a.partNumber.compareTo(b.partNumber));
-    return MultipartListPartsResult(key: key, parts: parts, result: result);
+    return _parseListPartsResult(data);
   }
 
   static Future<Map<String, dynamic>> deleteProfileAvatar({
