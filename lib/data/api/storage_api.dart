@@ -1734,11 +1734,29 @@ class StorageApi {
           message: 'Сервер не вернул URL для загрузки',
         );
       }
-      final etag = await uploadBytesToPresignedUrl(
+      var etag = await uploadBytesToPresignedUrl(
         url: urlsResult.urls.first.url,
         bytes: bytes,
         contentType: _avatarContentType(filename),
       );
+      // На web браузер не отдаёт ETag из ответа S3 (CORS exposedHeaders
+      // не включает ETag). Фолбэк как в репортном флоу: добираем ETag
+      // серверно через ObjectStorage.ListParts. reportNumber выводим из
+      // `key` сессии (`app/user/{id}/profile/avatar.png` → префикс до
+      // последнего `/`).
+      if (etag.isEmpty) {
+        etag = await _resolveProfilePartEtag(
+          key: session.key,
+          filename: session.filename,
+          uploadId: session.uploadId,
+        );
+      }
+      if (etag.isEmpty) {
+        throw const ProfileAvatarUploadException(
+          code: 'no_etag',
+          message: 'Не удалось получить ETag загруженной части',
+        );
+      }
       final complete = await completeProfileMultipartUpload(
         filename: session.filename,
         uploadId: session.uploadId,
@@ -1784,6 +1802,35 @@ class StorageApi {
         : 'jpg';
     final safeExt = RegExp(r'^[a-z0-9]{1,10}$').hasMatch(ext) ? ext : 'jpg';
     return 'avatar.$safeExt';
+  }
+
+  /// CORS-фолбэк для web: достаёт ETag части серверно через
+  /// `ObjectStorage.ListParts`. `reportNumber` = префикс ключа объекта до
+  /// последнего сегмента (для `app/user/2/profile/avatar.png` →
+  /// `app/user/2/profile`). Возвращает пустую строку если part не нашёлся.
+  static Future<String> _resolveProfilePartEtag({
+    required String key,
+    required String filename,
+    required String uploadId,
+  }) async {
+    final slash = key.lastIndexOf('/');
+    if (slash <= 0) return '';
+    final reportNumber = key.substring(0, slash);
+    try {
+      final listed = await listMultipartParts(
+        reportNumber: reportNumber,
+        filename: filename,
+        uploadId: uploadId,
+      );
+      for (final part in listed.parts) {
+        if (part.partNumber == 1 && part.etag.trim().isNotEmpty) {
+          return part.etag.trim();
+        }
+      }
+    } catch (_) {
+      // Фолбэк не удался — вернём пустую строку, вызывающий бросит no_etag.
+    }
+    return '';
   }
 
   static String _avatarContentType(String filename) {
