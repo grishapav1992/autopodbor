@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
@@ -53,6 +53,8 @@ void _notifySessionExpired() {
 
 class StorageApi {
   static const String _endpoint = 'https://carreports.ru:8085';
+  static String get _authVerifyPlatform => kIsWeb ? 'web' : 'mobile';
+
   // Singleton Dio used only for binary uploads to presigned URLs. Other
   // RPC calls go through `package:http` as before — Dio buys us native
   // upload-progress callbacks (`onSendProgress`) that `http.put` can't
@@ -690,12 +692,17 @@ class StorageApi {
   static Future<AuthVerifyResult> authVerify({
     required String phone,
     String? sessionId,
+    String? platform,
     // Same reason as `auth` above — backend verify под нагрузкой
     // подтягивает входящий звонок и иногда уходит за 12s. 30 с
     // даёт запас, но всё ещё не висит у юзера бесконечно.
     Duration timeout = const Duration(seconds: 30),
   }) async {
-    final params = <String, dynamic>{'phone': phone};
+    final resolvedPlatform = platform ?? _authVerifyPlatform;
+    final params = <String, dynamic>{
+      'phone': phone,
+      'platform': resolvedPlatform,
+    };
     if (sessionId != null && sessionId.isNotEmpty) {
       params['sessionId'] = sessionId;
     }
