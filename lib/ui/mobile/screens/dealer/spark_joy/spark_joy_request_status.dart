@@ -27,11 +27,6 @@ enum RequestStatusFilter {
 
   final String label;
   final Set<String> statuses;
-
-  bool matches(String status) {
-    if (this == RequestStatusFilter.all) return true;
-    return statuses.contains(normalizeRequestStatus(status));
-  }
 }
 
 String normalizeRequestStatus(String status) {
@@ -41,13 +36,6 @@ String normalizeRequestStatus(String status) {
     'cancelled' => 'canceled',
     _ => value,
   };
-}
-
-bool requestMatchesStatusFilter(
-  Map<String, dynamic> request,
-  RequestStatusFilter filter,
-) {
-  return filter.matches((request['status'] ?? '').toString());
 }
 
 RequestStatusBadge requestStatusBadge(String status) {

@@ -46,6 +46,28 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
     );
   }
 
+  // Completed reports can still return legacy tag arrays as bare IDs.
+  // Warm the tag catalog before mapping those IDs back to display names;
+  // embedded `{id, name}` tags still work even if this network call fails.
+  await tagService.hydrateFromCache();
+  try {
+    final selectedInspectionIds = _collectInspectionTagIdsBySection(
+      inspectionStep,
+    );
+    final genericInspectionIds = <int>{
+      for (final ids in selectedInspectionIds.values) ...ids,
+    }.toList(growable: false);
+    await tagService.loadTagIdsFromServer(
+      selectedInspectionIdsBySection: selectedInspectionIds,
+      genericInspectionSelectedIds: genericInspectionIds,
+      testDriveSelectedIds: _collectTestDriveTagIds(testDriveStep),
+    );
+  } catch (e) {
+    debugPrint(
+      '[CompletedReportHydrator] GetUserTags failed for completed report: $e',
+    );
+  }
+
   // 1. Walk every file-bearing node, collect filenames (unique).
   final filenames = <String>{};
   for (final key in _inspectionArrayKeys.keys) {
@@ -120,10 +142,7 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   }
 
   // 4. Legal files list.
-  final legalFiles = _buildLegalFiles(
-    legalReviewStep,
-    urls: urls,
-  );
+  final legalFiles = _buildLegalFiles(legalReviewStep, urls: urls);
 
   // 5. Test-drive tag names.
   final tdEngineTags = _resolveTagNames(
@@ -220,7 +239,10 @@ Map<String, dynamic>? _elementToUploadedItemJson(
   final filename = (file['filename'] ?? '').toString().trim();
   if (filename.isEmpty) return null;
   final serverType = (file['type'] ?? '').toString();
-  final mimeType = _mimeTypeFromServer(serverType: serverType, filename: filename);
+  final mimeType = _mimeTypeFromServer(
+    serverType: serverType,
+    filename: filename,
+  );
   final dataUrl = urls[filename] ?? '';
 
   final tags = <String>[
@@ -367,6 +389,62 @@ List<String> _resolveTagNames(dynamic raw, SparkJoyTagService tagService) {
     if (name != null && name.trim().isNotEmpty) out.add(name);
   }
   return out;
+}
+
+Map<String, List<int>> _collectInspectionTagIdsBySection(Map inspectionStep) {
+  final out = <String, Set<int>>{};
+  for (final entry in _inspectionArrayKeys.entries) {
+    final section =
+        SparkJoyTagService.groupKeyToApiSection[entry.value.groupKey];
+    if (section == null) continue;
+    final list = inspectionStep[entry.key];
+    if (list is! List) continue;
+    final ids = out.putIfAbsent(section, () => <int>{});
+    for (final raw in list) {
+      if (raw is! Map) continue;
+      ids.addAll(_extractTagIds(raw['seriousDamageTags']));
+      ids.addAll(_extractTagIds(raw['noSeriousDamageTags']));
+    }
+  }
+  return {
+    for (final entry in out.entries)
+      if (entry.value.isNotEmpty)
+        entry.key: entry.value.toList(growable: false),
+  };
+}
+
+List<int> _collectTestDriveTagIds(Map testDriveStep) {
+  final ids = <int>{};
+  for (final key in const [
+    'testDriveEngineTags',
+    'testDriveTransmissionTags',
+    'testDriveSteeringWheelTags',
+    'testDriveSuspensionInDriveTags',
+    'testDriveBrakesInDriveTags',
+  ]) {
+    ids.addAll(_extractTagIds(testDriveStep[key]));
+  }
+  return ids.toList(growable: false);
+}
+
+List<int> _extractTagIds(dynamic raw) {
+  if (raw is! List) return const <int>[];
+  final ids = <int>[];
+  for (final item in raw) {
+    int? id;
+    if (item is Map) {
+      final rawId = item['id'];
+      id = rawId is int
+          ? rawId
+          : (rawId is num ? rawId.toInt() : int.tryParse('${rawId ?? ''}'));
+    } else {
+      id = item is int
+          ? item
+          : (item is num ? item.toInt() : int.tryParse('$item'));
+    }
+    if (id != null && id > 0) ids.add(id);
+  }
+  return ids;
 }
 
 String _mimeTypeFromServer({

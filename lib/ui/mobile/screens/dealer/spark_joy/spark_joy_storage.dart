@@ -71,6 +71,8 @@ class SparkJoyStorage {
   static const String _hiddenCompanyStaffIdsKey =
       'spark_joy_hidden_company_staff_ids_v1';
   static const String _draftsKey = 'spark_joy_drafts_v1';
+  static const String _companyRequestDraftKey =
+      'spark_joy_company_request_draft_v1';
   // Legacy keys kept only for the one-time migration in [migrateLegacyKeys].
   // Completed reports are now online-only (Storage.GetSpecialistReport).
   static const String _legacyCompletedKey = 'spark_joy_completed_v1';
@@ -182,6 +184,7 @@ class SparkJoyStorage {
     // повторная верификация не нужна. Для ручного сброса есть
     // [resetBusinessVerification].
     await pref.remove(_draftsKey);
+    await pref.remove(_companyRequestDraftKey);
     await pref.remove(_frameCatalogKey);
     await pref.remove(_userTagsKey);
     await pref.remove(_userTagsSyncedAtKey);
@@ -596,6 +599,32 @@ class SparkJoyStorage {
 
   static Future<void> purgeDraftAfterUpload(String draftId) async {
     await deleteDraft(draftId);
+  }
+
+  static Future<Map<String, dynamic>?> loadCompanyRequestDraft() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_companyRequestDraftKey);
+    if (raw == null || raw.trim().isEmpty) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {}
+    return null;
+  }
+
+  static Future<void> saveCompanyRequestDraft(
+    Map<String, dynamic> draft,
+  ) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    await pref.setString(_companyRequestDraftKey, jsonEncode(draft));
+  }
+
+  static Future<void> clearCompanyRequestDraft() async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    await pref.remove(_companyRequestDraftKey);
   }
 
   static Future<List<Map<String, dynamic>>> _readList(String key) async {

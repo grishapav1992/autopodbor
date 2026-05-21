@@ -423,10 +423,7 @@ class MultipartListPartsResult {
   final String key;
   final List<MultipartUploadedPart> parts;
 
-  const MultipartListPartsResult({
-    required this.key,
-    required this.parts,
-  });
+  const MultipartListPartsResult({required this.key, required this.parts});
 }
 
 /// Возвращается `Storage.GetSpecialists`. Email и phone приходят **только
@@ -434,6 +431,7 @@ class MultipartListPartsResult {
 /// конкретному значению эти поля null (privacy by default).
 class SpecialistItem {
   final int id;
+  final String? fullName;
   final String? firstName;
   final String? lastName;
   final String? middleName;
@@ -448,6 +446,7 @@ class SpecialistItem {
 
   const SpecialistItem({
     required this.id,
+    this.fullName,
     this.firstName,
     this.lastName,
     this.middleName,
@@ -464,6 +463,8 @@ class SpecialistItem {
   /// «Фамилия Имя» (Отчество — не показываем для компактности списка).
   /// Если ФИО нет вообще — fallback на email/phone или «Специалист #ID».
   String get displayName {
+    final full = (fullName ?? '').trim();
+    if (full.isNotEmpty) return full;
     final ln = (lastName ?? '').trim();
     final fn = (firstName ?? '').trim();
     if (ln.isNotEmpty || fn.isNotEmpty) {

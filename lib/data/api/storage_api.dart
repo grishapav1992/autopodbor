@@ -1878,11 +1878,24 @@ class StorageApi {
   }
 
   static Future<List<Map<String, dynamic>>> getRequests({
+    int? page,
+    int? limit,
+    String? status,
+    String? requestType,
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    final params = <String, dynamic>{};
+    if (page != null && page > 0) params['page'] = page;
+    if (limit != null && limit > 0) params['limit'] = limit;
+    if (status != null && status.trim().isNotEmpty) {
+      params['status'] = status.trim();
+    }
+    if (requestType != null && requestType.trim().isNotEmpty) {
+      params['requestType'] = requestType.trim();
+    }
     final data = await _postRpc(
       method: 'Storage.GetRequest',
-      params: const {},
+      params: params,
       timeout: timeout,
     );
     final result = data['result'];
@@ -2103,7 +2116,22 @@ class StorageApi {
       for (final raw in rawSpecs) {
         if (raw is! Map) continue;
         final m = _asMap(raw);
-        final id = _asInt(m['id']);
+        final profile = _asMap(m['profile']);
+        final user = _asMap(m['user']);
+        String? field(List<String> keys) {
+          for (final source in [m, profile, user]) {
+            final value = _extractString(source, keys);
+            if (value.isNotEmpty) return value;
+          }
+          return null;
+        }
+
+        final id =
+            _asInt(m['id']) ??
+            _asInt(m['userId']) ??
+            _asInt(m['user_id']) ??
+            _asInt(profile['id']) ??
+            _asInt(user['id']);
         if (id == null) continue;
         // Rating sometimes arrives as int (0 / 1), sometimes double.
         final r = m['rating'];
@@ -2111,17 +2139,33 @@ class StorageApi {
         specs.add(
           SpecialistItem(
             id: id,
-            firstName: _asNullableString(m['firstName']),
-            lastName: _asNullableString(m['lastName']),
-            middleName: _asNullableString(m['middleName']),
-            urlAvatar: _asNullableString(m['urlAvatar']),
-            description: _asNullableString(m['description']),
+            fullName: field(['displayName', 'fullName', 'full_name', 'name']),
+            firstName: field(['firstName', 'first_name']),
+            lastName: field(['lastName', 'last_name', 'surname']),
+            middleName: field(['middleName', 'middle_name', 'patronymic']),
+            urlAvatar: field([
+              'urlAvatar',
+              'url_avatar',
+              'avatarUrl',
+              'avatar_url',
+              'photoUrl',
+              'photo_url',
+              'profilePhoto',
+              'profile_photo',
+            ]),
+            description: field(['description', 'about']),
             likeUp: _asInt(m['likeUp']) ?? 0,
             likeDown: _asInt(m['likeDown']) ?? 0,
             rating: ratingDouble,
-            city: _asNullableString(m['city']),
-            email: _asNullableString(m['email']),
-            phone: _asNullableString(m['phone']),
+            city: field(['city', 'cityName', 'city_name']),
+            email: field(['email', 'contactEmail', 'contact_email']),
+            phone: field([
+              'phone',
+              'contactPhone',
+              'contact_phone',
+              'phoneNumber',
+              'phone_number',
+            ]),
           ),
         );
       }

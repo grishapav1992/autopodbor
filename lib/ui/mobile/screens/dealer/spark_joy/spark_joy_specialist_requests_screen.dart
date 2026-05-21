@@ -46,14 +46,33 @@ class _SparkJoySpecialistRequestsScreenState
   }
 
   Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
+    final filter = _statusFilter;
     try {
-      return await storage_api.StorageApi.getRequests();
+      return await _getRequestsForFilter(filter);
     } on storage_api.SessionExpiredException {
       rethrow;
     } catch (_) {
       await Future<void>.delayed(const Duration(milliseconds: 450));
+      return _getRequestsForFilter(filter);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getRequestsForFilter(
+    RequestStatusFilter filter,
+  ) async {
+    if (filter == RequestStatusFilter.all) {
       return storage_api.StorageApi.getRequests();
     }
+    final requestsById = <String, Map<String, dynamic>>{};
+    for (final status in filter.statuses) {
+      final page = await storage_api.StorageApi.getRequests(status: status);
+      for (final request in page) {
+        final id = (request['id'] ?? request['requestNumber'] ?? '').toString();
+        requestsById[id.isEmpty ? requestsById.length.toString() : id] =
+            request;
+      }
+    }
+    return requestsById.values.toList(growable: false);
   }
 
   Future<void> _load() async {
@@ -137,18 +156,14 @@ class _SparkJoySpecialistRequestsScreenState
       );
     }
 
-    final allRequests = _requests ?? const [];
-    if (allRequests.isEmpty) {
+    final requests = _requests ?? const [];
+    if (requests.isEmpty && _statusFilter == RequestStatusFilter.all) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
         children: const [SizedBox(height: 60), _EmptyInboxState()],
       );
     }
-    final filteredRequests = allRequests
-        .where((request) => requestMatchesStatusFilter(request, _statusFilter))
-        .toList();
-
     return SparkScreenList(
       bottomInset: 24,
       onRefresh: _load,
@@ -157,13 +172,17 @@ class _SparkJoySpecialistRequestsScreenState
         const SizedBox(height: SparkSpace.md),
         SparkJoyRequestFilterBar(
           value: _statusFilter,
-          onChanged: (filter) => setState(() => _statusFilter = filter),
+          onChanged: (filter) {
+            if (filter == _statusFilter) return;
+            setState(() => _statusFilter = filter);
+            _load();
+          },
         ),
         const SizedBox(height: SparkSpace.lg),
-        if (filteredRequests.isEmpty)
+        if (requests.isEmpty)
           const SparkHintCard(text: 'Заявок с таким статусом нет')
         else
-          for (final r in filteredRequests)
+          for (final r in requests)
             Padding(
               padding: const EdgeInsets.only(bottom: SparkSpace.md),
               child: _SpecialistRequestCard(

@@ -295,15 +295,22 @@ class _StaffRow extends StatelessWidget {
     required this.spec,
     required this.onTap,
     this.isCurrent = false,
+    this.showPhone = false,
+    this.fallbackPhone,
   });
 
   final SpecialistItem spec;
   final VoidCallback? onTap;
   final bool isCurrent;
+  final bool showPhone;
+  final String? fallbackPhone;
 
   @override
   Widget build(BuildContext context) {
     final city = (spec.city ?? '').trim();
+    final phone =
+        ((spec.phone ?? '').trim().isNotEmpty ? spec.phone : fallbackPhone)
+            ?.trim();
     final ratingPct = (spec.rating * 100).round();
     final hasRating = spec.likeUp + spec.likeDown > 0;
     return Material(
@@ -320,6 +327,7 @@ class _StaffRow extends StatelessWidget {
               SparkInitialsAvatar(
                 name: spec.displayName,
                 size: SparkSize.icon4xl,
+                imageUrl: spec.urlAvatar,
               ),
               const SizedBox(width: SparkSpace.lg),
               Expanded(
@@ -332,6 +340,28 @@ class _StaffRow extends StatelessWidget {
                       size: SparkTextSize.body,
                       weight: FontWeight.w700,
                     ),
+                    if (showPhone && phone != null && phone.isNotEmpty) ...[
+                      const SizedBox(height: SparkSpace.xxs),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.phone_outlined,
+                            size: SparkSize.iconSm,
+                            color: kGreyColor,
+                          ),
+                          const SizedBox(width: SparkSpace.xxs),
+                          Flexible(
+                            child: MyText(
+                              text: phone,
+                              size: SparkTextSize.caption,
+                              color: kGreyColor,
+                              maxLines: 1,
+                              textOverflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     if (city.isNotEmpty) ...[
                       const SizedBox(height: SparkSpace.xxs),
                       Row(
@@ -495,12 +525,13 @@ class _PhoneTabState extends State<_PhoneTab>
   }
 
   void _pick(SpecialistItem spec) {
+    final fallbackPhone = _normalized.isEmpty ? null : '+7$_normalized';
     Navigator.of(context).pop(
       SelectedAssignee(
         displayName: spec.displayName,
         source: AssigneeSource.phone,
         userId: spec.id,
-        phone: spec.phone,
+        phone: (spec.phone ?? '').trim().isEmpty ? fallbackPhone : spec.phone,
         urlAvatar: spec.urlAvatar,
         city: spec.city,
       ),
@@ -614,6 +645,8 @@ class _PhoneTabState extends State<_PhoneTab>
           spec: s,
           isCurrent: isCurrent,
           onTap: isCurrent ? null : () => _pick(s),
+          showPhone: true,
+          fallbackPhone: _normalized.isEmpty ? null : '+7$_normalized',
         );
       },
     );

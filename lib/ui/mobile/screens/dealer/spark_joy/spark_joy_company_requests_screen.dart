@@ -92,14 +92,33 @@ class _SparkJoyCompanyRequestsScreenState
   }
 
   Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
+    final filter = _statusFilter;
     try {
-      return await storage_api.StorageApi.getRequests();
+      return await _getRequestsForFilter(filter);
     } on storage_api.SessionExpiredException {
       rethrow;
     } catch (_) {
       await Future<void>.delayed(const Duration(milliseconds: 450));
+      return _getRequestsForFilter(filter);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getRequestsForFilter(
+    RequestStatusFilter filter,
+  ) async {
+    if (filter == RequestStatusFilter.all) {
       return storage_api.StorageApi.getRequests();
     }
+    final requestsById = <String, Map<String, dynamic>>{};
+    for (final status in filter.statuses) {
+      final page = await storage_api.StorageApi.getRequests(status: status);
+      for (final request in page) {
+        final id = (request['id'] ?? request['requestNumber'] ?? '').toString();
+        requestsById[id.isEmpty ? requestsById.length.toString() : id] =
+            request;
+      }
+    }
+    return requestsById.values.toList(growable: false);
   }
 
   Future<void> _load() async {
@@ -198,12 +217,16 @@ class _SparkJoyCompanyRequestsScreenState
         ],
       );
     }
-    final allRequests = _requests ?? const [];
-    if (allRequests.isEmpty) {
+    final requests = _requests ?? const [];
+    if (requests.isEmpty && _statusFilter == RequestStatusFilter.all) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
         children: [
+          SparkPrimaryActionButton(
+            label: 'Создать заявку',
+            onTap: _openCreateRequest,
+          ),
           const SizedBox(height: 60),
           Center(
             child: Container(
@@ -243,48 +266,32 @@ class _SparkJoyCompanyRequestsScreenState
               lineHeight: 1.4,
             ),
           ),
-          const SizedBox(height: SparkSpace.xxxl),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xxxl),
-            child: SparkPrimaryActionButton(
-              label: 'Создать заявку',
-              icon: Icons.add_rounded,
-              onTap: _openCreateRequest,
-            ),
-          ),
         ],
       );
     }
-    final filteredRequests = allRequests
-        .where((request) => requestMatchesStatusFilter(request, _statusFilter))
-        .toList();
     return SparkScreenList(
       bottomInset: 24,
       onRefresh: _load,
       children: [
-        Row(
-          children: [
-            Expanded(child: SparkSectionTitle('Мои заявки')),
-            IconButton(
-              onPressed: _openCreateRequest,
-              icon: const Icon(
-                Icons.add_circle_outline_rounded,
-                color: kSecondaryColor,
-                size: SparkSize.iconXl,
-              ),
-              tooltip: 'Создать заявку',
-            ),
-          ],
+        SparkPrimaryActionButton(
+          label: 'Создать заявку',
+          onTap: _openCreateRequest,
         ),
+        const SizedBox(height: SparkSpace.xl),
+        const SparkSectionTitle('Мои заявки'),
         SparkJoyRequestFilterBar(
           value: _statusFilter,
-          onChanged: (filter) => setState(() => _statusFilter = filter),
+          onChanged: (filter) {
+            if (filter == _statusFilter) return;
+            setState(() => _statusFilter = filter);
+            _load();
+          },
         ),
         const SizedBox(height: SparkSpace.lg),
-        if (filteredRequests.isEmpty)
+        if (requests.isEmpty)
           const SparkHintCard(text: 'Заявок с таким статусом нет')
         else
-          ...filteredRequests.map(
+          ...requests.map(
             (r) => Padding(
               padding: const EdgeInsets.only(bottom: SparkSpace.md),
               child: _RequestCard(data: r, onTap: () => _openDetail(r)),
