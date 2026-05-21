@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -403,6 +405,7 @@ class _PhoneTab extends StatefulWidget {
 class _PhoneTabState extends State<_PhoneTab>
     with AutomaticKeepAliveClientMixin {
   final _phoneController = TextEditingController();
+  Timer? _searchDebounce;
   String _normalized = '';
   bool _searching = false;
   String? _error;
@@ -421,6 +424,7 @@ class _PhoneTabState extends State<_PhoneTab>
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _phoneController.removeListener(_onChanged);
     _phoneController.dispose();
     super.dispose();
@@ -433,56 +437,56 @@ class _PhoneTabState extends State<_PhoneTab>
         : digits;
     final next = tail.length == 10 ? tail : '';
     if (next == _normalized) return;
+    _searchDebounce?.cancel();
     setState(() {
       _normalized = next;
       // Сбрасываем результаты при изменении номера, чтобы юзер не
       // видел старый «не найден» для другого номера.
       _results = null;
       _error = null;
+      _searching = next.isNotEmpty;
     });
+    if (next.isEmpty) return;
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 450),
+      () => _search(next),
+    );
   }
 
-  Future<void> _search() async {
-    if (_normalized.isEmpty || _searching) return;
-    HapticFeedback.selectionClick();
+  Future<void> _search(String normalized) async {
+    if (normalized.isEmpty) return;
     setState(() {
       _searching = true;
       _error = null;
       _results = null;
     });
     try {
-      final phoneE164 = '+7$_normalized';
+      final phoneE164 = '+7$normalized';
       final page = await storage_api.StorageApi.getSpecialists(
         search: phoneE164,
         limit: 20,
       );
-      if (!mounted) return;
+      if (!mounted || _normalized != normalized) return;
       // Defensive double-filter: бэк уже сужает по точному
       // совпадению search-параметра. Этот endsWith — defense-in-depth
       // на случай если поле phone имеет особенности форматирования
       // (+7 vs 7 vs 8). Удаляем все не-digit для нормализации.
       final exact = page.specialists.where((s) {
         final p = (s.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-        return p.endsWith(_normalized);
+        return p.endsWith(normalized);
       }).toList();
-      // Если ровно 1 match — auto-pop без промежуточного setState
-      // (widget сейчас unmount'нется, лишний rebuild dangerous).
-      if (exact.length == 1) {
-        _pick(exact.first);
-        return;
-      }
       setState(() {
         _results = exact;
         _searching = false;
       });
     } on storage_api.SessionExpiredException {
-      if (!mounted) return;
+      if (!mounted || _normalized != normalized) return;
       setState(() {
         _searching = false;
         _error = 'Сессия истекла. Войдите заново.';
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || _normalized != normalized) return;
       setState(() {
         _searching = false;
         _error = 'Не удалось выполнить поиск: $e';
@@ -506,7 +510,6 @@ class _PhoneTabState extends State<_PhoneTab>
   @override
   Widget build(BuildContext context) {
     super.build(context); // обязательно для AutomaticKeepAliveClientMixin
-    final canSearch = _normalized.isNotEmpty && !_searching;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -515,37 +518,16 @@ class _PhoneTabState extends State<_PhoneTab>
           keyboardType: TextInputType.phone,
           inputFormatters: [RuPhoneFormatter()],
           autofocus: true,
-          textInputAction: TextInputAction.search,
+          textInputAction: TextInputAction.done,
           onSubmitted: (_) {
-            if (canSearch) _search();
+            if (_normalized.isEmpty) return;
+            _searchDebounce?.cancel();
+            _search(_normalized);
           },
           onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
           decoration: sparkInputDecoration(
             '+7-___-___-__-__',
             prefixIcon: const Icon(Icons.phone_outlined, color: kGreyColor),
-          ),
-        ),
-        const SizedBox(height: SparkSpace.md),
-        SizedBox(
-          height: SparkSize.actionHeight,
-          child: FilledButton.icon(
-            onPressed: canSearch ? _search : null,
-            icon: _searching
-                ? const SizedBox(
-                    width: SparkSize.spinner,
-                    height: SparkSize.spinner,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: kWhiteColor,
-                    ),
-                  )
-                : const Icon(Icons.search_rounded),
-            label: Text(_searching ? 'Ищем...' : 'Найти специалиста'),
-            style: FilledButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SparkRadius.lg),
-              ),
-            ),
           ),
         ),
         const SizedBox(height: SparkSpace.lg),
@@ -555,6 +537,26 @@ class _PhoneTabState extends State<_PhoneTab>
   }
 
   Widget _buildResults() {
+    if (_searching) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(SparkSpace.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: SparkSpace.md),
+              MyText(
+                text: 'Ищем специалиста...',
+                size: SparkTextSize.body,
+                color: kGreyColor,
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     if (_error != null) {
       return Center(
         child: Padding(
@@ -575,8 +577,8 @@ class _PhoneTabState extends State<_PhoneTab>
           padding: EdgeInsets.all(SparkSpace.xl),
           child: MyText(
             text:
-                'Введите номер телефона специалиста — мы найдём его в '
-                'нашей базе. Назначить можно только специалистов, '
+                'Введите полный номер телефона — поиск начнётся '
+                'автоматически. Назначить можно только специалистов, '
                 'состоящих в вашей компании.',
             size: SparkTextSize.caption,
             color: kGreyColor,
@@ -602,7 +604,6 @@ class _PhoneTabState extends State<_PhoneTab>
         ),
       );
     }
-    // >1 match — показываем список (маловероятно, но возможно).
     return ListView.separated(
       itemCount: results.length,
       separatorBuilder: (_, _) => const Divider(height: 1, color: kBorderColor),
