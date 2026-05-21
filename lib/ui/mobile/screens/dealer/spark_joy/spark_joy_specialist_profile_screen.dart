@@ -9,6 +9,7 @@ import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart'
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'spark_joy_data.dart';
@@ -2184,8 +2185,21 @@ class _SparkJoySpecialistProfileScreenState
     if (action.startsWith('preset:')) {
       final idx = int.tryParse(action.substring('preset:'.length));
       if (idx == null) return;
+      // Если на сервере было загруженное фото — его надо удалить, иначе
+      // _fetchServerProfile вернёт urlAvatar и перекроет preset (URL
+      // приоритетнее в рендере). Bump _fetchGeneration отменяет
+      // in-flight fetch, чтобы он не восстановил удалённый urlAvatar.
+      final hadServerAvatar = (_urlAvatar ?? '').isNotEmpty;
       await UserSimplePreferences.setAvatarPresetIndex(idx);
       if (!mounted) return;
+      if (hadServerAvatar) {
+        ++_fetchGeneration;
+        unawaited(
+          storage_api.StorageApi.deleteProfileAvatar().catchError(
+            (_) => <String, dynamic>{},
+          ),
+        );
+      }
       setState(() {
         _urlAvatar = null;
         _avatarBase64 = null;
@@ -2197,13 +2211,17 @@ class _SparkJoySpecialistProfileScreenState
         ? ImageSource.camera
         : ImageSource.gallery;
     try {
+      // Берём оригинал в высоком разрешении — кроп уменьшит до 800.
       final xfile = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 800,
-        imageQuality: 85,
+        maxWidth: 1600,
+        imageQuality: 92,
       );
       if (xfile == null || !mounted) return;
-      final bytes = await xfile.readAsBytes();
+      // Кроп в квадрат 1:1 под круглую аватарку — юзер сам выбирает
+      // область кадра. null = отмена кропа.
+      final bytes = await _cropAvatarSquare(xfile.path);
+      if (bytes == null || !mounted) return;
       if (bytes.length > 25 * 1024 * 1024) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2223,7 +2241,8 @@ class _SparkJoySpecialistProfileScreenState
         _avatarPresetIndex = null;
         _isUploadingAvatar = true;
       });
-      await _uploadAvatarToS3(xfile.name, bytes);
+      // Кроп всегда отдаёт JPEG — имя фиксируем под расширение.
+      await _uploadAvatarToS3('avatar.jpg', bytes);
     } on PlatformException catch (e) {
       if (!mounted) return;
       final reason =
@@ -2239,6 +2258,62 @@ class _SparkJoySpecialistProfileScreenState
         context,
       ).showSnackBar(SnackBar(content: Text('Не удалось загрузить фото: $e')));
     }
+  }
+
+  /// Открывает круглый кроппер (как в Telegram: фиксированная круглая
+  /// рамка, фото двигаешь/зумишь под ней). Возвращает JPEG-байты или null
+  /// если отменили. Native — uCrop/TOCropViewController с CropStyle.circle;
+  /// web — cropper.js (круг через CSS в web/index.html, drag-move).
+  Future<Uint8List?> _cropAvatarSquare(String sourcePath) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: sourcePath,
+      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+      maxWidth: 800,
+      maxHeight: 800,
+      compressFormat: ImageCompressFormat.jpg,
+      compressQuality: 90,
+      uiSettings: [
+        WebUiSettings(
+          context: context,
+          presentStyle: WebPresentStyle.dialog,
+          size: const CropperSize(width: 420, height: 420),
+          // Telegram-стиль: тянешь фото, рамка зафиксирована по центру.
+          dragMode: WebDragMode.move,
+          cropBoxMovable: false,
+          cropBoxResizable: false,
+          toggleDragModeOnDblclick: false,
+          guides: false,
+          highlight: false,
+          center: false,
+          movable: true,
+          zoomable: true,
+          translations: const WebTranslations(
+            title: 'Фото профиля',
+            rotateLeftTooltip: 'Повернуть влево',
+            rotateRightTooltip: 'Повернуть вправо',
+            cancelButton: 'Отмена',
+            cropButton: 'Готово',
+          ),
+        ),
+        IOSUiSettings(
+          title: 'Фото профиля',
+          aspectRatioLockEnabled: true,
+          resetAspectRatioEnabled: false,
+          rotateButtonsHidden: true,
+          cropStyle: CropStyle.circle,
+          doneButtonTitle: 'Готово',
+          cancelButtonTitle: 'Отмена',
+        ),
+        AndroidUiSettings(
+          toolbarTitle: 'Фото профиля',
+          lockAspectRatio: true,
+          hideBottomControls: true,
+          cropStyle: CropStyle.circle,
+        ),
+      ],
+    );
+    if (cropped == null) return null;
+    return cropped.readAsBytes();
   }
 
   Future<void> _uploadAvatarToS3(
@@ -2271,18 +2346,26 @@ class _SparkJoySpecialistProfileScreenState
       );
       return;
     }
-    // Фаза 2 — привязка publicUrl к профилю. Файл уже в S3; если
+    // Cache-busting: ключ в S3 всегда `avatar.png`, поэтому publicUrl не
+    // меняется между загрузками и браузер/Image-кэш отдаёт старое фото.
+    // Добавляем версионный ?v={ts} — каждая загрузка = уникальный URL,
+    // кэш сбрасывается везде (немедленно + при перезагрузке + на других
+    // устройствах, т.к. бэкенд хранит и отдаёт URL с параметром as-is).
+    final sep = publicUrl.contains('?') ? '&' : '?';
+    final versionedUrl =
+        '$publicUrl${sep}v=${DateTime.now().millisecondsSinceEpoch}';
+    // Фаза 2 — привязка versionedUrl к профилю. Файл уже в S3; если
     // UpdateProfile упал — оставляем base64-превью локально (юзер видит
     // своё фото), профиль допривяжется при следующем сохранении.
     try {
       await storage_api.StorageApi.updateProfile(
-        profile: {'urlAvatar': publicUrl},
+        profile: {'urlAvatar': versionedUrl},
       );
       if (!mounted) return;
       await UserSimplePreferences.clearAvatar();
       if (!mounted) return;
       setState(() {
-        _urlAvatar = publicUrl;
+        _urlAvatar = versionedUrl;
         _avatarBase64 = null;
         _isUploadingAvatar = false;
       });

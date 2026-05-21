@@ -31,6 +31,18 @@
 
   <title>flutter_application_1</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- cropperjs — нужен для image_cropper на web (кроп аватарки) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
+  <!-- Круглая рамка кропа (как в Telegram): скругляем crop-box cropper.js.
+       Output остаётся квадратным JPEG — на отображении он всё равно ClipOval. -->
+  <style>
+    .cropper-view-box,
+    .cropper-face {
+      border-radius: 50%;
+    }
+  </style>
 </head>
 <body>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
