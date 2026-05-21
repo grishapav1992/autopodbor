@@ -17,16 +17,22 @@ typedef RequestHistoryReason = ({String label, String? comment});
 
 enum RequestStatusFilter {
   all('Все', <String>{}),
+  draft('Черновики', <String>{}, localOnly: true),
   newRequests('Новые', <String>{'created', 'await_payment'}),
   inProgress('В работе', <String>{'paid_escrow', 'in_work'}),
   done('Завершены', <String>{'done'}),
   canceled('Отменены', <String>{'canceled', 'refund'}),
   failed('Не выполнены', <String>{'failed'});
 
-  const RequestStatusFilter(this.label, this.statuses);
+  const RequestStatusFilter(
+    this.label,
+    this.statuses, {
+    this.localOnly = false,
+  });
 
   final String label;
   final Set<String> statuses;
+  final bool localOnly;
 }
 
 String normalizeRequestStatus(String status) {
@@ -41,6 +47,12 @@ String normalizeRequestStatus(String status) {
 RequestStatusBadge requestStatusBadge(String status) {
   final normalized = normalizeRequestStatus(status);
   switch (normalized) {
+    case 'draft':
+      return (
+        label: 'Черновик',
+        bg: kYellowColor.withValues(alpha: 0.12),
+        fg: kYellowColor,
+      );
     case 'created':
       return (
         label: 'Создана',
@@ -100,6 +112,8 @@ RequestStatusBadge requestStatusBadge(String status) {
 
 IconData requestStatusIcon(String status) {
   switch (normalizeRequestStatus(status)) {
+    case 'draft':
+      return Icons.edit_note_rounded;
     case 'created':
       return Icons.fiber_new_rounded;
     case 'in_work':

@@ -9,43 +9,97 @@ class SparkJoyRequestFilterBar extends StatelessWidget {
     super.key,
     required this.value,
     required this.onChanged,
+    this.filters,
   });
 
   final RequestStatusFilter value;
   final ValueChanged<RequestStatusFilter> onChanged;
+  final List<RequestStatusFilter>? filters;
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: RequestStatusFilter.values.map((filter) {
-          final selected = value == filter;
-          return Padding(
-            padding: const EdgeInsets.only(right: SparkSpace.sm),
-            child: ChoiceChip(
-              label: Text(filter.label),
-              selected: selected,
-              onSelected: (_) => onChanged(filter),
-              showCheckmark: false,
-              visualDensity: VisualDensity.compact,
-              labelStyle: TextStyle(
-                fontSize: SparkTextSize.caption,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                color: selected ? kWhiteColor : kGreyColor,
-              ),
-              selectedColor: kSecondaryColor,
-              backgroundColor: kWhiteColor,
-              side: BorderSide(
-                color: selected ? kSecondaryColor : kBorderColor,
-              ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SparkRadius.pill),
+    final available =
+        filters ??
+        RequestStatusFilter.values
+            .where((filter) => filter != RequestStatusFilter.draft)
+            .toList(growable: false);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          final selected = await showModalBottomSheet<RequestStatusFilter>(
+            context: context,
+            backgroundColor: kWhiteColor,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(SparkRadius.lg),
               ),
             ),
+            builder: (ctx) {
+              return SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: SparkSpace.md),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          SparkSpace.xl,
+                          SparkSpace.md,
+                          SparkSpace.xl,
+                          SparkSpace.sm,
+                        ),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Фильтр заявок',
+                            style: TextStyle(
+                              fontSize: SparkTextSize.title,
+                              fontWeight: FontWeight.w800,
+                              color: kTertiaryColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                      for (final filter in available)
+                        ListTile(
+                          onTap: () => Navigator.of(ctx).pop(filter),
+                          title: Text(filter.label),
+                          trailing: value == filter
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  color: kSecondaryColor,
+                                )
+                              : null,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
           );
-        }).toList(),
+          if (selected != null && selected != value) {
+            onChanged(selected);
+          }
+        },
+        icon: const Icon(Icons.filter_list_rounded),
+        label: Text('Фильтр: ${value.label}'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: kTertiaryColor,
+          backgroundColor: kWhiteColor,
+          side: const BorderSide(color: kBorderColor),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+          ),
+          textStyle: const TextStyle(
+            fontSize: SparkTextSize.body,
+            fontWeight: FontWeight.w700,
+          ),
+          minimumSize: const Size(0, SparkSize.inputHeight),
+          padding: const EdgeInsets.symmetric(horizontal: SparkSpace.lg),
+        ),
       ),
     );
   }

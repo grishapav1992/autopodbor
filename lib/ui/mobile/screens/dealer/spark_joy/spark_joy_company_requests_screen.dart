@@ -10,6 +10,7 @@ import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_onboarding.dart';
 import 'spark_joy_request_filter_bar.dart';
 import 'spark_joy_request_status.dart';
+import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
@@ -34,6 +35,7 @@ class SparkJoyCompanyRequestsScreen extends StatefulWidget {
 class _SparkJoyCompanyRequestsScreenState
     extends State<SparkJoyCompanyRequestsScreen> {
   List<Map<String, dynamic>>? _requests;
+  Map<String, dynamic>? _requestDraft;
   bool _loading = true;
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
@@ -106,6 +108,7 @@ class _SparkJoyCompanyRequestsScreenState
   Future<List<Map<String, dynamic>>> _getRequestsForFilter(
     RequestStatusFilter filter,
   ) async {
+    if (filter.localOnly) return const <Map<String, dynamic>>[];
     if (filter == RequestStatusFilter.all) {
       return storage_api.StorageApi.getRequests();
     }
@@ -132,10 +135,21 @@ class _SparkJoyCompanyRequestsScreenState
       _loadError = null;
     });
     try {
+      final draft = await _loadVisibleDraft();
+      if (_statusFilter.localOnly) {
+        if (!mounted) return;
+        setState(() {
+          _requestDraft = draft;
+          _requests ??= const <Map<String, dynamic>>[];
+          _loading = false;
+        });
+        return;
+      }
       final result = await _getRequestsWithRetry();
       if (!mounted) return;
       setState(() {
         _requests = result;
+        _requestDraft = draft;
         _loading = false;
       });
     } on storage_api.SessionExpiredException {
@@ -183,6 +197,12 @@ class _SparkJoyCompanyRequestsScreenState
     await _load();
   }
 
+  Future<Map<String, dynamic>?> _loadVisibleDraft() async {
+    final draft = await SparkJoyStorage.loadCompanyRequestDraft();
+    if (!_isVisibleRequestDraft(draft)) return null;
+    return draft;
+  }
+
   Future<void> _openDetail(Map<String, dynamic> request) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
@@ -218,7 +238,16 @@ class _SparkJoyCompanyRequestsScreenState
       );
     }
     final requests = _requests ?? const [];
-    if (requests.isEmpty && _statusFilter == RequestStatusFilter.all) {
+    final draftCard = _draftCardData(_requestDraft);
+    final showDraft =
+        draftCard != null &&
+        (_statusFilter == RequestStatusFilter.all ||
+            _statusFilter == RequestStatusFilter.draft);
+    final visibleRequests = _statusFilter == RequestStatusFilter.draft
+        ? const <Map<String, dynamic>>[]
+        : requests;
+    final hasVisibleItems = showDraft || visibleRequests.isNotEmpty;
+    if (!hasVisibleItems && _statusFilter == RequestStatusFilter.all) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
@@ -281,6 +310,7 @@ class _SparkJoyCompanyRequestsScreenState
         const SparkSectionTitle('Мои заявки'),
         SparkJoyRequestFilterBar(
           value: _statusFilter,
+          filters: RequestStatusFilter.values,
           onChanged: (filter) {
             if (filter == _statusFilter) return;
             setState(() => _statusFilter = filter);
@@ -288,18 +318,109 @@ class _SparkJoyCompanyRequestsScreenState
           },
         ),
         const SizedBox(height: SparkSpace.lg),
-        if (requests.isEmpty)
+        if (!hasVisibleItems)
           const SparkHintCard(text: 'Заявок с таким статусом нет')
-        else
-          ...requests.map(
+        else ...[
+          if (showDraft)
+            Padding(
+              padding: const EdgeInsets.only(bottom: SparkSpace.md),
+              child: _RequestCard(data: draftCard, onTap: _openCreateRequest),
+            ),
+          ...visibleRequests.map(
             (r) => Padding(
               padding: const EdgeInsets.only(bottom: SparkSpace.md),
               child: _RequestCard(data: r, onTap: () => _openDetail(r)),
             ),
           ),
+        ],
       ],
     );
   }
+}
+
+bool _isVisibleRequestDraft(Map<String, dynamic>? draft) {
+  if (draft == null || draft.isEmpty) return false;
+  for (final key in const [
+    'brand',
+    'model',
+    'generation',
+    'restyling',
+    'sellerPhone',
+    'sellerUrl',
+    'city',
+    'budgetFrom',
+    'budgetTo',
+    'maxMileage',
+    'ownersCount',
+    'note',
+    'assignee',
+  ]) {
+    final value = draft[key];
+    if (value is Map && value.isNotEmpty) return true;
+    if (value is String && value.trim().isNotEmpty) return true;
+    if (value != null && value is! String && value is! Map) return true;
+  }
+  return false;
+}
+
+Map<String, dynamic>? _draftCardData(Map<String, dynamic>? draft) {
+  if (!_isVisibleRequestDraft(draft)) return null;
+  final safeDraft = draft!;
+  final brand = _draftMap(safeDraft['brand']);
+  final model = _draftMap(safeDraft['model']);
+  final generation = _draftMap(safeDraft['generation']);
+  final restyling = _draftMap(safeDraft['restyling']);
+  final assignee = _draftMap(safeDraft['assignee']);
+  final carName = [
+    _draftLabel(brand, const ['nameRus', 'name']),
+    _draftLabel(model, const ['modelRus', 'model', 'name']),
+  ].where((part) => part.isNotEmpty).join(' ');
+  final generationText = _draftString(generation['generation']);
+  final restylingText = _draftString(restyling['restyling']);
+  final subtitleParts = [
+    if (carName.isNotEmpty) carName,
+    if (generationText.isNotEmpty) 'Поколение $generationText',
+    if (restylingText.isNotEmpty) restylingText,
+  ];
+  final assigneeName = _draftString(assignee['displayName']);
+  return {
+    '__localDraft': true,
+    'status': 'draft',
+    'requestNumber': '',
+    'cars': [
+      subtitleParts.isEmpty
+          ? 'Автомобиль не указан'
+          : subtitleParts.join(' · '),
+    ],
+    'note': _draftString(safeDraft['note']),
+    'dueAt': _ruDateToIso(_draftString(safeDraft['dueAt'])),
+    if (assigneeName.isNotEmpty) 'assignedSpecialistName': assigneeName,
+    'updatedAtIso': _draftString(safeDraft['updatedAtIso']),
+  };
+}
+
+Map<String, dynamic> _draftMap(dynamic raw) {
+  if (raw is Map<String, dynamic>) return raw;
+  if (raw is Map) {
+    return raw.map((key, value) => MapEntry(key.toString(), value));
+  }
+  return const <String, dynamic>{};
+}
+
+String _draftString(dynamic raw) => raw == null ? '' : raw.toString().trim();
+
+String _draftLabel(Map<String, dynamic> source, List<String> keys) {
+  for (final key in keys) {
+    final value = _draftString(source[key]);
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+String _ruDateToIso(String raw) {
+  final match = RegExp(r'^(\d{2})\.(\d{2})\.(\d{4})$').firstMatch(raw);
+  if (match == null) return raw;
+  return '${match.group(3)}-${match.group(2)}-${match.group(1)}';
 }
 
 /// Карточка одной заявки в списке. Tap → детальный экран
@@ -311,8 +432,10 @@ class _RequestCard extends StatelessWidget {
   final VoidCallback onTap;
 
   String _str(String key) => (data[key] ?? '').toString();
+  bool get _isDraft => data['__localDraft'] == true;
 
   String get _title {
+    if (_isDraft) return 'Черновик заявки';
     final number = _str('requestNumber');
     return number.isNotEmpty ? 'Заявка №$number' : 'Заявка';
   }
@@ -361,6 +484,12 @@ class _RequestCard extends StatelessWidget {
     return parts.join(' · ');
   }
 
+  String get _notePreview {
+    final note = _str('note').trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (note.isEmpty) return '';
+    return note;
+  }
+
   int? _int(dynamic raw) {
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
@@ -369,6 +498,8 @@ class _RequestCard extends StatelessWidget {
   }
 
   String get _specialistLabel {
+    final explicit = _str('assignedSpecialistName').trim();
+    if (explicit.isNotEmpty) return explicit;
     final raw = data['assignedSpecialist'];
     final specialist = raw is Map ? Map<String, dynamic>.from(raw) : null;
     if (specialist != null) {
@@ -398,13 +529,14 @@ class _RequestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final badge = requestStatusBadge(_str('status'));
+    final notePreview = _notePreview;
     return SparkCard(
       onTap: onTap,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.assignment_outlined,
+          Icon(
+            _isDraft ? Icons.edit_note_rounded : Icons.assignment_outlined,
             size: SparkSize.iconLg,
             color: kSecondaryColor,
           ),
@@ -442,6 +574,15 @@ class _RequestCard extends StatelessWidget {
                     text: _meta,
                     size: SparkTextSize.caption,
                     color: kGreyColor,
+                  ),
+                ],
+                if (notePreview.isNotEmpty) ...[
+                  const SizedBox(height: SparkSpace.sm),
+                  MyText(
+                    text: notePreview,
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    maxLines: 2,
                   ),
                 ],
               ],

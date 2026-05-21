@@ -15,6 +15,7 @@
 | `Storage.GetCompanySpecialists({page, limit})` | live | Список штатных специалистов компании |
 | `Storage.UnlinkCompanySpecialist({specialistId})` | live | Удаление сотрудника из штата компании |
 | `Storage.CreateRequest({assignedSpecialistId, ...})` | live | Назначение заявки на специалиста при создании |
+| `Storage.CreateRequest({note})` + `Storage.GetRequest.note` | live | Заметка компании к заявке |
 | `Storage.AcceptRequest / RejectRequest / AbandonRequest / CompleteRequest` | live | Lifecycle заявки |
 | `Storage.GetRequest.assignedSpecialist/assignedSpecialistId` | live | Компания видит назначенного специалиста в detail-screen |
 | `Storage.GetRequest.reportId/reportNumber` | live | Компания может создать share-ссылку готового отчёта из detail-screen |
@@ -31,6 +32,40 @@
 ---
 
 ## Нужно от backend (приоритет ↓)
+
+### 🔴 P0: Файлы в заявке
+
+**Use case.** Компания при создании заявки должна прикреплять файлы к заявке
+для специалиста: фото, PDF, документы, таблицы и другие обычные файлы.
+Видео прикладывать нельзя.
+
+**Сейчас.** Live `Doc` на 2026-05-21 показывает:
+
+- `Storage.CreateRequest` не принимает `files` / `attachments`;
+- `Storage.GetRequest` не возвращает файлы заявки;
+- отдельного метода вроде `Storage.AttachRequestFile` /
+  `ObjectStorage.Request.*` нет;
+- общий `ObjectStorage.*` завязан на `reportNumber` и временный `temp`, поэтому
+  его нельзя безопасно использовать как постоянные вложения заявки.
+
+**Нужно.** Добавить серверный контракт для постоянных файлов заявки.
+Предпочтительный вариант:
+
+1. `ObjectStorage.Request.InitiateMultipartUpload({requestId?, filename, contentLength, contentType})`
+2. `ObjectStorage.Request.GetPartUploadUrls({filename, uploadId, partCount})`
+3. `ObjectStorage.Request.CompleteMultipartUpload({filename, uploadId, parts})`
+4. `Storage.CreateRequest({ ..., attachments: [...] })`
+5. `Storage.GetRequest` возвращает `attachments: [{id, filename, contentType, contentLength, viewUrl?}]`
+6. `ObjectStorage.Request.GetViewUrl({attachmentId})` для приватного просмотра.
+
+**Frontend rules.**
+
+- Запрещаем `contentType` с префиксом `video/`.
+- На клиенте дополнительно фильтруем типы файлов, но финальная валидация должна
+  быть на backend.
+- Вложения должны быть доступны компании и назначенному специалисту.
+- Если заявка ещё не создана, нужен `draftUploadToken` / временная зона хранения,
+  которую backend привяжет к заявке после `CreateRequest`.
 
 ### 🔴 P0: Аватарка профиля — два блокера в S3-флоу
 

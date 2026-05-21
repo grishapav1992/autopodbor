@@ -82,6 +82,9 @@ class _SparkJoyCompanyCreateRequestScreenState
 
   @override
   void dispose() {
+    if (!_draftSubmitted && !_draftHydrating) {
+      unawaited(SparkJoyStorage.saveCompanyRequestDraft(_buildDraftPayload()));
+    }
     _draftAutosaveDebounce?.cancel();
     _removeDraftListeners();
     _sellerPhoneController.dispose();
@@ -128,7 +131,6 @@ class _SparkJoyCompanyCreateRequestScreenState
     if (!mounted) return;
     if (draft == null) {
       _draftHydrating = false;
-      _scheduleDraftAutosave();
       return;
     }
     _draftHydrating = true;
