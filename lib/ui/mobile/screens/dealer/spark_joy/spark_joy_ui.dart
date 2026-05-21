@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -321,16 +322,28 @@ class SparkInitialsAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = imageUrl;
     if (url != null && url.isNotEmpty) {
-      return ClipOval(
-        child: CachedNetworkImage(
-          imageUrl: url,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          placeholder: (_, _) => _buildInitials(),
-          errorWidget: (_, _, _) => _buildInitials(),
-        ),
-      );
+      // На web cached_network_image ненадёжен (часто молча падает в
+      // errorWidget, особенно когда S3 отдаёт Content-Type:
+      // binary/octet-stream вместо image/*). Image.network на вебе
+      // сниффит байты сам и рисует корректно. На нативе оставляем
+      // CachedNetworkImage ради дискового кэша.
+      final Widget networkImage = kIsWeb
+          ? Image.network(
+              url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) => _buildInitials(),
+            )
+          : CachedNetworkImage(
+              imageUrl: url,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              placeholder: (_, _) => _buildInitials(),
+              errorWidget: (_, _, _) => _buildInitials(),
+            );
+      return ClipOval(child: networkImage);
     }
     final bytes = _decode();
     if (bytes != null) {
