@@ -132,6 +132,10 @@ class _SparkJoySpecialistProfileScreenState
   String? _verifiedInn;
   String? _businessType;
   Map<String, dynamic>? _specialistProfile;
+  int? _linkedCompanyId;
+  Map<String, dynamic>? _linkedCompanyProfile;
+  bool _isLoadingLinkedCompany = false;
+  String? _linkedCompanyError;
 
   // После user-action смены роли (verify ИНН → company, reset → specialist)
   // backend имеет eventual consistency: GetProfile может несколько секунд
@@ -237,6 +241,13 @@ class _SparkJoySpecialistProfileScreenState
     return parts.join(' ');
   }
 
+  int? _readInt(dynamic raw) {
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw.trim());
+    return null;
+  }
+
   /// Reads the profile's specialization as a plain-text description.
   /// Legacy profiles stored it as a `specializations` list of tags;
   /// we format those as a bullet list so the textarea reads
@@ -279,8 +290,7 @@ class _SparkJoySpecialistProfileScreenState
       final base = _fallbackSpecialist();
       final merged = <String, dynamic>{...base, ...cached};
       _applyProfileToControllers(merged);
-      final cachedUrl =
-          (cached['urlAvatar'] as String? ?? '').trim();
+      final cachedUrl = (cached['urlAvatar'] as String? ?? '').trim();
       setState(() {
         _specialistProfile = merged;
         _pendingEmailVerify = pending;
@@ -305,6 +315,7 @@ class _SparkJoySpecialistProfileScreenState
         'specialization',
         'specializations',
         'companyName',
+        'companyId',
       ]) {
         seed.remove(key);
       }
@@ -382,6 +393,36 @@ class _SparkJoySpecialistProfileScreenState
       //      effectiveRole='company' (из pending), company-поля
       //      сохраняются (server потом догонит и pending очистится).
       final isCompanyRole = effectiveRole.toLowerCase() == 'company';
+      final linkedCompanyId = isCompanyRole
+          ? null
+          : _readInt(result['companyId']);
+      Map<String, dynamic>? linkedCompanyProfile;
+      String? linkedCompanyError;
+      if (linkedCompanyId != null && linkedCompanyId > 0) {
+        if (mounted && myGen == _fetchGeneration) {
+          setState(() {
+            _linkedCompanyId = linkedCompanyId;
+            _linkedCompanyProfile = null;
+            _isLoadingLinkedCompany = true;
+            _linkedCompanyError = null;
+          });
+        }
+        try {
+          final company = await storage_api.StorageApi.getCompanyProfile(
+            companyId: linkedCompanyId,
+          );
+          linkedCompanyProfile = company.isEmpty ? null : company;
+          if (linkedCompanyProfile == null) {
+            linkedCompanyError = 'Компания не найдена';
+          }
+        } catch (e) {
+          linkedCompanyError = 'Не удалось загрузить компанию';
+          if (kDebugMode) {
+            debugPrint('[profile] GetCompanyProfile failed: $e');
+          }
+        }
+      }
+      if (!mounted || myGen != _fetchGeneration) return;
       // Маппим server fields в текущий profile-map поверх локальных,
       // потом переприменяем через _applyProfileToControllers — это
       // переиспользует мигратор legacy `name` если структурированных
@@ -395,6 +436,7 @@ class _SparkJoySpecialistProfileScreenState
         if (result['phone'] != null) 'phone': result['phone'],
         if (result['description'] != null)
           'specialization': result['description'],
+        if (result['companyId'] != null) 'companyId': result['companyId'],
         // Server отдаёт companyInn как int — приводим к строке для
         // унификации с _verifiedInn (тоже String).
         if (isCompanyRole && result['companyName'] != null)
@@ -410,11 +452,14 @@ class _SparkJoySpecialistProfileScreenState
       if (result['city'] != null) merged['city'] = result['city'];
       _applyProfileToControllers(merged);
       final serverInn = result['companyInn'];
-      final serverUrlAvatar =
-          result['urlAvatar']?.toString().trim() ?? '';
+      final serverUrlAvatar = result['urlAvatar']?.toString().trim() ?? '';
       setState(() {
         _specialistProfile = merged;
         _urlAvatar = serverUrlAvatar.isNotEmpty ? serverUrlAvatar : null;
+        _linkedCompanyId = linkedCompanyId;
+        _linkedCompanyProfile = linkedCompanyProfile;
+        _linkedCompanyError = linkedCompanyError;
+        _isLoadingLinkedCompany = false;
         if (isCompanyRole) {
           _isVerifyCompany = result['isVerifyCompany'] == true;
           if (serverInn != null) {
@@ -429,6 +474,12 @@ class _SparkJoySpecialistProfileScreenState
           _isVerifyCompany = null;
           _verifiedInn = null;
           _innController.text = '';
+        }
+        if (isCompanyRole || linkedCompanyId == null) {
+          _linkedCompanyId = null;
+          _linkedCompanyProfile = null;
+          _linkedCompanyError = null;
+          _isLoadingLinkedCompany = false;
         }
       });
       // Authoritative server snapshot → local cache. Полная замена
@@ -445,6 +496,7 @@ class _SparkJoySpecialistProfileScreenState
         if (result['phone'] != null) 'phone': result['phone'],
         if (result['description'] != null)
           'specialization': result['description'],
+        if (result['companyId'] != null) 'companyId': result['companyId'],
         if (isCompanyRole && result['companyName'] != null)
           'companyName': result['companyName'].toString(),
         if (result['city'] != null) 'city': result['city'],
@@ -1463,6 +1515,159 @@ class _SparkJoySpecialistProfileScreenState
     unawaited(_pushProfileToServer(descriptionAllowed: descriptionAllowed));
   }
 
+  Widget _buildLinkedCompanyProfile() {
+    if (_isLoadingLinkedCompany && _linkedCompanyProfile == null) {
+      return const Padding(
+        padding: EdgeInsets.all(SparkSpace.md),
+        child: Row(
+          children: [
+            SizedBox(
+              width: SparkSize.spinner,
+              height: SparkSize.spinner,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: SparkSpace.md),
+            Expanded(
+              child: MyText(
+                text: 'Загружаем компанию...',
+                size: SparkTextSize.body,
+                color: kGreyColor,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final company = _linkedCompanyProfile;
+    if (company == null || company.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(SparkSpace.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                Icon(
+                  Icons.business_outlined,
+                  size: SparkSize.iconLg,
+                  color: kGreyColor,
+                ),
+                SizedBox(width: SparkSpace.md),
+                Expanded(
+                  child: MyText(
+                    text: 'Компания не загружена',
+                    size: SparkTextSize.bodyLg,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: SparkSpace.sm),
+            MyText(
+              text:
+                  _linkedCompanyError ??
+                  'Информация о компании появится после привязки к штату.',
+              size: SparkTextSize.body,
+              color: kGreyColor,
+              lineHeight: 1.35,
+            ),
+            if (_linkedCompanyId != null) ...[
+              const SizedBox(height: SparkSpace.lg),
+              OutlinedButton.icon(
+                onPressed: _fetchServerProfile,
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Повторить'),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    final name = sjRead(company, 'companyName', fallback: 'Компания').trim();
+    final city = sjRead(company, 'city').trim();
+    final inn = sjRead(company, 'companyInn').trim();
+    final description = sjRead(company, 'description').trim();
+    final avatarUrl = sjRead(company, 'urlAvatar').trim();
+    final verified = company['isVerifyCompany'] == true;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xs,
+            vertical: SparkSpace.md,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SparkInitialsAvatar(
+                name: name,
+                size: SparkSize.avatarSm,
+                textSize: SparkTextSize.label,
+                imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
+              ),
+              const SizedBox(width: SparkSpace.xl),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MyText(
+                      text: name,
+                      size: SparkTextSize.bodyLg,
+                      weight: FontWeight.w800,
+                      lineHeight: 1.25,
+                    ),
+                    const SizedBox(height: SparkSpace.xxs),
+                    MyText(
+                      text: 'Компания, в штате которой вы состоите',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                      lineHeight: 1.3,
+                    ),
+                  ],
+                ),
+              ),
+              if (verified) ...[
+                const SizedBox(width: SparkSpace.sm),
+                const SparkChip(
+                  text: 'Проверена',
+                  icon: Icons.verified_rounded,
+                  background: Color(0x1A1FA463),
+                  color: kGreenColor,
+                ),
+              ],
+            ],
+          ),
+        ),
+        if (city.isNotEmpty)
+          SparkProfileRow(
+            icon: Icons.location_city_outlined,
+            label: 'Город',
+            value: city,
+            muted: true,
+          ),
+        if (inn.isNotEmpty)
+          SparkProfileRow(
+            icon: Icons.numbers_rounded,
+            label: 'ИНН',
+            value: inn,
+            muted: true,
+          ),
+        if (description.isNotEmpty)
+          SparkProfileRow(
+            icon: Icons.notes_rounded,
+            label: 'Описание',
+            value: description,
+            muted: true,
+            maxLinesValue: 4,
+          ),
+      ],
+    );
+  }
+
   // «Проверка компании» — verified state.
   //
   // List-style rows (паттерн идентичен «Информации»): Название
@@ -2025,14 +2230,14 @@ class _SparkJoySpecialistProfileScreenState
           e.code == 'camera_access_denied' || e.code == 'photo_access_denied'
           ? 'Нет доступа. Разрешите в Настройках устройства.'
           : 'Не удалось загрузить фото: ${e.code}';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(reason)),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(reason)));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Не удалось загрузить фото: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Не удалось загрузить фото: $e')));
     }
   }
 
@@ -2082,7 +2287,9 @@ class _SparkJoySpecialistProfileScreenState
         _isUploadingAvatar = false;
       });
     } catch (e) {
-      if (kDebugMode) debugPrint('[avatar] UpdateProfile(urlAvatar) failed: $e');
+      if (kDebugMode) {
+        debugPrint('[avatar] UpdateProfile(urlAvatar) failed: $e');
+      }
       if (!mounted) return;
       // Спиннер гасим, base64-превью оставляем как fallback.
       setState(() => _isUploadingAvatar = false);
@@ -2423,6 +2630,11 @@ class _SparkJoySpecialistProfileScreenState
         ? sjRead(specialist, 'name', fallback: 'Специалист')
         : composedName;
     final hasVerifiedBusiness = (_verifiedInn ?? '').isNotEmpty;
+    final hasLinkedCompany =
+        !hasVerifiedBusiness &&
+        (_linkedCompanyId != null ||
+            _linkedCompanyProfile != null ||
+            _isLoadingLinkedCompany);
 
     return SparkScreenList(
       bottomInset: 56,
@@ -2605,7 +2817,7 @@ class _SparkJoySpecialistProfileScreenState
           // Если карточка в verified-state — list-style padding, как у
           // «Информации». В unverified-state (форма ИНН) — стандартный
           // card padding xl со всех сторон.
-          padding: hasVerifiedBusiness
+          padding: (hasVerifiedBusiness || hasLinkedCompany)
               ? const EdgeInsets.symmetric(
                   horizontal: SparkSpace.md,
                   vertical: SparkSpace.sm,
@@ -2613,6 +2825,8 @@ class _SparkJoySpecialistProfileScreenState
               : const EdgeInsets.all(SparkSpace.xl),
           child: hasVerifiedBusiness
               ? _buildBusinessVerified()
+              : hasLinkedCompany
+              ? _buildLinkedCompanyProfile()
               : _buildBusinessUnverified(),
         ),
         const SparkSectionTitle('Поддержка', top: SparkSpace.xl),

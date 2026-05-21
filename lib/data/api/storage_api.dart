@@ -2822,6 +2822,19 @@ class StorageApi {
     return _asMap(data['result']);
   }
 
+  /// Returns public company profile data by company user id.
+  static Future<Map<String, dynamic>> getCompanyProfile({
+    required int companyId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetCompanyProfile',
+      params: <String, dynamic>{'companyId': companyId},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
   /// Updates the current user profile.
   static Future<Map<String, dynamic>> updateProfile({
     required Map<String, dynamic> profile,
