@@ -1917,6 +1917,17 @@ class StorageApi {
     required int requestId,
     Duration timeout = const Duration(seconds: 12),
   }) async {
+    final details = await getRequestCarDetails(
+      requestId: requestId,
+      timeout: timeout,
+    );
+    return details.cars;
+  }
+
+  static Future<RequestCarDetails> getRequestCarDetails({
+    required int requestId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
     final data = await _postRpc(
       method: 'Storage.GetRequestCar',
       params: {'requestId': requestId},
@@ -1924,7 +1935,10 @@ class StorageApi {
     );
     final result = data['result'];
     if (result is List) {
-      return result.whereType<Map>().map((e) => _asMap(e)).toList();
+      return RequestCarDetails(
+        cars: result.whereType<Map>().map((e) => _asMap(e)).toList(),
+        requestStatusHistories: const <Map<String, dynamic>>[],
+      );
     }
     if (result is Map) {
       final map = _asMap(result);
@@ -1934,11 +1948,29 @@ class StorageApi {
           map['requestCars'] ??
           map['data'] ??
           map['list'];
+      final rawHistory =
+          map['requestStatusHistories'] ??
+          map['request_status_histories'] ??
+          map['statusHistories'] ??
+          map['history'];
+      final history = rawHistory is List
+          ? rawHistory.whereType<Map>().map((e) => _asMap(e)).toList()
+          : const <Map<String, dynamic>>[];
       if (list is List) {
-        return list.whereType<Map>().map((e) => _asMap(e)).toList();
+        return RequestCarDetails(
+          cars: list.whereType<Map>().map((e) => _asMap(e)).toList(),
+          requestStatusHistories: history,
+        );
       }
+      return RequestCarDetails(
+        cars: const <Map<String, dynamic>>[],
+        requestStatusHistories: history,
+      );
     }
-    return [];
+    return const RequestCarDetails(
+      cars: <Map<String, dynamic>>[],
+      requestStatusHistories: <Map<String, dynamic>>[],
+    );
   }
 
   static RequestActionResult _requestActionResultFromMap(

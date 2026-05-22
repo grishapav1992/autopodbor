@@ -306,18 +306,16 @@ class _SparkJoyCompanyRequestsScreenState
           label: 'Создать заявку',
           onTap: _openCreateRequest,
         ),
-        const SizedBox(height: SparkSpace.xl),
-        const SparkSectionTitle('Мои заявки'),
-        SparkJoyRequestFilterBar(
-          value: _statusFilter,
-          filters: RequestStatusFilter.values,
-          onChanged: (filter) {
+        const SizedBox(height: SparkSpace.lg),
+        _RequestsToolbar(
+          filter: _statusFilter,
+          onFilterChanged: (filter) {
             if (filter == _statusFilter) return;
             setState(() => _statusFilter = filter);
             _load();
           },
         ),
-        const SizedBox(height: SparkSpace.lg),
+        const SizedBox(height: SparkSpace.md),
         if (!hasVisibleItems)
           const SparkHintCard(text: 'Заявок с таким статусом нет')
         else ...[
@@ -333,6 +331,36 @@ class _SparkJoyCompanyRequestsScreenState
             ),
           ),
         ],
+      ],
+    );
+  }
+}
+
+class _RequestsToolbar extends StatelessWidget {
+  const _RequestsToolbar({required this.filter, required this.onFilterChanged});
+
+  final RequestStatusFilter filter;
+  final ValueChanged<RequestStatusFilter> onFilterChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Expanded(
+          child: MyText(
+            text: 'МОИ ЗАЯВКИ',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+            weight: FontWeight.w700,
+            letterSpacing: 0.6,
+          ),
+        ),
+        SparkJoyRequestFilterBar(
+          value: filter,
+          filters: RequestStatusFilter.values,
+          onChanged: onFilterChanged,
+        ),
       ],
     );
   }
@@ -487,7 +515,7 @@ class _RequestCard extends StatelessWidget {
   String get _notePreview {
     final note = _str('note').trim().replaceAll(RegExp(r'\s+'), ' ');
     if (note.isEmpty) return '';
-    return note;
+    return 'Заметка: $note';
   }
 
   int? _int(dynamic raw) {

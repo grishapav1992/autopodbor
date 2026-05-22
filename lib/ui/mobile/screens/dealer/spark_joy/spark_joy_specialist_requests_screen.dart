@@ -372,6 +372,7 @@ class _SparkJoySpecialistRequestDetailScreenState
     extends State<SparkJoySpecialistRequestDetailScreen> {
   late Map<String, dynamic> _request;
   List<Map<String, dynamic>>? _cars;
+  List<Map<String, dynamic>> _requestStatusHistoriesFromCars = const [];
   String? _carsError;
   bool _actionBusy = false;
   bool _openingReport = false;
@@ -403,10 +404,13 @@ class _SparkJoySpecialistRequestDetailScreenState
       return;
     }
     try {
-      final cars = await storage_api.StorageApi.getRequestCars(requestId: id);
+      final details = await storage_api.StorageApi.getRequestCarDetails(
+        requestId: id,
+      );
       if (!mounted) return;
       setState(() {
-        _cars = cars;
+        _cars = details.cars;
+        _requestStatusHistoriesFromCars = details.requestStatusHistories;
         _carsError = null;
       });
     } catch (e) {
@@ -752,7 +756,10 @@ class _SparkJoySpecialistRequestDetailScreenState
     final budgetTo = _request['budgetTo'];
     final maxMileage = _request['maxMileage'];
     final ownersCount = _request['ownersCount'];
-    final history = _historyNewestFirst(_request['requestStatusHistories']);
+    final history = _historyNewestFirst(
+      _request['requestStatusHistories'],
+      _requestStatusHistoriesFromCars,
+    );
     final canRespond = status == 'created';
     final canAbandon = status == 'paid_escrow' || status == 'in_work';
 
@@ -1357,10 +1364,28 @@ Future<String?> _showNoteSheet(
   }
 }
 
-List<Map<String, dynamic>> _historyNewestFirst(dynamic raw) {
-  final history = raw is List
-      ? raw.whereType<Map>().map((m) => Map<String, dynamic>.from(m)).toList()
-      : <Map<String, dynamic>>[];
+List<Map<String, dynamic>> _historyNewestFirst(dynamic primary, dynamic extra) {
+  final byKey = <String, Map<String, dynamic>>{};
+  var fallbackIndex = 0;
+  for (final source in [primary, extra]) {
+    if (source is! List) continue;
+    for (final item in source) {
+      if (item is! Map) continue;
+      final entry = Map<String, dynamic>.from(item);
+      final id = (entry['id'] ?? '').toString().trim();
+      final key = id.isNotEmpty
+          ? 'id:$id'
+          : [
+              entry['oldStatus'],
+              entry['newStatus'],
+              entry['changedByRole'],
+              entry['reason'],
+              entry['createdAt'],
+            ].map((value) => (value ?? '').toString()).join('|');
+      byKey[key.isEmpty ? 'fallback:${fallbackIndex++}' : key] = entry;
+    }
+  }
+  final history = byKey.values.toList(growable: false);
   history.sort((a, b) {
     final aT = (a['createdAt'] ?? '').toString();
     final bT = (b['createdAt'] ?? '').toString();

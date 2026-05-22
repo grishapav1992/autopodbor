@@ -247,7 +247,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       // them would produce a green "ok" badge with a "Не заполнено"
       // detail line on legacy drafts. Keep the chip honest about
       // what the user can actually see.
-      'status': legalHasManualData ? 'ok' : 'minor',
+      'status': legalHasManualData ? 'ok' : 'empty',
       'required': false,
       'details': [
         {
@@ -259,10 +259,8 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           // that flow anymore — surface neutral wording instead of
           // "Юридический отчёт сформирован" which points to a feature
           // they can't see.
-          'value': legalHasManualData
-              ? 'Материалы добавлены'
-              : 'Не заполнено',
-          'severity': legalHasManualData ? 'ok' : 'minor',
+          'value': legalHasManualData ? 'Материалы добавлены' : 'Не заполнено',
+          'severity': legalHasManualData ? 'ok' : 'info',
         },
         if (_legalFiles.isNotEmpty)
           {
@@ -284,15 +282,20 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       final mediaCount = _parseUrls(state.rawUrls).length + state.files.length;
       final hasCoverage = mediaCount > 0;
       final hasIssue = _groupHasIssue(state);
+      final requiredForSummary = _SparkJoySummaryRegistry
+          .requiredMediaKeysForSummary
+          .contains(config.key);
 
-      var status = 'ok';
-      if (hasIssue && config.severeIfIssue) {
+      var status = hasCoverage ? 'ok' : 'empty';
+      if (!hasCoverage) {
+        status = 'empty';
+      } else if (hasIssue && config.severeIfIssue) {
         status = 'bad';
-      } else if (hasIssue || (config.required && !hasCoverage)) {
+      } else if (hasIssue) {
         status = 'warn';
       }
 
-      if (config.required && !hasCoverage) {
+      if (requiredForSummary && !hasCoverage) {
         penalty += 4;
         checklist.add(
           _SparkJoySummaryTextsRegistry.checklistMediaCoverageMissing(
@@ -315,15 +318,21 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         'details': [
           {
             'label': 'Состояние',
-            'value': hasIssue ? 'Есть замечания' : 'Без замечаний',
-            'severity': hasIssue
-                ? (config.severeIfIssue ? 'serious' : 'minor')
-                : 'ok',
+            'value': !hasCoverage
+                ? 'Не осмотрено'
+                : (hasIssue ? 'Есть замечания' : 'Без замечаний'),
+            'severity': !hasCoverage
+                ? (requiredForSummary ? 'minor' : 'info')
+                : (hasIssue
+                      ? (config.severeIfIssue ? 'serious' : 'minor')
+                      : 'ok'),
           },
           {
             'label': 'Медиа',
             'value': mediaCount == 0 ? 'Не добавлено' : '$mediaCount файл(ов)',
-            'severity': mediaCount == 0 ? 'minor' : 'ok',
+            'severity': mediaCount == 0
+                ? (requiredForSummary ? 'minor' : 'info')
+                : 'ok',
           },
           if (state.note.trim().isNotEmpty)
             {

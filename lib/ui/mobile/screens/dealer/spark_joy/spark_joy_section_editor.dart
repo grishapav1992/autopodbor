@@ -352,7 +352,10 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
           actionState.isSummaryStep &&
           !actionState.canSummaryFinish) ...[
         const SizedBox(height: SparkSpace.md),
-        _buildSparkJoyValidationHint(actionState.summaryReasons.join(' · ')),
+        _buildSparkSummaryRequiredMissingActionsCard(
+          s,
+          actionState.summaryReasons,
+        ),
       ],
       // In read-only mode the section editor renders a completed report
       // for inspection only — upload hints and the step action bar
@@ -386,7 +389,9 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
               ? 'Завершить и выгрузить'
               : 'Продолжить',
           primaryDisabled:
-              actionState.continueButtonDisabled || uploadInSummary,
+              uploadInSummary ||
+              (!actionState.isSummaryStep &&
+                  actionState.continueButtonDisabled),
           primaryBusy: uploadInSummary,
           onPrimaryTap: () =>
               s._stepActionController.handlePrimaryTap(s, actionState),

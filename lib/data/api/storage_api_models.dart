@@ -179,6 +179,16 @@ class RequestActionResult {
   });
 }
 
+class RequestCarDetails {
+  final List<Map<String, dynamic>> cars;
+  final List<Map<String, dynamic>> requestStatusHistories;
+
+  const RequestCarDetails({
+    required this.cars,
+    required this.requestStatusHistories,
+  });
+}
+
 class CompanySpecialistUnlinkResult {
   final bool success;
   final int? specialistId;

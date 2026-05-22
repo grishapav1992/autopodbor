@@ -32,6 +32,7 @@ class _SparkJoyCompanyRequestDetailScreenState
     extends State<SparkJoyCompanyRequestDetailScreen> {
   late Map<String, dynamic> _request;
   List<Map<String, dynamic>>? _cars; // null = ещё не загружено
+  List<Map<String, dynamic>> _requestStatusHistoriesFromCars = const [];
   String? _carsError;
   bool _shareBusy = false;
   bool _actionBusy = false;
@@ -63,10 +64,13 @@ class _SparkJoyCompanyRequestDetailScreenState
       return;
     }
     try {
-      final cars = await storage_api.StorageApi.getRequestCars(requestId: id);
+      final details = await storage_api.StorageApi.getRequestCarDetails(
+        requestId: id,
+      );
       if (!mounted) return;
       setState(() {
-        _cars = cars;
+        _cars = details.cars;
+        _requestStatusHistoriesFromCars = details.requestStatusHistories;
         _carsError = null;
       });
     } catch (e) {
@@ -434,20 +438,10 @@ class _SparkJoyCompanyRequestDetailScreenState
     final city = _str('city').trim();
     final maxMileage = _request['maxMileage'];
     final ownersCount = _request['ownersCount'];
-
-    final histories = _request['requestStatusHistories'];
-    final history = histories is List
-        ? histories
-              .whereType<Map>()
-              .map((m) => Map<String, dynamic>.from(m))
-              .toList()
-        : <Map<String, dynamic>>[];
-    // History приходит хронологически от бэка; рендерим newest-first.
-    history.sort((a, b) {
-      final aT = (a['createdAt'] ?? '').toString();
-      final bT = (b['createdAt'] ?? '').toString();
-      return bT.compareTo(aT);
-    });
+    final history = _historyNewestFirst(
+      _request['requestStatusHistories'],
+      _requestStatusHistoriesFromCars,
+    );
 
     return Scaffold(
       backgroundColor: kPrimaryColor,
@@ -1073,6 +1067,36 @@ class _HistoryEntry extends StatelessWidget {
 }
 
 // ── Local helpers (date/number formatting) ──────────────────────────
+
+List<Map<String, dynamic>> _historyNewestFirst(dynamic primary, dynamic extra) {
+  final byKey = <String, Map<String, dynamic>>{};
+  var fallbackIndex = 0;
+  for (final source in [primary, extra]) {
+    if (source is! List) continue;
+    for (final item in source) {
+      if (item is! Map) continue;
+      final entry = Map<String, dynamic>.from(item);
+      final id = (entry['id'] ?? '').toString().trim();
+      final key = id.isNotEmpty
+          ? 'id:$id'
+          : [
+              entry['oldStatus'],
+              entry['newStatus'],
+              entry['changedByRole'],
+              entry['reason'],
+              entry['createdAt'],
+            ].map((value) => (value ?? '').toString()).join('|');
+      byKey[key.isEmpty ? 'fallback:${fallbackIndex++}' : key] = entry;
+    }
+  }
+  final history = byKey.values.toList(growable: false);
+  history.sort((a, b) {
+    final aT = (a['createdAt'] ?? '').toString();
+    final bT = (b['createdAt'] ?? '').toString();
+    return bT.compareTo(aT);
+  });
+  return history;
+}
 
 String _formatRuDate(String iso) {
   // ISO 8601 — берём YYYY-MM-DD префикс, переворачиваем.

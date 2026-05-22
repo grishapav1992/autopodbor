@@ -85,7 +85,9 @@ class SparkJoyRequestFilterBar extends StatelessWidget {
           }
         },
         icon: const Icon(Icons.filter_list_rounded),
-        label: Text('Фильтр: ${value.label}'),
+        label: Text(
+          value == RequestStatusFilter.all ? 'Все заявки' : value.label,
+        ),
         style: OutlinedButton.styleFrom(
           foregroundColor: kTertiaryColor,
           backgroundColor: kWhiteColor,

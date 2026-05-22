@@ -138,7 +138,11 @@ class _SparkJoyStepActionController {
   ) async {
     if (state.isLast) {
       if (!state.canSummaryFinish) {
-        _showValidationSnack(s.context, state.summaryReasons.join('\n'));
+        _showValidationSnack(
+          s.context,
+          'Заполните обязательные поля в блоке «Что заполнить».',
+        );
+        _scrollToSummaryRequiredActions(s);
         return;
       }
       await s._finishReport();
@@ -183,5 +187,18 @@ class _SparkJoyStepActionController {
     final text = message.trim();
     if (text.isEmpty) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  void _scrollToSummaryRequiredActions(_SparkJoyCreateReportScreenState s) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!s.mounted || !s._pageScrollController.hasClients) return;
+      unawaited(
+        s._pageScrollController.animateTo(
+          s._pageScrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        ),
+      );
+    });
   }
 }

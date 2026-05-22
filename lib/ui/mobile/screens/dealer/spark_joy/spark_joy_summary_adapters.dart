@@ -21,12 +21,14 @@ extension _SparkJoySummaryAdapters on _SparkJoyCreateReportScreenState {
     Map<String, dynamic> section, {
     bool clientPreview = false,
     bool needsAttention = false,
+    bool compactDetails = false,
   }) {
     return _buildSparkSummarySectionCard(
       this,
       section,
       clientPreview: clientPreview,
       needsAttention: needsAttention,
+      compactDetails: compactDetails,
     );
   }
 

@@ -39,7 +39,9 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
   // read-only completed report must not show them — pretend every
   // section is complete.
   final isReadOnly = s.widget.readOnly;
-  final missingReasons = isReadOnly ? const <String>[] : s._summaryMissingReasons();
+  final missingReasons = isReadOnly
+      ? const <String>[]
+      : s._summaryMissingReasons();
   final attentionStepIds = <String>{};
   final attentionGroupKeys = <String>{};
   for (final reason in missingReasons) {
