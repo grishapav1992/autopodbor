@@ -17,6 +17,7 @@ import 'spark_joy_data.dart';
 import 'spark_joy_i18n.dart';
 import 'spark_joy_new_report_name_screen.dart';
 import 'spark_joy_onboarding.dart';
+import 'spark_joy_report_context.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -949,6 +950,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   }
 
   Widget _buildCompletedCard(Map<String, dynamic> report) {
+    final requestContext = sparkJoyReportRequestContext(report);
     final car = [
       sjRead(report, 'car'),
       [
@@ -958,6 +960,11 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => 'Отчёт');
 
     final title = sjRead(report, 'reportName', fallback: car);
+    final requestNumberInTitle =
+        requestContext.requestNumber.trim().isNotEmpty &&
+        title.toLowerCase().contains(
+          requestContext.requestNumber.trim().toLowerCase(),
+        );
     final verdict = sjRead(report, 'verdict');
     final score = sjRead(report, 'score');
     final reportKey = _reportIdentityKey(report);
@@ -967,6 +974,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         reportKey.isNotEmpty && _openingReportKeys.contains(reportKey);
 
     final metaParts = <String>[
+      if (_reportNumber(report).isNotEmpty) 'Отчёт №${_reportNumber(report)}',
       if (car != title && car.isNotEmpty) car,
       if (sjRead(report, 'vin').isNotEmpty) sjRead(report, 'vin'),
       if (sjRead(report, 'mileage').isNotEmpty)
@@ -1024,6 +1032,14 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   ),
               ],
             ),
+            if (requestContext.hasAny &&
+                !(requestNumberInTitle && !requestContext.hasSpecialist)) ...[
+              const SizedBox(height: SparkSpace.md),
+              _buildCompletedRequestContext(
+                requestContext,
+                hideRequestLabel: requestNumberInTitle,
+              ),
+            ],
             const SizedBox(height: SparkSpace.md),
             // Verdict + score chips on the left, share button on the right.
             Row(
@@ -1080,6 +1096,77 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
   }
 
+  Widget _buildCompletedRequestContext(
+    SparkJoyReportRequestContext requestContext, {
+    bool hideRequestLabel = false,
+  }) {
+    final specialist = requestContext.specialistLabel;
+    return Container(
+      padding: const EdgeInsets.all(SparkSpace.md),
+      decoration: BoxDecoration(
+        color: kSecondaryColor.withValues(alpha: 0.045),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+        border: Border.all(color: kSecondaryColor.withValues(alpha: 0.08)),
+      ),
+      child: Row(
+        children: [
+          if (requestContext.hasSpecialist)
+            SparkInitialsAvatar(
+              name: specialist.isEmpty ? 'Специалист' : specialist,
+              imageUrl: requestContext.specialistAvatarUrl,
+              size: 34,
+              textSize: SparkTextSize.caption,
+            )
+          else
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: kSecondaryColor.withValues(alpha: 0.08),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.assignment_outlined,
+                size: 18,
+                color: kSecondaryColor,
+              ),
+            ),
+          const SizedBox(width: SparkSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (requestContext.hasRequest && !hideRequestLabel)
+                  MyText(
+                    text: requestContext.requestLabel,
+                    size: SparkTextSize.caption,
+                    weight: FontWeight.w700,
+                    color: kSecondaryColor,
+                  ),
+                if (specialist.isNotEmpty)
+                  MyText(
+                    text: 'Исполнитель: $specialist',
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    paddingTop: requestContext.hasRequest && !hideRequestLabel
+                        ? 2
+                        : 0,
+                  ),
+                if (requestContext.specialistPhone.trim().isNotEmpty)
+                  MyText(
+                    text: requestContext.specialistPhone.trim(),
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                    paddingTop: 2,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -1098,7 +1185,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             ),
             const SizedBox(height: SparkSpace.xl),
             SparkSearchField(
-              hint: 'Поиск по марке, модели, VIN...',
+              hint: _controller.tab == 'completed'
+                  ? 'Поиск по авто, VIN, № заявки, исполнителю...'
+                  : 'Поиск по марке, модели, VIN...',
               onChanged: _controller.setSearch,
             ),
             const SizedBox(height: SparkSpace.lg),
@@ -1161,16 +1250,21 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             else if (completed.isEmpty) ...[
               SparkEmptyState(
                 icon: Icons.check_circle_outline,
-                title: sjT(
-                  'spark.empty.noCompleted.title',
-                  fallback: 'Нет завершённых отчётов',
-                ),
+                title: _controller.hasSearch
+                    ? 'Ничего не найдено'
+                    : sjT(
+                        'spark.empty.noCompleted.title',
+                        fallback: 'Нет завершённых отчётов',
+                      ),
                 subtitle: _controller.completedSyncFailed
                     ? 'Не удалось обновить список. Проверьте интернет и повторите.'
-                    : sjT(
-                        'spark.empty.noCompleted.subtitle',
-                        fallback: 'Завершите осмотр, чтобы увидеть результат',
-                      ),
+                    : (_controller.hasSearch
+                          ? 'Попробуйте номер заявки, имя исполнителя, телефон, VIN или модель.'
+                          : sjT(
+                              'spark.empty.noCompleted.subtitle',
+                              fallback:
+                                  'Завершите осмотр, чтобы увидеть результат',
+                            )),
                 topPadding: SparkSpace.xxxl,
               ),
               if (_controller.completedSyncFailed) ...[
@@ -1240,6 +1334,7 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   bool get completedLoading => _completedLoading;
   List<Map<String, dynamic>> get drafts => _drafts;
   List<Map<String, dynamic>> get completed => _completed;
+  bool get hasSearch => _search.trim().isNotEmpty;
 
   List<Map<String, dynamic>> get filteredDrafts {
     if (_search.trim().isEmpty) return _drafts;
@@ -1262,11 +1357,14 @@ class _SparkJoyReportsListController extends ChangeNotifier {
     return _completed.where((r) {
       final text = [
         sjRead(r, 'reportName'),
+        sjRead(r, 'reportNumber'),
+        sjRead(r, 'report_number'),
         sjRead(r, 'car'),
         sjRead(r, 'make'),
         sjRead(r, 'model'),
         sjRead(r, 'vin'),
         sjRead(r, 'plate'),
+        ...sparkJoyReportRequestContext(r).searchTokens,
       ].join(' ').toLowerCase();
       return text.contains(query);
     }).toList();

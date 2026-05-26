@@ -37,6 +37,8 @@
 	<string>Микрофон нужен для записи голосовых заметок по элементам осмотра.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Доступ к галерее нужен для выбора фото VIN и фото осмотра.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Доступ нужен, чтобы сохранить сделанное фото перед загрузкой в профиль.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Распознавание речи нужно для преобразования голосовой заметки в текст комментария.</string>
 	<key>UIApplicationSceneManifest</key>

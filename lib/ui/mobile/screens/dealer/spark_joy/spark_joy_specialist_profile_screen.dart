@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart'
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -282,7 +284,6 @@ class _SparkJoySpecialistProfileScreenState
     final cached = await SparkJoyStorage.loadSpecialistProfileOrNull();
     final pending = await UserSimplePreferences.getPendingEmailVerify();
     final avatar = await UserSimplePreferences.getAvatarBase64();
-    final avatarPreset = await UserSimplePreferences.getAvatarPresetIndex();
     if (!mounted) return;
     if (cached != null) {
       // Мерджим cache поверх mock base — base даёт metadata
@@ -297,7 +298,7 @@ class _SparkJoySpecialistProfileScreenState
         _pendingEmailVerify = pending;
         if (cachedUrl.isNotEmpty) _urlAvatar = cachedUrl;
         _avatarBase64 = avatar;
-        _avatarPresetIndex = avatarPreset;
+        _avatarPresetIndex = null;
       });
     } else {
       final seed = _fallbackSpecialist();
@@ -324,7 +325,7 @@ class _SparkJoySpecialistProfileScreenState
         _specialistProfile = seed;
         _pendingEmailVerify = pending;
         _avatarBase64 = avatar;
-        _avatarPresetIndex = avatarPreset;
+        _avatarPresetIndex = null;
       });
     }
     unawaited(_fetchServerProfile());
@@ -910,7 +911,7 @@ class _SparkJoySpecialistProfileScreenState
         );
       },
     );
-    controller.dispose();
+    _disposeTextControllersAfterRouteClose(controller);
     if (newName == null || !mounted) return;
 
     setState(() => _isVerifyingCompanyName = true);
@@ -2040,17 +2041,15 @@ class _SparkJoySpecialistProfileScreenState
   // фоновые fetch'и не перезатирают введённое; на Save переносим в
   // screen-level controllers и зовём _saveProfile (диф-payload).
 
-  /// Action-sheet выбора аватара. Опции: Камера / Галерея / Удалить +
-  /// горизонтальный preset-rail (10 авто-плиток). Picked-image → base64
-  /// или выбранный preset → index → UserSimplePreferences. Side-effects
-  /// (snackbar / setState) живут здесь, а sheet — чисто UI слой.
+  /// Action-sheet выбора аватара. Опции: Камера / Галерея / Удалить.
+  /// Picked-image → base64 → S3. Side-effects (snackbar / setState)
+  /// живут здесь, а sheet — чисто UI слой.
   Future<void> _openAvatarPickerSheet() async {
     final hasAvatar =
-        (_urlAvatar ?? '').isNotEmpty ||
-        (_avatarBase64 ?? '').isNotEmpty ||
-        _avatarPresetIndex != null;
+        (_urlAvatar ?? '').isNotEmpty || (_avatarBase64 ?? '').isNotEmpty;
     final action = await showModalBottomSheet<String>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: kWhiteColor,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
@@ -2061,117 +2060,144 @@ class _SparkJoySpecialistProfileScreenState
         return SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.xl,
-              vertical: SparkSpace.lg,
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.lg,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                    vertical: SparkSpace.sm,
-                  ),
-                  child: MyText(
-                    text: 'Фото профиля',
-                    size: SparkTextSize.titleLg,
-                    weight: FontWeight.w800,
-                  ),
-                ),
-                _AvatarSheetAction(
-                  icon: Icons.photo_camera_outlined,
-                  label: 'Сделать фото',
-                  onTap: () => Navigator.of(ctx).pop('camera'),
-                ),
-                _AvatarSheetAction(
-                  icon: Icons.photo_library_outlined,
-                  label: 'Выбрать из галереи',
-                  onTap: () => Navigator.of(ctx).pop('gallery'),
-                ),
-                if (hasAvatar)
-                  _AvatarSheetAction(
-                    icon: Icons.delete_outline_rounded,
-                    label: 'Удалить фото',
-                    color: kRedColor,
-                    onTap: () => Navigator.of(ctx).pop('delete'),
-                  ),
-                const SizedBox(height: SparkSpace.lg),
-                const Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                    vertical: SparkSpace.xs,
-                  ),
-                  child: MyText(
-                    text: 'ИЗ ПОДБОРКИ',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    weight: FontWeight.w700,
-                    letterSpacing: 0.6,
-                  ),
-                ),
-                SizedBox(
-                  height: 76,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.sizeOf(ctx).height * 0.36,
+                maxHeight: MediaQuery.sizeOf(ctx).height * 0.72,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(
                       horizontal: SparkSpace.md,
-                      vertical: SparkSpace.xs,
+                      vertical: SparkSpace.sm,
                     ),
-                    itemCount: kSparkAvatarPresets.length,
-                    separatorBuilder: (_, _) =>
-                        const SizedBox(width: SparkSpace.md),
-                    itemBuilder: (_, idx) {
-                      final preset = kSparkAvatarPresets[idx];
-                      final selected =
-                          _avatarPresetIndex == idx &&
-                          (_avatarBase64 ?? '').isEmpty;
-                      return GestureDetector(
-                        onTap: () => Navigator.of(ctx).pop('preset:$idx'),
+                    child: MyText(
+                      text: 'Фото профиля',
+                      size: SparkTextSize.modalTitle,
+                      weight: FontWeight.w800,
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(
+                      SparkSpace.md,
+                      0,
+                      SparkSpace.md,
+                      SparkSpace.lg,
+                    ),
+                    child: MyText(
+                      text: hasAvatar
+                          ? 'Посмотрите текущее фото или замените его.'
+                          : 'Добавьте фото с камеры или из галереи.',
+                      size: SparkTextSize.bodyLg,
+                      color: kGreyColor,
+                      lineHeight: 1.25,
+                    ),
+                  ),
+                  if (hasAvatar) ...[
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => Navigator.of(ctx).pop('preview'),
+                        borderRadius: BorderRadius.circular(SparkRadius.lg),
                         child: Container(
-                          width: 60,
-                          height: 60,
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: SparkSpace.md,
+                            vertical: SparkSpace.sm,
+                          ),
+                          padding: const EdgeInsets.all(SparkSpace.md),
                           decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: preset.background,
-                            border: Border.all(
-                              color: selected
-                                  ? kSecondaryColor
-                                  : Colors.transparent,
-                              width: 2.5,
-                            ),
+                            color: kInputBgColor,
+                            borderRadius: BorderRadius.circular(SparkRadius.lg),
+                            border: Border.all(color: kBorderColor),
                           ),
-                          alignment: Alignment.center,
-                          child: Icon(
-                            preset.icon,
-                            color: preset.foreground,
-                            size: 30,
+                          child: Row(
+                            children: [
+                              SparkInitialsAvatar(
+                                name: _composeFullName().isEmpty
+                                    ? 'Специалист'
+                                    : _composeFullName(),
+                                size: 72,
+                                textSize: SparkTextSize.titleLg,
+                                imageUrl: _urlAvatar,
+                                imageBase64: _avatarBase64,
+                              ),
+                              const SizedBox(width: SparkSpace.lg),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    MyText(
+                                      text: 'Посмотреть фото',
+                                      size: SparkTextSize.bodyLg,
+                                      weight: FontWeight.w800,
+                                    ),
+                                    SizedBox(height: SparkSpace.xxxs),
+                                    MyText(
+                                      text: 'Открыть на весь экран',
+                                      size: SparkTextSize.caption,
+                                      color: kGreyColor,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(
+                                Icons.chevron_right_rounded,
+                                size: SparkSize.iconLg,
+                                color: kGreyColor,
+                              ),
+                            ],
                           ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: SparkSpace.md),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                  ),
-                  child: SizedBox(
-                    height: SparkSize.actionHeight,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(SparkRadius.lg),
                         ),
                       ),
-                      child: const Text('Отмена'),
+                    ),
+                    const SizedBox(height: SparkSpace.sm),
+                  ],
+                  _AvatarSheetAction(
+                    icon: Icons.photo_camera_outlined,
+                    label: hasAvatar ? 'Сделать новое фото' : 'Сделать фото',
+                    onTap: () => Navigator.of(ctx).pop('camera'),
+                  ),
+                  _AvatarSheetAction(
+                    icon: Icons.photo_library_outlined,
+                    label: 'Выбрать из галереи',
+                    onTap: () => Navigator.of(ctx).pop('gallery'),
+                  ),
+                  if (hasAvatar)
+                    _AvatarSheetAction(
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Удалить фото',
+                      color: kRedColor,
+                      onTap: () => Navigator.of(ctx).pop('delete'),
+                    ),
+                  const SizedBox(height: SparkSpace.xxl),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.md,
+                    ),
+                    child: SizedBox(
+                      height: SparkSize.actionHeight,
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(SparkRadius.lg),
+                          ),
+                        ),
+                        child: const Text('Отмена'),
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
@@ -2182,29 +2208,8 @@ class _SparkJoySpecialistProfileScreenState
       await _deleteAvatar();
       return;
     }
-    if (action.startsWith('preset:')) {
-      final idx = int.tryParse(action.substring('preset:'.length));
-      if (idx == null) return;
-      // Если на сервере было загруженное фото — его надо удалить, иначе
-      // _fetchServerProfile вернёт urlAvatar и перекроет preset (URL
-      // приоритетнее в рендере). Bump _fetchGeneration отменяет
-      // in-flight fetch, чтобы он не восстановил удалённый urlAvatar.
-      final hadServerAvatar = (_urlAvatar ?? '').isNotEmpty;
-      await UserSimplePreferences.setAvatarPresetIndex(idx);
-      if (!mounted) return;
-      if (hadServerAvatar) {
-        ++_fetchGeneration;
-        unawaited(
-          storage_api.StorageApi.deleteProfileAvatar().catchError(
-            (_) => <String, dynamic>{},
-          ),
-        );
-      }
-      setState(() {
-        _urlAvatar = null;
-        _avatarBase64 = null;
-        _avatarPresetIndex = idx;
-      });
+    if (action == 'preview') {
+      await _openAvatarPreview();
       return;
     }
     final source = action == 'camera'
@@ -2214,13 +2219,24 @@ class _SparkJoySpecialistProfileScreenState
       // Берём оригинал в высоком разрешении — кроп уменьшит до 800.
       final xfile = await ImagePicker().pickImage(
         source: source,
-        maxWidth: 1600,
-        imageQuality: 92,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 86,
+        requestFullMetadata: false,
       );
       if (xfile == null || !mounted) return;
-      // Кроп в квадрат 1:1 под круглую аватарку — юзер сам выбирает
-      // область кадра. null = отмена кропа.
-      final bytes = await _cropAvatarSquare(xfile.path);
+      // iOS camera returns from a native route and immediately opening
+      // TOCropViewController is unstable on some iOS 26 devices: the app
+      // can be killed right after "Use Photo". For fresh camera shots we
+      // prepare a centered square in Dart instead of chaining native
+      // controllers. Gallery keeps manual crop.
+      final useSafeCameraPipeline =
+          !kIsWeb &&
+          defaultTargetPlatform == TargetPlatform.iOS &&
+          source == ImageSource.camera;
+      final bytes = useSafeCameraPipeline
+          ? await _prepareAvatarBytesWithoutNativeCrop(xfile)
+          : await _cropAvatarSquare(xfile.path);
       if (bytes == null || !mounted) return;
       if (bytes.length > 25 * 1024 * 1024) {
         if (!mounted) return;
@@ -2258,6 +2274,96 @@ class _SparkJoySpecialistProfileScreenState
         context,
       ).showSnackBar(SnackBar(content: Text('Не удалось загрузить фото: $e')));
     }
+  }
+
+  Future<Uint8List?> _prepareAvatarBytesWithoutNativeCrop(XFile xfile) async {
+    final raw = await xfile.readAsBytes();
+    if (raw.isEmpty) return null;
+    return compute(_normalizeAvatarJpegBytes, Uint8List.fromList(raw));
+  }
+
+  bool _hasProfilePhoto() =>
+      (_urlAvatar ?? '').isNotEmpty || (_avatarBase64 ?? '').isNotEmpty;
+
+  Uint8List? _avatarPreviewBytes() {
+    final raw = _avatarBase64;
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      return base64Decode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openAvatarPreview() async {
+    if (!_hasProfilePhoto()) {
+      await _openAvatarPickerSheet();
+      return;
+    }
+    final avatarUrl = (_urlAvatar ?? '').trim();
+    final avatarBytes = _avatarPreviewBytes();
+    if (avatarUrl.isEmpty && avatarBytes == null) {
+      await _openAvatarPickerSheet();
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (ctx) {
+          final image = avatarUrl.isNotEmpty
+              ? Image.network(
+                  avatarUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, _, _) => const Icon(
+                    Icons.person_rounded,
+                    size: 96,
+                    color: kWhiteColor,
+                  ),
+                )
+              : Image.memory(
+                  avatarBytes!,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                );
+          return Scaffold(
+            backgroundColor: kBlackColor,
+            appBar: AppBar(
+              backgroundColor: kBlackColor,
+              foregroundColor: kWhiteColor,
+              elevation: 0,
+              title: const Text('Фото профиля'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(ctx).pop();
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) unawaited(_openAvatarPickerSheet());
+                    });
+                  },
+                  child: const Text(
+                    'Изменить',
+                    style: TextStyle(
+                      color: kWhiteColor,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            body: SafeArea(
+              child: Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: image,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   /// Открывает круглый кроппер (как в Telegram: фиксированная круглая
@@ -2480,9 +2586,7 @@ class _SparkJoySpecialistProfileScreenState
         );
       },
     );
-    lastCtrl.dispose();
-    firstCtrl.dispose();
-    middleCtrl.dispose();
+    _disposeTextControllersAfterRouteClose(lastCtrl, firstCtrl, middleCtrl);
     if (saved == null || !mounted) return;
 
     final last = saved['last']!;
@@ -2637,7 +2741,7 @@ class _SparkJoySpecialistProfileScreenState
         );
       },
     );
-    ctrl.dispose();
+    _disposeTextControllersAfterRouteClose(ctrl);
     if (saved == null || !mounted) return;
     if (saved.trim() == _specializationController.text.trim()) return;
     _specializationController.text = saved;
@@ -2701,8 +2805,25 @@ class _SparkJoySpecialistProfileScreenState
         );
       },
     );
-    ctrl.dispose();
+    _disposeTextControllersAfterRouteClose(ctrl);
     return result;
+  }
+
+  void _disposeTextControllersAfterRouteClose(
+    TextEditingController first, [
+    TextEditingController? second,
+    TextEditingController? third,
+  ]) {
+    final controllers = <TextEditingController>[
+      first,
+      if (second != null) second,
+      if (third != null) third,
+    ];
+    Future<void>.delayed(const Duration(milliseconds: 450), () {
+      for (final controller in controllers) {
+        controller.dispose();
+      }
+    });
   }
 
   @override
@@ -2765,10 +2886,8 @@ class _SparkJoySpecialistProfileScreenState
         // screen.
         SparkCard(
           // Identity-card раньше была tappable целиком → ФИО-редактор.
-          // Теперь две независимые tap-зоны: аватар → photo picker
-          // (sheet с камерой/галереей/удалить), name+chevron → ФИО
-          // редактор. Avatar получил badge-overlay с иконкой камеры
-          // для visual affordance (паттерн iOS Settings / Telegram).
+          // Теперь зоны независимые: аватар открывает меню управления фото,
+          // name+chevron → ФИО-редактор.
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -2809,19 +2928,25 @@ class _SparkJoySpecialistProfileScreenState
                     Positioned(
                       right: -2,
                       bottom: -2,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: kSecondaryColor,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: kWhiteColor, width: 2),
-                        ),
-                        alignment: Alignment.center,
-                        child: const Icon(
-                          Icons.photo_camera_rounded,
-                          size: 12,
-                          color: kWhiteColor,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: (_isSavingProfile || _isUploadingAvatar)
+                            ? null
+                            : _openAvatarPickerSheet,
+                        child: Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: kSecondaryColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: kWhiteColor, width: 2),
+                          ),
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.photo_camera_rounded,
+                            size: 14,
+                            color: kWhiteColor,
+                          ),
                         ),
                       ),
                     ),
@@ -3097,6 +3222,33 @@ class _SheetScaffold extends StatelessWidget {
   }
 }
 
+Uint8List _normalizeAvatarJpegBytes(Uint8List bytes) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) return bytes;
+
+  final oriented = img.bakeOrientation(decoded);
+  final side = math.min(oriented.width, oriented.height);
+  if (side <= 0) return bytes;
+
+  final cropped = img.copyCrop(
+    oriented,
+    x: ((oriented.width - side) / 2).round(),
+    y: ((oriented.height - side) / 2).round(),
+    width: side,
+    height: side,
+  );
+  final resized = side > 800
+      ? img.copyResize(
+          cropped,
+          width: 800,
+          height: 800,
+          interpolation: img.Interpolation.cubic,
+        )
+      : cropped;
+
+  return Uint8List.fromList(img.encodeJpg(resized, quality: 90));
+}
+
 /// Лейбл сверху + TextField снизу — единый стиль для всех полей
 /// внутри sheet'ов. Парный к `_SheetScaffold`.
 class _SheetTextField extends StatelessWidget {
@@ -3182,7 +3334,7 @@ class _AvatarSheetAction extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: SparkSpace.md,
-            vertical: SparkSpace.md,
+            vertical: SparkSpace.lg,
           ),
           child: Row(
             children: [
@@ -3191,8 +3343,8 @@ class _AvatarSheetAction extends StatelessWidget {
               Expanded(
                 child: MyText(
                   text: label,
-                  size: SparkTextSize.body,
-                  weight: FontWeight.w600,
+                  size: SparkTextSize.bodyLg,
+                  weight: FontWeight.w700,
                   color: tint,
                 ),
               ),

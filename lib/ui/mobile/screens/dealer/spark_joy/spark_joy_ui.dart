@@ -203,12 +203,9 @@ class SparkListCard extends StatelessWidget {
   }
 }
 
-/// Стилизованный preset-аватар на автотему: Material-иконка на цветном
-/// градиенте в круге. Используется как «подборка» аватаров для юзеров,
-/// у которых нет своего фото. Каждый preset идентифицируется индексом
-/// в [kSparkAvatarPresets] — этот индекс хранится в SharedPreferences,
-/// а сам preset рендерится from-scratch (без bundled-assets — bundle
-/// PNG для каждого preset был бы overkill для иконки).
+/// Legacy preset model. Kept for old preference values, but profile UI no
+/// longer offers avatar presets: users either upload a photo or see one
+/// neutral default avatar.
 class SparkAvatarPreset {
   const SparkAvatarPreset({
     required this.icon,
@@ -303,9 +300,8 @@ class SparkInitialsAvatar extends StatelessWidget {
   /// imageUrl null/пустой. Fallback при отсутствии сетевого аватара.
   final String? imageBase64;
 
-  /// Индекс preset-аватара из [kSparkAvatarPresets]. Применяется
-  /// только если imageUrl и imageBase64 отсутствуют. Out-of-range —
-  /// игнорируется (fallback на инициалы).
+  /// Legacy preset index. Ignored for rendering; kept to avoid touching every
+  /// call site while old preference values are phased out.
   final int? presetIndex;
 
   Uint8List? _decode() {
@@ -358,27 +354,7 @@ class SparkInitialsAvatar extends StatelessWidget {
         ),
       );
     }
-    final preset = _resolvePreset();
-    if (preset != null) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: preset.background,
-        ),
-        alignment: Alignment.center,
-        child: Icon(preset.icon, color: preset.foreground, size: size * 0.5),
-      );
-    }
-    return _buildInitials();
-  }
-
-  SparkAvatarPreset? _resolvePreset() {
-    final idx = presetIndex;
-    if (idx == null) return null;
-    if (idx < 0 || idx >= kSparkAvatarPresets.length) return null;
-    return kSparkAvatarPresets[idx];
+    return _buildDefaultAvatar();
   }
 
   Widget _buildInitials() {
@@ -395,6 +371,23 @@ class SparkInitialsAvatar extends StatelessWidget {
         size: textSize,
         weight: FontWeight.w700,
         color: textColor,
+      ),
+    );
+  }
+
+  Widget _buildDefaultAvatar() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: backgroundColor ?? kSecondaryColor.withValues(alpha: 0.10),
+      ),
+      alignment: Alignment.center,
+      child: Icon(
+        Icons.person_rounded,
+        size: size * 0.52,
+        color: textColor.withValues(alpha: 0.82),
       ),
     );
   }
