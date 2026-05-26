@@ -87,18 +87,6 @@ class _SparkJoyStepRegistry {
     return steps[index].id;
   }
 
-  static _StepConfig stepAt(int index) {
-    if (steps.isEmpty) {
-      return const _StepConfig(
-        id: idVehicle,
-        title: 'Автомобиль',
-        description: '',
-      );
-    }
-    if (index < 0 || index >= steps.length) return steps.first;
-    return steps[index];
-  }
-
   static bool isSummaryStepId(String? stepId) {
     return stepId == idSummary;
   }

@@ -73,7 +73,6 @@ class ForgotPassVerification extends StatelessWidget {
                   separatorBuilder: (index) {
                     return const SizedBox(width: 0);
                   },
-                  onCompleted: (pin) => debugPrint(pin),
                 ),
                 const SizedBox(height: 35),
                 MyText(

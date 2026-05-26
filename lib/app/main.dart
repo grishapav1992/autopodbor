@@ -6,9 +6,12 @@
  * LinkedIn: https://www.linkedin.com/company/ktonixsolutions/
  */
 import 'dart:async';
+import 'dart:developer' as developer;
+import 'dart:ui';
 
 import 'package:flutter_application_1/core/localization/localization_controller/localization_controller.dart';
-import 'package:flutter_application_1/data/api/storage_api.dart' show sessionExpiredTicker;
+import 'package:flutter_application_1/data/api/storage_api.dart'
+    show sessionExpiredTicker;
 import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -19,18 +22,47 @@ import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/config/theme/light_theme.dart';
 import 'package:flutter_application_1/ui/common/responsive/responsive_layout.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  Get.put(LanguageController());
-  Get.put(UserController());
-  await UserSimplePreferences.init();
-  // Notification controller is registered eagerly so any screen can
-  // resolve it via Get.find. Bootstrap (WS connect + first fetch) is
-  // a no-op if there's no persisted notification token, so this is
-  // safe before login.
-  final notifications = Get.put(NotificationController(), permanent: true);
-  unawaited(notifications.bootstrap());
-  runApp(MyApp());
+Future<void> main() async {
+  await runZonedGuarded<Future<void>>(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    _installCrashBoundary();
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+
+    Get.put(LanguageController());
+    Get.put(UserController());
+    await UserSimplePreferences.init();
+    // Notification controller is registered eagerly so any screen can
+    // resolve it via Get.find. Bootstrap (WS connect + first fetch) is
+    // a no-op if there's no persisted notification token, so this is
+    // safe before login.
+    final notifications = Get.put(NotificationController(), permanent: true);
+    unawaited(notifications.bootstrap());
+    runApp(const MyApp());
+  }, _logUnhandledError);
+}
+
+void _installCrashBoundary() {
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    _logUnhandledError(details.exception, details.stack ?? StackTrace.current);
+  };
+
+  PlatformDispatcher.instance.onError = (error, stack) {
+    _logUnhandledError(error, stack);
+    return true;
+  };
+}
+
+void _logUnhandledError(Object error, StackTrace stack) {
+  developer.log(
+    'Unhandled app error',
+    name: 'AppCrashBoundary',
+    error: error,
+    stackTrace: stack,
+  );
 }
 
 //DO NOT REMOVE Unless you find their usage.
@@ -84,10 +116,6 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
     return GetMaterialApp(
       locale: Localization.currentLocale,
       fallbackLocale: Localization.fallBackLocale,

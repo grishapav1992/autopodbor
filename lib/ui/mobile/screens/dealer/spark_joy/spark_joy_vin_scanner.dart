@@ -1,5 +1,7 @@
 part of 'spark_joy_create_report_screen.dart';
 
+bool get _sparkJoyLiveVinCameraPreviewEnabled => false;
+
 Uint8List _sparkCropVinGuideArea(
   _SparkJoyCreateReportScreenState state,
   Uint8List bytes,
@@ -191,11 +193,11 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
     var selectedSource = initialSource == ImageSource.gallery
         ? 'gallery'
         : 'camera';
-    // Temporarily disabled: using the system camera (ImagePicker) gives access
-    // to iOS macro mode and auto-switching between lenses, which fixes close-up
-    // focus issues on VIN plates. Set back to `!kIsWeb` to re-enable the
-    // camerawesome live preview.
-    const supportsLiveCameraPreview = false;
+    // Temporarily disabled through a runtime flag: using the system camera
+    // (ImagePicker) gives access to iOS macro mode and auto-switching between
+    // lenses, which fixes close-up focus issues on VIN plates.
+    final supportsLiveCameraPreview =
+        !kIsWeb && _sparkJoyLiveVinCameraPreviewEnabled;
     var dialogActive = true;
     var initialActionLaunched = false;
     var focusAdjusting = false;
@@ -269,11 +271,9 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
           flutterPreview.height > 10 &&
           pixelPreview.width > 10 &&
           pixelPreview.height > 10) {
-        final target = point ??
-            Offset(
-              flutterPreview.width / 2,
-              flutterPreview.height * 0.50,
-            );
+        final target =
+            point ??
+            Offset(flutterPreview.width / 2, flutterPreview.height * 0.50);
         final safeTarget = Offset(
           target.dx.clamp(1.0, flutterPreview.width - 1),
           target.dy.clamp(1.0, flutterPreview.height - 1),
@@ -773,20 +773,20 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                                   lastFlutterPreviewSize =
                                                       cam_pigeon.PreviewSize(
                                                         width: preview
-                                                            .previewSize.width,
+                                                            .previewSize
+                                                            .width,
                                                         height: preview
-                                                            .previewSize.height,
+                                                            .previewSize
+                                                            .height,
                                                       );
                                                   lastPixelPreviewSize =
                                                       cam_pigeon.PreviewSize(
-                                                        width:
-                                                            preview
-                                                                .nativePreviewSize
-                                                                .width,
-                                                        height:
-                                                            preview
-                                                                .nativePreviewSize
-                                                                .height,
+                                                        width: preview
+                                                            .nativePreviewSize
+                                                            .width,
+                                                        height: preview
+                                                            .nativePreviewSize
+                                                            .height,
                                                       );
                                                 }
                                                 if (!cameraReady) {
@@ -811,7 +811,9 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                                                             is cam.PhotoCameraState) {
                                                           unawaited(() async {
                                                             try {
-                                                              await Future<void>.delayed(
+                                                              await Future<
+                                                                void
+                                                              >.delayed(
                                                                 const Duration(
                                                                   milliseconds:
                                                                       800,

@@ -281,18 +281,6 @@ extension _SparkJoyMediaRulesMethods on _SparkJoyCreateReportScreenState {
     return kYellowColor;
   }
 
-  Color _mediaTagGroupTitleColor(_MediaTagGroup group) {
-    final hasSerious = group.options.any(
-      (option) => option.severity == 'serious',
-    );
-    final hasMinor = group.options.any(
-      (option) => option.severity != 'serious',
-    );
-    if (hasSerious && !hasMinor) return kRedColor;
-    if (hasMinor && !hasSerious) return kYellowColor;
-    return kGreyColor;
-  }
-
   String _mediaNoDamageLabel(String groupKey) {
     if (groupKey == 'diagnostics') return 'Без ошибок';
     return 'Без повреждений';

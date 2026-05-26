@@ -48,8 +48,10 @@ void main() {
   });
   tearDown(CityRepository.resetSingletonForTest);
 
-  Widget host(Future<City?> Function(BuildContext) onPick,
-      {ValueChanged<City?>? sink}) {
+  Widget host(
+    Future<City?> Function(BuildContext) onPick, {
+    ValueChanged<City?>? sink,
+  }) {
     return MaterialApp(
       home: Scaffold(
         body: Builder(
@@ -67,13 +69,13 @@ void main() {
     );
   }
 
-  testWidgets('opens, types "мос", taps Moscow, returns the City',
-      (tester) async {
+  testWidgets('opens, types "мос", taps Moscow, returns the City', (
+    tester,
+  ) async {
     City? picked;
-    await tester.pumpWidget(host(
-      (ctx) => showCityPickerBottomSheet(ctx),
-      sink: (c) => picked = c,
-    ));
+    await tester.pumpWidget(
+      host((ctx) => showCityPickerBottomSheet(ctx), sink: (c) => picked = c),
+    );
 
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
@@ -102,59 +104,51 @@ void main() {
     expect(picked!.countryCode, 'RU');
   });
 
-  testWidgets('country chip filters list — "KZ" hides Russian cities',
-      (tester) async {
+  testWidgets('fixed RU scope hides non-Russian cities', (tester) async {
     await tester.pumpWidget(host((ctx) => showCityPickerBottomSheet(ctx)));
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
 
-    // Tap the "Казахстан" chip.
-    await tester.tap(find.widgetWithText(ChoiceChip, 'Казахстан'));
-    await tester.pumpAndSettle();
-
-    // Tile titles are now "Казахстан, Алматы" / "Россия, Москва".
-    expect(
-      find.descendant(
-        of: find.byType(ListTile),
-        matching: find.text('Казахстан, Алматы'),
-      ),
-      findsOneWidget,
-    );
+    expect(find.widgetWithText(ChoiceChip, 'Казахстан'), findsNothing);
     expect(
       find.descendant(
         of: find.byType(ListTile),
         matching: find.text('Россия, Москва'),
       ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(ListTile),
+        matching: find.text('Казахстан, Алматы'),
+      ),
       findsNothing,
     );
   });
 
-  testWidgets('shows "out of list" banner when currentValue is unknown',
-      (tester) async {
-    await tester.pumpWidget(host(
-      (ctx) => showCityPickerBottomSheet(ctx, currentValue: 'Мск'),
-    ));
+  testWidgets('shows "out of list" banner when currentValue is unknown', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      host((ctx) => showCityPickerBottomSheet(ctx, currentValue: 'Мск')),
+    );
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
 
-    expect(
-      find.textContaining('«Мск» отсутствует в списке'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('«Мск» отсутствует в списке'), findsOneWidget);
   });
 
   testWidgets('no banner when currentValue is a known city', (tester) async {
-    await tester.pumpWidget(host(
-      (ctx) => showCityPickerBottomSheet(ctx, currentValue: 'Москва'),
-    ));
+    await tester.pumpWidget(
+      host((ctx) => showCityPickerBottomSheet(ctx, currentValue: 'Москва')),
+    );
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('отсутствует в списке'), findsNothing);
   });
 
-  testWidgets('empty state message when query has no matches',
-      (tester) async {
+  testWidgets('empty state message when query has no matches', (tester) async {
     await tester.pumpWidget(host((ctx) => showCityPickerBottomSheet(ctx)));
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
@@ -177,10 +171,9 @@ void main() {
       regionNameRu: '',
       population: 0,
     );
-    await tester.pumpWidget(host(
-      (ctx) => showCityPickerBottomSheet(ctx),
-      sink: (c) => picked = c,
-    ));
+    await tester.pumpWidget(
+      host((ctx) => showCityPickerBottomSheet(ctx), sink: (c) => picked = c),
+    );
     await tester.tap(find.text('Открыть'));
     await tester.pumpAndSettle();
 
