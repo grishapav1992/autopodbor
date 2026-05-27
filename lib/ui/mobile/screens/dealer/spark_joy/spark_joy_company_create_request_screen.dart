@@ -286,7 +286,7 @@ class _SparkJoyCompanyCreateRequestScreenState
       currentValue: _city.isEmpty ? null : _city,
     );
     if (picked == null || !mounted) return;
-    setState(() => _city = picked.nameRu);
+    setState(() => _city = picked.displayNameRu);
     _scheduleDraftAutosave();
   }
 
@@ -313,6 +313,10 @@ class _SparkJoyCompanyCreateRequestScreenState
     final restyling = _restyling;
     if (restyling == null) {
       setState(() => _submitError = 'Выберите автомобиль');
+      return;
+    }
+    if (_assignee == null) {
+      setState(() => _submitError = 'Назначьте специалиста');
       return;
     }
 

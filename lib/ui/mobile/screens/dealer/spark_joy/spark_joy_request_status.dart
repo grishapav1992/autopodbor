@@ -168,6 +168,8 @@ RequestHistoryReason requestHistoryReason(String rawReason) {
     'request_reassigned' => 'Специалист переназначен',
     'request_canceled' => 'Заявка отменена',
     'company_canceled' => 'Компания отменила заявку',
+    'canceled_not_signed' => 'Договор не подписан',
+    'canceled_signed_unpaid' => 'Договор подписан, оплаты нет',
     'request_completed' => 'Заявка завершена',
     _ => code,
   };

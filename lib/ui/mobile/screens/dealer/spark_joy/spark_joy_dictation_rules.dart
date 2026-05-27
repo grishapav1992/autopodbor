@@ -225,7 +225,6 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     _setStateSafely(() => _summaryIsDictating = false);
   }
 
-
   /// AI-fill for the «Комментарий по расхождениям» field in the
   /// docs check step. The three yes/no values above are baked into
   /// the prompt via `buildDocsCheckCommentCliche` so the model sees
@@ -451,8 +450,8 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
           '${historyChunks.join('\n---\n')}',
         );
       }
-      // Inspector's current text — feed it back to the model as
-      // «previous draft» so regeneration preserves their manual edits
+      // Current text — feed it back to the model as «previous draft» so
+      // regeneration preserves manual edits
       // (corrections, dictation notes, deletions). Without this block
       // the AI overwrites their work each time the button is pressed.
       // Goes LAST in the context so the model treats it as the most
@@ -460,8 +459,8 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       final previousDraft = _summaryController.text.trim();
       if (previousDraft.isNotEmpty) {
         contextParts.add(
-          '=== Предыдущий черновик инспектора (сохрани факты и правки '
-          'инспектора, но переоформи в шаблон с заголовками) ===\n'
+          '=== Предыдущий черновик (сохрани факты и правки, но '
+          'переоформи в шаблон с заголовками) ===\n'
           '$previousDraft',
         );
       }
@@ -539,5 +538,4 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       suppressOnboarding: suppressOnboarding,
     );
   }
-
 }

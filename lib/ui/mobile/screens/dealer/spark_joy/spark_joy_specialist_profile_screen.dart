@@ -536,7 +536,7 @@ class _SparkJoySpecialistProfileScreenState
   /// Fire-and-forget push изменений профиля на сервер. Локально уже
   /// сохранено к этому моменту — на ошибку показываем тонкий снэк
   /// (или silent если можно).
-  Future<void> _pushProfileToServer({required bool descriptionAllowed}) async {
+  Future<bool> _pushProfileToServer({required bool descriptionAllowed}) async {
     final payload = <String, dynamic>{};
     final lastName = _lastNameController.text.trim();
     final firstName = _firstNameController.text.trim();
@@ -584,11 +584,11 @@ class _SparkJoySpecialistProfileScreenState
       // schema), хотя в GetProfile возвращается как integer.
       payload['companyInn'] = companyInn;
     }
-    if (payload.isEmpty) return;
+    if (payload.isEmpty) return true;
 
     try {
       await storage_api.StorageApi.updateProfile(profile: payload);
-      if (!mounted) return;
+      if (!mounted) return false;
       // Двигаем все originals вперёд — server теперь знает эти
       // значения, и следующий save с теми же controllers должен дать
       // пустой diff (никаких лишних UpdateProfile вызовов).
@@ -627,7 +627,7 @@ class _SparkJoySpecialistProfileScreenState
         final alreadyPending =
             _pendingEmailVerify?.toLowerCase() == email.toLowerCase();
         await UserSimplePreferences.setPendingEmailVerify(email);
-        if (!mounted) return;
+        if (!mounted) return false;
         setState(() {
           _pendingEmailVerify = email;
           // Server теперь знает наш новый email — двигаем «origin»
@@ -649,19 +649,28 @@ class _SparkJoySpecialistProfileScreenState
         // _originalEmail до того как fetch синкнул state). Чистим
         // stale pending — banner не должен висеть для не-current email.
         await UserSimplePreferences.setPendingEmailVerify(null);
-        if (!mounted) return;
+        if (!mounted) return false;
         setState(() => _pendingEmailVerify = null);
       }
+      return true;
     } on storage_api.SessionExpiredException {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Сессия истекла — войдите заново')),
       );
+      return false;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[profile] UpdateProfile failed: $e');
       }
-      // Молча — локально уже сохранено, ретрай при следующем save.
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Не удалось сохранить профиль. Попробуйте ещё раз'),
+          backgroundColor: kRedColor,
+        ),
+      );
+      return false;
     }
   }
 
@@ -1487,11 +1496,17 @@ class _SparkJoySpecialistProfileScreenState
     if (!mounted) return;
     setState(() {
       _specialistProfile = next;
-      _isSavingProfile = false;
     });
 
+    final serverSaved = await _pushProfileToServer(
+      descriptionAllowed: descriptionAllowed,
+    );
+    if (!mounted) return;
+    setState(() => _isSavingProfile = false);
+    if (!serverSaved) return;
+
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('Профиль сохранен')));
+    messenger.showSnackBar(const SnackBar(content: Text('Профиль сохранён')));
     if (emailChanged) {
       messenger.showSnackBar(
         const SnackBar(
@@ -1512,9 +1527,6 @@ class _SparkJoySpecialistProfileScreenState
         ),
       );
     }
-
-    // Server push — fire-and-forget; локально уже сохранено.
-    unawaited(_pushProfileToServer(descriptionAllowed: descriptionAllowed));
   }
 
   Widget _buildLinkedCompanyProfile() {
@@ -2674,9 +2686,9 @@ class _SparkJoySpecialistProfileScreenState
                 TextField(
                   controller: ctrl,
                   autofocus: true,
-                  maxLines: 6,
-                  minLines: 4,
-                  maxLength: 500,
+                  maxLines: 10,
+                  minLines: 7,
+                  maxLength: 1500,
                   buildCounter:
                       (
                         _, {

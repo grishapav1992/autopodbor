@@ -64,6 +64,14 @@ const _fixture = [
     'a': '',
     'p': 5500,
   },
+  {
+    'r': 'Kurortnyy',
+    'e': 'Kurortnyy',
+    'c': 'RU',
+    'cn': 'Россия',
+    'a': 'Ленинградская область',
+    'p': 70589,
+  },
 ];
 
 CityRepository _build() => CityRepository.test(jsonEncode(_fixture));
@@ -90,6 +98,14 @@ void main() {
     test('latin-keyboard fallback: "almaty" hits "Алматы"', () {
       final repo = _build();
       expect(repo.search('almaty').first.nameRu, 'Алматы');
+    });
+
+    test('RU latin dataset names render in Russian', () {
+      final repo = _build();
+      final city = repo.search('Курортный').first;
+      expect(city.nameRu, 'Kurortnyy');
+      expect(city.displayNameRu, 'Курортный');
+      expect(city.displayLabel, 'Россия, Ленинградская область, Курортный');
     });
 
     test('startsWith ranks above contains', () {
@@ -127,18 +143,22 @@ void main() {
       expect(two.length, 2);
     });
 
-    test('throws StateError when called before init', () {
-      // Singleton path has no fixture loaded — but we test the
-      // private path directly via a fresh test-construct that we
-      // never feed JSON to. To exercise this, we build the
-      // singleton-like via the runtime constructor, which we don't
-      // expose; instead, verify the message via the singleton if
-      // its `_cities` is null at session start. Since other tests
-      // may have populated `instance` already, skip without a
-      // shared-state contract — covered by the StateError throw in
-      // search() implementation, exercised in widget test where
-      // the picker waits for the future before searching.
-    }, skip: 'Singleton state leaks across tests; covered by widget test');
+    test(
+      'throws StateError when called before init',
+      () {
+        // Singleton path has no fixture loaded — but we test the
+        // private path directly via a fresh test-construct that we
+        // never feed JSON to. To exercise this, we build the
+        // singleton-like via the runtime constructor, which we don't
+        // expose; instead, verify the message via the singleton if
+        // its `_cities` is null at session start. Since other tests
+        // may have populated `instance` already, skip without a
+        // shared-state contract — covered by the StateError throw in
+        // search() implementation, exercised in widget test where
+        // the picker waits for the future before searching.
+      },
+      skip: 'Singleton state leaks across tests; covered by widget test',
+    );
   });
 
   group('CityRepository.findByExactRu', () {
@@ -180,14 +200,16 @@ void main() {
       expect(repo.findByExactRu('Елкино'), isNotNull);
     });
 
-    test('null when not found — abbreviations like "Мск" are NOT fuzzy-matched',
-        () {
-      // The product decision is "no free-text fallback" — short forms
-      // must not silently match. The user has to reselect.
-      final repo = _build();
-      expect(repo.findByExactRu('Мск'), isNull);
-      expect(repo.findByExactRu('Питер'), isNull);
-    });
+    test(
+      'null when not found — abbreviations like "Мск" are NOT fuzzy-matched',
+      () {
+        // The product decision is "no free-text fallback" — short forms
+        // must not silently match. The user has to reselect.
+        final repo = _build();
+        expect(repo.findByExactRu('Мск'), isNull);
+        expect(repo.findByExactRu('Питер'), isNull);
+      },
+    );
 
     test('null for empty/whitespace input', () {
       final repo = _build();
@@ -247,8 +269,7 @@ void main() {
     setUp(CityRepository.resetSingletonForTest);
     tearDown(CityRepository.resetSingletonForTest);
 
-    test('singleton init() retries after a transient load failure',
-        () async {
+    test('singleton init() retries after a transient load failure', () async {
       // Reproduce the bug guarded by the rollback fix in `_runLoad`:
       // the FIRST `init()` throws (e.g. asset bundle hiccup); a
       // SECOND `init()` must NOT inherit the rejected future and
@@ -276,10 +297,7 @@ void main() {
       await CityRepository.instance.init();
       expect(attempts, 2);
       expect(CityRepository.instance.isReady, isTrue);
-      expect(
-        CityRepository.instance.findByExactRu('Москва'),
-        isNotNull,
-      );
+      expect(CityRepository.instance.findByExactRu('Москва'), isNotNull);
     });
 
     test('concurrent init() calls dedupe to a single load', () async {

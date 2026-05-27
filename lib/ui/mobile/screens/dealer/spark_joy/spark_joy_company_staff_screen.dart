@@ -1,14 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
-import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_staff_detail_screen.dart';
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_invite_by_phone_dialog.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -17,133 +19,6 @@ class _StaffEntry {
   const _StaffEntry({required this.data});
 
   final Map<String, dynamic> data;
-}
-
-class _InviteSpecialistByPhoneDialog extends StatefulWidget {
-  const _InviteSpecialistByPhoneDialog({required this.onInvite});
-
-  final Future<String> Function(String phone) onInvite;
-
-  @override
-  State<_InviteSpecialistByPhoneDialog> createState() =>
-      _InviteSpecialistByPhoneDialogState();
-}
-
-class _InviteSpecialistByPhoneDialogState
-    extends State<_InviteSpecialistByPhoneDialog> {
-  final _phoneController = TextEditingController();
-  bool _sending = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_sending) return;
-    setState(() {
-      _sending = true;
-      _error = null;
-    });
-    try {
-      final name = await widget.onInvite(_phoneController.text);
-      if (!mounted) return;
-      Navigator.of(context).pop(name);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _error = sparkJoyReadableErrorText(e);
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(SparkRadius.xl),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          SparkSpace.xxxl,
-          SparkSpace.xxxl,
-          SparkSpace.xxxl,
-          SparkSpace.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const MyText(
-              text: 'Пригласить в штат',
-              size: SparkTextSize.title,
-              weight: FontWeight.w700,
-            ),
-            const SizedBox(height: SparkSpace.md),
-            const MyText(
-              text:
-                  'Введите телефон зарегистрированного специалиста. Он получит приглашение и после принятия появится в штате компании.',
-              size: SparkTextSize.body,
-              color: kGreyColor,
-            ),
-            const SizedBox(height: SparkSpace.lg),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [RuPhoneFormatter()],
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              decoration: sparkInputDecoration(
-                '+7___-___-__-__',
-                prefixIcon: const Icon(Icons.phone_outlined, color: kGreyColor),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: SparkSpace.md),
-              MyText(
-                text: _error!,
-                size: SparkTextSize.caption,
-                color: kRedColor,
-              ),
-            ],
-            const SizedBox(height: SparkSpace.xl),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _sending
-                        ? null
-                        : () => Navigator.of(context).pop<String>(),
-                    child: const Text('Отмена'),
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.md),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _sending ? null : _submit,
-                    icon: _sending
-                        ? const SizedBox(
-                            width: SparkSize.spinner,
-                            height: SparkSize.spinner,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: kWhiteColor,
-                            ),
-                          )
-                        : const Icon(Icons.send_rounded),
-                    label: Text(_sending ? 'Отправляем...' : 'Отправить'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
 
 class SparkJoyCompanyStaffScreen extends StatefulWidget {
@@ -162,6 +37,9 @@ class _SparkJoyCompanyStaffScreenState
 
   bool _loading = true;
   String? _loadError;
+  bool _loadedOnce = false;
+  bool _requestsLoaded = false;
+  Future<void>? _requestsLoadFuture;
   String _search = '';
   List<Map<String, dynamic>> _requests = <Map<String, dynamic>>[];
   List<SpecialistItem> _staff = const <SpecialistItem>[];
@@ -212,38 +90,68 @@ class _SparkJoyCompanyStaffScreenState
     }
   }
 
+  Future<void> _refreshRequests({bool showErrors = false}) {
+    final inFlight = _requestsLoadFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _refreshRequestsImpl(showErrors: showErrors);
+    _requestsLoadFuture = future;
+    return future.whenComplete(() {
+      if (_requestsLoadFuture == future) {
+        _requestsLoadFuture = null;
+      }
+    });
+  }
+
+  Future<void> _refreshRequestsImpl({required bool showErrors}) async {
+    try {
+      final requests = (await _getRequestsWithRetry())
+          .map((request) => Map<String, dynamic>.from(request))
+          .toList();
+      if (!mounted) return;
+      setState(() {
+        _requests = requests;
+        _requestsLoaded = true;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      if (showErrors && _requests.isNotEmpty) {
+        _showRefreshErrorSnackbar(
+          e,
+          fallback:
+              'Список сотрудников обновлён, заявки сотрудника обновить не удалось',
+        );
+      }
+    }
+  }
+
   Future<void> _load() async {
-    final hadData = _staff.isNotEmpty;
+    final hadStableState = _loadedOnce;
     setState(() {
-      _loading = !hadData;
+      _loading = !hadStableState;
       _loadError = null;
     });
     try {
       final staff = await _loadCompanyStaff();
-      var requests = _requests;
-      try {
-        requests = (await _getRequestsWithRetry())
-            .map((request) => Map<String, dynamic>.from(request))
-            .toList();
-      } catch (e) {
-        if (mounted && _requests.isNotEmpty) {
-          _showRefreshErrorSnackbar(
-            e,
-            fallback:
-                'Список сотрудников обновлён, заявки сотрудника обновить не удалось',
-          );
-        }
-      }
       if (!mounted) return;
       setState(() {
-        _requests = requests;
+        if (staff.isEmpty) {
+          _requests = <Map<String, dynamic>>[];
+          _requestsLoaded = true;
+        } else {
+          _requestsLoaded = false;
+        }
         _staff = staff;
         _loading = false;
+        _loadedOnce = true;
       });
+      if (staff.isNotEmpty) {
+        unawaited(_refreshRequests(showErrors: hadStableState));
+      }
     } on storage_api.SessionExpiredException {
       if (!mounted) return;
       const msg = 'Сессия истекла. Войдите заново.';
-      if (hadData) {
+      if (hadStableState) {
         _showRefreshErrorSnackbar(msg);
         setState(() => _loading = false);
       } else {
@@ -259,7 +167,7 @@ class _SparkJoyCompanyStaffScreenState
         fallback:
             'Не удалось загрузить список сотрудников. Проверьте подключение и повторите.',
       );
-      if (hadData) {
+      if (hadStableState) {
         _showRefreshErrorSnackbar(e, fallback: msg);
         setState(() => _loading = false);
       } else {
@@ -354,6 +262,10 @@ class _SparkJoyCompanyStaffScreenState
   Future<void> _openSpecialist(Map<String, dynamic> specialist) async {
     final specialistId = _specialistId(specialist);
     if (specialistId == null) return;
+    if (!_requestsLoaded) {
+      await _refreshRequests(showErrors: true);
+      if (!mounted) return;
+    }
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => SparkJoyCompanyStaffDetailScreen(
@@ -362,7 +274,7 @@ class _SparkJoyCompanyStaffScreenState
         ),
       ),
     );
-    await _load();
+    unawaited(_refreshRequests(showErrors: false));
   }
 
   int? _specialistId(Map<String, dynamic> specialist) {
@@ -372,15 +284,15 @@ class _SparkJoyCompanyStaffScreenState
   Future<bool> _confirmUnlinkSpecialist(Map<String, dynamic> specialist) async {
     final name = sjRead(specialist, 'name', fallback: 'сотрудника');
     final specialistId = _specialistId(specialist);
-    final activeRequests = specialistId == null
-        ? 0
+    final activeRequests = specialistId == null || !_requestsLoaded
+        ? null
         : _activeRequestsListForId(specialistId).length;
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Удалить из штата?'),
         content: Text(
-          activeRequests > 0
+          activeRequests != null && activeRequests > 0
               ? '$name будет удалён из штата компании. Если у сотрудника есть активные заявки, сервер не позволит выполнить удаление.'
               : '$name будет удалён из штата компании.',
         ),
@@ -419,11 +331,12 @@ class _SparkJoyCompanyStaffScreenState
       if (!mounted) return;
       setState(() {
         _staff = _staff.where((staff) => staff.id != specialistId).toList();
+        _loadedOnce = true;
+        _loadError = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Сотрудник удалён из штата')),
       );
-      await _load();
     } on storage_api.CompanySpecialistUnlinkException catch (e) {
       if (!mounted) return;
       showSparkJoyErrorSnackBar(context, e);
@@ -496,7 +409,7 @@ class _SparkJoyCompanyStaffScreenState
     final invitedName = await showDialog<String>(
       context: context,
       builder: (dialogContext) =>
-          _InviteSpecialistByPhoneDialog(onInvite: _sendStaffInvitationByPhone),
+          SparkJoyInviteByPhoneDialog(onInvite: _sendStaffInvitationByPhone),
     );
     if (invitedName == null || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

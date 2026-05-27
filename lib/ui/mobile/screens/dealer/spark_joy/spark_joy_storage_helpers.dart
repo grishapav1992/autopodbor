@@ -2692,8 +2692,17 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     final uploaded = await _uploadReportToBackend(completed);
     if (!uploaded) {
       if (!mounted) return;
+      final errorText = _backendUploadErrorText
+          .replaceFirst(RegExp(r'^Exception:\s*'), '')
+          .trim();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Не удалось выгрузить отчёт')),
+        SnackBar(
+          content: Text(
+            errorText.isEmpty
+                ? 'Не удалось выгрузить отчёт'
+                : 'Не удалось выгрузить отчёт: $errorText',
+          ),
+        ),
       );
       return;
     }

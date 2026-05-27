@@ -16,13 +16,19 @@ class City {
     required this.countryNameRu,
     required this.regionNameRu,
     required this.population,
-  })  : _foldedRu = _fold(nameRu),
-        _foldedEn = _fold(nameEn);
+  }) : displayNameRu = _displayNameForRu(countryCode, nameRu),
+       _foldedRu = _fold(_displayNameForRu(countryCode, nameRu)),
+       _foldedEn = _fold(nameEn);
 
   /// Russian name as displayed (e.g. "Москва", "Санкт-Петербург"). This
   /// is also what gets written into the report's `cityInspection`
   /// payload when the user picks the city.
   final String nameRu;
+
+  /// User-facing Russian name. Some GeoNames RU rows have ASCII
+  /// transliteration in `nameRu`; keep the original raw value for
+  /// round-trips, but render a localized value in the UI.
+  final String displayNameRu;
 
   /// ASCII transliteration from GeoNames (e.g. "Moscow"). Used as a
   /// secondary search target so an inspector typing on a Latin keyboard
@@ -64,26 +70,121 @@ class City {
     final parts = <String>[];
     if (countryNameRu.isNotEmpty) parts.add(countryNameRu);
     if (regionNameRu.isNotEmpty &&
-        regionNameRu.toLowerCase() != nameRu.toLowerCase()) {
+        regionNameRu.toLowerCase() != displayNameRu.toLowerCase()) {
       parts.add(regionNameRu);
     }
-    parts.add(nameRu);
+    parts.add(displayNameRu);
     return parts.join(', ');
   }
 
   /// Round-trip (asset → object) constructor. Tolerant to extra fields
   /// in case the build script grows the schema later.
   factory City.fromJson(Map<String, dynamic> j) => City(
-        nameRu: (j['r'] ?? '') as String,
-        nameEn: (j['e'] ?? '') as String,
-        countryCode: (j['c'] ?? '') as String,
-        countryNameRu: (j['cn'] ?? '') as String,
-        regionNameRu: (j['a'] ?? '') as String,
-        population: (j['p'] is num) ? (j['p'] as num).toInt() : 0,
-      );
+    nameRu: (j['r'] ?? '') as String,
+    nameEn: (j['e'] ?? '') as String,
+    countryCode: (j['c'] ?? '') as String,
+    countryNameRu: (j['cn'] ?? '') as String,
+    regionNameRu: (j['a'] ?? '') as String,
+    population: (j['p'] is num) ? (j['p'] as num).toInt() : 0,
+  );
 
   @override
-  String toString() => '$nameRu, $countryNameRu';
+  String toString() => '$displayNameRu, $countryNameRu';
+}
+
+const Map<String, String> _ruCityDisplayOverrides = {
+  'kurortnyy': 'Курортный',
+  'gorod solnetchnogorsk': 'Солнечногорск',
+};
+
+String _displayNameForRu(String countryCode, String rawName) {
+  final value = rawName.trim();
+  if (value.isEmpty || countryCode != 'RU') return rawName;
+  if (!RegExp(r'[A-Za-z]').hasMatch(value)) return rawName;
+  final override = _ruCityDisplayOverrides[value.toLowerCase()];
+  if (override != null) return override;
+  return _transliterateAsciiRu(value);
+}
+
+String _transliterateAsciiRu(String value) {
+  return value
+      .split(RegExp(r'\s+'))
+      .map(_transliterateAsciiRuWord)
+      .where((part) => part.isNotEmpty)
+      .join(' ');
+}
+
+String _transliterateAsciiRuWord(String word) {
+  var source = word.trim().toLowerCase();
+  if (source.isEmpty) return '';
+  source = source.replaceAll(RegExp(r'[^a-z]+'), '');
+  if (source.isEmpty) return word;
+  if (source.endsWith('yy')) {
+    final stem = _transliterateAsciiRuWord(
+      source.substring(0, source.length - 2),
+    );
+    return '$stemый';
+  }
+  const digraphs = <String, String>{
+    'shch': 'щ',
+    'sch': 'щ',
+    'yo': 'ё',
+    'yu': 'ю',
+    'ya': 'я',
+    'ye': 'е',
+    'zh': 'ж',
+    'kh': 'х',
+    'ts': 'ц',
+    'ch': 'ч',
+    'sh': 'ш',
+  };
+  const chars = <String, String>{
+    'a': 'а',
+    'b': 'б',
+    'c': 'к',
+    'd': 'д',
+    'e': 'е',
+    'f': 'ф',
+    'g': 'г',
+    'h': 'х',
+    'i': 'и',
+    'j': 'й',
+    'k': 'к',
+    'l': 'л',
+    'm': 'м',
+    'n': 'н',
+    'o': 'о',
+    'p': 'п',
+    'q': 'к',
+    'r': 'р',
+    's': 'с',
+    't': 'т',
+    'u': 'у',
+    'v': 'в',
+    'w': 'в',
+    'x': 'кс',
+    'y': 'ы',
+    'z': 'з',
+  };
+  final out = StringBuffer();
+  var index = 0;
+  while (index < source.length) {
+    var matched = false;
+    for (final entry in digraphs.entries) {
+      if (!source.startsWith(entry.key, index)) continue;
+      out.write(entry.value);
+      index += entry.key.length;
+      matched = true;
+      break;
+    }
+    if (matched) continue;
+    final char = source[index];
+    out.write(chars[char] ?? char);
+    index += 1;
+  }
+  final result = out.toString();
+  if (result.isEmpty) return word;
+  return '${result[0].toUpperCase()}${result.substring(1)}';
 }
 
 /// Loads `assets/data/cities_ru_cis.json` once per app session and
@@ -141,8 +242,8 @@ class CityRepository {
   /// through `rootBundle`; tests can swap this to inject canned data
   /// or simulate I/O failures without wiring up an asset bundle.
   @visibleForTesting
-  Future<String> Function() loaderForTest =
-      () => rootBundle.loadString(_assetPath);
+  Future<String> Function() loaderForTest = () =>
+      rootBundle.loadString(_assetPath);
 
   /// Load the dataset. Idempotent — concurrent callers share the same
   /// `Future` (in-flight requests deduplicate). Safe to call from
@@ -196,7 +297,9 @@ class CityRepository {
   List<City> search(String query, {String? countryCode, int limit = 200}) {
     final cities = _cities;
     if (cities == null) {
-      throw StateError('CityRepository.search() called before init() completed');
+      throw StateError(
+        'CityRepository.search() called before init() completed',
+      );
     }
     final q = City._fold(query.trim());
 

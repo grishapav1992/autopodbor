@@ -78,8 +78,10 @@ class ProfanityModerator {
     return ProfanityModerationResult(
       decision: ProfanityModerationDecision.block,
       matchedRoots: List.unmodifiable(matches),
-      userMessage:
-          _blockedTemplate.replaceFirst('{field}', '«$fieldLabelOrDefault»'),
+      userMessage: _blockedTemplate.replaceFirst(
+        '{field}',
+        '«$fieldLabelOrDefault»',
+      ),
     );
   }
 
@@ -180,8 +182,12 @@ class ProfanityModerator {
     // Cyrillic and matches a Cyrillic root.
     for (final m in _tokenRx.allMatches(ruNormalised)) {
       final token = m.group(0)!;
-      if (token.length < 4) continue;
       if (_isWhitelisted(token)) continue;
+      if (kProfanityShortWordsRu.contains(token)) {
+        matched.add(token);
+        continue;
+      }
+      if (token.length < 4) continue;
       for (final root in kProfanityRootsRu) {
         if (!token.contains(root)) continue;
         if (!_matchesAfterPrefix(token, root)) continue;

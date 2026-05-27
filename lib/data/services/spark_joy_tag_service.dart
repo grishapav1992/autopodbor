@@ -124,11 +124,8 @@ class SparkJoyTagService {
   /// Returns the cached server ID for a tag in the given step/section
   /// bucket, or `null` if not known. `section` is null for steps without
   /// sections (test_drive, car, …).
-  int? idFor({
-    required String step,
-    String? section,
-    required String name,
-  }) => _idByKey[_composeKey(step: step, section: section, name: name)];
+  int? idFor({required String step, String? section, required String name}) =>
+      _idByKey[_composeKey(step: step, section: section, name: name)];
 
   /// Returns true if the given (step, section, name) is owned by a
   /// user (`userId != null` in the server's `GetUserTags` response).
@@ -154,7 +151,7 @@ class SparkJoyTagService {
   /// splits these into name + serious-name maps that match the
   /// editor's existing scope-keyed shape.
   Map<String, List<({String name, bool isSerious})>>
-      customInspectionTagsByGroupKey() {
+  customInspectionTagsByGroupKey() {
     final reverse = <String, String>{
       for (final e in groupKeyToApiSection.entries) e.value: e.key,
     };
@@ -240,11 +237,8 @@ class SparkJoyTagService {
     for (final name in tagNames) {
       final trimmed = name.trim();
       if (trimmed.isEmpty) continue;
-      final id = _idByKey[_composeKey(
-        step: step,
-        section: section,
-        name: trimmed,
-      )];
+      final id =
+          _idByKey[_composeKey(step: step, section: section, name: trimmed)];
       if (id != null && id > 0) {
         ids.add(id);
       } else {
@@ -273,35 +267,53 @@ class SparkJoyTagService {
   /// [testDriveSelectedIds] so the server sorts results by relevance and
   /// warms its co-occurrence stats for the next
   /// `PrepareSpecialistReport` call (changelog 2026-04-15).
+  ///
+  /// [inspectionSections] / [includeGenericInspection] / [includeTestDrive]
+  /// let read-only flows fetch only the buckets needed to resolve legacy tag
+  /// IDs. Full editor warm-up keeps the defaults and replaces the persisted
+  /// catalog; selective fetches are merged into the existing catalog instead.
   Future<void> loadTagIdsFromServer({
     Map<String, List<int>> selectedInspectionIdsBySection =
         const <String, List<int>>{},
     List<int> genericInspectionSelectedIds = const <int>[],
     List<int> testDriveSelectedIds = const <int>[],
+    Iterable<String>? inspectionSections,
+    bool includeGenericInspection = true,
+    bool includeTestDrive = true,
   }) async {
     try {
+      final isFullCatalogRefresh =
+          inspectionSections == null &&
+          includeGenericInspection &&
+          includeTestDrive;
+      final sections =
+          inspectionSections?.toSet() ?? groupKeyToApiSection.values.toSet();
       final futures = <Future<List<storage_api.UserTag>>>[
-        storage_api.StorageApi.getUserTags(
-          step: 'inspection',
-          selectedTagIds: genericInspectionSelectedIds.isEmpty
-              ? null
-              : genericInspectionSelectedIds,
-        ),
-        storage_api.StorageApi.getUserTags(
-          step: 'test_drive',
-          selectedTagIds:
-              testDriveSelectedIds.isEmpty ? null : testDriveSelectedIds,
-        ),
-        for (final section in groupKeyToApiSection.values)
+        if (includeGenericInspection)
+          storage_api.StorageApi.getUserTags(
+            step: 'inspection',
+            selectedTagIds: genericInspectionSelectedIds.isEmpty
+                ? null
+                : genericInspectionSelectedIds,
+          ),
+        if (includeTestDrive)
+          storage_api.StorageApi.getUserTags(
+            step: 'test_drive',
+            selectedTagIds: testDriveSelectedIds.isEmpty
+                ? null
+                : testDriveSelectedIds,
+          ),
+        for (final section in sections)
           storage_api.StorageApi.getUserTags(
             step: 'inspection',
             section: section,
             selectedTagIds:
                 selectedInspectionIdsBySection[section]?.isNotEmpty == true
-                    ? selectedInspectionIdsBySection[section]
-                    : null,
+                ? selectedInspectionIdsBySection[section]
+                : null,
           ),
       ];
+      if (futures.isEmpty) return;
       final results = await Future.wait(futures);
       // Deduplicate by id across section / generic fan-out results so we
       // don't persist the same tag multiple times.
@@ -322,18 +334,48 @@ class SparkJoyTagService {
           byId[tag.id] = tag;
         }
       }
-      _lastSnapshot = byId.values.toList(growable: false);
-      await SparkJoyStorage.replaceUserTags(
-        byId.values.map(_tagToMap).toList(growable: false),
-      );
-      // Fresh server catalog is loaded — a good time to drain any offline
-      // deletions the user did in a previous session.
-      await flushPendingDeletes();
+      if (isFullCatalogRefresh) {
+        _lastSnapshot = byId.values.toList(growable: false);
+        await SparkJoyStorage.replaceUserTags(
+          byId.values.map(_tagToMap).toList(growable: false),
+        );
+        // Fresh server catalog is loaded — a good time to drain any offline
+        // deletions the user did in a previous session.
+        await flushPendingDeletes();
+      } else {
+        await _mergeFetchedTagsIntoCatalog(byId.values);
+      }
     } catch (_) {
       // Tags may not be available (offline, server down). The persistent
       // cache populated on earlier runs is still in _tagNameToId after
       // [hydrateFromCache], so payload builder falls back gracefully.
     }
+  }
+
+  Future<void> _mergeFetchedTagsIntoCatalog(
+    Iterable<storage_api.UserTag> tags,
+  ) async {
+    final mergedSnapshot = <int, storage_api.UserTag>{
+      for (final tag in _lastSnapshot)
+        if (tag.id > 0) tag.id: tag,
+      for (final tag in tags)
+        if (tag.id > 0) tag.id: tag,
+    };
+    _lastSnapshot = mergedSnapshot.values.toList(growable: false);
+
+    final cached = await SparkJoyStorage.loadUserTags();
+    final mergedPersisted = <int, Map<String, dynamic>>{};
+    for (final raw in cached) {
+      final idRaw = raw['id'];
+      final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
+      if (id > 0) mergedPersisted[id] = raw;
+    }
+    for (final tag in tags) {
+      if (tag.id > 0) mergedPersisted[tag.id] = _tagToMap(tag);
+    }
+    await SparkJoyStorage.replaceUserTags(
+      mergedPersisted.values.toList(growable: false),
+    );
   }
 
   /// Loads the persisted tag catalog into [_idByKey]. Call once on
@@ -353,7 +395,9 @@ class SparkJoyTagService {
       final userIdRaw = raw['userId'];
       final userId = userIdRaw is int
           ? userIdRaw
-          : (userIdRaw is num ? userIdRaw.toInt() : int.tryParse('${userIdRaw ?? ''}'));
+          : (userIdRaw is num
+                ? userIdRaw.toInt()
+                : int.tryParse('${userIdRaw ?? ''}'));
       final key = _composeKey(step: step, section: section, name: name);
       _idByKey[key] = id;
       _userIdByKey[key] = userId;
@@ -518,10 +562,11 @@ class SparkJoyTagService {
         for (final tag in tags) {
           if (tag.id <= 0 || tag.name.trim().isEmpty) continue;
           _idByKey[_composeKey(
-            step: tag.step ?? 'inspection',
-            section: tag.section ?? section,
-            name: tag.name,
-          )] = tag.id;
+                step: tag.step ?? 'inspection',
+                section: tag.section ?? section,
+                name: tag.name,
+              )] =
+              tag.id;
         }
         id = _idByKey[cacheKey];
       } catch (_) {
@@ -570,9 +615,7 @@ class SparkJoyTagService {
   /// test-drive step. Test-drive tags have no section — the cache key
   /// uses `step='test_drive'` and a null section. Otherwise the
   /// resolve-id-or-enqueue flow mirrors the inspection path.
-  Future<bool> removeTestDriveTag({
-    required String tagName,
-  }) async {
+  Future<bool> removeTestDriveTag({required String tagName}) async {
     final cacheKey = _composeKey(
       step: 'test_drive',
       section: null,
@@ -587,10 +630,11 @@ class SparkJoyTagService {
         for (final tag in tags) {
           if (tag.id <= 0 || tag.name.trim().isEmpty) continue;
           _idByKey[_composeKey(
-            step: tag.step ?? 'test_drive',
-            section: tag.section,
-            name: tag.name,
-          )] = tag.id;
+                step: tag.step ?? 'test_drive',
+                section: tag.section,
+                name: tag.name,
+              )] =
+              tag.id;
         }
         id = _idByKey[cacheKey];
       } catch (_) {
@@ -614,10 +658,7 @@ class SparkJoyTagService {
       }
     }
     try {
-      await storage_api.StorageApi.removeUserTag(
-        id: id,
-        step: 'test_drive',
-      );
+      await storage_api.StorageApi.removeUserTag(id: id, step: 'test_drive');
       _evictTagByKey(cacheKey);
       await _persistCatalogSnapshot();
       return true;
@@ -644,11 +685,7 @@ class SparkJoyTagService {
     required String? section,
   }) {
     return _withStorageLock(
-      () => _enqueuePendingDeleteImpl(
-        name: name,
-        step: step,
-        section: section,
-      ),
+      () => _enqueuePendingDeleteImpl(name: name, step: step, section: section),
     );
   }
 
@@ -666,12 +703,7 @@ class SparkJoyTagService {
       final itemStep = (item['step'] as String?) ?? 'inspection';
       final itemSection = item['section']?.toString();
       return !(itemName == key && itemStep == step && itemSection == section);
-    }).toList()
-      ..add({
-        'name': normalized,
-        'step': step,
-        'section': section,
-      });
+    }).toList()..add({'name': normalized, 'step': step, 'section': section});
     await SparkJoyStorage.replacePendingTagDeletes(deduped);
   }
 
@@ -742,11 +774,13 @@ class SparkJoyTagService {
   Future<void> _persistCatalogSnapshotImpl() async {
     final cached = await SparkJoyStorage.loadUserTags();
     final keepIds = _idByKey.values.toSet();
-    final filtered = cached.where((raw) {
-      final idRaw = raw['id'];
-      final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
-      return keepIds.contains(id);
-    }).toList(growable: false);
+    final filtered = cached
+        .where((raw) {
+          final idRaw = raw['id'];
+          final id = idRaw is int ? idRaw : int.tryParse('$idRaw') ?? 0;
+          return keepIds.contains(id);
+        })
+        .toList(growable: false);
     if (filtered.length != cached.length) {
       await SparkJoyStorage.replaceUserTags(filtered);
     }

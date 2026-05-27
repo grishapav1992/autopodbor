@@ -69,6 +69,11 @@ const List<String> kProfanityRootsRu = [
   'шлюх',
 ];
 
+/// Short exact-token profanity that is too short for the root matcher
+/// above. Keep this list conservative: entries match whole tokens only,
+/// not substrings.
+const List<String> kProfanityShortWordsRu = ['бля', 'сука', 'хуй'];
+
 /// Light coverage for English profanity that occasionally gets
 /// transliterated into Russian text on a phone keyboard. Not
 /// exhaustive — autopodbor is a Russian-language product.
@@ -83,6 +88,7 @@ const List<String> kProfanityRootsEn = [
   'fuckin',
   'motherfuck',
   'pussy',
+  'shit',
   'shitt',
 ];
 
@@ -97,16 +103,16 @@ const List<String> kProfanityRootsEn = [
 /// the root instead of bloating this list.
 const List<String> kProfanityWhitelist = [
   // — false positives observed in inspector reports —
-  'лохмат',  // лохматый, лохматая, лохматого
-  'охапк',   // охапка, охапку, охапкой
-  'хирург',  // хирург, хирурги, хирургический
-  'мудр',    // мудрость, мудрый, мудрая, мудрец
-  'блюд',    // блюдо, блюсти, блюдце, блюди
-  'охват',   // охват, охватный, охватывать
-  'страх',   // straх itself + страховой / страховка
+  'лохмат', // лохматый, лохматая, лохматого
+  'охапк', // охапка, охапку, охапкой
+  'хирург', // хирург, хирурги, хирургический
+  'мудр', // мудрость, мудрый, мудрая, мудрец
+  'блюд', // блюдо, блюсти, блюдце, блюди
+  'охват', // охват, охватный, охватывать
+  'страх', // straх itself + страховой / страховка
   // — Latin lookalikes that ARE valid product names —
-  'sukhoi',  // brand name
-  'kuban',   // region — not a profanity, never block
+  'sukhoi', // brand name
+  'kuban', // region — not a profanity, never block
 ];
 
 /// Inflectional prefixes that are tolerated in front of a root. The

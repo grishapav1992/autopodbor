@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'dart:math' as math;
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -37,17 +36,9 @@ class AiQueueApi {
   static const String _endpoint = 'https://carreports.ru:8092';
   static int _rpcSeq = 0;
 
-  // ── Lazy model resolution ─────────────────────────────────────────────
-  // Cache the highest model id (e.g. "gpt-5.5") for the lifetime of the
-  // process so every chatCompletions call doesn't re-fetch. Cleared by
-  // [resetCaches] on logout.
-  static Future<String>? _highestModelInflight;
-  static String? _highestModelCache;
+  static const String _defaultChatModel = 'gpt-5.4';
 
-  static void resetCaches() {
-    _highestModelInflight = null;
-    _highestModelCache = null;
-  }
+  static void resetCaches() {}
 
   // ── Public surface ────────────────────────────────────────────────────
 
@@ -98,9 +89,9 @@ class AiQueueApi {
     if (rawModels is List) {
       for (final m in rawModels) {
         if (m is Map) {
-          list.add(AiQueueModel.fromJson(
-            m.map((k, v) => MapEntry(k.toString(), v)),
-          ));
+          list.add(
+            AiQueueModel.fromJson(m.map((k, v) => MapEntry(k.toString(), v))),
+          );
         }
       }
     }
@@ -123,10 +114,7 @@ class AiQueueApi {
     String? model,
     Duration timeout = const Duration(seconds: 60),
   }) async {
-    final params = <String, dynamic>{
-      'text': text,
-      'cliche': cliche,
-    };
+    final params = <String, dynamic>{'text': text, 'cliche': cliche};
     if (fileUrls != null && fileUrls.isNotEmpty) {
       params['fileUrls'] = fileUrls;
     }
@@ -180,65 +168,12 @@ class AiQueueApi {
     return AiQueueChatHistories(chats: chats);
   }
 
-  /// Returns the highest-version model id from `AiQueue.Models`. Falls
-  /// back to `'gpt-5.5'` if the call fails — that's the highest model in
-  /// the spec at integration time and a safer default than the server's
-  /// `gpt-5.4`. The result is cached for the lifetime of the process
-  /// (see [resetCaches]).
+  /// Returns the product-selected default model for report text generation.
+  /// We intentionally do not auto-upgrade to the highest `AiQueue.Models`
+  /// entry: prompt behavior for inspection reports is calibrated against
+  /// this model and should not drift when the backend exposes newer IDs.
   static Future<String> resolveDefaultModel() async {
-    final cached = _highestModelCache;
-    if (cached != null) return cached;
-    final inflight = _highestModelInflight;
-    if (inflight != null) return inflight;
-    final future = _fetchHighestModel();
-    _highestModelInflight = future;
-    try {
-      final result = await future;
-      _highestModelCache = result;
-      return result;
-    } finally {
-      _highestModelInflight = null;
-    }
-  }
-
-  static Future<String> _fetchHighestModel() async {
-    try {
-      final list = await models();
-      if (list.models.isEmpty) return 'gpt-5.5';
-      final sorted = [...list.models]..sort(_compareModelDesc);
-      return sorted.first.id;
-    } catch (_) {
-      return 'gpt-5.5';
-    }
-  }
-
-  /// Sorts model ids by extracted numeric version, descending. `gpt-5.5`
-  /// wins over `gpt-5.4`; unparseable ids fall to the bottom but keep
-  /// stable order between themselves.
-  static int _compareModelDesc(AiQueueModel a, AiQueueModel b) {
-    final va = _extractVersion(a.id);
-    final vb = _extractVersion(b.id);
-    return _compareVersionLists(vb, va); // reversed → descending
-  }
-
-  static List<int> _extractVersion(String id) {
-    final match = RegExp(r'(\d+(?:\.\d+)*)').firstMatch(id);
-    if (match == null) return const <int>[];
-    return match
-        .group(1)!
-        .split('.')
-        .map((s) => int.tryParse(s) ?? 0)
-        .toList(growable: false);
-  }
-
-  static int _compareVersionLists(List<int> a, List<int> b) {
-    final len = math.max(a.length, b.length);
-    for (var i = 0; i < len; i++) {
-      final ai = i < a.length ? a[i] : 0;
-      final bi = i < b.length ? b[i] : 0;
-      if (ai != bi) return ai.compareTo(bi);
-    }
-    return 0;
+    return _defaultChatModel;
   }
 
   // ── RPC plumbing ──────────────────────────────────────────────────────
@@ -463,7 +398,11 @@ class AiQueueApi {
     if (errors is List) {
       return errors
           .where((e) => e != null)
-          .map((e) => e is Map ? (e['message']?.toString() ?? e.toString()) : e.toString())
+          .map(
+            (e) => e is Map
+                ? (e['message']?.toString() ?? e.toString())
+                : e.toString(),
+          )
           .where((s) => s.isNotEmpty)
           .join(' | ');
     }

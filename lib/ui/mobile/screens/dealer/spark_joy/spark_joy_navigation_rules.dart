@@ -125,15 +125,6 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
   }
 
   Future<void> _handleSectionBack() async {
-    if (_SparkJoyStepRegistry.isMediaStepId(
-          _SparkJoyStepRegistry.idAt(_stepIndex),
-        ) &&
-        _activeMediaGroupKey != null) {
-      await _saveDraft(showToast: false);
-      if (!mounted) return;
-      _closeMediaGroupEditor();
-      return;
-    }
     if (_returnToSummaryOnBack) {
       await _saveDraft(showToast: false);
       if (!mounted) return;
@@ -151,6 +142,15 @@ extension _SparkJoyNavigationRulesMethods on _SparkJoyCreateReportScreenState {
         _scrollEditorToTop();
         return;
       }
+    }
+    if (_SparkJoyStepRegistry.isMediaStepId(
+          _SparkJoyStepRegistry.idAt(_stepIndex),
+        ) &&
+        _activeMediaGroupKey != null) {
+      await _saveDraft(showToast: false);
+      if (!mounted) return;
+      _closeMediaGroupEditor();
+      return;
     }
     await _closeSection(save: true);
   }

@@ -6,8 +6,8 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
-import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_invite_by_phone_dialog.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
 
@@ -445,7 +445,7 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
     final invitedName = await showDialog<String>(
       context: context,
       builder: (_) =>
-          _InviteSpecialistByPhoneDialog(onInvite: _sendStaffInvitationByPhone),
+          SparkJoyInviteByPhoneDialog(onInvite: _sendStaffInvitationByPhone),
     );
     if (invitedName == null || !mounted) return;
     setState(() {
@@ -710,133 +710,6 @@ class _SparkJoyAssigneePickerState extends State<SparkJoyAssigneePicker> {
           color: kGreyColor,
         ),
       ],
-    );
-  }
-}
-
-class _InviteSpecialistByPhoneDialog extends StatefulWidget {
-  const _InviteSpecialistByPhoneDialog({required this.onInvite});
-
-  final Future<String> Function(String phone) onInvite;
-
-  @override
-  State<_InviteSpecialistByPhoneDialog> createState() =>
-      _InviteSpecialistByPhoneDialogState();
-}
-
-class _InviteSpecialistByPhoneDialogState
-    extends State<_InviteSpecialistByPhoneDialog> {
-  final _phoneController = TextEditingController();
-  bool _sending = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    if (_sending) return;
-    setState(() {
-      _sending = true;
-      _error = null;
-    });
-    try {
-      final name = await widget.onInvite(_phoneController.text);
-      if (!mounted) return;
-      Navigator.of(context).pop(name);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _error = e.toString().replaceFirst('Exception: ', '');
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(SparkRadius.xl),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(
-          SparkSpace.xxxl,
-          SparkSpace.xxxl,
-          SparkSpace.xxxl,
-          SparkSpace.xl,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const MyText(
-              text: 'Пригласить в штат',
-              size: SparkTextSize.title,
-              weight: FontWeight.w700,
-            ),
-            const SizedBox(height: SparkSpace.md),
-            const MyText(
-              text:
-                  'Введите телефон зарегистрированного специалиста. Он получит приглашение и после принятия появится в штате компании.',
-              size: SparkTextSize.body,
-              color: kGreyColor,
-            ),
-            const SizedBox(height: SparkSpace.lg),
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              inputFormatters: [RuPhoneFormatter()],
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              decoration: sparkInputDecoration(
-                '+7___-___-__-__',
-                prefixIcon: const Icon(Icons.phone_outlined, color: kGreyColor),
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: SparkSpace.md),
-              MyText(
-                text: _error!,
-                size: SparkTextSize.caption,
-                color: kRedColor,
-              ),
-            ],
-            const SizedBox(height: SparkSpace.xl),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _sending
-                        ? null
-                        : () => Navigator.of(context).pop<String>(),
-                    child: const Text('Отмена'),
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.md),
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _sending ? null : _submit,
-                    icon: _sending
-                        ? const SizedBox(
-                            width: SparkSize.spinner,
-                            height: SparkSize.spinner,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: kWhiteColor,
-                            ),
-                          )
-                        : const Icon(Icons.send_rounded),
-                    label: Text(_sending ? 'Отправляем...' : 'Отправить'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

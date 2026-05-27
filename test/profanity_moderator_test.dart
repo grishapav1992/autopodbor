@@ -18,16 +18,15 @@ void main() {
     });
 
     test('typical inspector report sentences', () {
-      expect(
-        ProfanityModerator.isClean('Машина в хорошем состоянии'),
-        isTrue,
-      );
+      expect(ProfanityModerator.isClean('Машина в хорошем состоянии'), isTrue);
       expect(
         ProfanityModerator.isClean('VIN считывается, пробег родной 120000 км'),
         isTrue,
       );
       expect(
-        ProfanityModerator.isClean('Кузов без значимых повреждений, ЛКП ровный'),
+        ProfanityModerator.isClean(
+          'Кузов без значимых повреждений, ЛКП ровный',
+        ),
         isTrue,
       );
     });
@@ -63,7 +62,10 @@ void main() {
       // "не" is in [kProfanityPrefixes]; "не" + root is a valid
       // morphological form that must still match.
       final root = kProfanityRootsRu.first;
-      final result = ProfanityModerator.moderateText('не$root' 'какой');
+      final result = ProfanityModerator.moderateText(
+        'не$root'
+        'какой',
+      );
       expect(result.isBlock, isTrue);
       expect(result.matchedRoots, contains(root));
     });
@@ -74,8 +76,9 @@ void main() {
       final obfuscated = root.replaceAll('а', '@').replaceAll('о', '0');
       // Only meaningful if the root actually contained one of those
       // letters; otherwise we fall back to verifying the plain form.
-      final input =
-          obfuscated == root ? 'тест $root' : 'тест $obfuscated конец';
+      final input = obfuscated == root
+          ? 'тест $root'
+          : 'тест $obfuscated конец';
       expect(ProfanityModerator.moderateText(input).isBlock, isTrue);
     });
 
@@ -121,6 +124,13 @@ void main() {
         isTrue,
       );
     });
+
+    test('short exact Russian profanity is blocked', () {
+      final shortRoot = kProfanityShortWordsRu.first;
+      final result = ProfanityModerator.moderateText('текст $shortRoot');
+      expect(result.isBlock, isTrue);
+      expect(result.matchedRoots, contains(shortRoot));
+    });
   });
 
   group('ProfanityModerator — false positives must remain clean', () {
@@ -131,8 +141,10 @@ void main() {
       expect(ProfanityModerator.isClean('Хирург приехал на осмотр'), isTrue);
       expect(ProfanityModerator.isClean('Мудрость владельца'), isTrue);
       expect(ProfanityModerator.isClean('Подаёт блюдо к столу'), isTrue);
-      expect(ProfanityModerator.isClean('Охапка инструментов в багажнике'),
-          isTrue);
+      expect(
+        ProfanityModerator.isClean('Охапка инструментов в багажнике'),
+        isTrue,
+      );
     });
 
     test('tokens shorter than 4 characters never match', () {

@@ -46,22 +46,30 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
     );
   }
 
-  // Completed reports can still return legacy tag arrays as bare IDs.
-  // Warm the tag catalog before mapping those IDs back to display names;
-  // embedded `{id, name}` tags still work even if this network call fails.
+  // Completed reports normally return tags as embedded `{id, name}` objects.
+  // Warm the local catalog, then hit Storage.GetUserTags only for legacy bare
+  // IDs that still need name lookup. The regular editor intentionally warms
+  // every inspection section; read-only completed reports must not fan out
+  // into section-wide suggestion requests.
   await tagService.hydrateFromCache();
   try {
-    final selectedInspectionIds = _collectInspectionTagIdsBySection(
+    final selectedInspectionIds = _collectMissingInspectionTagIdsBySection(
       inspectionStep,
+      tagService,
     );
-    final genericInspectionIds = <int>{
-      for (final ids in selectedInspectionIds.values) ...ids,
-    }.toList(growable: false);
-    await tagService.loadTagIdsFromServer(
-      selectedInspectionIdsBySection: selectedInspectionIds,
-      genericInspectionSelectedIds: genericInspectionIds,
-      testDriveSelectedIds: _collectTestDriveTagIds(testDriveStep),
+    final testDriveIds = _collectMissingTestDriveTagIds(
+      testDriveStep,
+      tagService,
     );
+    if (selectedInspectionIds.isNotEmpty || testDriveIds.isNotEmpty) {
+      await tagService.loadTagIdsFromServer(
+        selectedInspectionIdsBySection: selectedInspectionIds,
+        testDriveSelectedIds: testDriveIds,
+        inspectionSections: selectedInspectionIds.keys,
+        includeGenericInspection: false,
+        includeTestDrive: testDriveIds.isNotEmpty,
+      );
+    }
   } catch (e) {
     debugPrint(
       '[CompletedReportHydrator] GetUserTags failed for completed report: $e',
@@ -391,7 +399,10 @@ List<String> _resolveTagNames(dynamic raw, SparkJoyTagService tagService) {
   return out;
 }
 
-Map<String, List<int>> _collectInspectionTagIdsBySection(Map inspectionStep) {
+Map<String, List<int>> _collectMissingInspectionTagIdsBySection(
+  Map inspectionStep,
+  SparkJoyTagService tagService,
+) {
   final out = <String, Set<int>>{};
   for (final entry in _inspectionArrayKeys.entries) {
     final section =
@@ -402,8 +413,12 @@ Map<String, List<int>> _collectInspectionTagIdsBySection(Map inspectionStep) {
     final ids = out.putIfAbsent(section, () => <int>{});
     for (final raw in list) {
       if (raw is! Map) continue;
-      ids.addAll(_extractTagIds(raw['seriousDamageTags']));
-      ids.addAll(_extractTagIds(raw['noSeriousDamageTags']));
+      ids.addAll(
+        _extractTagIdsNeedingLookup(raw['seriousDamageTags'], tagService),
+      );
+      ids.addAll(
+        _extractTagIdsNeedingLookup(raw['noSeriousDamageTags'], tagService),
+      );
     }
   }
   return {
@@ -413,7 +428,10 @@ Map<String, List<int>> _collectInspectionTagIdsBySection(Map inspectionStep) {
   };
 }
 
-List<int> _collectTestDriveTagIds(Map testDriveStep) {
+List<int> _collectMissingTestDriveTagIds(
+  Map testDriveStep,
+  SparkJoyTagService tagService,
+) {
   final ids = <int>{};
   for (final key in const [
     'testDriveEngineTags',
@@ -422,15 +440,22 @@ List<int> _collectTestDriveTagIds(Map testDriveStep) {
     'testDriveSuspensionInDriveTags',
     'testDriveBrakesInDriveTags',
   ]) {
-    ids.addAll(_extractTagIds(testDriveStep[key]));
+    ids.addAll(_extractTagIdsNeedingLookup(testDriveStep[key], tagService));
   }
   return ids.toList(growable: false);
 }
 
-List<int> _extractTagIds(dynamic raw) {
+List<int> _extractTagIdsNeedingLookup(
+  dynamic raw,
+  SparkJoyTagService tagService,
+) {
   if (raw is! List) return const <int>[];
   final ids = <int>[];
   for (final item in raw) {
+    if (item is Map) {
+      final embeddedName = (item['name'] ?? '').toString().trim();
+      if (embeddedName.isNotEmpty) continue;
+    }
     int? id;
     if (item is Map) {
       final rawId = item['id'];
@@ -442,7 +467,9 @@ List<int> _extractTagIds(dynamic raw) {
           ? item
           : (item is num ? item.toInt() : int.tryParse('$item'));
     }
-    if (id != null && id > 0) ids.add(id);
+    if (id != null && id > 0 && tagService.nameForId(id) == null) {
+      ids.add(id);
+    }
   }
   return ids;
 }

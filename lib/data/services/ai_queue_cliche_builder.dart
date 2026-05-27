@@ -1,4 +1,5 @@
-import 'package:flutter_application_1/data/api/storage_api.dart' show UserTag, UserTagType;
+import 'package:flutter_application_1/data/api/storage_api.dart'
+    show UserTag, UserTagType;
 
 /// Builds the `cliche` template string passed to `AiQueue.ChatCompletions`.
 ///
@@ -31,17 +32,35 @@ class AiQueueClicheBuilder {
       'Тон деловой, без жаргона ремонтников. Сложные термины кратко '
       'поясняй в скобках. ';
 
+  static const String _kReportVoice =
+      'Пиши как готовый фрагмент отчёта: уверенно, от лица выполненной '
+      'проверки, но без фраз от первого лица, без '
+      'упоминания ИИ и без обозначения роли автора проверки. ';
+
   /// Anti-hallucination floor. Without this the model freely
   /// reconstructs «вероятно был удар в правое крыло» from a single
   /// «царапина» tag. This guardrail forces an explicit «нужна доп.
   /// диагностика» exit when the data isn't enough to be sure.
   static const String _kAntiHallucination =
       'Если данных или фото для уверенного вывода недостаточно — '
-      'напиши явно «Требуется дополнительная диагностика» (или у '
-      'какого специалиста / на каком этапе). Не реконструируй картину '
+      'напиши явно «Требуется дополнительная диагностика» или укажи, '
+      'на каком этапе нужна проверка. Не реконструируй картину '
       'из общих соображений. Не выдумывай конкретные отзывные '
       'кампании, заводские дефекты или TSB — если факт неточен, '
       'формулируй обобщённо. ';
+
+  /// Vehicle context should influence reasoning but should not leak into
+  /// every generated sentence. The model may use brand/model/year knowledge
+  /// to calibrate typical weak points, but the final text must remain about
+  /// the inspected fact unless a vehicle-identification field asks otherwise.
+  static const String _kVehicleContextUse =
+      'Контекст автомобиля используй как внутреннюю справку: учитывай '
+      'возраст, класс, тип кузова/двигателя и типичные слабые места '
+      'модели, сопоставляй их только с фактами из отчёта. '
+      'Не вставляй марку, модель, поколение или название автомобиля в '
+      'ответ без явной необходимости. Не пиши «для данной модели» и не '
+      'перечисляй типовые болячки, если эксперт не зафиксировал '
+      'связанные признаки. ';
 
   /// Severity calibration — used by element + test-drive cliché where
   /// tags carry «серьёзное / некритичное» wire-labels. The model now
@@ -138,7 +157,9 @@ class AiQueueClicheBuilder {
     double? paintTo,
     String? carContext,
   }) {
-    final element = elementLabel.trim().isEmpty ? 'элемент авто' : elementLabel.trim();
+    final element = elementLabel.trim().isEmpty
+        ? 'элемент авто'
+        : elementLabel.trim();
     final cleanLabels = selectedTagLabels
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
@@ -146,7 +167,7 @@ class AiQueueClicheBuilder {
     final seriousLower = seriousTagLabels.map((s) => s.toLowerCase()).toSet();
     final paintLine = (paintFrom != null && paintTo != null)
         ? 'Толщина ЛКП: ${paintFrom.round()}-${paintTo.round()} мкм '
-            '(норма ~80-200 мкм; больше — возможна перекраска или шпатлёвка). '
+              '(норма ~80-200 мкм; больше — возможна перекраска или шпатлёвка). '
         : '';
     final carLine = _carContextBlock(carContext);
 
@@ -156,14 +177,16 @@ class AiQueueClicheBuilder {
       tagsBlock = 'Замечания/теги: нет.\n';
       mustMentionRule = '';
     } else {
-      final bullets = cleanLabels.map((label) {
-        final severity = seriousLower.contains(label.toLowerCase())
-            ? 'серьёзное'
-            : 'некритичное';
-        return '- $label ($severity)';
-      }).join('\n');
+      final bullets = cleanLabels
+          .map((label) {
+            final severity = seriousLower.contains(label.toLowerCase())
+                ? 'серьёзное'
+                : 'некритичное';
+            return '- $label ($severity)';
+          })
+          .join('\n');
       tagsBlock =
-          'Дилер выявил следующие повреждения / замечания (НЕ ИЗМЕНЯЙ названия):\n'
+          'В данных осмотра указаны следующие повреждения / замечания (НЕ ИЗМЕНЯЙ названия):\n'
           '$bullets\n';
       final names = cleanLabels.join(', ');
       mustMentionRule =
@@ -179,15 +202,17 @@ class AiQueueClicheBuilder {
         '$carLine'
         '$tagsBlock'
         '$paintLine'
-        'Текущее описание инспектора: $noteLine.\n\n'
+        'Исходное описание: $noteLine.\n\n'
         '$_kAudienceTone'
+        '$_kReportVoice'
+        '$_kVehicleContextUse'
         '$_kSeverityCalibration'
         '$_kShortLengthCap'
         '$mustMentionRule'
         '$_kAntiHallucination'
         'Если приложены фото — учитывай их визуальную информацию. '
         'Верни только финальный текст замечания, без преамбулы и markdown. '
-        'Дополнительный контекст от инспектора: {text}';
+        'Дополнительный контекст: {text}';
   }
 
   /// Cliche for the docs-check «Комментарий по расхождениям» field.
@@ -205,19 +230,20 @@ class AiQueueClicheBuilder {
       return value ? 'соответствует' : 'не соответствует';
     }
 
-    return 'Ты эксперт по техническому осмотру авто. Дилер выполнил '
-        'сверку документов и зафиксировал такие результаты:\n'
+    return 'Ты эксперт по техническому осмотру авто. В сверке документов '
+        'зафиксированы такие результаты:\n'
         '- Данные владельца: ${label(ownerMatch)}\n'
         '- Идентификационные номера (VIN): ${label(vinMatch)}\n'
         '- Модель двигателя: ${label(engineMatch)}\n\n'
-        'На основе этих данных и комментария дилера ниже сформулируй '
+        'На основе этих данных и исходного комментария ниже сформулируй '
         'текст для отчёта о том, что именно не сходится и какие риски '
         'это несёт для покупателя.\n\n'
         '$_kAudienceTone'
+        '$_kReportVoice'
         '$_kShortLengthCap'
         '$_kAntiHallucination'
         'Возвращай только готовый текст без преамбулы и markdown.\n\n'
-        'Комментарий дилера: {text}';
+        'Исходный комментарий: {text}';
   }
 
   /// Cliché for the unified «Итог осмотра» field — replaces the old
@@ -227,7 +253,7 @@ class AiQueueClicheBuilder {
   ///   • явные блоки «Осмотрено без замечаний» / «Не осмотрено»
   ///     (см. _kCoverageHonesty)
   ///   • обязательный verdict-маркер «РЕКОМЕНДАЦИЯ:» в конце
-  ///   • уважает «Предыдущий черновик инспектора» если он есть в
+  ///   • уважает «Предыдущий черновик» если он есть в
   ///     контексте — сохраняет его правки и стиль
   static String buildReportFactsCliche({
     required String reportLabel,
@@ -257,12 +283,14 @@ class AiQueueClicheBuilder {
         '«рекомендуется с оговорками — [что именно]» / '
         '«не рекомендуется без устранения [чего]». '
         'После РЕКОМЕНДАЦИЯ ничего не пиши.\n\n'
-        'Если в контексте есть «Предыдущий черновик инспектора» — '
+        'Если в контексте есть «Предыдущий черновик» — '
         'возьми из него факты и формулировки, но ОБЯЗАТЕЛЬНО '
         'переоформи в шаблон выше с заголовками. Сплошной абзац НЕ '
         'допускается, даже если черновик такой.\n\n'
         '$carLine'
         '$_kAudienceTone'
+        '$_kReportVoice'
+        '$_kVehicleContextUse'
         '$_kAntiHallucination'
         '$_kCoverageHonesty'
         'Без markdown (никаких **, ##, -/•). Без вступлений. '
@@ -283,18 +311,19 @@ class AiQueueClicheBuilder {
     final filesPart = filesCount == 0
         ? 'Документы не приложены. '
         : 'Приложено документов: $filesCount '
-            '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}). ';
+              '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}). ';
     return 'Ты эксперт по приёмке автомобилей. '
         'Сформулируй текст для блока «Материалы проверки» отчёта. '
         '$filesPart'
-        'На основе приложенных документов и комментария инспектора ниже '
+        'На основе приложенных документов и исходного комментария ниже '
         'опиши ключевые моменты: что было проверено, какие риски/'
         'нюансы выявлены, какие действия рекомендуются клиенту.\n\n'
         '$_kAudienceTone'
+        '$_kReportVoice'
         '$_kShortLengthCap'
         '$_kAntiHallucination'
         'Возвращай только готовый текст без преамбулы и markdown.\n\n'
-        'Комментарий инспектора: {text}';
+        'Исходный комментарий: {text}';
   }
 
   /// Cliché for the «Комментарий по тест-драйву» field. Bakes in the
@@ -360,29 +389,33 @@ class AiQueueClicheBuilder {
     for (final entry in subsystemStatus.entries) {
       final tags = subsystemTags[entry.key] ?? const <String>[];
       final tagsPart = tags.isEmpty ? '' : ' — теги: ${tags.join(", ")}';
-      lines.add('- ${subsystemLabel(entry.key)}: ${okLabel(entry.value)}$tagsPart');
+      lines.add(
+        '- ${subsystemLabel(entry.key)}: ${okLabel(entry.value)}$tagsPart',
+      );
     }
 
     final carLine = _carContextBlock(carContext);
 
-    return 'Ты эксперт по техническому осмотру автомобилей. Дилер '
-        'провёл тест-драйв и зафиксировал такие результаты:\n'
+    return 'Ты эксперт по техническому осмотру автомобилей. По тест-драйву '
+        'зафиксированы такие результаты:\n'
         '${modeLabel(tdMode)}.\n'
         '${lines.isEmpty ? '' : '${lines.join("\n")}\n'}\n'
         '$carLine'
-        'На основе этих данных и комментария дилера ниже сформулируй '
+        'На основе этих данных и исходного комментария ниже сформулируй '
         'текст для отчёта о поведении автомобиля на ходу. Если есть '
         'замечания — опиши их конкретно и какие риски они несут. '
         'Если все системы помечены «без замечаний» — кратко подтверди '
         'исправность одной фразой, без перечисления каждой системы. '
         'Если часть систем «не отмечено» — отдельно упомяни, что эти '
-        'системы дилер не проверил (это НЕ означает их исправность).\n\n'
+        'системы не проверены (это НЕ означает их исправность).\n\n'
         '$_kAudienceTone'
+        '$_kReportVoice'
+        '$_kVehicleContextUse'
         '$_kSeverityCalibration'
         '$_kShortLengthCap'
         '$_kAntiHallucination'
         'Возвращай только готовый текст без преамбулы и markdown.\n\n'
-        'Комментарий дилера: {text}';
+        'Исходный комментарий: {text}';
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────
@@ -395,8 +428,10 @@ class AiQueueClicheBuilder {
     final trimmed = carContext?.trim() ?? '';
     if (trimmed.isEmpty) return '';
     return 'Контекст автомобиля: $trimmed.\n'
-        'Используй контекст только для (1) учёта возраста модели при '
-        'оценке серьёзности дефектов и (2) сравнения замеров с '
-        'разумной нормой для этой модели.\n\n';
+        'Используй этот контекст только для внутренней оценки: возраст, '
+        'класс, конструкция, возможные типовые слабые места и разумные '
+        'нормы замеров. В финальном тексте не называй автомобиль, марку, '
+        'модель или поколение, если пользовательский раздел не просит '
+        'идентифицировать машину.\n\n';
   }
 }
