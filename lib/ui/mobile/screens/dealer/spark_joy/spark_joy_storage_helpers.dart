@@ -774,33 +774,57 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Future<Uint8List?> _readUploadBytesFromSource(UploadedItem item) async {
+  Future<_UploadSource?> _openUploadSource(UploadedItem item) async {
     final source = item.dataUrl.trim();
     if (source.isEmpty) return null;
 
+    // Small inline payloads (camera frames) — decode once. Videos never
+    // arrive as data URLs, so the full decode here stays cheap.
     if (_isDataUrl(source)) {
       final commaIndex = source.indexOf(',');
       if (commaIndex <= 0 || commaIndex >= source.length - 1) return null;
       final header = source.substring(0, commaIndex).toLowerCase();
       if (!header.contains(';base64')) return null;
+      final Uint8List decoded;
       try {
-        final bytes = base64Decode(source.substring(commaIndex + 1));
-        if (bytes.isEmpty) return null;
-        return bytes;
+        decoded = base64Decode(source.substring(commaIndex + 1));
       } catch (_) {
         return null;
       }
+      if (decoded.isEmpty) return null;
+      return _UploadSource(
+        length: decoded.length,
+        readChunk: (start, end) async =>
+            Uint8List.sublistView(decoded, start, end),
+      );
     }
 
     final localPath = _extractLocalMediaPath(source);
     if (localPath == null || localPath.trim().isEmpty) return null;
+    final file = File(localPath);
+    final int length;
     try {
-      final bytes = await XFile(localPath).readAsBytes();
-      if (bytes.isEmpty) return null;
-      return bytes;
+      length = await file.length();
     } catch (_) {
       return null;
     }
+    if (length <= 0) return null;
+    return _UploadSource(
+      length: length,
+      // Each part opens its own handle — concurrent parts must not share a
+      // seek position. Open/seek/read/close per chunk is a handful of
+      // syscalls, negligible next to the network transfer, and keeps RAM
+      // at one part-size instead of the whole file.
+      readChunk: (start, end) async {
+        final raf = await file.open();
+        try {
+          await raf.setPosition(start);
+          return await raf.read(end - start);
+        } finally {
+          await raf.close();
+        }
+      },
+    );
   }
 
   String _uploadStateText(Map<String, dynamic> map, String key) {
@@ -1944,8 +1968,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     Future<bool> runUpload() async {
       final item = queueItem.item;
       final sourceKey = queueItem.stateKey;
-      final bytes = await _readUploadBytesFromSource(item);
-      if (bytes == null || bytes.isEmpty) {
+      final source = await _openUploadSource(item);
+      if (source == null || source.length == 0) {
         _backendUploadErrorText =
             'Не удалось прочитать файл ${index + 1}/$totalItems: ${item.name}';
         _updateBackendUploadFileProgress(
@@ -2027,8 +2051,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         return false;
       }
 
-      const partSize = 5 * 1024 * 1024;
-      final partCount = (bytes.length / partSize).ceil().clamp(1, 10000);
+      // Adaptive part size: aim for ~_kTargetUploadPartCount parts so a
+      // 1 GB video isn't sliced into 200+ tiny 5 MB requests (overhead +
+      // under-utilised fast wifi), while small files stay at the 5 MB
+      // S3 multipart floor. Deterministic from file size, so it's stable
+      // across resume — savedPartCount stays valid.
+      final partSize = _adaptiveUploadPartSize(source.length);
+      final partCount = (source.length / partSize).ceil().clamp(1, 10000);
       var uploadId = _uploadStateText(fileState, 'uploadId');
       final savedPartCount = _uploadStateInt(fileState, 'partCount');
       final etagsByPart = _readUploadedPartsFromState(fileState);
@@ -2062,7 +2091,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         fileState['filename'] = filename;
         fileState['mimeType'] = item.mimeType;
         fileState['source'] = sourceKey;
-        fileState['size'] = bytes.length;
+        fileState['size'] = source.length;
         fileState['partCount'] = partCount;
         fileState['uploadId'] = uploadId;
         fileState['completed'] = false;
@@ -2090,7 +2119,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // completed parts (resume case) to their actual on-disk size.
         int sizeForPart(int partNumber) {
           final start = (partNumber - 1) * partSize;
-          final end = math.min(start + partSize, bytes.length);
+          final end = math.min(start + partSize, source.length);
           return end - start;
         }
 
@@ -2125,9 +2154,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
             totalItems: totalItems,
             fileName: filename,
             status: BackendUploadFileStatus.uploading,
-            progress: bytes.isEmpty
+            progress: source.length == 0
                 ? 0
-                : (sentBytes / bytes.length).clamp(0.0, 1.0),
+                : (sentBytes / source.length).clamp(0.0, 1.0),
             uploadedParts: etagsByPart.length,
             totalParts: partCount,
             sourceKey: sourceKey,
@@ -2138,13 +2167,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // uploaded fraction immediately, not 0.
         emitFileProgress(force: true);
 
-        // Parts dispatched in parallel via a small concurrency gate
-        // (typically 4). All presigned URLs were issued in one RPC
-        // above, so chunks fly independently — only the in-process
-        // map + local persistence are shared, both safe under Dart's
-        // single-threaded scheduling. `eagerError: true` aborts
-        // pending slot pickups on first failure (in-flight PUTs
-        // still finish but their outcome is ignored).
+        // Parts dispatched in parallel via a small concurrency gate.
+        // The gate width scales down as part size grows so the in-flight
+        // buffer budget per file stays bounded (~_kPerFileUploadBudget),
+        // no matter how big the video is. All presigned URLs were issued
+        // in one RPC above, so chunks fly independently — only the
+        // in-process map + local persistence are shared, both safe under
+        // Dart's single-threaded scheduling. `eagerError: true` aborts
+        // pending slot pickups on first failure (in-flight PUTs still
+        // finish but their outcome is ignored).
         final pendingPartNumbers = <int>[];
         for (var pn = 1; pn <= partCount; pn++) {
           final existingEtag = etagsByPart[pn];
@@ -2154,7 +2185,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         }
 
         if (pendingPartNumbers.isNotEmpty) {
-          final partGate = _UploadConcurrencyGate(_kPartConcurrency);
+          final partGate = _UploadConcurrencyGate(
+            _adaptiveUploadPartConcurrency(partSize),
+          );
           await Future.wait(
             pendingPartNumbers.map((partNumber) {
               return partGate.withSlot(() async {
@@ -2165,11 +2198,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
                   throw Exception('Part URL not found for part=$partNumber');
                 }
                 final start = (partNumber - 1) * partSize;
-                final end = math.min(start + partSize, bytes.length);
-                // Zero-copy view onto the source buffer — no extra
-                // allocation per part, important for big videos that
-                // would otherwise duplicate every chunk in memory.
-                final chunk = Uint8List.sublistView(bytes, start, end);
+                final end = math.min(start + partSize, source.length);
+                // Read just this part off disk on demand — only one
+                // part-size buffer per in-flight slot lives in RAM,
+                // instead of the whole file. Held across retries inside
+                // _uploadPartWithRetry without re-reading.
+                final chunk = await source.readChunk(start, end);
                 final partTimeout = _multipartPartTimeoutForBytes(chunk.length);
                 final etag = await _uploadPartWithRetry(
                   url: urlsResult.urls[metaIndex].url,
@@ -3075,8 +3109,48 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 // or shared wifi: enough parallelism to saturate the link without
 // stalling slow networks or exhausting open-connection budgets on
 // the server.
-const int _kFileConcurrency = 3;
+//
+// Files run 2-wide (was 3): with on-demand chunk reads the per-file
+// buffer is bounded, but two big videos in flight is plenty for a phone
+// — parallelism that matters lives at the part level inside each file.
+const int _kFileConcurrency = 2;
+// Upper bound on parts-in-flight per file. The actual width is computed
+// per file by _adaptiveUploadPartConcurrency so big parts don't blow the
+// memory budget.
 const int _kPartConcurrency = 4;
+
+// S3 multipart floor (a non-final part must be >= 5 MiB) and our chosen
+// ceiling. Part size is picked to target ~_kTargetUploadPartCount parts
+// so a 1 GB file is ~50 parts of 20 MB, not 200 parts of 5 MB.
+const int _kMinUploadPartSize = 5 * 1024 * 1024;
+const int _kMaxUploadPartSize = 25 * 1024 * 1024;
+const int _kTargetUploadPartCount = 50;
+// Per-file in-flight buffer budget: partSize * partConcurrency stays at
+// or below this, so peak upload RAM ≈ _kPerFileUploadBudget *
+// _kFileConcurrency regardless of file size.
+const int _kPerFileUploadBudget = 80 * 1024 * 1024;
+
+int _adaptiveUploadPartSize(int fileSize) {
+  if (fileSize <= 0) return _kMinUploadPartSize;
+  final target = (fileSize / _kTargetUploadPartCount).ceil();
+  return target.clamp(_kMinUploadPartSize, _kMaxUploadPartSize);
+}
+
+int _adaptiveUploadPartConcurrency(int partSize) {
+  if (partSize <= 0) return 1;
+  return (_kPerFileUploadBudget ~/ partSize).clamp(1, _kPartConcurrency);
+}
+
+/// Lazily-read upload payload. Holds only metadata (total [length] and a
+/// [readChunk] reader); the bytes themselves stay on disk until a part
+/// needs them. Replaces the old "read whole file into a Uint8List" path
+/// that OOM-killed the app on large videos.
+class _UploadSource {
+  _UploadSource({required this.length, required this.readChunk});
+
+  final int length;
+  final Future<Uint8List> Function(int start, int end) readChunk;
+}
 
 /// Tiny counting semaphore used to cap how many uploads (files or
 /// parts) can run at once. Dart is single-threaded, so a plain int
