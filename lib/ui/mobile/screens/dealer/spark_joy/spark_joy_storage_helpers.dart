@@ -645,7 +645,20 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       );
       final finalTargetName = _nextLocalStorageFileName(targetName);
       final targetPath = '${directory.path}/$finalTargetName';
-      await file.saveTo(targetPath);
+      // XFile.saveTo on mobile is implemented as readAsBytes +
+      // writeAsBytes — the full file lives in a Uint8List for the
+      // duration of the copy. For multi-hundred-MB videos this OOM-kills
+      // the app the moment the user picks them. When we have a real
+      // source path (image_picker / file_picker), copy at the OS level
+      // with dart:io's File.copy, which uses copyfile / sendfile and
+      // never materialises the bytes in Dart. Fall back to saveTo only
+      // for in-memory (data-URL) XFiles where there is no source path.
+      final sourcePath = file.path.trim();
+      if (sourcePath.isNotEmpty) {
+        await File(sourcePath).copy(targetPath);
+      } else {
+        await file.saveTo(targetPath);
+      }
       return Uri.file(targetPath).toString();
     } catch (_) {
       try {
