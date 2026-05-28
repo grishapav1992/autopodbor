@@ -65,68 +65,6 @@ class _CarCatalogRestyling {
   final List<int> frameIds;
 }
 
-// Per-process cache of resolved video thumbnails: video file path → on-disk
-// JPEG path. Lets repeated rebuilds (re-layout, scroll, navigation back to
-// «Итог») hit a Map lookup instead of re-running native extraction.
-final Map<String, String> _sparkJoyVideoThumbDiskCache = <String, String>{};
-
-// Serializes concurrent thumbnail extractions so we never spin up more than
-// a couple of AVAssetImageGenerator / MediaMetadataRetriever instances at
-// once. Without this, mounting a «Итог» with 10 video tiles would fire 10
-// parallel native decoders — exactly the memory pressure we're killing.
-final List<Future<void>> _sparkJoyVideoThumbQueue = <Future<void>>[];
-const int _sparkJoyVideoThumbMaxConcurrent = 2;
-
-Future<String?> _resolveSparkJoyVideoThumb(String videoPath) async {
-  if (videoPath.isEmpty) return null;
-  final cached = _sparkJoyVideoThumbDiskCache[videoPath];
-  if (cached != null && await File(cached).exists()) {
-    return cached;
-  }
-
-  // Cheap counting semaphore — we just wait for an in-flight slot to
-  // drain before kicking off our own native call.
-  while (_sparkJoyVideoThumbQueue.length >= _sparkJoyVideoThumbMaxConcurrent) {
-    await _sparkJoyVideoThumbQueue.first;
-  }
-  final slot = Completer<void>();
-  _sparkJoyVideoThumbQueue.add(slot.future);
-  try {
-    final videoFile = File(videoPath);
-    if (!await videoFile.exists()) return null;
-    final stat = await videoFile.stat();
-    final cacheRoot = await getTemporaryDirectory();
-    final cacheDir = Directory('${cacheRoot.path}/spark_joy_thumbs');
-    if (!await cacheDir.exists()) {
-      await cacheDir.create(recursive: true);
-    }
-    final key =
-        '${videoPath.hashCode.toUnsigned(32).toRadixString(16)}_'
-        '${stat.size}_${stat.modified.millisecondsSinceEpoch}.jpg';
-    final outPath = '${cacheDir.path}/$key';
-    final outFile = File(outPath);
-    if (await outFile.exists()) {
-      _sparkJoyVideoThumbDiskCache[videoPath] = outPath;
-      return outPath;
-    }
-    final Uint8List? bytes = await VideoThumbnail.thumbnailData(
-      video: videoPath,
-      imageFormat: ImageFormat.JPEG,
-      maxWidth: 240,
-      quality: 60,
-    );
-    if (bytes == null || bytes.isEmpty) return null;
-    await outFile.writeAsBytes(bytes, flush: false);
-    _sparkJoyVideoThumbDiskCache[videoPath] = outPath;
-    return outPath;
-  } catch (_) {
-    return null;
-  } finally {
-    _sparkJoyVideoThumbQueue.remove(slot.future);
-    slot.complete();
-  }
-}
-
 class _SparkJoyVideoThumbnail extends StatefulWidget {
   const _SparkJoyVideoThumbnail({required this.uri, this.fit = BoxFit.cover});
 
@@ -139,109 +77,34 @@ class _SparkJoyVideoThumbnail extends StatefulWidget {
 }
 
 class _SparkJoyVideoThumbnailState extends State<_SparkJoyVideoThumbnail> {
-  // Resolved on-disk JPEG path. null + !_loading + !_failed → network URI
-  // case where we deliberately don't pre-fetch and just show the play
-  // badge over a neutral background.
-  String? _thumbPath;
-  bool _loading = true;
-  bool _failed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _resolve();
-  }
-
-  @override
-  void didUpdateWidget(covariant _SparkJoyVideoThumbnail oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.uri != widget.uri) {
-      _resolve();
-    }
-  }
-
-  Future<void> _resolve() async {
-    final uri = widget.uri;
-    if (mounted) {
-      setState(() {
-        _thumbPath = null;
-        _failed = false;
-        _loading = uri.scheme == 'file';
-      });
-    }
-    // For non-file (http/https) URIs we deliberately do NOT trigger a
-    // download or VideoPlayerController init from the thumbnail. Full
-    // playback lives in the lightbox which mounts at most one decoder
-    // on user tap.
-    if (uri.scheme != 'file') return;
-
-    String? path;
-    try {
-      path = await _resolveSparkJoyVideoThumb(uri.toFilePath());
-    } catch (_) {
-      path = null;
-    }
-    if (!mounted) return;
-    setState(() {
-      _thumbPath = path;
-      _loading = false;
-      _failed = path == null;
-    });
-  }
+  // Native thumbnail extraction (AVAssetImageGenerator on iOS,
+  // MediaMetadataRetriever on Android) spins up a real video decoder
+  // for one frame. On iOS 26 it does not release the underlying decoder
+  // buffer promptly enough; extracting thumbnails for 5+ HEVC videos in
+  // a row pushes the app past the 3.3 GB high-watermark limit before
+  // the user even gets to «Выгрузить». A static play-badge over a
+  // neutral background uses zero RAM and matches how the user
+  // identifies a video tile vs. a photo tile in practice — actual
+  // playback is one tap away in the lightbox.
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return Container(
-        color: kLightGreyColor,
-        alignment: Alignment.center,
-        child: const SizedBox(
-          width: SparkSize.iconSm,
-          height: SparkSize.iconSm,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-    final path = _thumbPath;
-    if (path != null) {
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.file(
-            File(path),
-            fit: widget.fit,
-            errorBuilder: (_, _, _) =>
-                const _SparkJoyVideoPlaceholder(failed: true),
-          ),
-          const Align(
-            alignment: Alignment.center,
-            child: Icon(
-              Icons.play_circle_fill_rounded,
-              size: SparkSize.iconXl,
-              color: Color(0xD9FFFFFF),
-            ),
-          ),
-        ],
-      );
-    }
-    return _SparkJoyVideoPlaceholder(failed: _failed);
+    return const _SparkJoyVideoPlaceholder();
   }
 }
 
 class _SparkJoyVideoPlaceholder extends StatelessWidget {
-  const _SparkJoyVideoPlaceholder({this.failed = false});
-
-  final bool failed;
+  const _SparkJoyVideoPlaceholder();
 
   @override
   Widget build(BuildContext context) {
     return Container(
       color: kLightGreyColor,
       alignment: Alignment.center,
-      child: Icon(
-        failed ? Icons.videocam_off_outlined : Icons.play_circle_fill_rounded,
-        size: failed ? SparkSize.iconSm : SparkSize.iconXl,
-        color: failed ? kGreyColor : const Color(0xD9000000),
+      child: const Icon(
+        Icons.play_circle_fill_rounded,
+        size: SparkSize.iconXl,
+        color: Color(0xD9000000),
       ),
     );
   }
