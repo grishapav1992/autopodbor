@@ -33,6 +33,19 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
     return (data[key] ?? '').toString();
   }
 
+  int _intValue(Map<String, dynamic> data, String key) {
+    final value = data[key];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double _doubleValue(Map<String, dynamic> data, String key) {
+    final value = data[key];
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
   String _requestTitle(Map<String, dynamic> request) {
     final number = _str(request, 'requestNumber');
     return number.isEmpty ? 'Заявка' : 'Заявка №$number';
@@ -138,7 +151,20 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
     final staffName = sjRead(specialist, 'name', fallback: 'Сотрудник');
     final specialization = sjRead(specialist, 'specialization');
     final phone = sjRead(specialist, 'phone');
+    final email = sjRead(specialist, 'email');
     final city = sjRead(specialist, 'city');
+    final avatarUrl = sjRead(specialist, 'urlAvatar');
+    final rating = _doubleValue(specialist, 'rating');
+    final likeUp = _intValue(specialist, 'likeUp');
+    final likeDown = _intValue(specialist, 'likeDown');
+    final hasProfileInfo =
+        specialization.isNotEmpty ||
+        phone.isNotEmpty ||
+        email.isNotEmpty ||
+        city.isNotEmpty ||
+        rating > 0 ||
+        likeUp > 0 ||
+        likeDown > 0;
 
     return SparkPageScaffold(
       appBar: AppBar(centerTitle: false, title: Text(staffName)),
@@ -152,11 +178,13 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
         ),
         SparkCard(
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               SparkInitialsAvatar(
                 name: staffName,
-                size: SparkSize.inputHeight,
-                textSize: SparkTextSize.title,
+                size: SparkSize.icon6xl,
+                textSize: SparkTextSize.modalTitle,
+                imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
               ),
               const SizedBox(width: SparkSpace.lg),
               Expanded(
@@ -186,14 +214,57 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
             ],
           ),
         ),
-        if (phone.isNotEmpty || city.isNotEmpty) ...[
-          const SizedBox(height: SparkSpace.lg),
+        if (hasProfileInfo) ...[
+          const SparkSectionTitle('Данные профиля', top: SparkSpace.xl),
           SparkCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.md,
+              vertical: SparkSpace.sm,
+            ),
             child: Column(
               children: [
+                if (city.isNotEmpty)
+                  SparkProfileRow(
+                    icon: Icons.location_city_outlined,
+                    label: 'Город',
+                    value: city,
+                    muted: true,
+                  ),
                 if (phone.isNotEmpty)
-                  SparkInfoRow(label: 'Телефон', value: phone),
-                if (city.isNotEmpty) SparkInfoRow(label: 'Город', value: city),
+                  SparkProfileRow(
+                    icon: Icons.phone_outlined,
+                    label: 'Телефон',
+                    value: phone,
+                    muted: true,
+                  ),
+                if (email.isNotEmpty)
+                  SparkProfileRow(
+                    icon: Icons.mail_outline_rounded,
+                    label: 'Email',
+                    value: email,
+                    muted: true,
+                  ),
+                if (specialization.isNotEmpty)
+                  SparkProfileRow(
+                    icon: Icons.description_outlined,
+                    label: 'Описание услуг',
+                    value: specialization,
+                    muted: true,
+                  ),
+                if (rating > 0)
+                  SparkProfileRow(
+                    icon: Icons.star_border_rounded,
+                    label: 'Рейтинг',
+                    value: rating.toStringAsFixed(1),
+                    muted: true,
+                  ),
+                if (likeUp > 0 || likeDown > 0)
+                  SparkProfileRow(
+                    icon: Icons.thumb_up_alt_outlined,
+                    label: 'Оценки',
+                    value: 'Плюсов: $likeUp · минусов: $likeDown',
+                    muted: true,
+                  ),
               ],
             ),
           ),

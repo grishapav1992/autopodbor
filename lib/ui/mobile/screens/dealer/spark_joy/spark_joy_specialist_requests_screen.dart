@@ -6,7 +6,9 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_error_snackbar.dart';
+import 'spark_joy_external_link.dart';
 import 'spark_joy_request_filter_bar.dart';
+import 'spark_joy_request_refresh_bus.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
@@ -28,21 +30,43 @@ class _SparkJoySpecialistRequestsScreenState
   bool _loading = true;
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
+  bool _reloadWhenActive = false;
 
   @override
   void initState() {
     super.initState();
+    SparkJoyRequestRefreshBus.notifier.addListener(_onExternalRequestChanged);
     if (widget.active) {
       _load();
     }
   }
 
   @override
+  void dispose() {
+    SparkJoyRequestRefreshBus.notifier.removeListener(
+      _onExternalRequestChanged,
+    );
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(covariant SparkJoySpecialistRequestsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.active && !oldWidget.active && _requests == null) {
+    if (widget.active &&
+        !oldWidget.active &&
+        (_requests == null || _reloadWhenActive)) {
+      _reloadWhenActive = false;
       _load();
     }
+  }
+
+  void _onExternalRequestChanged() {
+    if (!mounted) return;
+    if (!widget.active) {
+      _reloadWhenActive = true;
+      return;
+    }
+    _load();
   }
 
   Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
@@ -61,11 +85,11 @@ class _SparkJoySpecialistRequestsScreenState
     RequestStatusFilter filter,
   ) async {
     if (filter == RequestStatusFilter.all) {
-      return storage_api.StorageApi.getRequests();
+      return storage_api.StorageApi.getAllRequests();
     }
     final requestsById = <String, Map<String, dynamic>>{};
     for (final status in filter.statuses) {
-      final page = await storage_api.StorageApi.getRequests(status: status);
+      final page = await storage_api.StorageApi.getAllRequests(status: status);
       for (final request in page) {
         final id = (request['id'] ?? request['requestNumber'] ?? '').toString();
         requestsById[id.isEmpty ? requestsById.length.toString() : id] =
@@ -425,7 +449,7 @@ class _SparkJoySpecialistRequestDetailScreenState
   Future<void> _refreshRequestSnapshot() async {
     final id = _requestId;
     if (id == null) return;
-    final requests = await storage_api.StorageApi.getRequests();
+    final requests = await storage_api.StorageApi.getAllRequests();
     final next = requests.where((r) {
       final raw = r['id'];
       final itemId = raw is int
@@ -998,10 +1022,11 @@ class _SparkJoySpecialistRequestDetailScreenState
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ] else if (_carsError != null) ...[
-          MyText(
+          SparkHintCard(
             text: _carsError!,
-            size: SparkTextSize.caption,
-            color: kRedColor,
+            icon: Icons.error_outline_rounded,
+            textColor: kRedColor,
+            copyText: _carsError,
           ),
         ] else if (detailedCars.isEmpty) ...[
           const MyText(
@@ -1164,29 +1189,7 @@ class _CarDetailBlock extends StatelessWidget {
                 ],
               ),
             ),
-          if (sellerUrl.isNotEmpty)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: Icon(
-                    Icons.link_rounded,
-                    color: kGreyColor,
-                    size: SparkSize.iconSm,
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.sm),
-                Expanded(
-                  child: MyText(
-                    text: sellerUrl,
-                    size: SparkTextSize.caption,
-                    color: kSecondaryColor,
-                    maxLines: 3,
-                  ),
-                ),
-              ],
-            ),
+          if (sellerUrl.isNotEmpty) SparkExternalLinkRow(url: sellerUrl),
         ],
       ],
     );

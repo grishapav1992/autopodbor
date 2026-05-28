@@ -110,11 +110,11 @@ class _SparkJoyCompanyRequestsScreenState
   ) async {
     if (filter.localOnly) return const <Map<String, dynamic>>[];
     if (filter == RequestStatusFilter.all) {
-      return storage_api.StorageApi.getRequests();
+      return storage_api.StorageApi.getAllRequests();
     }
     final requestsById = <String, Map<String, dynamic>>{};
     for (final status in filter.statuses) {
-      final page = await storage_api.StorageApi.getRequests(status: status);
+      final page = await storage_api.StorageApi.getAllRequests(status: status);
       for (final request in page) {
         final id = (request['id'] ?? request['requestNumber'] ?? '').toString();
         requestsById[id.isEmpty ? requestsById.length.toString() : id] =

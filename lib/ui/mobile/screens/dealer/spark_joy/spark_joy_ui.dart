@@ -399,12 +399,14 @@ class SparkHintCard extends StatelessWidget {
     required this.text,
     this.icon,
     this.textColor = kGreyColor,
+    this.copyText,
     this.trailing,
   });
 
   final String text;
   final IconData? icon;
   final Color textColor;
+  final String? copyText;
 
   /// Optional action rendered on the right side of the hint (e.g. a
   /// compact TextButton for "Обновить" when we're surfacing a stale-cache
@@ -414,6 +416,7 @@ class SparkHintCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveCopyText = (copyText ?? '').trim();
     return SparkCard(
       backgroundColor: kInputBgColor,
       child: Row(
@@ -432,6 +435,22 @@ class SparkHintCard extends StatelessWidget {
           if (trailing != null) ...[
             const SizedBox(width: SparkSpace.sm),
             trailing!,
+          ],
+          if (effectiveCopyText.isNotEmpty) ...[
+            const SizedBox(width: SparkSpace.xs),
+            IconButton(
+              tooltip: 'Скопировать',
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: effectiveCopyText));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Ошибка скопирована')),
+                );
+              },
+              icon: const Icon(Icons.copy_rounded),
+              color: kSecondaryColor,
+              iconSize: SparkSize.iconSm,
+              visualDensity: VisualDensity.compact,
+            ),
           ],
         ],
       ),
@@ -2106,6 +2125,14 @@ class SparkErrorState extends StatelessWidget {
         ? sjT('spark.action.retry', fallback: 'Повторить')
         : retryLabel!;
     final effectiveCopyText = (copyText ?? subtitle).trim();
+    void copyErrorText() {
+      if (effectiveCopyText.isEmpty) return;
+      Clipboard.setData(ClipboardData(text: effectiveCopyText));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ошибка скопирована')),
+      );
+    }
+
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
       child: SparkCard(
@@ -2130,66 +2157,45 @@ class SparkErrorState extends StatelessWidget {
                     color: kRedColor,
                   ),
                 ),
+                if (effectiveCopyText.isNotEmpty)
+                  IconButton(
+                    tooltip: 'Скопировать ошибку',
+                    onPressed: copyErrorText,
+                    icon: const Icon(Icons.copy_rounded),
+                    color: kRedColor,
+                    iconSize: SparkSize.iconSm,
+                    visualDensity: VisualDensity.compact,
+                  ),
               ],
             ),
             const SizedBox(height: SparkSpace.xs),
             MyText(text: subtitle, size: SparkTextSize.body, color: kGreyColor),
-            if (onRetry != null || effectiveCopyText.isNotEmpty) ...[
+            if (onRetry != null) ...[
               const SizedBox(height: SparkSpace.xl),
               Row(
                 children: [
-                  if (onRetry != null)
-                    Expanded(
-                      child: SizedBox(
-                        height: SparkSize.actionHeight,
-                        child: OutlinedButton.icon(
-                          onPressed: onRetry,
-                          icon: const Icon(
-                            Icons.refresh_rounded,
-                            size: SparkSize.iconSm,
-                          ),
-                          label: Text(actionLabel),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: kSecondaryColor,
-                            side: const BorderSide(color: kBorderColor),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                SparkRadius.lg,
-                              ),
+                  Expanded(
+                    child: SizedBox(
+                      height: SparkSize.actionHeight,
+                      child: OutlinedButton.icon(
+                        onPressed: onRetry,
+                        icon: const Icon(
+                          Icons.refresh_rounded,
+                          size: SparkSize.iconSm,
+                        ),
+                        label: Text(actionLabel),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kSecondaryColor,
+                          side: const BorderSide(color: kBorderColor),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              SparkRadius.lg,
                             ),
                           ),
                         ),
                       ),
                     ),
-                  if (onRetry != null && effectiveCopyText.isNotEmpty)
-                    const SizedBox(width: SparkSpace.md),
-                  if (effectiveCopyText.isNotEmpty)
-                    Expanded(
-                      child: SizedBox(
-                        height: SparkSize.actionHeight,
-                        child: OutlinedButton.icon(
-                          onPressed: () {
-                            Clipboard.setData(
-                              ClipboardData(text: effectiveCopyText),
-                            );
-                          },
-                          icon: const Icon(
-                            Icons.copy_rounded,
-                            size: SparkSize.iconSm,
-                          ),
-                          label: const Text('Скопировать'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: kSecondaryColor,
-                            side: const BorderSide(color: kBorderColor),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(
-                                SparkRadius.lg,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
+                  ),
                 ],
               ),
             ],

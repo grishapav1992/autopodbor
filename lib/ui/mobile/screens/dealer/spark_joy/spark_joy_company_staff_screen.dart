@@ -81,12 +81,12 @@ class _SparkJoyCompanyStaffScreenState
 
   Future<List<Map<String, dynamic>>> _getRequestsWithRetry() async {
     try {
-      return await storage_api.StorageApi.getRequests();
+      return await storage_api.StorageApi.getAllRequests();
     } on storage_api.SessionExpiredException {
       rethrow;
     } catch (_) {
       await Future<void>.delayed(const Duration(milliseconds: 450));
-      return storage_api.StorageApi.getRequests();
+      return storage_api.StorageApi.getAllRequests();
     }
   }
 
@@ -453,6 +453,7 @@ class _SparkJoyCompanyStaffScreenState
                 name: sjRead(specialist, 'name'),
                 size: SparkSize.avatarSm,
                 textSize: SparkTextSize.label,
+                imageUrl: sjRead(specialist, 'urlAvatar'),
               ),
               const SizedBox(width: SparkSpace.lg),
               Expanded(

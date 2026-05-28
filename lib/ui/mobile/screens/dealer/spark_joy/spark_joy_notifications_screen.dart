@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -16,7 +18,7 @@ import 'spark_joy_ui.dart';
 /// reactions:
 ///   • `task` / `invitation` show inline accept / reject buttons that
 ///     call `Notification.ActionNotification`.
-///   • `reminder` / `system` mark themselves read on first tap.
+///   • `reminder` / `system` mark themselves read once they are shown.
 ///   • Pull-to-refresh re-fetches page 1 from the backend.
 ///
 /// Notifications cannot be deleted by the user (per spec); status
@@ -36,40 +38,68 @@ class _SparkJoyNotificationsScreenState
     extends State<SparkJoyNotificationsScreen> {
   late final NotificationController _controller =
       Get.find<NotificationController>();
+  late final ScrollController _scrollController;
+  final Set<String> _expandedIds = <String>{};
+  final Set<String> _autoReadQueuedIds = <String>{};
 
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController()..addListener(_onScroll);
     // Fire-and-forget — the controller already has page 1 from
     // bootstrap; this just refreshes to pick up anything that arrived
     // while the screen was off-screen.
     _controller.reload();
   }
 
-  Future<void> _handleTap(BackendNotification n) async {
-    final requestId = n.requestId;
-    if (requestId != null && widget.onOpenRequest != null) {
-      if (!n.type.isInteractive && n.status == NotificationStatus.pending) {
-        try {
-          await _controller.markRead(n.id);
-        } catch (_) {
-          // Navigation is still useful even if mark-read failed. The
-          // next reload will reconcile notification status.
-        }
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_onScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    if (_scrollController.position.extentAfter > 480) return;
+    _controller.loadMore();
+  }
+
+  void _scheduleAutoMarkRead(List<BackendNotification> items) {
+    final ids = items
+        .where(
+          (n) =>
+              !n.type.isInteractive &&
+              n.status == NotificationStatus.pending &&
+              !_autoReadQueuedIds.contains(n.id),
+        )
+        .map((n) => n.id)
+        .toList(growable: false);
+    if (ids.isEmpty) return;
+    _autoReadQueuedIds.addAll(ids);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final id in ids) {
+        _controller.markRead(id).catchError((_) {
+          _autoReadQueuedIds.remove(id);
+        });
       }
-      await widget.onOpenRequest!(requestId);
-      return;
-    }
-    // Interactive types are dismissed via accept/reject — tapping the
-    // body should not silently mark them anything.
-    if (n.type.isInteractive) return;
-    if (n.status != NotificationStatus.pending) return;
-    try {
-      await _controller.markRead(n.id);
-    } catch (_) {
-      // Controller already reverted optimistic update; nothing else to
-      // do — the next reload will sync.
-    }
+    });
+  }
+
+  void _toggleDetails(BackendNotification n) {
+    setState(() {
+      if (!_expandedIds.add(n.id)) {
+        _expandedIds.remove(n.id);
+      }
+    });
+  }
+
+  Future<void> _openRequest(BackendNotification n) async {
+    final requestId = n.requestId;
+    if (requestId == null || widget.onOpenRequest == null) return;
+    await widget.onOpenRequest!(requestId);
   }
 
   @override
@@ -98,30 +128,52 @@ class _SparkJoyNotificationsScreenState
         );
       }
       final groups = _groupByDate(items.toList());
-      return RefreshIndicator(
+      _scheduleAutoMarkRead(items.toList());
+      return SparkScreenList(
+        controller: _scrollController,
         onRefresh: _controller.reload,
-        child: SparkScreenList(
-          bottomInset: 56,
-          children: [
-            for (final group in groups) ...[
-              Padding(
-                padding: const EdgeInsets.only(
-                  top: SparkSpace.md,
-                  bottom: SparkSpace.sm,
-                ),
-                child: MyText(
-                  text: group.label.toUpperCase(),
-                  size: SparkTextSize.chip,
-                  weight: FontWeight.w700,
-                  color: kGreyColor,
+        bottomInset: 56,
+        children: [
+          for (final group in groups) ...[
+            Padding(
+              padding: const EdgeInsets.only(
+                top: SparkSpace.md,
+                bottom: SparkSpace.sm,
+              ),
+              child: MyText(
+                text: group.label.toUpperCase(),
+                size: SparkTextSize.chip,
+                weight: FontWeight.w700,
+                color: kGreyColor,
+              ),
+            ),
+            for (final n in group.items)
+              _NotificationCard(
+                notification: n,
+                expanded: _expandedIds.contains(n.id),
+                onTap: () => _toggleDetails(n),
+                onOpenRequest:
+                    n.requestId != null && widget.onOpenRequest != null
+                    ? () => _openRequest(n)
+                    : null,
+              ),
+          ],
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: SparkSpace.lg),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: kSecondaryColor,
+                  ),
                 ),
               ),
-              for (final n in group.items)
-                _NotificationCard(notification: n, onTap: () => _handleTap(n)),
-            ],
-            const SizedBox(height: SparkSpace.xl),
-          ],
-        ),
+            ),
+          const SizedBox(height: SparkSpace.xl),
+        ],
       );
     });
   }
@@ -166,10 +218,17 @@ class _NotificationGroup {
 }
 
 class _NotificationCard extends StatelessWidget {
-  const _NotificationCard({required this.notification, required this.onTap});
+  const _NotificationCard({
+    required this.notification,
+    required this.expanded,
+    required this.onTap,
+    this.onOpenRequest,
+  });
 
   final BackendNotification notification;
+  final bool expanded;
   final VoidCallback onTap;
+  final VoidCallback? onOpenRequest;
 
   _TypeStyle _styleForType(NotificationType type) {
     switch (type) {
@@ -262,16 +321,225 @@ class _NotificationCard extends StatelessWidget {
                       color: kGreyColor,
                       paddingTop: SparkSpace.sm,
                     ),
+                    MyText(
+                      text: expanded ? 'Свернуть' : 'Подробнее',
+                      size: SparkTextSize.chip,
+                      weight: FontWeight.w700,
+                      color: kSecondaryColor,
+                      paddingTop: SparkSpace.sm,
+                    ),
                   ],
                 ),
               ),
             ],
+          ),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: _NotificationDetails(
+              notification: notification,
+              onOpenRequest: onOpenRequest,
+            ),
+            crossFadeState: expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+            sizeCurve: Curves.easeOutCubic,
           ),
           if (notification.isInteractivePending)
             SparkJoyNotificationActions(notification: notification),
         ],
       ),
     );
+  }
+}
+
+class _NotificationDetails extends StatelessWidget {
+  const _NotificationDetails({
+    required this.notification,
+    required this.onOpenRequest,
+  });
+
+  final BackendNotification notification;
+  final VoidCallback? onOpenRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = _notificationDetailRows(notification);
+    return Padding(
+      padding: const EdgeInsets.only(top: SparkSpace.lg),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(SparkSpace.lg),
+        decoration: BoxDecoration(
+          color: kLightGreyColor,
+          borderRadius: BorderRadius.circular(SparkRadius.md),
+          border: Border.all(color: kBorderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            MyText(
+              text: 'Детали уведомления',
+              size: SparkTextSize.caption,
+              weight: FontWeight.w700,
+              color: kGreyColor,
+            ),
+            const SizedBox(height: SparkSpace.sm),
+            for (final row in rows)
+              Padding(
+                padding: const EdgeInsets.only(bottom: SparkSpace.xs),
+                child: RichText(
+                  text: TextSpan(
+                    style: const TextStyle(
+                      fontSize: SparkTextSize.caption,
+                      height: 1.35,
+                      color: kBlackColor,
+                    ),
+                    children: [
+                      TextSpan(
+                        text: '${row.label}: ',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          color: kGreyColor,
+                        ),
+                      ),
+                      TextSpan(text: row.value),
+                    ],
+                  ),
+                ),
+              ),
+            if (onOpenRequest != null) ...[
+              const SizedBox(height: SparkSpace.sm),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  onTap: onOpenRequest,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.md,
+                      vertical: SparkSpace.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kSecondaryColor,
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.open_in_new_rounded,
+                          size: 16,
+                          color: kWhiteColor,
+                        ),
+                        SizedBox(width: SparkSpace.xs),
+                        MyText(
+                          text: 'Открыть заявку',
+                          size: SparkTextSize.chip,
+                          weight: FontWeight.w700,
+                          color: kWhiteColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailRow {
+  const _DetailRow(this.label, this.value);
+
+  final String label;
+  final String value;
+}
+
+List<_DetailRow> _notificationDetailRows(BackendNotification n) {
+  final rows = <_DetailRow>[
+    _DetailRow('Тип', _typeLabel(n.type)),
+    _DetailRow('Статус', _statusLabel(n.status)),
+    _DetailRow('Создано', _formatAbsolute(n.createdAt)),
+  ];
+  if (n.actedAt != null) {
+    rows.add(_DetailRow('Обработано', _formatAbsolute(n.actedAt!)));
+  }
+  if (n.expiresAt != null) {
+    rows.add(_DetailRow('Истекает', _formatAbsolute(n.expiresAt!)));
+  }
+  if (n.senderId != null) {
+    rows.add(_DetailRow('Отправитель', n.senderId.toString()));
+  }
+
+  final payload = n.payload.entries.toList()
+    ..sort((a, b) => a.key.compareTo(b.key));
+  for (final entry in payload) {
+    final value = _stringifyPayloadValue(entry.value);
+    if (value.isEmpty) continue;
+    rows.add(_DetailRow(_payloadLabel(entry.key), value));
+  }
+  return rows;
+}
+
+String _payloadLabel(String key) {
+  const labels = <String, String>{
+    'companyId': 'ID компании',
+    'companyName': 'Компания',
+    'entityId': 'ID объекта',
+    'entityType': 'Тип объекта',
+    'requestId': 'ID заявки',
+    'requestNumber': 'Номер заявки',
+    'request_id': 'ID заявки',
+    'request_number': 'Номер заявки',
+    'specialistId': 'ID специалиста',
+    'specialistName': 'Специалист',
+    'reason': 'Причина',
+    'comment': 'Комментарий',
+    'message': 'Сообщение',
+  };
+  return labels[key] ?? key;
+}
+
+String _stringifyPayloadValue(Object? value) {
+  if (value == null) return '';
+  if (value is String) return value.trim();
+  if (value is num || value is bool) return value.toString();
+  try {
+    return const JsonEncoder.withIndent('  ').convert(value);
+  } catch (_) {
+    return value.toString();
+  }
+}
+
+String _typeLabel(NotificationType type) {
+  switch (type) {
+    case NotificationType.task:
+      return 'Заявка';
+    case NotificationType.invitation:
+      return 'Приглашение';
+    case NotificationType.reminder:
+      return 'Напоминание';
+    case NotificationType.system:
+      return 'Системное';
+  }
+}
+
+String _statusLabel(NotificationStatus status) {
+  switch (status) {
+    case NotificationStatus.pending:
+      return 'Новое';
+    case NotificationStatus.accepted:
+      return 'Принято';
+    case NotificationStatus.rejected:
+      return 'Отклонено';
+    case NotificationStatus.read:
+      return 'Просмотрено';
+    case NotificationStatus.expired:
+      return 'Истекло';
   }
 }
 
@@ -305,6 +573,11 @@ String _formatRelative(DateTime ts) {
   if (tsDate == yesterday) {
     return 'вчера, ${_hhmm(local)}';
   }
+  return '${_dd(local.day)}.${_dd(local.month)}.${local.year}, ${_hhmm(local)}';
+}
+
+String _formatAbsolute(DateTime ts) {
+  final local = ts.toLocal();
   return '${_dd(local.day)}.${_dd(local.month)}.${local.year}, ${_hhmm(local)}';
 }
 

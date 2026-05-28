@@ -37,10 +37,15 @@ extension _SparkJoyMediaInspectionEditorMethods
     }
 
     final item = group.files[index];
-    final targetUrls = targetIndexes
-        .map((itemIndex) => group.files[itemIndex].dataUrl)
-        .where((url) => url.trim().isNotEmpty)
-        .toSet();
+    final itemRefs = _mediaItemRefs(item);
+    final targetRefs = <String>{};
+    final targetMatchRefs = <String>{};
+    for (final itemIndex in targetIndexes) {
+      final targetFile = group.files[itemIndex];
+      final ref = _mediaItemRef(targetFile);
+      if (ref.isNotEmpty) targetRefs.add(ref);
+      targetMatchRefs.addAll(_mediaItemRefs(targetFile));
+    }
     final basePartInspection = _mediaPartInspectionIsEmpty(group.partInspection)
         ? _deriveGroupPartInspection(
             files: group.files,
@@ -62,7 +67,7 @@ extension _SparkJoyMediaInspectionEditorMethods
     };
     if (selectedTags.isEmpty && !basePartInspection.noDamage) {
       selectedTags = tagPhotosByTag.entries
-          .where((entry) => entry.value.contains(item.dataUrl))
+          .where((entry) => entry.value.any(itemRefs.contains))
           .map((entry) => entry.key)
           .toList();
     }
@@ -275,7 +280,11 @@ extension _SparkJoyMediaInspectionEditorMethods
         final fileRefs = <AiQueueFileRef>[];
         if (reportNumber.isNotEmpty) {
           final filename =
-              _preferredUploadFileNameForItem(item, index).trim();
+              _preferredUploadFileNameForItem(
+                item,
+                index,
+                contextPrefix: 'inspection_media',
+              ).trim();
           if (filename.isNotEmpty) {
             fileRefs.add(AiQueueFileRef(
               reportNumber: reportNumber,
@@ -1004,11 +1013,12 @@ extension _SparkJoyMediaInspectionEditorMethods
         entry.key,
         () => <String>{},
       );
-      urls.addAll(targetUrls);
+      urls.removeWhere(targetMatchRefs.contains);
+      urls.addAll(targetRefs);
     }
     for (final entry in normalizedTagPhotosByLower.entries) {
       if (selectedByLower.containsKey(entry.key)) continue;
-      entry.value.removeWhere(targetUrls.contains);
+      entry.value.removeWhere(targetMatchRefs.contains);
     }
 
     // Per-item noDamage: even if the user toggled «нет повреждений»
@@ -1092,7 +1102,7 @@ extension _SparkJoyMediaInspectionEditorMethods
       final nextFiles = _applyPartInspectionToFiles(
         files: current.files,
         partInspection: partInspection,
-        applyToFileUrls: targetUrls,
+        applyToFileRefs: targetRefs,
       );
       final nextPartInspection = _syncPartInspectionWithFiles(
         partInspection: partInspection,

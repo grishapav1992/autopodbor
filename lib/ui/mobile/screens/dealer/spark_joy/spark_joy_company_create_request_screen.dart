@@ -13,6 +13,7 @@ import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_specialist_picker.dart';
+import 'spark_joy_external_link.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -340,7 +341,12 @@ class _SparkJoyCompanyCreateRequestScreenState
     final ownersCount = int.tryParse(_ownersCountController.text.trim());
 
     final sellerPhone = _sellerPhoneController.text.trim();
-    final sellerUrl = _sellerUrlController.text.trim();
+    final rawSellerUrl = _sellerUrlController.text.trim();
+    final sellerUrl = sparkNormalizeExternalUrl(rawSellerUrl);
+    if (rawSellerUrl.isNotEmpty && sellerUrl.isEmpty) {
+      setState(() => _submitError = 'Ссылка: укажите корректный адрес');
+      return;
+    }
 
     HapticFeedback.mediumImpact();
     setState(() => _submitting = true);
@@ -438,7 +444,7 @@ class _SparkJoyCompanyCreateRequestScreenState
                 ),
                 const SizedBox(height: SparkSpace.lg),
                 const _FieldLabel(
-                  text: 'Ссылка на объявление',
+                  text: 'Ссылка на сторонний ресурс',
                   required: false,
                 ),
                 TextField(
@@ -446,7 +452,9 @@ class _SparkJoyCompanyCreateRequestScreenState
                   keyboardType: TextInputType.url,
                   onTapOutside: (_) =>
                       FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: sparkInputDecoration('https://auto.ru/cars/...'),
+                  decoration: sparkInputDecoration(
+                    'auto.ru, avito.ru, drive.google.com/...',
+                  ),
                 ),
               ],
             ),

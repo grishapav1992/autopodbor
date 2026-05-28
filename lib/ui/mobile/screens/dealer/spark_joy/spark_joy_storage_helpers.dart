@@ -1,5 +1,17 @@
 part of 'spark_joy_create_report_screen.dart';
 
+class _SparkJoyUploadQueueItem {
+  const _SparkJoyUploadQueueItem({
+    required this.item,
+    required this.filename,
+    required this.stateKey,
+  });
+
+  final UploadedItem item;
+  final String filename;
+  final String stateKey;
+}
+
 extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   // ──────────────────────────────────────────────────────────────────
   //  Read-only completed-report actions
@@ -651,41 +663,115 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
-  List<UploadedItem> _collectUniqueUploadItems() {
-    final bySource = <String, UploadedItem>{};
+  List<_SparkJoyUploadQueueItem> _collectUniqueUploadItems() {
+    final byUploadKey = <String, _SparkJoyUploadQueueItem>{};
 
-    void consume(UploadedItem item) {
+    void consume(UploadedItem item, int index, String contextPrefix) {
       final source = item.dataUrl.trim();
       if (source.isEmpty) return;
       if (!_isAttachmentSourceLikelyValid(source)) return;
-      bySource.putIfAbsent(source, () => item);
+      final filename = _preferredUploadFileNameForItem(
+        item,
+        index,
+        contextPrefix: contextPrefix,
+      ).trim();
+      final key = filename.isNotEmpty
+          ? 'filename:${filename.toLowerCase()}'
+          : 'source:$source';
+      byUploadKey.putIfAbsent(
+        key,
+        () => _SparkJoyUploadQueueItem(
+          item: item,
+          filename: filename,
+          stateKey: _backendUploadStateKey(filename, item, index),
+        ),
+      );
     }
 
     for (final group in _mediaState.values) {
-      for (final item in group.files) {
-        consume(item);
+      for (var index = 0; index < group.files.length; index++) {
+        consume(group.files[index], index, 'inspection_media');
       }
     }
-    for (final item in _legalFiles) {
-      consume(item);
+    for (var index = 0; index < _legalFiles.length; index++) {
+      consume(_legalFiles[index], index, 'legal_file');
     }
-    for (final item in _docsCommentAudioFiles) {
-      consume(item);
+    for (var index = 0; index < _docsCommentAudioFiles.length; index++) {
+      consume(_docsCommentAudioFiles[index], index, 'docs_comment_audio');
     }
-    for (final item in _legalCommentAudioFiles) {
-      consume(item);
+    for (var index = 0; index < _legalCommentAudioFiles.length; index++) {
+      consume(_legalCommentAudioFiles[index], index, 'legal_comment_audio');
     }
-    for (final item in _tdCommentAudioFiles) {
-      consume(item);
+    for (var index = 0; index < _tdCommentAudioFiles.length; index++) {
+      consume(_tdCommentAudioFiles[index], index, 'td_comment_audio');
     }
-    for (final item in _expertAudioFiles) {
-      consume(item);
+    for (var index = 0; index < _expertAudioFiles.length; index++) {
+      consume(_expertAudioFiles[index], index, 'expert_audio');
     }
-    return bySource.values.toList(growable: false);
+    return byUploadKey.values.toList(growable: false);
   }
 
-  String _preferredUploadFileNameForItem(UploadedItem item, int index) {
-    return item.name.trim();
+  bool _uploadListContainsItem(List<UploadedItem> items, UploadedItem target) {
+    final id = target.id.trim();
+    final source = target.dataUrl.trim();
+    return items.any((item) {
+      if (id.isNotEmpty && item.id == id) return true;
+      if (source.isNotEmpty && item.dataUrl == source) return true;
+      return false;
+    });
+  }
+
+  String _uploadItemContextPrefix(UploadedItem item) {
+    final id = item.id.trim();
+    final source = item.dataUrl.trim();
+    if (id.isEmpty && source.isEmpty) return '';
+    for (final group in _mediaState.values) {
+      for (final file in group.files) {
+        if (id.isNotEmpty && file.id == id) return 'inspection_media';
+        if (source.isNotEmpty && file.dataUrl == source) {
+          return 'inspection_media';
+        }
+      }
+    }
+    if (_uploadListContainsItem(_legalFiles, item)) return 'legal_file';
+    if (_uploadListContainsItem(_docsCommentAudioFiles, item)) {
+      return 'docs_comment_audio';
+    }
+    if (_uploadListContainsItem(_legalCommentAudioFiles, item)) {
+      return 'legal_comment_audio';
+    }
+    if (_uploadListContainsItem(_tdCommentAudioFiles, item)) {
+      return 'td_comment_audio';
+    }
+    if (_uploadListContainsItem(_expertAudioFiles, item)) {
+      return 'expert_audio';
+    }
+    return '';
+  }
+
+  String _preferredUploadFileNameForItem(
+    UploadedItem item,
+    int index, {
+    String? contextPrefix,
+  }) {
+    final original = item.name.trim();
+    final resolvedContext = (contextPrefix ?? _uploadItemContextPrefix(item))
+        .trim();
+    if (resolvedContext.isEmpty) return original;
+
+    final fallbackExtension = _extensionForMimeType(item.mimeType);
+    final sanitizedOriginal = _sanitizeLocalFileName(
+      original,
+      fallbackPrefix: resolvedContext,
+      fallbackExtension: fallbackExtension,
+    );
+    return sparkJoyUploadFilename(
+      contextPrefix: resolvedContext,
+      itemId: item.id,
+      originalName: sanitizedOriginal,
+      fallbackExtension: fallbackExtension,
+      index: index,
+    );
   }
 
   Future<Uint8List?> _readUploadBytesFromSource(UploadedItem item) async {
@@ -822,11 +908,26 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
-  String _backendUploadProgressSourceKey(UploadedItem item, int index) {
-    final source = item.dataUrl.trim();
-    if (source.isNotEmpty) return source;
-    return 'idx:$index:${item.id}';
+  String _backendUploadStateKey(
+    String filename,
+    UploadedItem item,
+    int index,
+  ) {
+    return sparkJoyUploadStateKey(
+      filename: filename,
+      source: item.dataUrl,
+      itemId: item.id,
+      index: index,
+    );
   }
+
+  String _backendUploadStateKeyForItem(UploadedItem item, int index) {
+    final filename = _preferredUploadFileNameForItem(item, index).trim();
+    return _backendUploadStateKey(filename, item, index);
+  }
+
+  String _backendUploadProgressSourceKey(UploadedItem item, int index) =>
+      _backendUploadStateKeyForItem(item, index);
 
   String _backendUploadDisplayName(UploadedItem item, int index) {
     final name = item.name.trim();
@@ -847,15 +948,17 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   void _initializeBackendUploadFilesProgress({
-    required List<UploadedItem> items,
+    required List<_SparkJoyUploadQueueItem> items,
   }) {
     final next = <BackendUploadFileProgress>[];
     for (var i = 0; i < items.length; i++) {
-      final item = items[i];
+      final entry = items[i];
       next.add(
         BackendUploadFileProgress(
-          sourceKey: _backendUploadProgressSourceKey(item, i),
-          fileName: _backendUploadDisplayName(item, i),
+          sourceKey: entry.stateKey,
+          fileName: entry.filename.isEmpty
+              ? _backendUploadDisplayName(entry.item, i)
+              : entry.filename,
           index: i + 1,
           total: items.length,
         ),
@@ -874,11 +977,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     int? totalParts,
     BackendUploadFileStatus? status,
     String? errorText,
+    String? sourceKey,
   }) {
-    final sourceKey = _backendUploadProgressSourceKey(item, index);
+    final resolvedSourceKey =
+        sourceKey ?? _backendUploadProgressSourceKey(item, index);
     final current = _backendUploadFilesProgress;
     final itemIndex = current.indexWhere(
-      (entry) => entry.sourceKey == sourceKey,
+      (entry) => entry.sourceKey == resolvedSourceKey,
     );
     if (itemIndex < 0) return;
     final previous = current[itemIndex];
@@ -1279,17 +1384,20 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     final legalReview = _normalizeOptionalObject({
       'comment': _legalNoteController.text.trim(),
     });
-    final otherLegalReviews = _legalFiles
-        .map((file) {
-          final filename = file.name.trim();
-          if (filename.isEmpty) return null;
-          return <String, dynamic>{
-            'filename': filename,
-            'type': _prepareFileTypeFromMime(file.mimeType),
-          };
-        })
-        .whereType<Map<String, dynamic>>()
-        .toList(growable: false);
+    final otherLegalReviews = <Map<String, dynamic>>[];
+    for (var index = 0; index < _legalFiles.length; index++) {
+      final file = _legalFiles[index];
+      final filename = _preferredUploadFileNameForItem(
+        file,
+        index,
+        contextPrefix: 'legal_file',
+      ).trim();
+      if (filename.isEmpty) continue;
+      otherLegalReviews.add(<String, dynamic>{
+        'filename': filename,
+        'type': _prepareFileTypeFromMime(file.mimeType),
+      });
+    }
     return <String, dynamic>{
       'otherLegalReviews': otherLegalReviews,
       'legalReview': legalReview,
@@ -1577,15 +1685,20 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
       for (var index = 0; index < state.files.length; index++) {
         final item = state.files[index];
-        final filename = _preferredUploadFileNameForItem(item, index).trim();
+        final filename = _preferredUploadFileNameForItem(
+          item,
+          index,
+          contextPrefix: 'inspection_media',
+        ).trim();
         if (filename.isEmpty) continue;
 
-        final normalizedElement =
-            (item.inspection.elementType ??
-                    state.partInspection.elementType ??
-                    '')
-                .trim()
-                .toLowerCase();
+        // Element type is strictly per-photo. The group-level
+        // partInspection.elementType is only an aggregate for the editor UI;
+        // using it here makes the last edited element, e.g. "trunk", leak
+        // into every untyped photo in the group.
+        final normalizedElement = (item.inspection.elementType ?? '')
+            .trim()
+            .toLowerCase();
         var collection =
             collectionByElement[normalizedElement] ?? defaultCollection;
         if (collection.isEmpty || section[collection] is! List) {
@@ -1824,11 +1937,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
   Future<bool> _uploadItemWithMultipart({
     required String reportNumber,
-    required UploadedItem item,
+    required _SparkJoyUploadQueueItem queueItem,
     required int index,
     required int totalItems,
   }) async {
     Future<bool> runUpload() async {
+      final item = queueItem.item;
+      final sourceKey = queueItem.stateKey;
       final bytes = await _readUploadBytesFromSource(item);
       if (bytes == null || bytes.isEmpty) {
         _backendUploadErrorText =
@@ -1841,11 +1956,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           status: BackendUploadFileStatus.failed,
           progress: 0,
           errorText: _backendUploadErrorText,
+          sourceKey: sourceKey,
         );
         return false;
       }
 
-      final sourceKey = item.dataUrl.trim();
       if (sourceKey.isEmpty) {
         _backendUploadErrorText =
             'Пустой источник файла ${index + 1}/$totalItems: ${item.name}';
@@ -1857,6 +1972,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           status: BackendUploadFileStatus.failed,
           progress: 0,
           errorText: _backendUploadErrorText,
+          sourceKey: sourceKey,
         );
         return false;
       }
@@ -1876,12 +1992,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           status: BackendUploadFileStatus.uploaded,
           progress: 1,
           errorText: '',
+          sourceKey: sourceKey,
         );
         return true;
       }
 
       var filename = _uploadStateText(fileState, 'filename');
-      final originalFilename = _preferredUploadFileNameForItem(item, index);
+      final originalFilename = queueItem.filename;
       if (originalFilename.isNotEmpty && filename != originalFilename) {
         fileState['filename'] = originalFilename;
         fileState.remove('uploadId');
@@ -1905,6 +2022,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           status: BackendUploadFileStatus.failed,
           progress: 0,
           errorText: _backendUploadErrorText,
+          sourceKey: sourceKey,
         );
         return false;
       }
@@ -1928,6 +2046,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         uploadedParts: etagsByPart.length,
         totalParts: partCount,
         errorText: '',
+        sourceKey: sourceKey,
       );
 
       storage_api.MultipartUploadSession? session;
@@ -2011,6 +2130,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
                 : (sentBytes / bytes.length).clamp(0.0, 1.0),
             uploadedParts: etagsByPart.length,
             totalParts: partCount,
+            sourceKey: sourceKey,
           );
         }
 
@@ -2137,6 +2257,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           uploadedParts: partCount,
           totalParts: partCount,
           errorText: '',
+          sourceKey: sourceKey,
         );
         return true;
       } catch (e) {
@@ -2161,6 +2282,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           uploadedParts: etagsByPart.length,
           totalParts: partCount,
           errorText: _backendUploadErrorText,
+          sourceKey: sourceKey,
         );
         return false;
       }
@@ -2860,7 +2982,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
             try {
               final uploaded = await _uploadItemWithMultipart(
                 reportNumber: reportNumber,
-                item: items[i],
+                queueItem: items[i],
                 index: i,
                 totalItems: items.length,
               );

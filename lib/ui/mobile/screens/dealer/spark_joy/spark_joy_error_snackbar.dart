@@ -22,7 +22,7 @@ SparkJoyReadableError sparkJoyReadableError(Object error, {String? fallback}) {
 
   return (
     message: message,
-    supportText: _supportText(message: message, rawText: rawText),
+    supportText: _supportText(message: message, rawText: rawText, code: code),
   );
 }
 
@@ -38,15 +38,22 @@ void showSparkJoyErrorSnackBar(
   final readable = sparkJoyReadableError(error, fallback: fallback);
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: Text(readable.message),
-      backgroundColor: kRedColor,
-      action: SnackBarAction(
-        label: 'Скопировать',
-        textColor: kWhiteColor,
-        onPressed: () {
-          Clipboard.setData(ClipboardData(text: readable.supportText));
-        },
+      content: Row(
+        children: [
+          Expanded(child: Text(readable.message)),
+          IconButton(
+            tooltip: 'Скопировать ошибку',
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: readable.supportText));
+            },
+            icon: const Icon(Icons.copy_rounded),
+            color: kWhiteColor,
+            iconSize: 20,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
       ),
+      backgroundColor: kRedColor,
     ),
   );
 }
@@ -81,9 +88,17 @@ String? _errorCode(Object error, String rawText) {
   return codeMatch?.group(0);
 }
 
+String? _errorMethod(String rawText) {
+  final match = RegExp(
+    r'\b(?:Storage|Notification|ObjectStorage|AiQueue)\.[A-Za-z0-9_]+\b',
+  ).firstMatch(rawText);
+  return match?.group(0);
+}
+
 String? _mappedBackendError(String? code, {int? activeAssignedRequests}) {
   if (code == null || code.isEmpty) return null;
-  return switch (code) {
+  final normalized = code.trim().toLowerCase();
+  return switch (normalized) {
     'request_status_does_not_allow_cancel' =>
       'Заявку нельзя отменить в текущем статусе',
     'request_status_does_not_allow_accept' =>
@@ -104,13 +119,165 @@ String? _mappedBackendError(String? code, {int? activeAssignedRequests}) {
     'specialist_has_active_assigned_requests' => _activeRequestsMessage(
       activeAssignedRequests,
     ),
+    'company_specialist_already_exists' =>
+      'Этот специалист уже состоит в штате компании',
+    'user_already_in_company' => 'Пользователь уже состоит в компании',
+    'user_already_has_company' => 'Пользователь уже привязан к компании',
     'user_not_found' => 'Пользователь не найден',
     'company_not_found' => 'Компания не найдена',
     'already_assigned' => 'Этот специалист уже назначен на заявку',
+    'already_exists' => 'Такая запись уже существует',
+    'not_found' => 'Запись не найдена',
+    'invalid_phone' => 'Укажите корректный номер телефона',
+    'phone_required' => 'Укажите номер телефона',
+    'invalid_email' => 'Укажите корректный email',
+    'invalid_url' => 'Укажите корректную ссылку',
+    'invalid_city' => 'Выберите город из списка',
+    'invalid_vin' => 'Проверьте VIN',
+    'validation_error' => 'Проверьте заполненные данные',
+    'bad_request' => 'Проверьте данные и повторите действие',
+    'permission_denied' => 'Недостаточно прав для этого действия',
+    'access_denied' => 'Нет доступа к этому действию',
+    'forbidden' => 'Нет доступа к этому действию',
+    'unauthorized' => 'Сессия истекла. Войдите заново.',
+    'token_expired' => 'Сессия истекла. Войдите заново.',
+    'too_many_requests' => 'Слишком много запросов. Повторите позже.',
+    'rate_limit_exceeded' => 'Слишком много запросов. Повторите позже.',
+    'report_incomplete' => 'Отчёт заполнен не полностью',
+    'required_fields_missing' => 'Заполните обязательные поля',
+    'missing_required_fields' => 'Заполните обязательные поля',
+    'specialist_required' => 'Назначьте специалиста',
+    'city_required' => 'Укажите город',
+    'vin_required' => 'Укажите VIN или отметьте, что он нечитаемый',
+    'file_type_not_allowed' => 'Этот тип файла нельзя прикрепить',
+    'video_not_allowed' => 'Видео нельзя прикрепить к заявке',
+    'unsupported_file_type' => 'Этот тип файла не поддерживается',
+    'payload_too_large' => 'Слишком большой объём данных',
     'file_too_large' => 'Файл слишком большой',
     'checksum_mismatch' => 'Контрольная сумма файла не совпала',
-    _ => 'Не удалось выполнить действие. Код ошибки: $code',
+    _ => _genericBackendCodeMessage(normalized),
   };
+}
+
+String _genericBackendCodeMessage(String code) {
+  final words = code
+      .split(RegExp(r'[_\s.-]+'))
+      .map((word) => word.trim().toLowerCase())
+      .where((word) => word.isNotEmpty)
+      .toSet();
+  final entity = _entityLabel(words);
+
+  if (_hasAll(words, const ['status', 'does', 'not', 'allow']) ||
+      _hasAll(words, const ['status', 'not', 'allowed'])) {
+    return entity == null
+        ? 'Действие недоступно в текущем статусе'
+        : '$entity: действие недоступно в текущем статусе';
+  }
+  if (_hasAll(words, const ['not', 'found'])) {
+    return entity == null ? 'Запись не найдена' : _notFoundMessage(entity);
+  }
+  if (words.contains('required') || words.contains('missing')) {
+    return entity == null
+        ? 'Заполните обязательные данные'
+        : 'Заполните обязательное поле: $entity';
+  }
+  if (words.contains('invalid')) {
+    return entity == null ? 'Проверьте данные' : 'Проверьте поле: $entity';
+  }
+  if (words.contains('already') &&
+      (words.contains('exists') ||
+          words.contains('assigned') ||
+          words.contains('linked'))) {
+    return entity == null
+        ? 'Такая запись уже существует'
+        : '$entity уже указана';
+  }
+  if (words.contains('permission') ||
+      words.contains('forbidden') ||
+      words.contains('denied') ||
+      words.contains('access')) {
+    return 'Недостаточно прав для этого действия';
+  }
+  if (words.contains('expired')) return 'Срок действия истёк';
+  if (words.contains('large')) return 'Слишком большой объём данных';
+  if (words.contains('unsupported') || words.contains('allowed')) {
+    return 'Действие не поддерживается';
+  }
+
+  final readable = _humanizeUnknownCode(code);
+  return readable.isEmpty
+      ? 'Не удалось выполнить действие. Код ошибки: $code'
+      : 'Не удалось выполнить действие: $readable';
+}
+
+String _notFoundMessage(String entity) {
+  return switch (entity) {
+    'Заявка' => 'Заявка не найдена',
+    'Компания' => 'Компания не найдена',
+    'Ссылка' => 'Ссылка не найдена',
+    'Запись' => 'Запись не найдена',
+    'Уведомление' => 'Уведомление не найдено',
+    _ => '$entity не найден',
+  };
+}
+
+bool _hasAll(Set<String> words, List<String> expected) {
+  return expected.every(words.contains);
+}
+
+String? _entityLabel(Set<String> words) {
+  if (words.contains('phone')) return 'Телефон';
+  if (words.contains('email')) return 'Email';
+  if (words.contains('city')) return 'Город';
+  if (words.contains('vin')) return 'VIN';
+  if (words.contains('url') || words.contains('link')) return 'Ссылка';
+  if (words.contains('request')) return 'Заявка';
+  if (words.contains('report')) return 'Отчёт';
+  if (words.contains('specialist')) return 'Специалист';
+  if (words.contains('company')) return 'Компания';
+  if (words.contains('user')) return 'Пользователь';
+  if (words.contains('profile')) return 'Профиль';
+  if (words.contains('notification')) return 'Уведомление';
+  if (words.contains('file') || words.contains('attachment')) return 'Файл';
+  return null;
+}
+
+String _humanizeUnknownCode(String code) {
+  final labels = <String, String>{
+    'request': 'заявка',
+    'report': 'отчёт',
+    'specialist': 'специалист',
+    'company': 'компания',
+    'user': 'пользователь',
+    'profile': 'профиль',
+    'notification': 'уведомление',
+    'file': 'файл',
+    'attachment': 'файл',
+    'phone': 'телефон',
+    'email': 'email',
+    'city': 'город',
+    'vin': 'VIN',
+    'url': 'ссылка',
+    'link': 'ссылка',
+    'status': 'статус',
+    'invalid': 'некорректный',
+    'required': 'обязательное поле',
+    'missing': 'не заполнено',
+    'not': 'не',
+    'found': 'найдено',
+    'already': 'уже',
+    'exists': 'существует',
+    'assigned': 'назначено',
+    'allowed': 'разрешено',
+    'expired': 'истёк срок',
+    'permission': 'права доступа',
+    'denied': 'отказано',
+  };
+  return code
+      .split(RegExp(r'[_\s.-]+'))
+      .map((word) => labels[word] ?? word)
+      .where((word) => word.trim().isNotEmpty)
+      .join(' ');
 }
 
 String _activeRequestsMessage(int? count) {
@@ -138,6 +305,23 @@ String _genericReadableMessage(String rawMessage) {
   if (lower.contains('http 401') || lower.contains('http 403')) {
     return 'Нет доступа к действию. Войдите заново или обратитесь в поддержку.';
   }
+  if (lower.contains('invalid json response')) {
+    return 'Сервер вернул некорректный ответ. Повторите позже.';
+  }
+  if (lower.contains('empty response body')) {
+    return 'Сервер вернул пустой ответ. Повторите позже.';
+  }
+  if (lower.contains('bad response from')) {
+    return 'Сервер не подтвердил выполнение действия';
+  }
+  if (lower.contains('upload failed')) {
+    return 'Не удалось загрузить файл. Повторите позже.';
+  }
+  if (lower.contains('presigned url is empty') ||
+      lower.contains('part url not found') ||
+      lower.contains('missing etag')) {
+    return 'Не удалось подготовить загрузку файла. Повторите позже.';
+  }
   if (lower.contains('http 500') ||
       lower.contains('http 502') ||
       lower.contains('http 503') ||
@@ -159,8 +343,20 @@ String _withFallback(String? fallback, String message) {
   return '$prefix: $message';
 }
 
-String _supportText({required String message, required String rawText}) {
+String _supportText({
+  required String message,
+  required String rawText,
+  String? code,
+}) {
   final cleanRaw = rawText.trim();
-  if (cleanRaw.isEmpty || cleanRaw == message) return message;
-  return '$message\n\nТехническая ошибка: $cleanRaw';
+  final cleanCode = (code ?? '').trim();
+  final method = _errorMethod(cleanRaw);
+  final lines = <String>[
+    'Сообщение: $message',
+    if (cleanCode.isNotEmpty) 'Код ошибки: $cleanCode',
+    if (method != null && method.isNotEmpty) 'Метод: $method',
+    if (cleanRaw.isNotEmpty && cleanRaw != message)
+      'Техническая ошибка: $cleanRaw',
+  ];
+  return lines.join('\n');
 }

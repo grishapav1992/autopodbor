@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'spark_joy_company_specialist_picker.dart';
 import 'spark_joy_error_snackbar.dart';
+import 'spark_joy_external_link.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -88,7 +89,7 @@ class _SparkJoyCompanyRequestDetailScreenState
   Future<void> _refreshRequestSnapshot() async {
     final id = _requestId;
     if (id == null) return;
-    final requests = await storage_api.StorageApi.getRequests();
+    final requests = await storage_api.StorageApi.getAllRequests();
     final next = requests.where((r) => _readInt(r['id']) == id).toList();
     if (!mounted || next.isEmpty) return;
     setState(() => _request = next.first);
@@ -704,10 +705,11 @@ class _SparkJoyCompanyRequestDetailScreenState
             child: CircularProgressIndicator(strokeWidth: 2),
           ),
         ] else if (_carsError != null) ...[
-          MyText(
+          SparkHintCard(
             text: _carsError!,
-            size: SparkTextSize.caption,
-            color: kRedColor,
+            icon: Icons.error_outline_rounded,
+            textColor: kRedColor,
+            copyText: _carsError,
           ),
         ] else if (detailedCars.isEmpty) ...[
           const MyText(
@@ -951,29 +953,7 @@ class _CarDetailBlock extends StatelessWidget {
                 ],
               ),
             ),
-          if (sellerUrl.isNotEmpty)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2),
-                  child: Icon(
-                    Icons.link_rounded,
-                    color: kGreyColor,
-                    size: SparkSize.iconSm,
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.sm),
-                Expanded(
-                  child: MyText(
-                    text: sellerUrl,
-                    size: SparkTextSize.caption,
-                    color: kSecondaryColor,
-                    maxLines: 3,
-                  ),
-                ),
-              ],
-            ),
+          if (sellerUrl.isNotEmpty) SparkExternalLinkRow(url: sellerUrl),
         ],
       ],
     );

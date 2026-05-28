@@ -6,6 +6,7 @@ import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
+import 'spark_joy_request_refresh_bus.dart';
 import 'spark_joy_tokens.dart';
 
 /// Accept / Reject row attached to interactive notification cards
@@ -20,10 +21,7 @@ import 'spark_joy_tokens.dart';
 /// On accept of an `invitation`, the backend joins the user to a
 /// company and returns `companyId`. UI shows a confirmation snack.
 class SparkJoyNotificationActions extends StatefulWidget {
-  const SparkJoyNotificationActions({
-    super.key,
-    required this.notification,
-  });
+  const SparkJoyNotificationActions({super.key, required this.notification});
 
   final BackendNotification notification;
 
@@ -44,6 +42,9 @@ class _SparkJoyNotificationActionsState
         notificationId: widget.notification.id,
         action: action,
       );
+      if (result.isOk && widget.notification.type == NotificationType.task) {
+        SparkJoyRequestRefreshBus.notifyChanged();
+      }
       if (!mounted) return;
       _showResultFeedback(action, result);
     } catch (e) {
@@ -84,10 +85,7 @@ class _SparkJoyNotificationActionsState
       message = 'Принято';
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: kGreenColor,
-        content: Text(message),
-      ),
+      SnackBar(backgroundColor: kGreenColor, content: Text(message)),
     );
   }
 
@@ -147,7 +145,9 @@ class _ActionButton extends StatelessWidget {
     final isPrimary = variant == _ActionVariant.primary;
     final fg = isPrimary ? kWhiteColor : kRedColor;
     final bg = isPrimary ? kSecondaryColor : kRedColor.withValues(alpha: 0.08);
-    final border = isPrimary ? null : Border.all(color: kRedColor.withValues(alpha: 0.35));
+    final border = isPrimary
+        ? null
+        : Border.all(color: kRedColor.withValues(alpha: 0.35));
     return Opacity(
       opacity: busy ? 0.6 : 1,
       child: Material(

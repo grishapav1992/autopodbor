@@ -27,6 +27,30 @@ class _TokenPair {
   const _TokenPair({required this.accessToken, required this.refreshToken});
 }
 
+class _MapPage {
+  const _MapPage({
+    required this.items,
+    required this.page,
+    required this.limit,
+    this.total,
+    this.pages,
+  });
+
+  final List<Map<String, dynamic>> items;
+  final int page;
+  final int limit;
+  final int? total;
+  final int? pages;
+
+  bool get shouldFetchNext {
+    final pagesValue = pages;
+    if (pagesValue != null && pagesValue > 0) return page < pagesValue;
+    final totalValue = total;
+    if (totalValue != null && totalValue >= 0) return page * limit < totalValue;
+    return items.length >= limit;
+  }
+}
+
 /// Thrown by [StorageApi._postRpc] when an authenticated call has a
 /// locally-expired access token and the server-side refresh has also
 /// failed. Callers should unwind, clear UI state, and let the global
@@ -1198,33 +1222,58 @@ class StorageApi {
     return normalized;
   }
 
-  static List<Map<String, dynamic>> _extractReportList(dynamic rawResult) {
+  static _MapPage _extractReportPage(
+    dynamic rawResult, {
+    required int page,
+    required int limit,
+  }) {
     if (rawResult is List) {
-      return rawResult.whereType<Map>().map((e) {
-        return _normalizeSpecialistReportMap(_asMap(e));
-      }).toList();
+      return _MapPage(
+        items: rawResult.whereType<Map>().map((e) {
+          return _normalizeSpecialistReportMap(_asMap(e));
+        }).toList(),
+        page: page,
+        limit: limit,
+      );
     }
 
     final resultMap = _asMap(rawResult);
-    if (resultMap.isEmpty) return const <Map<String, dynamic>>[];
+    if (resultMap.isEmpty) {
+      return _MapPage(items: const [], page: page, limit: limit);
+    }
     final list =
         resultMap['items'] ??
         resultMap['reports'] ??
         resultMap['data'] ??
         resultMap['list'];
     if (list is List) {
-      return list.whereType<Map>().map((e) {
-        return _normalizeSpecialistReportMap(_asMap(e));
-      }).toList();
+      final pagination = _asMap(resultMap['pagination']);
+      return _MapPage(
+        items: list.whereType<Map>().map((e) {
+          return _normalizeSpecialistReportMap(_asMap(e));
+        }).toList(),
+        page: _asInt(pagination['page']) ?? _asInt(resultMap['page']) ?? page,
+        limit:
+            _asInt(pagination['limit']) ?? _asInt(resultMap['limit']) ?? limit,
+        total: _asInt(pagination['total']) ?? _asInt(resultMap['total']),
+        pages:
+            _asInt(pagination['pages']) ??
+            _asInt(resultMap['pages']) ??
+            _asInt(resultMap['totalPages']),
+      );
     }
 
     final one = _normalizeSpecialistReportMap(resultMap);
     if (one.isNotEmpty &&
         (_extractString(one, ['id']).isNotEmpty ||
             _extractString(one, ['reportNumber']).isNotEmpty)) {
-      return <Map<String, dynamic>>[one];
+      return _MapPage(
+        items: <Map<String, dynamic>>[one],
+        page: page,
+        limit: limit,
+      );
     }
-    return const <Map<String, dynamic>>[];
+    return _MapPage(items: const [], page: page, limit: limit);
   }
 
   static Future<List<Map<String, dynamic>>> getSpecialistReport({
@@ -1238,7 +1287,34 @@ class StorageApi {
       params: {'page': page, 'limit': limit, 'isDraft': isDraft},
       timeout: timeout,
     );
-    return _extractReportList(data['result']);
+    return _extractReportPage(data['result'], page: page, limit: limit).items;
+  }
+
+  static Future<List<Map<String, dynamic>>> getAllSpecialistReports({
+    int limit = 100,
+    bool isDraft = false,
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final safeLimit = limit <= 0 ? 100 : limit;
+    final reports = <Map<String, dynamic>>[];
+    const maxPages = 100;
+    var page = 1;
+    while (page <= maxPages) {
+      final data = await _postRpc(
+        method: 'Storage.GetSpecialistReport',
+        params: {'page': page, 'limit': safeLimit, 'isDraft': isDraft},
+        timeout: timeout,
+      );
+      final parsed = _extractReportPage(
+        data['result'],
+        page: page,
+        limit: safeLimit,
+      );
+      reports.addAll(parsed.items);
+      if (!parsed.shouldFetchNext) break;
+      page += 1;
+    }
+    return reports;
   }
 
   static Future<int?> resolveSpecialistReportId({
@@ -1257,8 +1333,7 @@ class StorageApi {
       'reportDate',
     ]);
 
-    final remoteReports = await getSpecialistReport(
-      page: 1,
+    final remoteReports = await getAllSpecialistReports(
       limit: 200,
       isDraft: false,
       timeout: timeout,
@@ -1877,7 +1952,41 @@ class StorageApi {
     return 'Ошибка при завершении загрузки: ${complete.error}';
   }
 
-  static Future<List<Map<String, dynamic>>> getRequests({
+  static _MapPage _extractRequestsPage(
+    dynamic rawResult, {
+    required int page,
+    required int limit,
+  }) {
+    if (rawResult is List) {
+      return _MapPage(
+        items: rawResult.whereType<Map>().map((e) => _asMap(e)).toList(),
+        page: page,
+        limit: limit,
+      );
+    }
+    if (rawResult is Map) {
+      final map = _asMap(rawResult);
+      final list =
+          map['items'] ?? map['requests'] ?? map['data'] ?? map['list'];
+      if (list is List) {
+        final pagination = _asMap(map['pagination']);
+        return _MapPage(
+          items: list.whereType<Map>().map((e) => _asMap(e)).toList(),
+          page: _asInt(pagination['page']) ?? _asInt(map['page']) ?? page,
+          limit:
+              _asInt(pagination['limit']) ?? _asInt(map['limit']) ?? limit,
+          total: _asInt(pagination['total']) ?? _asInt(map['total']),
+          pages:
+              _asInt(pagination['pages']) ??
+              _asInt(map['pages']) ??
+              _asInt(map['totalPages']),
+        );
+      }
+    }
+    return _MapPage(items: const [], page: page, limit: limit);
+  }
+
+  static Future<_MapPage> _getRequestsPage({
     int? page,
     int? limit,
     String? status,
@@ -1898,19 +2007,52 @@ class StorageApi {
       params: params,
       timeout: timeout,
     );
-    final result = data['result'];
-    if (result is List) {
-      return result.whereType<Map>().map((e) => _asMap(e)).toList();
+    return _extractRequestsPage(
+      data['result'],
+      page: page ?? 1,
+      limit: limit ?? 20,
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getRequests({
+    int? page,
+    int? limit,
+    String? status,
+    String? requestType,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    return (await _getRequestsPage(
+      page: page,
+      limit: limit,
+      status: status,
+      requestType: requestType,
+      timeout: timeout,
+    )).items;
+  }
+
+  static Future<List<Map<String, dynamic>>> getAllRequests({
+    int limit = 100,
+    String? status,
+    String? requestType,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final safeLimit = limit <= 0 ? 100 : limit;
+    final requests = <Map<String, dynamic>>[];
+    const maxPages = 100;
+    var page = 1;
+    while (page <= maxPages) {
+      final parsed = await _getRequestsPage(
+        page: page,
+        limit: safeLimit,
+        status: status,
+        requestType: requestType,
+        timeout: timeout,
+      );
+      requests.addAll(parsed.items);
+      if (!parsed.shouldFetchNext) break;
+      page += 1;
     }
-    if (result is Map) {
-      final map = _asMap(result);
-      final list =
-          map['items'] ?? map['requests'] ?? map['data'] ?? map['list'];
-      if (list is List) {
-        return list.whereType<Map>().map((e) => _asMap(e)).toList();
-      }
-    }
-    return [];
+    return requests;
   }
 
   static Future<List<Map<String, dynamic>>> getRequestCars({

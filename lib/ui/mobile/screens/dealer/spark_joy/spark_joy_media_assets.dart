@@ -1,6 +1,14 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
+  String _mediaItemRef(UploadedItem file) {
+    return sparkJoyMediaPrimaryRef(itemId: file.id, dataUrl: file.dataUrl);
+  }
+
+  Set<String> _mediaItemRefs(UploadedItem file) {
+    return sparkJoyMediaAllRefs(itemId: file.id, dataUrl: file.dataUrl);
+  }
+
   MediaPartInspection _deriveGroupPartInspection({
     required List<UploadedItem> files,
     String fallbackNote = '',
@@ -53,8 +61,9 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
         final marker = tag.toLowerCase();
         final canonical = normalizedTags.putIfAbsent(marker, () => tag);
         final list = tagPhotos.putIfAbsent(canonical, () => <String>[]);
-        if (!list.contains(file.dataUrl)) {
-          list.add(file.dataUrl);
+        final ref = _mediaItemRef(file);
+        if (ref.isNotEmpty && !list.contains(ref)) {
+          list.add(ref);
         }
       }
     }
@@ -88,7 +97,10 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       );
     }
 
-    final existingUrls = files.map((file) => file.dataUrl).toSet();
+    final existingRefs = <String>{};
+    for (final file in files) {
+      existingRefs.addAll(_mediaItemRefs(file));
+    }
     final canonicalByLower = <String, String>{};
     final tagPhotosByLower = <String, Set<String>>{};
 
@@ -106,7 +118,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       final urls = tagPhotosByLower.putIfAbsent(lower, () => <String>{});
       for (final rawUrl in entry.value) {
         final url = rawUrl.trim();
-        if (url.isEmpty || !existingUrls.contains(url)) continue;
+        if (url.isEmpty || !existingRefs.contains(url)) continue;
         urls.add(url);
       }
     }
@@ -163,15 +175,15 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
   List<UploadedItem> _applyPartInspectionToFiles({
     required List<UploadedItem> files,
     required MediaPartInspection partInspection,
-    Set<String>? applyToFileUrls,
+    Set<String>? applyToFileRefs,
   }) {
     if (files.isEmpty) return const <UploadedItem>[];
-    final normalizedTargetUrls = applyToFileUrls
-        ?.map((url) => url.trim())
-        .where((url) => url.isNotEmpty)
+    final normalizedTargetRefs = applyToFileRefs
+        ?.map((ref) => ref.trim())
+        .where((ref) => ref.isNotEmpty)
         .toSet();
     final applyToAll =
-        normalizedTargetUrls == null || normalizedTargetUrls.isEmpty;
+        normalizedTargetRefs == null || normalizedTargetRefs.isEmpty;
     final urlsByTagLower = <String, Set<String>>{};
     final canonicalTagByLower = <String, String>{};
 
@@ -202,8 +214,10 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     final normalizedNote = partInspection.note.trim();
 
     return files.map((file) {
+      final fileRef = _mediaItemRef(file);
+      final fileRefs = _mediaItemRefs(file);
       final applyForFile =
-          applyToAll || normalizedTargetUrls.contains(file.dataUrl);
+          applyToAll || normalizedTargetRefs.contains(fileRef);
       // Tag list per file is always derived by URL filter: a file gets
       // a tag iff its URL is in that tag's URL set (group-level
       // tagPhotos mapping). Previously this was gated by
@@ -216,13 +230,13 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       final tagsForFile = <String>[];
       for (final lower in orderedTagLowers) {
         final urls = urlsByTagLower[lower] ?? <String>{};
-        if (urls.contains(file.dataUrl)) {
+        if (fileRefs.any(urls.contains)) {
           tagsForFile.add(canonicalTagByLower[lower]!);
         }
       }
       final previous = file.inspection;
       // noDamage is now per-item: only an EXPLICIT per-file edit
-      // (applyToFileUrls non-empty AND this file is targeted) picks
+      // (applyToFileRefs non-empty AND this file is targeted) picks
       // up the editor's toggle. Apply-to-all calls (delete/add path)
       // keep each file's previous noDamage untouched. Files that
       // ended up with tags get noDamage forced to false to preserve
@@ -234,7 +248,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
               ? partInspection.noDamage
               : previous.noDamage);
       // Per-item semantics: same `isExplicitEdit` gate as noDamage.
-      // Delete / add code paths call us with `applyToFileUrls=null`
+      // Delete / add code paths call us with `applyToFileRefs=null`
       // (= applyToAll), and previously that overwrote every file's
       // per-item state (note / elementType / paint / audio / isDraft)
       // with the group-level partInspection. After the per-item-note

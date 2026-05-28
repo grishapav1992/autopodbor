@@ -243,7 +243,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     setState(() => _index = requestTabIndex);
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final requests = await storage_api.StorageApi.getRequests();
+      final requests = await storage_api.StorageApi.getAllRequests();
       if (!mounted) return;
       final matched = requests.where((request) {
         return _readInt(request['id']) == requestId;

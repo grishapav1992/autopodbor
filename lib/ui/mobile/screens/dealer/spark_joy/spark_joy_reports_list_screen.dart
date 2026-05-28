@@ -1454,8 +1454,8 @@ class _SparkJoyReportsListController extends ChangeNotifier {
     _completedSyncFailed = false;
     _safeNotify();
     try {
-      final remoteCompleted = await storage_api.StorageApi.getSpecialistReport(
-        page: 1,
+      final remoteCompleted = await storage_api.StorageApi
+          .getAllSpecialistReports(
         limit: 100,
         isDraft: false,
       );

@@ -9,6 +9,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
@@ -16,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 
 import 'spark_joy_data.dart';
 import 'spark_joy_feedback_screen.dart';
+import 'spark_joy_company_public_profile_screen.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -1653,6 +1655,12 @@ class _SparkJoySpecialistProfileScreenState
                   color: kGreenColor,
                 ),
               ],
+              const SizedBox(width: SparkSpace.sm),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: SparkSize.iconLg,
+                color: kGreyColor,
+              ),
             ],
           ),
         ),
@@ -2616,17 +2624,16 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   Future<void> _editCitySheet() async {
-    final saved = await _showSingleFieldSheet(
-      title: 'Город',
-      label: 'Город',
-      hint: 'Город осмотров',
-      initial: _cityController.text,
-      textCapitalization: TextCapitalization.words,
-      validate: (value) => value.trim().isEmpty ? 'Введите город' : null,
+    final picked = await showCityPickerBottomSheet(
+      context,
+      currentValue: _cityController.text.trim().isEmpty
+          ? null
+          : _cityController.text.trim(),
     );
-    if (saved == null) return;
-    if (saved.trim() == _cityController.text.trim()) return;
-    _cityController.text = saved.trim();
+    if (picked == null || !mounted) return;
+    final city = picked.displayLabel.trim();
+    if (city == _cityController.text.trim()) return;
+    _cityController.text = city;
     await _saveProfile();
   }
 
@@ -2838,6 +2845,20 @@ class _SparkJoySpecialistProfileScreenState
     });
   }
 
+  void _openLinkedCompanyProfile() {
+    final companyId = _linkedCompanyId;
+    final profile = _linkedCompanyProfile;
+    if ((companyId == null || companyId <= 0) && profile == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SparkJoyCompanyPublicProfileScreen(
+          companyId: companyId,
+          initialProfile: profile,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final specialist = _specialist();
@@ -3034,6 +3055,7 @@ class _SparkJoySpecialistProfileScreenState
         ),
         const SparkSectionTitle('Компания', top: SparkSpace.xl),
         SparkCard(
+          onTap: hasLinkedCompany ? _openLinkedCompanyProfile : null,
           // Если карточка в verified-state — list-style padding, как у
           // «Информации». В unverified-state (форма ИНН) — стандартный
           // card padding xl со всех сторон.
