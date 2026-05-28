@@ -37,6 +37,12 @@ flutter build apk --release
 flutter build ios --release
 ```
 
+### Android notes
+- Release-сборка использует `android/app/proguard-rules.pro`, чтобы R8 не падал на optional MLKit text recognizers.
+- `UCropActivity` явно объявлен в `AndroidManifest.xml`.
+- Для фото профиля из камеры на Android/iOS используется безопасный Dart-crop pipeline без немедленного запуска native cropper.
+- Отчёт специалиста без VIN не должен формироваться: backend требует `report.carStep.vin` как непустое поле.
+
 ## Конфигурация и API
 - Endpoint хранилища брендов/моделей находится в `lib/data/api/storage_api.dart` (константа `_endpoint`).
 - Заглушка для заявок — `lib/data/api/auto_request_api.dart` (подключить серверные методы).

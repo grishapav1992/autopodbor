@@ -66,7 +66,7 @@ extension _SparkJoyCompletionRulesMethods on _SparkJoyCreateReportScreenState {
     // «Итог осмотра», there's only one text gate here. The previous
     // `hasExpertNote` second gate is retired.
     final hasSummaryNote = _summaryController.text.trim().isNotEmpty;
-    final hasVehicle = _vinController.text.trim().isNotEmpty || _vinUnreadable;
+    final hasVehicle = _vinController.text.trim().isNotEmpty;
     final hasMileage = _mileageController.text.trim().isNotEmpty;
     // Backend requires only a non-blank city string. The picker-validity
     // flag is useful for UI hints, but must not block completion for

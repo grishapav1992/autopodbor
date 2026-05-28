@@ -2245,14 +2245,15 @@ class _SparkJoySpecialistProfileScreenState
         requestFullMetadata: false,
       );
       if (xfile == null || !mounted) return;
-      // iOS camera returns from a native route and immediately opening
-      // TOCropViewController is unstable on some iOS 26 devices: the app
-      // can be killed right after "Use Photo". For fresh camera shots we
-      // prepare a centered square in Dart instead of chaining native
-      // controllers. Gallery keeps manual crop.
+      // Camera capture returns from a native route and immediately opening
+      // a native cropper is unstable on some iOS devices and Android builds:
+      // the app can be killed or the cropper plugin can submit a cancelled
+      // result twice. For fresh camera shots we prepare a centered square in
+      // Dart instead of chaining native controllers. Gallery keeps manual crop.
       final useSafeCameraPipeline =
           !kIsWeb &&
-          defaultTargetPlatform == TargetPlatform.iOS &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.android) &&
           source == ImageSource.camera;
       final bytes = useSafeCameraPipeline
           ? await _prepareAvatarBytesWithoutNativeCrop(xfile)
