@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'spark_joy_data.dart';
 
@@ -599,6 +601,96 @@ class SparkJoyStorage {
 
   static Future<void> purgeDraftAfterUpload(String draftId) async {
     await deleteDraft(draftId);
+  }
+
+  /// Subdir under app Documents where picked media is copied. A dedicated
+  /// folder (vs. the Documents root) is what lets [gcOrphanedMedia] safely
+  /// sweep spark-owned files without ever touching other features' data.
+  static const String mediaSubdirName = 'spark_joy_media';
+
+  /// Subdir under the app Caches dir holding generated video-preview JPEGs.
+  static const String thumbsSubdirName = 'spark_joy_thumbs';
+
+  static bool _mediaGcRan = false;
+
+  /// Deletes copied media (Documents/[mediaSubdirName]) and generated video
+  /// thumbnails (Caches/[thumbsSubdirName]) that no surviving draft references
+  /// — the storage left behind by completed/uploaded reports (their draft is
+  /// purged but the heavy local copies were never removed), discarded drafts,
+  /// and crash-orphaned picks.
+  ///
+  /// SAFETY: errs entirely toward keeping files. It only sweeps the two
+  /// dedicated spark subdirs; a file survives if its basename appears anywhere
+  /// in any current draft, or if it was modified in the last hour (guards a
+  /// freshly-picked file whose draft autosave hasn't landed yet). Runs at most
+  /// once per app session and never throws.
+  static Future<void> gcOrphanedMedia() async {
+    if (_mediaGcRan || kIsWeb) return;
+    _mediaGcRan = true;
+    try {
+      final referenced = <String>{};
+      for (final draft in await loadDrafts()) {
+        _collectReferencedBasenames(draft, referenced);
+      }
+      final docs = await getApplicationDocumentsDirectory();
+      await _sweepOrphans(
+        Directory('${docs.path}/$mediaSubdirName'),
+        referenced,
+      );
+      try {
+        final cache = await getApplicationCacheDirectory();
+        await _sweepOrphans(
+          Directory('${cache.path}/$thumbsSubdirName'),
+          referenced,
+        );
+      } catch (_) {
+        // getApplicationCacheDirectory can be unavailable on some platforms;
+        // thumbnails are OS-purgeable anyway, so skipping is harmless.
+      }
+    } catch (_) {
+      // GC is best-effort housekeeping — never let it surface to the user.
+    }
+  }
+
+  /// Recursively collects the last path segment (basename) of every string in
+  /// a draft. Over-inclusive by design: a non-path string just contributes a
+  /// basename that won't match any media file, and keeping an extra file is
+  /// always safe — deleting a referenced one is not.
+  static void _collectReferencedBasenames(dynamic node, Set<String> out) {
+    if (node is String) {
+      final base = node.split('/').last.trim();
+      if (base.isNotEmpty) out.add(base);
+    } else if (node is Map) {
+      for (final value in node.values) {
+        _collectReferencedBasenames(value, out);
+      }
+    } else if (node is List) {
+      for (final value in node) {
+        _collectReferencedBasenames(value, out);
+      }
+    }
+  }
+
+  static Future<void> _sweepOrphans(
+    Directory dir,
+    Set<String> referenced,
+  ) async {
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      try {
+        final base = entity.path.split('/').last;
+        if (referenced.contains(base)) continue;
+        final stat = await entity.stat();
+        if (DateTime.now().difference(stat.modified) <
+            const Duration(hours: 1)) {
+          continue; // freshly written — its draft reference may not be saved yet
+        }
+        await entity.delete();
+      } catch (_) {
+        // A single undeletable entry must not abort the sweep.
+      }
+    }
   }
 
   static Future<Map<String, dynamic>?> loadCompanyRequestDraft() async {

@@ -88,6 +88,10 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
           hasIssue: nextFiles.any(_mediaItemHasIssue),
         );
       });
+      // Resolve video previews off the render path, one decoder at a time.
+      // Not awaited: the grid shows placeholders immediately and tiles flip in
+      // as each thumbnail lands.
+      unawaited(_generateVideoThumbsForGroup(groupKey, items));
       return items.length;
     } finally {
       if (mounted) {

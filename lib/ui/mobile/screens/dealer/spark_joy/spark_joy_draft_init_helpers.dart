@@ -296,6 +296,17 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _expertAudioFiles = _readUploadedList(draft['expertAudioFiles']);
 
     _mediaState = _initMediaState(draft);
+    // Restored drafts keep their persisted videoThumbPath, but pre-feature
+    // drafts (or JPEGs the OS purged) need a one-time regeneration. Run it
+    // after the first frame so restore never blocks, reusing the same
+    // serialized generator as the pick path — already-resolved items are
+    // skipped, so this is a no-op when thumbnails are intact.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final entry in _mediaState.entries) {
+        unawaited(_generateVideoThumbsForGroup(entry.key, entry.value.files));
+      }
+    });
     _mediaCustomTagsByScope = _readStringListMap(draft['mediaCustomTags']);
     _mediaCustomSeriousTagsByScope = _readStringListMap(
       draft['mediaCustomSeriousTags'],

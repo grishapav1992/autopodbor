@@ -117,6 +117,7 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
       final id = _read(map, 'id').trim().isNotEmpty
           ? _read(map, 'id').trim()
           : 'legacy_${index}_${name.hashCode}_${dataUrl.hashCode}';
+      final videoThumbPath = _read(map, 'videoThumbPath').trim();
       items.add(
         UploadedItem(
           id: id,
@@ -128,6 +129,7 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
           ),
           dataUrl: dataUrl,
           inspection: _readMediaInspection(map['inspection']),
+          videoThumbPath: videoThumbPath.isEmpty ? null : videoThumbPath,
         ),
       );
     }

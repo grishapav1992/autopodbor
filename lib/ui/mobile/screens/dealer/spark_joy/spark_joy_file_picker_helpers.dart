@@ -67,6 +67,42 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
     return items;
   }
 
+  /// Generates video previews for [items] in [groupKey], strictly one decoder
+  /// at a time (via the global gate inside [_resolveSparkJoyVideoThumb]), and
+  /// writes each resolved path back into the media-group state so the tile
+  /// flips from placeholder to thumbnail. Fire-and-forget — never awaited on
+  /// the pick path so the picker stays responsive.
+  ///
+  /// Skips: non-videos, items already resolved (with the JPEG still on disk),
+  /// and network/data-url videos (no local file → stays a placeholder). Bails
+  /// out the moment the screen is unmounted so we never `setState` after
+  /// dispose.
+  Future<void> _generateVideoThumbsForGroup(
+    String groupKey,
+    List<UploadedItem> items,
+  ) async {
+    for (final item in items) {
+      if (!mounted) return;
+      if (!item.isVideo) continue;
+      final existing = item.videoThumbPath;
+      if (existing != null && await File(existing).exists()) continue;
+      final localPath = _extractLocalMediaPath(item.dataUrl);
+      if (localPath == null) continue;
+      final thumb = await _resolveSparkJoyVideoThumb(localPath);
+      if (!mounted) return;
+      if (thumb == null) continue;
+      _setStateSafely(() {
+        final state = _mediaState[groupKey];
+        if (state == null) return;
+        final idx = state.files.indexWhere((f) => f.id == item.id);
+        if (idx < 0) return;
+        final updated = [...state.files];
+        updated[idx] = updated[idx].copyWith(videoThumbPath: thumb);
+        _mediaState[groupKey] = state.copyWith(files: updated);
+      });
+    }
+  }
+
   Future<List<UploadedItem>> _uploadedItemsFromXFiles(
     List<XFile> files, {
     String prefix = 'picked',

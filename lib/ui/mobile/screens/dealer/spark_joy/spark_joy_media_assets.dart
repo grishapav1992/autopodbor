@@ -286,6 +286,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
         'mimeType': e.mimeType,
         'dataUrl': e.dataUrl,
         'inspection': e.inspection.toJson(),
+        if (e.videoThumbPath != null) 'videoThumbPath': e.videoThumbPath,
       };
     }).toList();
   }
@@ -325,28 +326,6 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       final decoded = base64Decode(payload);
       _dataUrlImageBytesCache[dataUrl] = decoded;
       return decoded;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Uint8List?> _loadImageBytesFromSource(String source) async {
-    final normalized = source.trim();
-    if (normalized.isEmpty) return null;
-    if (_isDataUrl(normalized)) {
-      final cached = _dataUrlImageBytesCache[normalized];
-      if (cached != null) return cached;
-    }
-
-    final fromDataUrl = _decodeDataUrlImageBytes(normalized);
-    if (fromDataUrl != null) return fromDataUrl;
-
-    final localPath = _extractLocalMediaPath(normalized);
-    if (localPath == null) return null;
-    try {
-      final bytes = await XFile(localPath).readAsBytes();
-      if (bytes.isEmpty) return null;
-      return bytes;
     } catch (_) {
       return null;
     }
@@ -394,40 +373,28 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
 
     final localPath = _extractLocalMediaPath(source);
     if (localPath != null) {
-      return FutureBuilder<Uint8List?>(
-        future: _loadImageBytesFromSource(source),
-        builder: (context, snapshot) {
-          final localBytes = snapshot.data;
-          if (localBytes == null) {
-            if (snapshot.connectionState == ConnectionState.done) {
-              return Icon(
-                Icons.broken_image_outlined,
-                color: errorColor,
-                size: errorSize,
-              );
-            }
-            return const Center(
-              child: SizedBox(
-                width: SparkSize.spinner,
-                height: SparkSize.spinner,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-            );
-          }
-          return Image.memory(
-            localBytes,
-            fit: fit,
-            cacheWidth: decodeWidth,
-            cacheHeight: decodeHeight,
-            filterQuality: filterQuality,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) => Icon(
-              Icons.broken_image_outlined,
-              color: errorColor,
-              size: errorSize,
-            ),
-          );
-        },
+      // FileImage keys the ImageCache on the file path, so each photo is
+      // decoded once and reused across rebuilds. The old path
+      // (readAsBytes + Image.memory) keyed the cache on the Uint8List
+      // identity, and readAsBytes returned a *fresh* buffer on every
+      // rebuild — so each upload-progress tick was a cache miss whose
+      // entry retained the full-resolution encoded file. Re-rendering
+      // ~20 photos many times during a multipart upload piled up several
+      // GB of encoded buffers and OOM-killed the app at the 3.3 GB
+      // high-watermark limit. cacheWidth/Height still downsample the
+      // decoded bitmap.
+      return Image.file(
+        File(localPath),
+        fit: fit,
+        cacheWidth: decodeWidth,
+        cacheHeight: decodeHeight,
+        filterQuality: filterQuality,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) => Icon(
+          Icons.broken_image_outlined,
+          color: errorColor,
+          size: errorSize,
+        ),
       );
     }
 
@@ -455,7 +422,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     }
     if (item.isVideo) {
       return _SparkJoyVideoThumbnail(
-        uri: _mediaSourceUri(item.dataUrl),
+        thumbPath: item.videoThumbPath,
         fit: fit,
       );
     }

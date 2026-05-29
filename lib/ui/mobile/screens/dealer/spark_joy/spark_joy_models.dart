@@ -65,31 +65,138 @@ class _CarCatalogRestyling {
   final List<int> frameIds;
 }
 
-class _SparkJoyVideoThumbnail extends StatefulWidget {
-  const _SparkJoyVideoThumbnail({required this.uri, this.fit = BoxFit.cover});
+// Per-process cache of resolved video thumbnails: local video path → on-disk
+// JPEG path. Lets the editor↔«Итог» transition and any rebuild reuse a Map
+// lookup instead of re-running native extraction — a given video is decoded
+// once per session total.
+final Map<String, String> _sparkJoyVideoThumbDiskCache = <String, String>{};
 
-  final Uri uri;
+// Strictly ONE native AVAssetImageGenerator / MediaMetadataRetriever alive at
+// a time. On iOS 26 the decoder buffer (~600 MB per HEVC frame) lingers after
+// the call returns; running several at once piled up GBs and OOM-killed the
+// app at the 3.3 GB high-watermark before the user even reached «Выгрузить».
+// The gate + the post-call delay below cap peak native memory at a single
+// decoder's worth.
+final _UploadConcurrencyGate _sparkJoyVideoThumbGate = _UploadConcurrencyGate(
+  1,
+);
+
+// Breathing room after each extraction so iOS can drain the decoder /
+// autorelease pool before the next slot starts. Cheap insurance against the
+// lingering-buffer behaviour; bump it (600–1000 ms) if profiling shows memory
+// climbing instead of sawtoothing.
+const Duration _sparkJoyVideoThumbInterDelay = Duration(milliseconds: 350);
+
+/// Resolves (and disk-caches) a downscaled JPEG preview for a local video
+/// file. Returns the on-disk JPEG path, or null on any failure (caller falls
+/// back to the static placeholder).
+///
+/// NEVER call this from widget `build`/`initState`. Generation is driven once,
+/// off the render path, by [_generateVideoThumbsForGroup] after media is picked
+/// or a draft is restored — that decoupling is the actual OOM fix, since the
+/// eager media grids mount every tile at once.
+Future<String?> _resolveSparkJoyVideoThumb(String videoPath) async {
+  if (videoPath.isEmpty) return null;
+  final cached = _sparkJoyVideoThumbDiskCache[videoPath];
+  if (cached != null && await File(cached).exists()) {
+    return cached;
+  }
+  return _sparkJoyVideoThumbGate.withSlot<String?>(() async {
+    var didDecode = false;
+    try {
+      final videoFile = File(videoPath);
+      if (!await videoFile.exists()) return null;
+      final stat = await videoFile.stat();
+      // Regenerable cache → Caches dir (NSCachesDirectory on iOS), NOT
+      // Documents: it isn't iCloud-backed, doesn't count as user "Documents &
+      // Data", and the OS may purge it under pressure. A purged thumb is cheap
+      // to rebuild — the post-pick / post-restore pass regenerates it from the
+      // original video (which does live in Documents) on the next miss.
+      final cacheRoot = await getApplicationCacheDirectory();
+      final cacheDir = Directory(
+        '${cacheRoot.path}/${SparkJoyStorage.thumbsSubdirName}',
+      );
+      if (!await cacheDir.exists()) {
+        await cacheDir.create(recursive: true);
+      }
+      // Deterministic key (path + size + mtime). A ".jpg" full path is honored
+      // verbatim by the plugin's iOS/Android side, so re-encounters of the
+      // same file short-circuit on the file-exists check below.
+      final key =
+          '${videoPath.hashCode.toUnsigned(32).toRadixString(16)}_'
+          '${stat.size}_${stat.modified.millisecondsSinceEpoch}.jpg';
+      final outPath = '${cacheDir.path}/$key';
+      if (await File(outPath).exists()) {
+        _sparkJoyVideoThumbDiskCache[videoPath] = outPath;
+        return outPath;
+      }
+      // thumbnailFile writes the JPEG straight to disk (unlike thumbnailData it
+      // never materialises bytes on the Dart heap). The danger was always the
+      // native decoder, which the gate + the post-decode delay bound.
+      didDecode = true;
+      final generated = await VideoThumbnail.thumbnailFile(
+        video: videoPath,
+        thumbnailPath: outPath,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 300,
+        maxHeight: 300,
+        timeMs: 0,
+        quality: 70,
+      );
+      if (generated == null || generated.isEmpty) return null;
+      if (!await File(generated).exists()) return null;
+      _sparkJoyVideoThumbDiskCache[videoPath] = generated;
+      return generated;
+    } catch (_) {
+      return null;
+    } finally {
+      // Only after an actual native decode (success OR failure — a failed
+      // decode may still have allocated the buffer): hold the slot a beat so
+      // iOS can drain the decoder/autorelease pool before the next slot.
+      // Cache hits and early bails allocate no decoder, so they skip the wait.
+      if (didDecode) {
+        await Future<void>.delayed(_sparkJoyVideoThumbInterDelay);
+      }
+    }
+  });
+}
+
+class _SparkJoyVideoThumbnail extends StatelessWidget {
+  const _SparkJoyVideoThumbnail({this.thumbPath, this.fit = BoxFit.cover});
+
+  /// Pre-resolved on-disk JPEG path. Null → show the static play badge. This
+  /// widget is deliberately dumb: it never triggers extraction, so the eager
+  /// grids can mount any number of tiles without spinning up decoders.
+  final String? thumbPath;
   final BoxFit fit;
 
   @override
-  State<_SparkJoyVideoThumbnail> createState() =>
-      _SparkJoyVideoThumbnailState();
-}
-
-class _SparkJoyVideoThumbnailState extends State<_SparkJoyVideoThumbnail> {
-  // Native thumbnail extraction (AVAssetImageGenerator on iOS,
-  // MediaMetadataRetriever on Android) spins up a real video decoder
-  // for one frame. On iOS 26 it does not release the underlying decoder
-  // buffer promptly enough; extracting thumbnails for 5+ HEVC videos in
-  // a row pushes the app past the 3.3 GB high-watermark limit before
-  // the user even gets to «Выгрузить». A static play-badge over a
-  // neutral background uses zero RAM and matches how the user
-  // identifies a video tile vs. a photo tile in practice — actual
-  // playback is one tap away in the lightbox.
-
-  @override
   Widget build(BuildContext context) {
-    return const _SparkJoyVideoPlaceholder();
+    final path = thumbPath;
+    if (path == null) {
+      return const _SparkJoyVideoPlaceholder();
+    }
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.file(
+          File(path),
+          fit: fit,
+          cacheWidth: 300,
+          cacheHeight: 300,
+          gaplessPlayback: true,
+          errorBuilder: (_, _, _) => const _SparkJoyVideoPlaceholder(),
+        ),
+        const Align(
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.play_circle_fill_rounded,
+            size: SparkSize.iconXl,
+            color: Color(0xD9FFFFFF),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -339,6 +446,7 @@ class UploadedItem {
     required this.mimeType,
     required this.dataUrl,
     this.inspection = const MediaInspection(),
+    this.videoThumbPath,
   });
 
   final String id;
@@ -347,12 +455,19 @@ class UploadedItem {
   final String dataUrl;
   final MediaInspection inspection;
 
+  /// On-disk JPEG path of a pre-generated video preview. Null for images and
+  /// for videos whose thumbnail hasn't been resolved yet (the background pass
+  /// fills it in — see [_resolveSparkJoyVideoThumb]). Only ever assigned a
+  /// non-null path, so [copyWith]'s `?? this` idiom never needs to clear it.
+  final String? videoThumbPath;
+
   UploadedItem copyWith({
     String? id,
     String? name,
     String? mimeType,
     String? dataUrl,
     MediaInspection? inspection,
+    String? videoThumbPath,
   }) {
     return UploadedItem(
       id: id ?? this.id,
@@ -360,6 +475,7 @@ class UploadedItem {
       mimeType: mimeType ?? this.mimeType,
       dataUrl: dataUrl ?? this.dataUrl,
       inspection: inspection ?? this.inspection,
+      videoThumbPath: videoThumbPath ?? this.videoThumbPath,
     );
   }
 

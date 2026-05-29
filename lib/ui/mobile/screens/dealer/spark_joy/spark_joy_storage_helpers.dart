@@ -571,6 +571,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     try {
       final directory = await getApplicationDocumentsDirectory();
       _appDocumentsPath = directory.path;
+      final mediaDir = Directory(
+        '${directory.path}/${SparkJoyStorage.mediaSubdirName}',
+      );
+      if (!await mediaDir.exists()) {
+        await mediaDir.create(recursive: true);
+      }
       final extension = _extensionForMimeType(mimeType);
       final fallbackPrefix = 'spark_$prefix';
       final fileName = _sanitizeLocalFileName(
@@ -579,7 +585,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         fallbackExtension: extension,
       );
       final targetName = _nextLocalStorageFileName(fileName);
-      final filePath = '${directory.path}/$targetName';
+      final filePath = '${mediaDir.path}/$targetName';
       final xFile = XFile.fromData(bytes, name: targetName, mimeType: mimeType);
       await xFile.saveTo(filePath);
       return Uri.file(filePath).toString();
@@ -637,6 +643,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     try {
       final directory = await getApplicationDocumentsDirectory();
       _appDocumentsPath = directory.path;
+      final mediaDir = Directory(
+        '${directory.path}/${SparkJoyStorage.mediaSubdirName}',
+      );
+      if (!await mediaDir.exists()) {
+        await mediaDir.create(recursive: true);
+      }
       final extension = _extensionForMimeType(mimeType);
       final targetName = _sanitizeLocalFileName(
         fileName,
@@ -644,7 +656,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         fallbackExtension: extension,
       );
       final finalTargetName = _nextLocalStorageFileName(targetName);
-      final targetPath = '${directory.path}/$finalTargetName';
+      final targetPath = '${mediaDir.path}/$finalTargetName';
       // XFile.saveTo on mobile is implemented as readAsBytes +
       // writeAsBytes — the full file lives in a Uint8List for the
       // duration of the copy. For multi-hundred-MB videos this OOM-kills

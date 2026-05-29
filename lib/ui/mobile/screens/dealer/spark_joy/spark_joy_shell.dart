@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
@@ -101,6 +102,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   Future<void> _bootstrap() async {
     await SparkJoyStorage.ensureSeedData();
     await SparkJoyNotificationsStorage.ensureSeedData();
+    // Best-effort, once-per-session reclaim of local media/thumbnails left
+    // behind by completed/discarded reports. Fire-and-forget so it never
+    // blocks the shell coming up.
+    unawaited(SparkJoyStorage.gcOrphanedMedia());
     final loggedIn = await SparkJoyStorage.isLoggedIn();
     if (loggedIn) {
       await SparkJoyStorage.syncRoleFromServer();
