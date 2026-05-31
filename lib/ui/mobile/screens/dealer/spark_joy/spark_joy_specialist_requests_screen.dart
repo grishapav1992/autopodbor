@@ -926,16 +926,22 @@ class _SparkJoySpecialistRequestDetailScreenState
               ),
             ),
           ],
-          if (note.isNotEmpty) ...[
-            const SparkSectionTitle('Заметка компании', top: SparkSpace.xxl),
-            SparkCard(
-              child: MyText(
-                text: note,
-                size: SparkTextSize.body,
-                lineHeight: 1.5,
-              ),
-            ),
-          ],
+          // Комментарий заказчика — ключевой контекст для специалиста (что
+          // именно проверить). Показываем всегда, с плейсхолдером когда
+          // пусто, чтобы исполнитель не гадал, есть ли пожелания (B12).
+          const SparkSectionTitle('Комментарий заказчика', top: SparkSpace.xxl),
+          SparkCard(
+            child: note.isNotEmpty
+                ? MyText(text: note, size: SparkTextSize.body, lineHeight: 1.5)
+                : const MyText(
+                    text:
+                        'Заказчик не оставил дополнительных пожеланий по '
+                        'осмотру.',
+                    size: SparkTextSize.body,
+                    color: kGreyColor,
+                    lineHeight: 1.5,
+                  ),
+          ),
           const SparkSectionTitle('История', top: SparkSpace.xxl),
           if (history.isEmpty)
             const SparkCard(
