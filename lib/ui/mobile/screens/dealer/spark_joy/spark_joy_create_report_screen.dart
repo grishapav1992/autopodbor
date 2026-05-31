@@ -625,7 +625,14 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _loadDraftIntoState(draft: draft, assignment: assignment, now: now);
 
     _finalizeInitializationAfterDraftLoad();
-    unawaited(_loadTagIdsFromServer());
+    // Tag id resolution / custom-tag seeding only matters while editing — it
+    // resolves name→id for newly picked/created tags and seeds editable
+    // custom-tag chips. A read-only view of a completed report already carries
+    // its tags from the hydrator, so skip the per-section GetUserTags fan-out
+    // entirely when just viewing (B19).
+    if (!widget.readOnly) {
+      unawaited(_loadTagIdsFromServer());
+    }
 
     // Jump straight to the summary step for read-only views of completed
     // reports — opening a completed report from the list should land on
