@@ -161,6 +161,64 @@ Future<String?> _resolveSparkJoyVideoThumb(String videoPath) async {
   });
 }
 
+/// Same serialized/disk-cached thumbnail path as [_resolveSparkJoyVideoThumb],
+/// but for a REMOTE video (a presigned S3 URL from a completed report) — the
+/// local-file variant bails because there's no file on disk, so completed
+/// reports showed videos without previews. iOS' AVAssetImageGenerator streams
+/// only the first frame from the URL (it doesn't download the whole file).
+///
+/// [cacheKey] must be STABLE per video (the filename) — the presigned URL's
+/// signature changes every session, so keying by the URL would re-decode every
+/// time. Goes through the same single-decoder gate + post-decode delay, so the
+/// OOM guarantees of the OOM campaign still hold.
+Future<String?> _resolveSparkJoyVideoThumbRemote(
+  String url,
+  String cacheKey,
+) async {
+  if (url.isEmpty || cacheKey.isEmpty) return null;
+  final memo = _sparkJoyVideoThumbDiskCache[cacheKey];
+  if (memo != null && await File(memo).exists()) return memo;
+  return _sparkJoyVideoThumbGate.withSlot<String?>(() async {
+    var didDecode = false;
+    try {
+      final cacheRoot = await getApplicationCacheDirectory();
+      final cacheDir = Directory(
+        '${cacheRoot.path}/${SparkJoyStorage.thumbsSubdirName}',
+      );
+      if (!await cacheDir.exists()) {
+        await cacheDir.create(recursive: true);
+      }
+      final key =
+          'remote_${cacheKey.hashCode.toUnsigned(32).toRadixString(16)}.jpg';
+      final outPath = '${cacheDir.path}/$key';
+      if (await File(outPath).exists()) {
+        _sparkJoyVideoThumbDiskCache[cacheKey] = outPath;
+        return outPath;
+      }
+      didDecode = true;
+      final generated = await VideoThumbnail.thumbnailFile(
+        video: url,
+        thumbnailPath: outPath,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 300,
+        maxHeight: 300,
+        timeMs: 0,
+        quality: 70,
+      );
+      if (generated == null || generated.isEmpty) return null;
+      if (!await File(generated).exists()) return null;
+      _sparkJoyVideoThumbDiskCache[cacheKey] = generated;
+      return generated;
+    } catch (_) {
+      return null;
+    } finally {
+      if (didDecode) {
+        await Future<void>.delayed(_sparkJoyVideoThumbInterDelay);
+      }
+    }
+  });
+}
+
 class _SparkJoyVideoThumbnail extends StatelessWidget {
   const _SparkJoyVideoThumbnail({this.thumbPath, this.fit = BoxFit.cover});
 

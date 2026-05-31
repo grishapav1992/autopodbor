@@ -87,8 +87,19 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
       final existing = item.videoThumbPath;
       if (existing != null && await File(existing).exists()) continue;
       final localPath = _extractLocalMediaPath(item.dataUrl);
-      if (localPath == null) continue;
-      final thumb = await _resolveSparkJoyVideoThumb(localPath);
+      final String? thumb;
+      if (localPath != null) {
+        thumb = await _resolveSparkJoyVideoThumb(localPath);
+      } else if (item.dataUrl.trim().startsWith('http')) {
+        // Completed-report video: remote presigned URL. Generate the preview
+        // from the URL (AVFoundation streams just the first frame), keyed by the
+        // stable filename so the presigned-signature churn doesn't re-decode
+        // every session. Without this, completed reports showed videos without
+        // any thumbnail.
+        thumb = await _resolveSparkJoyVideoThumbRemote(item.dataUrl, item.name);
+      } else {
+        continue;
+      }
       if (!mounted) return;
       if (thumb == null) continue;
       _setStateSafely(() {
