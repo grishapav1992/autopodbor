@@ -156,6 +156,56 @@ Widget _buildSparkJoyLegalFilesCard(
 /// Форма `responseNormalized` зависит от типа проверки, поэтому показываем
 /// её обобщённо (строка как есть / JSON), а детальный рендер допилим после
 /// первого live-прогона.
+/// Человекочитаемый статус проверки ApiCloud.
+String _legalCheckStatusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case 'completed':
+    case 'done':
+    case 'success':
+      return 'готово';
+    case 'found':
+      return 'найдено';
+    case 'not_found':
+      return 'не найдено';
+    case 'failed':
+    case 'error':
+      return 'ошибка';
+    case 'pending':
+    case 'processing':
+    case 'in_progress':
+    case 'running':
+      return 'в обработке';
+    default:
+      return status.isEmpty ? '—' : status;
+  }
+}
+
+/// `responseNormalized` приходит JSON-строкой (напр. `"{\"found\": false}"`),
+/// реже — уже объектом. Декодируем и показываем читабельно (`key: value`),
+/// иначе — как есть.
+String _legalNormalizedToText(dynamic normalized) {
+  if (normalized == null) return '';
+  dynamic decoded = normalized;
+  if (normalized is String) {
+    final s = normalized.trim();
+    if (s.isEmpty) return '';
+    try {
+      decoded = jsonDecode(s);
+    } catch (_) {
+      return s;
+    }
+  }
+  if (decoded is Map) {
+    final parts = <String>[];
+    decoded.forEach((k, v) {
+      parts.add('$k: ${v is String ? v : jsonEncode(v)}');
+    });
+    return parts.join('\n');
+  }
+  if (decoded is List) return jsonEncode(decoded);
+  return decoded.toString();
+}
+
 List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
   final results = s._legalCheckResults;
   if (results.isEmpty) return const <Widget>[];
@@ -170,10 +220,7 @@ List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
       final type = (c['checkType'] ?? '').toString();
       final title = nameByValue[type] ?? (type.isEmpty ? 'Проверка' : type);
       final status = (c['status'] ?? '').toString();
-      final normalized = c['responseNormalized'];
-      final summary = normalized == null
-          ? ''
-          : (normalized is String ? normalized : jsonEncode(normalized));
+      final summary = _legalNormalizedToText(c['responseNormalized']);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: SparkSpace.sm),
         child: Column(
@@ -185,7 +232,7 @@ List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
               weight: FontWeight.w600,
             ),
             MyText(
-              text: 'Статус: $status',
+              text: 'Статус: ${_legalCheckStatusLabel(status)}',
               size: SparkTextSize.caption,
               color: kGreyColor,
             ),

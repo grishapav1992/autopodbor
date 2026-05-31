@@ -368,8 +368,21 @@ Future<List<Map<String, dynamic>>> _buildLegalCheckResults(
     if (embedded.isNotEmpty) return embedded;
   }
 
-  // (б) дотянуть по stepId, затем по batchIds.
+  // (б) дотянуть: batchIds приоритетнее — GetBatchLegalReviewResults содержит
+  // `responseNormalized` (а GetLegalReviewChecks по stepId — нет). stepId как
+  // fallback (метаданные без нормализованного ответа).
   try {
+    final batchIds = legalStep['batchIds'];
+    if (batchIds is List && batchIds.isNotEmpty) {
+      final batchNumber = batchIds.first.toString().trim();
+      if (batchNumber.isNotEmpty) {
+        final res = await storage_api.StorageApi.getBatchLegalReviewResults(
+          batchNumber: batchNumber,
+        );
+        final byBatch = asMapList(res['checks']);
+        if (byBatch.isNotEmpty) return byBatch;
+      }
+    }
     final stepIdRaw = legalStep['legalReviewStepId'] ?? legalStep['id'];
     final stepId = stepIdRaw is int
         ? stepIdRaw
@@ -381,17 +394,6 @@ Future<List<Map<String, dynamic>>> _buildLegalCheckResults(
       );
       final byStep = asMapList(res['checks']);
       if (byStep.isNotEmpty) return byStep;
-    }
-    final batchIds = legalStep['batchIds'];
-    if (batchIds is List && batchIds.isNotEmpty) {
-      final batchNumber = batchIds.first.toString().trim();
-      if (batchNumber.isNotEmpty) {
-        final res = await storage_api.StorageApi.getBatchLegalReviewResults(
-          batchNumber: batchNumber,
-        );
-        final byBatch = asMapList(res['checks']);
-        if (byBatch.isNotEmpty) return byBatch;
-      }
     }
   } catch (e) {
     debugPrint('[CompletedReportHydrator] legal checks fetch failed: $e');
