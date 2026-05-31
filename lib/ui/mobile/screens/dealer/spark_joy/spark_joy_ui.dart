@@ -1,7 +1,5 @@
 import 'dart:convert';
 
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -318,27 +316,21 @@ class SparkInitialsAvatar extends StatelessWidget {
   Widget build(BuildContext context) {
     final url = imageUrl;
     if (url != null && url.isNotEmpty) {
-      // На web cached_network_image ненадёжен (часто молча падает в
-      // errorWidget, особенно когда S3 отдаёт Content-Type:
-      // binary/octet-stream вместо image/*). Image.network на вебе
-      // сниффит байты сам и рисует корректно. На нативе оставляем
-      // CachedNetworkImage ради дискового кэша.
-      final Widget networkImage = kIsWeb
-          ? Image.network(
-              url,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              errorBuilder: (_, _, _) => _buildInitials(),
-            )
-          : CachedNetworkImage(
-              imageUrl: url,
-              width: size,
-              height: size,
-              fit: BoxFit.cover,
-              placeholder: (_, _) => _buildInitials(),
-              errorWidget: (_, _, _) => _buildInitials(),
-            );
+      // Verified 2026-05-31 against the live backend: avatars come from
+      // S3 (regru) with `Content-Type: binary/octet-stream`, not image/*.
+      // cached_network_image silently drops such responses into its
+      // errorWidget (→ initials) — this is why staff/company avatars
+      // weren't showing (B9). Image.network sniffs the magic bytes itself
+      // and renders regardless of the content-type, on every platform, so
+      // we use it unconditionally. Avatars are tiny (~140 KB), so losing
+      // the disk cache is a non-issue; ImageCache still dedupes in-memory.
+      final Widget networkImage = Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _buildInitials(),
+      );
       return ClipOval(child: networkImage);
     }
     final bytes = _decode();
