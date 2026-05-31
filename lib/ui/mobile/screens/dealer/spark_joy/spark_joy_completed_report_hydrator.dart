@@ -101,6 +101,12 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   }
   _collectLegalFilenames(legalReviewStep, filenames);
 
+  // Listing PDF (snapshot of the ad) lives in S3 by key under the carStep —
+  // surfaced as `listingPdfFile` by _normalizeSpecialistReportMap. Resolve
+  // it to a presigned view URL alongside the media (B14).
+  final listingPdfFile = (server['listingPdfFile'] ?? '').toString().trim();
+  if (listingPdfFile.isNotEmpty) filenames.add(listingPdfFile);
+
   // 2. Batch-resolve URLs (concurrency-limited).
   final urls = reportNumber.isEmpty || filenames.isEmpty
       ? const <String, String>{}
@@ -198,11 +204,15 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   // the touched flag to `true` — otherwise read-only summary shows
   // "Заключение не указано" even when the real value is present.
   final serverExpert = (server['expertConclusion'] ?? '').toString().trim();
+  final listingPdfUrl = listingPdfFile.isEmpty
+      ? ''
+      : (urls[listingPdfFile] ?? '');
   final draft = <String, dynamic>{
     ...server,
     if (frameMeta != null) ..._frameMetaToDraftKeys(frameMeta),
     if (frameId != null && frameId > 0)
       'modelGenerationRestylingFrameId': frameId,
+    if (listingPdfUrl.isNotEmpty) 'listingPdfUrl': listingPdfUrl,
     if (serverExpert.isNotEmpty) 'expertConclusionTouched': true,
     'mediaGroupsState': mediaGroupsState,
     if (legalFiles.isNotEmpty) 'legalFiles': legalFiles,

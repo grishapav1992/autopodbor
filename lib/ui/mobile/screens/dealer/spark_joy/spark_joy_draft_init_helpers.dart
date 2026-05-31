@@ -108,6 +108,7 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _restylingLabel = _read(draft, 'restyling');
     _carPhotoUrl = _read(draft, 'carPhotoUrl');
     _carFrames = _read(draft, 'carFrames');
+    _listingPdfUrl = _read(draft, 'listingPdfUrl');
     // Draft-shape key + fallback to the characteristicsStep.* path the
     // server response uses. Lets hydrateCompletedReport piggy-back on
     // `_normalizeSpecialistReportMap` without extra flattening.

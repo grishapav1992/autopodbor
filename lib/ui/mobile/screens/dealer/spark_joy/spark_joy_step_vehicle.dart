@@ -271,6 +271,44 @@ Widget _buildSparkJoyStepVehicle(
                 ).requestFocus(s._inspectionCityFocusNode);
               },
             ),
+            // PDF-снимок объявления (carStep listing file/pdf, резолвится
+            // гидратором из S3-ключа) — доступен при просмотре отчёта (B14).
+            if (s._listingPdfUrl.trim().isNotEmpty) ...[
+              const SizedBox(height: SparkSpace.md),
+              InkWell(
+                borderRadius: BorderRadius.circular(SparkRadius.md),
+                onTap: () => s._openListingPdf(),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.sm,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kSecondaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(SparkRadius.md),
+                    border: Border.all(
+                      color: kSecondaryColor.withValues(alpha: 0.35),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.picture_as_pdf_rounded,
+                        color: kSecondaryColor,
+                        size: SparkSize.iconMd,
+                      ),
+                      SizedBox(width: SparkSpace.sm),
+                      MyText(
+                        text: 'Открыть PDF объявления',
+                        size: SparkTextSize.body,
+                        weight: FontWeight.w700,
+                        color: kSecondaryColor,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -581,5 +619,29 @@ class _PlateCountryPickerSheet extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+extension _SparkJoyListingPdf on _SparkJoyCreateReportScreenState {
+  /// Opens the presigned listing-PDF URL externally (B14).
+  Future<void> _openListingPdf() async {
+    final raw = _listingPdfUrl.trim();
+    if (raw.isEmpty) return;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Некорректная ссылка на PDF')),
+      );
+      return;
+    }
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Не удалось открыть PDF')));
+    }
   }
 }

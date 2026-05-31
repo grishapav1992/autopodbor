@@ -1171,6 +1171,20 @@ class StorageApi {
     }
     final uriListing = _extractString(carStep, ['uriListing']);
     if (uriListing.isNotEmpty) normalized['adLink'] = uriListing;
+    // carStep also carries a generated listing snapshot stored in S3 by key
+    // (the «listing file / listing pdf»). We surface the key here; the
+    // completed-report hydrator resolves it to a presigned view URL (B14).
+    final listingPdfKey = _extractString(carStep, [
+      'listingPdf',
+      'listing_pdf',
+      'listingFile',
+      'listing_file',
+      'listingPdfFile',
+      'listingFileKey',
+      'listingPdfKey',
+      'pdfListing',
+    ]);
+    if (listingPdfKey.isNotEmpty) normalized['listingPdfFile'] = listingPdfKey;
 
     // ---- characteristicsStep → flat ----
     final color = _extractString(characteristicsStep, ['color']);

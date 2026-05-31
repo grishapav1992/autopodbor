@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
@@ -151,6 +152,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   late String _restylingLabel;
   late String _carPhotoUrl;
   late String _carFrames;
+  // Presigned view URL of the generated listing PDF (resolved by the
+  // completed-report hydrator from the carStep S3 key) — shown read-only
+  // in the vehicle step (B14). Empty for drafts / reports without one.
+  String _listingPdfUrl = '';
   int? _modelGenerationRestylingFrameId;
 
   late final TextEditingController _mileageController;
