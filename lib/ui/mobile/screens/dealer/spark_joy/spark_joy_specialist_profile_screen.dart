@@ -23,6 +23,11 @@ import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
+/// Result of the email-code dialog. `editEmail` lets the user bail out of a
+/// code sent to a wrong address and correct the email instead of being stuck
+/// with only «Отмена» / «Подтвердить» (B4).
+enum _EmailVerifyAction { confirm, cancel, editEmail }
+
 class SparkJoySpecialistProfileScreen extends StatefulWidget {
   const SparkJoySpecialistProfileScreen({
     super.key,
@@ -1296,7 +1301,7 @@ class _SparkJoySpecialistProfileScreenState
     if (_isVerifyingEmail) return;
     var codeValue = '';
     String? codeError;
-    final confirmed = await showDialog<bool>(
+    final action = await showDialog<_EmailVerifyAction>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
@@ -1309,7 +1314,7 @@ class _SparkJoySpecialistProfileScreenState
                 );
                 return;
               }
-              Navigator.of(dialogContext).pop(true);
+              Navigator.of(dialogContext).pop(_EmailVerifyAction.confirm);
             }
 
             return AlertDialog(
@@ -1367,12 +1372,26 @@ class _SparkJoySpecialistProfileScreenState
                       },
                       onSubmitted: (_) => submit(),
                     ),
+                    const SizedBox(height: SparkSpace.sm),
+                    const Text(
+                      'Ошиблись адресом? Нажмите «Изменить email» — '
+                      'отправим код заново.',
+                      style: TextStyle(fontSize: 12, color: kGreyColor),
+                    ),
                   ],
                 ),
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                  onPressed: () => Navigator.of(
+                    dialogContext,
+                  ).pop(_EmailVerifyAction.editEmail),
+                  child: const Text('Изменить email'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(
+                    dialogContext,
+                  ).pop(_EmailVerifyAction.cancel),
                   child: const Text('Отмена'),
                 ),
                 ElevatedButton(
@@ -1385,7 +1404,15 @@ class _SparkJoySpecialistProfileScreenState
         );
       },
     );
-    if (confirmed != true || !mounted) return;
+    if (!mounted) return;
+    if (action == _EmailVerifyAction.editEmail) {
+      // Пользователь понял, что код ушёл на неверный адрес — даём
+      // исправить email прямо отсюда. _editEmailSheet → _saveProfile
+      // перешлёт код на новый адрес (B4).
+      await _editEmailSheet();
+      return;
+    }
+    if (action != _EmailVerifyAction.confirm) return;
 
     setState(() => _isVerifyingEmail = true);
     final messenger = ScaffoldMessenger.of(context);
