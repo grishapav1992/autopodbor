@@ -690,6 +690,12 @@ class _SparkJoySpecialistRequestDetailScreenState
   Future<Map<String, dynamic>> _createRequestDraft(int requestId) async {
     final now = DateTime.now();
     final car = (_cars != null && _cars!.isNotEmpty) ? _cars!.first : null;
+    // Prefer the detailed car object; fall back to the bare car string from
+    // the request payload so the draft still prefills brand/model even when
+    // GetRequestCar returns nothing (B13).
+    final carFields = car != null
+        ? _draftCarFields(car)
+        : _draftCarFieldsFromTitle(_carTitleFromDetail(null));
     final draft = <String, dynamic>{
       'id': 'spark_draft_${now.microsecondsSinceEpoch}',
       'requestId': requestId,
@@ -701,10 +707,23 @@ class _SparkJoySpecialistRequestDetailScreenState
       'lastSavedAtIso': now.toIso8601String(),
       'status': 'in_progress',
       'inspectionCity': _str('city').trim(),
-      if (car != null) ..._draftCarFields(car),
+      ...carFields,
     };
     await SparkJoyStorage.upsertDraft(draft);
     return draft;
+  }
+
+  /// Builds car fields from a plain «Бренд Модель» string (used when only the
+  /// request's bare car string is available, not the detailed object).
+  Map<String, dynamic> _draftCarFieldsFromTitle(String title) {
+    final clean = title.trim();
+    if (clean.isEmpty) return const <String, dynamic>{};
+    final parts = clean.split(RegExp(r'\s+'));
+    return <String, dynamic>{
+      'car': clean,
+      if (parts.isNotEmpty) 'brand': parts.first,
+      if (parts.length > 1) 'model': parts.sublist(1).join(' '),
+    };
   }
 
   String _requestReportName(Map<String, dynamic>? car) {
@@ -718,13 +737,26 @@ class _SparkJoySpecialistRequestDetailScreenState
     return 'Отчёт по заявке';
   }
 
+  // Brand/model arrive in TWO shapes depending on endpoint: a nested object
+  // ({name}/{model|name}) from the detailed GetRequestCar, or a bare string
+  // from the list payload. The request card already handles both — these
+  // mirror that so the draft prefill never ends up empty (B13: «автомобиль
+  // из заявки не подгружается»).
+  String _carBrandName(dynamic brand) {
+    if (brand is Map) return (brand['name'] ?? '').toString().trim();
+    return (brand ?? '').toString().trim();
+  }
+
+  String _carModelName(dynamic model) {
+    if (model is Map) {
+      return (model['model'] ?? model['name'] ?? '').toString().trim();
+    }
+    return (model ?? '').toString().trim();
+  }
+
   Map<String, dynamic> _draftCarFields(Map<String, dynamic> car) {
-    final brand = car['brand'];
-    final model = car['model'];
-    final brandName = (brand is Map) ? (brand['name'] ?? '').toString() : '';
-    final modelName = (model is Map)
-        ? (model['model'] ?? model['name'] ?? '').toString()
-        : '';
+    final brandName = _carBrandName(car['brand']);
+    final modelName = _carModelName(car['model']);
     final generation = (car['generation'] ?? '').toString().trim();
     final restylings = car['restyling'] ?? car['restylings'];
     var restylingLabel = '';
@@ -732,19 +764,27 @@ class _SparkJoySpecialistRequestDetailScreenState
       final first = restylings.first;
       if (first is Map) {
         restylingLabel = (first['restyling'] ?? '').toString().trim();
+      } else {
+        restylingLabel = first.toString().trim();
       }
+    } else if (restylings is String) {
+      restylingLabel = restylings.trim();
     }
     final carTitle = [
-      brandName.trim(),
-      modelName.trim(),
+      brandName,
+      modelName,
     ].where((s) => s.isNotEmpty).join(' ');
+    final adLink = (car['url'] ?? car['listingUrl'] ?? car['adLink'] ?? '')
+        .toString()
+        .trim();
+    final vin = (car['vin'] ?? '').toString().trim();
     return <String, dynamic>{
-      if (brandName.trim().isNotEmpty) 'brand': brandName.trim(),
-      if (modelName.trim().isNotEmpty) 'model': modelName.trim(),
+      if (brandName.isNotEmpty) 'brand': brandName,
+      if (modelName.isNotEmpty) 'model': modelName,
       if (generation.isNotEmpty) 'generation': generation,
       if (restylingLabel.isNotEmpty) 'restyling': restylingLabel,
-      if ((car['url'] ?? '').toString().trim().isNotEmpty)
-        'adLink': (car['url'] ?? '').toString().trim(),
+      if (adLink.isNotEmpty) 'adLink': adLink,
+      if (vin.isNotEmpty) 'vin': vin,
       if (carTitle.isNotEmpty) 'car': carTitle,
     };
   }
@@ -755,15 +795,9 @@ class _SparkJoySpecialistRequestDetailScreenState
       if (cars is List && cars.isNotEmpty) return cars.first.toString();
       return '';
     }
-    final brand = car['brand'];
-    final model = car['model'];
-    final brandName = (brand is Map) ? (brand['name'] ?? '').toString() : '';
-    final modelName = (model is Map)
-        ? (model['model'] ?? model['name'] ?? '').toString()
-        : '';
     return [
-      brandName.trim(),
-      modelName.trim(),
+      _carBrandName(car['brand']),
+      _carModelName(car['model']),
     ].where((s) => s.isNotEmpty).join(' ');
   }
 
