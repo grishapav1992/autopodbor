@@ -24,8 +24,13 @@ class _CreateRequestCacheEntry {
 class _TokenPair {
   final String accessToken;
   final String refreshToken;
+  final String? notificationToken;
 
-  const _TokenPair({required this.accessToken, required this.refreshToken});
+  const _TokenPair({
+    required this.accessToken,
+    required this.refreshToken,
+    this.notificationToken,
+  });
 }
 
 class _MapPage {
@@ -626,6 +631,13 @@ class StorageApi {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
       );
+      // Replace the notification token too when the refresh returns one —
+      // otherwise the realtime WS keeps using the stale (expired) token and
+      // never recovers after the 72h TTL (B18).
+      final notifToken = tokens.notificationToken;
+      if (notifToken != null && notifToken.isNotEmpty) {
+        await UserSimplePreferences.setNotificationToken(notifToken);
+      }
       return true;
     } catch (_) {
       return false;
@@ -648,6 +660,12 @@ class StorageApi {
 
   static _TokenPair? _extractTokens(Map<String, dynamic> data) {
     final result = _asMap(data['result']);
+    const notificationKeys = [
+      'notificationToken',
+      'notification_token',
+      'notifyToken',
+      'wsToken',
+    ];
     var accessToken = _extractString(result, [
       'accessToken',
       'access_token',
@@ -659,6 +677,9 @@ class StorageApi {
       'refresh_token',
       'refresh',
     ]);
+    // RefreshToken returns a fresh notification token too — capture it so
+    // the realtime WS can reconnect after its token expires (B18).
+    var notificationToken = _extractString(result, notificationKeys);
     if (accessToken.isEmpty || refreshToken.isEmpty) {
       accessToken = _extractString(data, [
         'accessToken',
@@ -672,8 +693,15 @@ class StorageApi {
         'refresh',
       ]);
     }
+    if (notificationToken.isEmpty) {
+      notificationToken = _extractString(data, notificationKeys);
+    }
     if (accessToken.isEmpty || refreshToken.isEmpty) return null;
-    return _TokenPair(accessToken: accessToken, refreshToken: refreshToken);
+    return _TokenPair(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+      notificationToken: notificationToken.isEmpty ? null : notificationToken,
+    );
   }
 
   static Future<AuthStartResult> auth({

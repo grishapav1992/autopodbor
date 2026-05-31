@@ -59,6 +59,11 @@ class NotificationWebsocketService {
   /// listening. Subscribe early (during controller init).
   Stream<NotificationPushEvent> get stream => _eventsController.stream;
 
+  /// Max number of token-refresh attempts before giving up for good. Each
+  /// attempt is triggered after a full burst of [_maxConsecutiveFailures]
+  /// connect failures, so this bounds the «refresh → still failing» loop.
+  static const int _maxTokenRefreshAttempts = 2;
+
   WebSocketChannel? _channel;
   StreamSubscription<dynamic>? _channelSub;
   Timer? _reconnectTimer;
@@ -68,6 +73,15 @@ class NotificationWebsocketService {
   bool _shouldReconnect = false;
   int _consecutiveFailures = 0;
   bool _markedDead = false;
+  bool _refreshingToken = false;
+  int _tokenRefreshAttempts = 0;
+
+  /// Optional hook that refreshes the auth/notification tokens and returns a
+  /// fresh notification token (or null on failure). Wired by the controller
+  /// so the data-layer WS client doesn't hard-depend on StorageApi. When set,
+  /// repeated connect failures trigger a refresh + reconnect instead of the
+  /// channel dying until the next re-login (B18).
+  Future<String?> Function()? onTokenRefresh;
 
   /// True when the underlying channel is open and ready to receive.
   bool get isConnected => _channel != null && _channelSub != null;
@@ -91,6 +105,7 @@ class NotificationWebsocketService {
     _currentBackoff = _initialBackoff;
     _consecutiveFailures = 0;
     _markedDead = false;
+    _tokenRefreshAttempts = 0;
     await _closeChannel();
     _connect();
   }
@@ -219,11 +234,22 @@ class NotificationWebsocketService {
     if (_reconnectTimer?.isActive == true) return;
     _consecutiveFailures += 1;
     if (_consecutiveFailures >= _maxConsecutiveFailures) {
+      // Before declaring the channel dead, try refreshing the tokens — a
+      // burst of failures usually means the notification token expired
+      // (TTL 72h). If the refresh yields a fresh token we reconnect with it
+      // instead of forcing a re-login (B18).
+      if (onTokenRefresh != null &&
+          !_refreshingToken &&
+          _tokenRefreshAttempts < _maxTokenRefreshAttempts) {
+        // ignore: discarded_futures
+        _attemptTokenRefreshAndReconnect();
+        return;
+      }
       _markedDead = true;
       _shouldReconnect = false;
       _log(
         'giving up after $_consecutiveFailures consecutive failures — '
-        'token likely expired (TTL 72h). Re-login required.',
+        'token refresh exhausted. Re-login required.',
       );
       // Don't await — caller is in a sync callback path.
       // ignore: discarded_futures
@@ -245,6 +271,43 @@ class NotificationWebsocketService {
       _currentBackoff.inSeconds * 2,
     );
     _currentBackoff = Duration(seconds: nextSeconds);
+  }
+
+  /// Runs [onTokenRefresh]; on a fresh token, reconnects with it and resets
+  /// the failure counter. On failure, marks the channel dead (B18).
+  Future<void> _attemptTokenRefreshAndReconnect() async {
+    if (_refreshingToken) return;
+    _refreshingToken = true;
+    _tokenRefreshAttempts += 1;
+    _log(
+      'token refresh attempt $_tokenRefreshAttempts after '
+      '$_consecutiveFailures failures',
+    );
+    try {
+      final fresh = await onTokenRefresh?.call();
+      if (_disposed || !_shouldReconnect) return;
+      if (fresh != null && fresh.isNotEmpty) {
+        _token = fresh;
+        _consecutiveFailures = 0;
+        _currentBackoff = _initialBackoff;
+        _markedDead = false;
+        _log('token refreshed — reconnecting');
+        await _closeChannel();
+        _connect();
+        return;
+      }
+      _markedDead = true;
+      _shouldReconnect = false;
+      _log('token refresh returned no token — giving up. Re-login required.');
+      await _closeChannel();
+    } catch (e) {
+      _markedDead = true;
+      _shouldReconnect = false;
+      _log('token refresh failed ($e) — giving up. Re-login required.');
+      await _closeChannel();
+    } finally {
+      _refreshingToken = false;
+    }
   }
 
   static Duration _withJitter(Duration base) {

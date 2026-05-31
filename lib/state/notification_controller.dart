@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import 'package:flutter_application_1/data/api/notification_api.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/notification_websocket_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_request_refresh_bus.dart';
@@ -68,6 +69,14 @@ class NotificationController extends GetxController {
     }
     _pushSub ??= NotificationWebsocketService.instance.stream
         .listen(_onPushEvent);
+    // Let the WS recover from an expired notification token: on repeated
+    // disconnects it refreshes all tokens and reconnects with the fresh
+    // notification token instead of dying until re-login (B18).
+    NotificationWebsocketService.instance.onTokenRefresh = () async {
+      final refreshed = await StorageApi.tryRefreshTokens();
+      if (!refreshed) return null;
+      return UserSimplePreferences.getNotificationToken();
+    };
     await NotificationWebsocketService.instance.start(token);
     await reload();
   }
