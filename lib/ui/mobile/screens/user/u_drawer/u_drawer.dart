@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import 'package:flutter_application_1/app/main.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
-import 'package:flutter_application_1/ui/common/widgets/common_image_view_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_specialist_profile_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
 
 class UDrawer extends StatefulWidget {
@@ -96,11 +95,16 @@ class _UDrawerState extends State<UDrawer> {
               children: [
                 Row(
                   children: [
-                    CommonImageView(
-                      height: 58,
-                      width: 58,
-                      radius: 100.0,
-                      url: _avatarUrl.isNotEmpty ? _avatarUrl : dummyImg,
+                    // SparkInitialsAvatar (not CommonImageView) so the S3
+                    // avatar renders despite its binary/octet-stream
+                    // Content-Type, with initials as the fallback (B9/B1).
+                    SparkInitialsAvatar(
+                      name: _name.isNotEmpty ? _name : 'Профиль',
+                      size: 58,
+                      textSize: 20,
+                      backgroundColor: kWhiteColor.withValues(alpha: 0.2),
+                      textColor: kWhiteColor,
+                      imageUrl: _avatarUrl.isEmpty ? null : _avatarUrl,
                     ),
                   ],
                 ),
