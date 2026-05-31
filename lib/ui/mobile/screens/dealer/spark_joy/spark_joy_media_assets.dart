@@ -84,6 +84,18 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     );
   }
 
+  /// First non-empty per-file note in [files], or '' when none carry one.
+  /// The group-level note is a cache over the per-file notes; deriving it
+  /// from the files (which always reflect the latest apply) instead of a
+  /// stale group value is what lets a cleared note stay cleared (B16).
+  String _firstNonEmptyFileNote(List<UploadedItem> files) {
+    for (final file in files) {
+      final note = file.inspection.note.trim();
+      if (note.isNotEmpty) return note;
+    }
+    return '';
+  }
+
   MediaPartInspection _syncPartInspectionWithFiles({
     required MediaPartInspection partInspection,
     required List<UploadedItem> files,
@@ -158,9 +170,13 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     return MediaPartInspection(
       noDamage: aggregateNoDamage,
       tags: filteredTags,
-      note: partInspection.note.trim().isEmpty
-          ? fallbackNote.trim()
-          : partInspection.note.trim(),
+      // Prefer the editor's explicit note; when it's empty derive from the
+      // files (which already reflect the latest per-file apply) rather than
+      // the stale group-level `fallbackNote`. Otherwise clearing a photo's
+      // note resurrected the previous group note on the next sync (B16).
+      note: partInspection.note.trim().isNotEmpty
+          ? partInspection.note.trim()
+          : _firstNonEmptyFileNote(files),
       elementType: (partInspection.elementType ?? '').trim().isEmpty
           ? null
           : partInspection.elementType,

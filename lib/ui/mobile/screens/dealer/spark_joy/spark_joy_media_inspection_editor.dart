@@ -1111,9 +1111,11 @@ extension _SparkJoyMediaInspectionEditorMethods
       );
       final hasIssue = nextFiles.any(_mediaItemHasIssue);
       _mediaState[groupKey] = current.copyWith(
-        note: nextPartInspection.note.trim().isEmpty
-            ? current.note
-            : nextPartInspection.note.trim(),
+        // Allow an explicitly cleared note to win — falling back to
+        // current.note here used to resurrect the old group note right
+        // after the user emptied a photo's note (B16). nextPartInspection
+        // already derives the note from the updated files.
+        note: nextPartInspection.note.trim(),
         files: nextFiles,
         hasIssue: hasIssue,
         partInspection: nextPartInspection,
