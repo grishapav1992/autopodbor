@@ -33,6 +33,30 @@ void main() {
 
       expectNoHumanRole(cliche);
     });
+
+    test('report-facts cliche has no buy/refuse verdict or prescriptions', () {
+      final cliche = AiQueueClicheBuilder.buildReportFactsCliche(
+        reportLabel: 'Осмотр Kia Rio',
+        carContext: 'Kia Rio, 2020, 1.6, АКПП',
+      );
+
+      // Verdict marker and its buy/refuse variants are gone (B15).
+      expect(cliche, isNot(contains('РЕКОМЕНДАЦИЯ')));
+      expect(cliche, isNot(contains('рекомендуется к покупке')));
+      expect(cliche, isNot(contains('не рекомендуется')));
+      // The template still drives the descriptive structure.
+      expect(cliche, contains('Кузов:'));
+      expect(cliche, contains('Не осмотрено'));
+    });
+
+    test('legal cliche does not advise client actions', () {
+      final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
+        filesCount: 2,
+        fileNames: const ['ПТС', 'СТС'],
+      );
+
+      expect(cliche, isNot(contains('рекомендуются клиенту')));
+    });
   });
 }
 
