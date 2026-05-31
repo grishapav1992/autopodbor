@@ -544,6 +544,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _backendUploadState(Map<String, dynamic> value) =>
       _reportController.backendUploadState.value = value;
 
+  // Transient flag — set when the user taps «Отменить выгрузку» mid-upload.
+  // Checked between files and before finalizing so the report isn't
+  // submitted, and open multipart sessions are aborted (B17). Reset at the
+  // start of every upload run.
+  bool _uploadCancelled = false;
+
   bool get _backendUploadInProgress =>
       _reportController.backendUploadInProgress.value;
   set _backendUploadInProgress(bool value) =>

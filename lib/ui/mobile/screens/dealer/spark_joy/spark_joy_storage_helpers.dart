@@ -1984,6 +1984,48 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     await _persistBackendUploadStateToDraft();
   }
 
+  /// User-initiated cancel of an in-flight report upload (B17). Sets the
+  /// flag the upload loop polls between files and before finalizing; the
+  /// open multipart sessions are aborted in [_uploadReportToBackend] once
+  /// the in-flight part PUTs drain.
+  void _requestUploadCancel() {
+    if (!_backendFileUploadLocked || _uploadCancelled) return;
+    _uploadCancelled = true;
+    _setBackendUploadProgress(
+      inProgress: true,
+      statusText: 'Отмена выгрузки...',
+    );
+  }
+
+  /// Aborts every open (non-completed) multipart session for [reportNumber]
+  /// and clears the upload state so a later retry starts clean. Same call
+  /// as the stale-cleanup path, minus the TTL gate.
+  Future<void> _abortAllOpenMultipartUploads({
+    required String reportNumber,
+  }) async {
+    if (reportNumber.trim().isNotEmpty) {
+      final filesState = _backendUploadFilesState();
+      for (final entry in filesState.entries.toList()) {
+        final rawState = entry.value;
+        if (rawState is! Map) continue;
+        final fileState = Map<String, dynamic>.from(rawState);
+        if (_uploadStateBool(fileState, 'completed')) continue;
+        final uploadId = _uploadStateText(fileState, 'uploadId');
+        final filename = _uploadStateText(fileState, 'filename');
+        if (uploadId.isEmpty || filename.isEmpty) continue;
+        try {
+          await storage_api.StorageApi.abortMultipartUpload(
+            reportNumber: reportNumber,
+            filename: filename,
+            uploadId: uploadId,
+          );
+        } catch (_) {}
+      }
+    }
+    _backendUploadState = <String, dynamic>{};
+    await _persistBackendUploadStateToDraft();
+  }
+
   Future<bool> _uploadItemWithMultipart({
     required String reportNumber,
     required _SparkJoyUploadQueueItem queueItem,
@@ -1991,6 +2033,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     required int totalItems,
   }) async {
     Future<bool> runUpload() async {
+      // Bail before doing any work if the user cancelled while this file was
+      // queued for a concurrency slot (B17).
+      if (_uploadCancelled) return false;
       final item = queueItem.item;
       final sourceKey = queueItem.stateKey;
       final source = await _openUploadSource(item);
@@ -2873,6 +2918,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     final uploaded = await _uploadReportToBackend(completed);
     if (!uploaded) {
       if (!mounted) return;
+      if (_uploadCancelled) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Выгрузка отменена')),
+        );
+        return;
+      }
       final errorText = _backendUploadErrorText
           .replaceFirst(RegExp(r'^Exception:\s*'), '')
           .trim();
@@ -2904,6 +2955,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     // lock.
     if (_backendFileUploadLocked) return false;
     _backendFileUploadLocked = true;
+    _uploadCancelled = false;
     try {
       int? backendReportId = int.tryParse(
         (payload['id'] ?? payload['reportId'] ?? '').toString().trim(),
@@ -3037,7 +3089,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       await Future.wait(
         List.generate(items.length, (i) {
           return fileGate.withSlot(() async {
-            if (firstFailure != null) return;
+            if (firstFailure != null || _uploadCancelled) return;
             try {
               final uploaded = await _uploadItemWithMultipart(
                 reportNumber: reportNumber,
@@ -3061,6 +3113,23 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           });
         }),
       );
+
+      if (_uploadCancelled) {
+        // User cancelled: abort open multipart sessions, drop upload state
+        // so a retry starts fresh, and do NOT finalize the report (B17).
+        await _abortAllOpenMultipartUploads(reportNumber: reportNumber);
+        _backendUploadFailed = false;
+        _backendUploadErrorText = '';
+        _setBackendUploadProgress(
+          inProgress: false,
+          statusText: 'Выгрузка отменена',
+          currentFile: 0,
+          totalFiles: 0,
+          currentPart: 0,
+          totalParts: 0,
+        );
+        return false;
+      }
 
       if (firstFailure != null) {
         throw firstFailure!;

@@ -369,6 +369,16 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
             progress: s._backendUploadProgressValue(),
             files: s._backendUploadFilesProgress,
           ),
+          const SizedBox(height: SparkSpace.sm),
+          Align(
+            alignment: Alignment.center,
+            child: TextButton.icon(
+              onPressed: () => s._requestUploadCancel(),
+              icon: const Icon(Icons.close_rounded, size: 18),
+              label: const Text('Отменить выгрузку'),
+              style: TextButton.styleFrom(foregroundColor: kRedColor),
+            ),
+          ),
           const SizedBox(height: SparkSpace.md),
         ] else if (uploadErrorInSummary) ...[
           _buildSparkJoyUploadErrorHint(
