@@ -7,7 +7,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// стартовал новый прогон.
   Future<void> _pollLegalBatchResults(int token, String batchNumber) async {
     const interval = Duration(seconds: 3);
-    const maxAttempts = 20; // ~60s потолок
+    // ~120s потолок: live ApiCloud-проверки идут десятки секунд (zalog/taxi/
+    // converter). Недозавершённые к таймауту не теряются — hydrator подтянет
+    // их по batchIds при повторном открытии завершённого отчёта.
+    const maxAttempts = 40;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       await Future<void>.delayed(interval);
       if (!mounted || token != _legalLoadToken) return;
