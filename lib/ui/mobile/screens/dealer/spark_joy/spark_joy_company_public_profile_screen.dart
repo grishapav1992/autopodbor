@@ -76,6 +76,16 @@ class _SparkJoyCompanyPublicProfileScreenState
     return text.isEmpty ? fallback : text;
   }
 
+  /// First non-empty value across [keys] — backend field naming varies, so
+  /// we probe a few variants and surface whatever it actually returns (B8).
+  String _readAny(List<String> keys) {
+    for (final key in keys) {
+      final value = _read(key);
+      if (value.isNotEmpty) return value;
+    }
+    return '';
+  }
+
   String _companyName() {
     for (final key in const ['companyName', 'name', 'fullName', 'title']) {
       final value = _read(key);
@@ -119,6 +129,104 @@ class _SparkJoyCompanyPublicProfileScreenState
     final description = _read('description');
     final inn = _companyInn();
     final avatarUrl = _avatarUrl();
+    // Surface whatever else the backend returns — naming varies, so probe
+    // several variants per field and render only the ones present (B8).
+    final phone = _readAny(['phone', 'contactPhone', 'phoneNumber']);
+    final email = _readAny(['email', 'contactEmail']);
+    final website = _readAny(['website', 'webSite', 'site', 'url']);
+    final address = _readAny([
+      'address',
+      'legalAddress',
+      'addressLegal',
+      'companyAddress',
+    ]);
+    final ogrn = _readAny(['ogrn', 'companyOgrn', 'ogrnip']);
+    final rating = _readAny(['rating', 'ratingAverage']);
+    final staffCount = _readAny([
+      'staffCount',
+      'specialistsCount',
+      'employeesCount',
+    ]);
+    final reportsCount = _readAny(['reportsCount', 'completedReportsCount']);
+    final infoRows = <Widget>[
+      if (city.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.location_city_outlined,
+          label: 'Город',
+          value: city,
+          muted: true,
+        ),
+      if (phone.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.phone_outlined,
+          label: 'Телефон',
+          value: phone,
+          muted: true,
+        ),
+      if (email.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.email_outlined,
+          label: 'Email',
+          value: email,
+          muted: true,
+        ),
+      if (website.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.language_rounded,
+          label: 'Сайт',
+          value: website,
+          muted: true,
+        ),
+      if (address.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.location_on_outlined,
+          label: 'Адрес',
+          value: address,
+          muted: true,
+        ),
+      if (inn.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.numbers_rounded,
+          label: 'ИНН',
+          value: inn,
+          muted: true,
+        ),
+      if (ogrn.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.badge_outlined,
+          label: 'ОГРН',
+          value: ogrn,
+          muted: true,
+        ),
+      if (rating.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.star_outline_rounded,
+          label: 'Рейтинг',
+          value: rating,
+          muted: true,
+        ),
+      if (staffCount.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.groups_outlined,
+          label: 'Специалистов',
+          value: staffCount,
+          muted: true,
+        ),
+      if (reportsCount.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.description_outlined,
+          label: 'Отчётов',
+          value: reportsCount,
+          muted: true,
+        ),
+      if (description.isNotEmpty)
+        SparkProfileRow(
+          icon: Icons.notes_rounded,
+          label: 'Описание',
+          value: description,
+          muted: true,
+        ),
+    ];
 
     return SparkPageScaffold(
       appBar: AppBar(centerTitle: false, title: const Text('Профиль компании')),
@@ -184,33 +292,14 @@ class _SparkJoyCompanyPublicProfileScreenState
               vertical: SparkSpace.sm,
             ),
             child: Column(
-              children: [
-                if (city.isNotEmpty)
-                  SparkProfileRow(
-                    icon: Icons.location_city_outlined,
-                    label: 'Город',
-                    value: city,
-                    muted: true,
-                  ),
-                if (inn.isNotEmpty)
-                  SparkProfileRow(
-                    icon: Icons.numbers_rounded,
-                    label: 'ИНН',
-                    value: inn,
-                    muted: true,
-                  ),
-                if (description.isNotEmpty)
-                  SparkProfileRow(
-                    icon: Icons.notes_rounded,
-                    label: 'Описание',
-                    value: description,
-                    muted: true,
-                  ),
-                if (city.isEmpty && inn.isEmpty && description.isEmpty)
-                  const SparkHintCard(
-                    text: 'Компания пока не заполнила публичную информацию',
-                  ),
-              ],
+              children: infoRows.isEmpty
+                  ? const [
+                      SparkHintCard(
+                        text:
+                            'Компания пока не заполнила публичную информацию',
+                      ),
+                    ]
+                  : infoRows,
             ),
           ),
         ],
