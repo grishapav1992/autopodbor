@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/notification_websocket_service.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_request_refresh_bus.dart';
 
 /// Singleton controller for the realtime + paginated notification feed.
 ///
@@ -210,6 +211,10 @@ class NotificationController extends GetxController {
     _refetchTimer?.cancel();
     _refetchTimer = Timer(_refetchDebounce, () {
       reload();
+      // A push can also mean a new/changed request (e.g. a task assigned to
+      // a specialist). Signal the request lists to reload too so the
+      // «Заявки» section stays fresh without a manual pull (B11).
+      SparkJoyRequestRefreshBus.notifyChanged();
     });
   }
 

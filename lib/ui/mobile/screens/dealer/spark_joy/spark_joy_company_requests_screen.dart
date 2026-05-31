@@ -9,6 +9,7 @@ import 'spark_joy_company_request_detail_screen.dart';
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_onboarding.dart';
 import 'spark_joy_request_filter_bar.dart';
+import 'spark_joy_request_refresh_bus.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
@@ -39,10 +40,16 @@ class _SparkJoyCompanyRequestsScreenState
   bool _loading = true;
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
+  bool _reloadWhenActive = false;
 
   @override
   void initState() {
     super.initState();
+    // Refresh when a request changes elsewhere (accept from a notification,
+    // a new request push) — same cross-tab signal the specialist screen
+    // uses (B11). Before this the company list only refreshed on manual
+    // pull or after returning from the create form.
+    SparkJoyRequestRefreshBus.notifier.addListener(_onExternalRequestChanged);
     if (widget.active) {
       _load();
       _showOnboarding();
@@ -50,10 +57,28 @@ class _SparkJoyCompanyRequestsScreenState
   }
 
   @override
+  void dispose() {
+    SparkJoyRequestRefreshBus.notifier.removeListener(
+      _onExternalRequestChanged,
+    );
+    super.dispose();
+  }
+
+  void _onExternalRequestChanged() {
+    if (!mounted) return;
+    if (!widget.active) {
+      _reloadWhenActive = true;
+      return;
+    }
+    _load();
+  }
+
+  @override
   void didUpdateWidget(covariant SparkJoyCompanyRequestsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.active && !oldWidget.active) {
-      if (_requests == null) {
+      if (_requests == null || _reloadWhenActive) {
+        _reloadWhenActive = false;
         _load();
       }
       _showOnboarding();
