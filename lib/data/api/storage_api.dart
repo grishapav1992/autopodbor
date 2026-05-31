@@ -2326,6 +2326,17 @@ class StorageApi {
               'photo_url',
               'profilePhoto',
               'profile_photo',
+              // Bare variants — GetCompanySpecialists returns the avatar
+              // under a plain key while names resolve fine, so the staff
+              // list showed initials instead of the photo (B9).
+              'avatar',
+              'photo',
+              'image',
+              'picture',
+              'imageUrl',
+              'image_url',
+              'pictureUrl',
+              'picture_url',
             ]),
             description: field(['description', 'about']),
             likeUp: _asInt(m['likeUp']) ?? 0,
