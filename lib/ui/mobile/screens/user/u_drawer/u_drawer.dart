@@ -1,17 +1,83 @@
-import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_images.dart';
-import 'package:flutter_application_1/core/constants/app_sizes.dart';
-import 'package:flutter_application_1/app/main.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/edit_profile.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/profile.dart';
-import 'package:flutter_application_1/ui/common/widgets/common_image_view_widget.dart';
-import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-class UDrawer extends StatelessWidget {
+import 'package:flutter_application_1/app/main.dart';
+import 'package:flutter_application_1/core/config/routes/routes.dart';
+import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_images.dart';
+import 'package:flutter_application_1/core/constants/app_sizes.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart';
+import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/ui/common/widgets/common_image_view_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_specialist_profile_screen.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
+
+class UDrawer extends StatefulWidget {
   const UDrawer({super.key});
+
+  @override
+  State<UDrawer> createState() => _UDrawerState();
+}
+
+class _UDrawerState extends State<UDrawer> {
+  String _name = '';
+  String _email = '';
+  String _avatarUrl = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    // Seed instantly from the last cached snapshot so the header doesn't
+    // flash empty, then refresh from the server. Before this the header
+    // showed hard-coded mock data («Мелиса Томас» / mock email) (B1).
+    final cached = await SparkJoyStorage.loadSpecialistProfileOrNull();
+    if (cached != null) _applyProfile(cached);
+    try {
+      final profile = await StorageApi.getProfile();
+      _applyProfile(profile);
+    } catch (_) {
+      // Offline / session issue — keep whatever the cache gave us.
+    }
+  }
+
+  void _applyProfile(Map<String, dynamic> profile) {
+    if (!mounted) return;
+    String str(String key) => (profile[key] ?? '').toString().trim();
+    final first = str('firstName');
+    final last = str('lastName');
+    final composed = [last, first].where((p) => p.isNotEmpty).join(' ');
+    setState(() {
+      _name = composed.isNotEmpty ? composed : str('name');
+      _email = str('email');
+      final avatar = str('urlAvatar');
+      if (avatar.isNotEmpty) _avatarUrl = avatar;
+    });
+  }
+
+  /// Opens the shared, API-backed profile (name, описание услуг, email с
+  /// верификацией, название компании, аватар; телефон read-only). Reuses
+  /// [SparkJoySpecialistProfileScreen] instead of the old mock screens so
+  /// real data loads and edits actually persist via UpdateProfile (B1/B2).
+  void _openProfile() {
+    Get.to(
+      () => Scaffold(
+        appBar: AppBar(title: Text('userProfile'.tr)),
+        body: SparkJoySpecialistProfileScreen(onLogout: _logout),
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    await SparkJoyStorage.logout();
+    await UserSimplePreferences.clearAuthTokens();
+    Get.offAllNamed(AppLinks.login);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,25 +100,26 @@ class UDrawer extends StatelessWidget {
                       height: 58,
                       width: 58,
                       radius: 100.0,
-                      url: dummyImg,
+                      url: _avatarUrl.isNotEmpty ? _avatarUrl : dummyImg,
                     ),
                   ],
                 ),
                 SizedBox(height: 10),
                 MyText(
-                  text: 'Мелиса Томас',
+                  text: _name.isNotEmpty ? _name : 'Профиль',
                   size: 18,
                   color: kWhiteColor,
                   weight: FontWeight.w500,
                   paddingRight: 4,
                 ),
-                MyText(
-                  paddingTop: 6,
-                  text: 'пользователь@почта.рф',
-                  size: 14,
-                  color: kWhiteColor.withValues(alpha: 0.7),
-                  paddingBottom: 6,
-                ),
+                if (_email.isNotEmpty)
+                  MyText(
+                    paddingTop: 6,
+                    text: _email,
+                    size: 14,
+                    color: kWhiteColor.withValues(alpha: 0.7),
+                    paddingBottom: 6,
+                  ),
               ],
             ),
           ),
@@ -66,16 +133,7 @@ class UDrawer extends StatelessWidget {
                 _DrawerTile(
                   icon: Assets.imagesUserProfileIconNew,
                   title: "userProfile".tr,
-                  onTap: () {
-                    Get.to(() => Profile());
-                  },
-                ),
-                _DrawerTile(
-                  icon: Assets.imagesSettingsIconNew,
-                  title: "settings".tr,
-                  onTap: () {
-                    Get.to(() => EditProfile());
-                  },
+                  onTap: _openProfile,
                 ),
                 _DrawerTile(
                   icon: Assets.imagesPrivacyPolicyIcon,
@@ -90,7 +148,7 @@ class UDrawer extends StatelessWidget {
           _DrawerTile(
             icon: Assets.imagesLogoutIcon,
             title: "logout".tr,
-            onTap: () {},
+            onTap: _logout,
           ),
           SizedBox(height: 20),
         ],
