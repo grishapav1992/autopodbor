@@ -115,7 +115,9 @@ class _UserNavBarState extends State<UserNavBar> {
       for (int i = 0; i < maxAttempts; i++) {
         try {
           final catalog = await StorageApi.fetchBrandCatalog();
-          final sortedNames = sortMakesByPopularity(catalog.names);
+          // Backend already returns brands sorted by popularity — keep its
+          // order, don't re-sort on the frontend (T3).
+          final sortedNames = List<String>.from(catalog.names);
           if (!mounted) return;
           setState(() {
             _brandOptions = sortedNames;
@@ -144,10 +146,10 @@ class _UserNavBarState extends State<UserNavBar> {
       if (!mounted) return;
       setState(() {
         if (cached != null && cached.isNotEmpty) {
-          _brandOptions = sortMakesByPopularity(cached);
+          _brandOptions = List<String>.from(cached);
           _brandRusByName = cachedRus;
         } else if (_brandOptions.isEmpty) {
-          _brandOptions = sortMakesByPopularity(kPopularMakesRu);
+          _brandOptions = List<String>.from(kPopularMakesRu);
         }
         _brandLoading = false;
         _brandFallback = true;
@@ -576,9 +578,10 @@ class _UserNavBarState extends State<UserNavBar> {
     if (_brandFallback && !_brandLoading) {
       _loadBrands();
     }
-    final fallbackMakes = sortMakesByPopularity(
-      reports.map((r) => r['make'] as String).toSet().toList(),
-    );
+    final fallbackMakes = reports
+        .map((r) => r['make'] as String)
+        .toSet()
+        .toList();
     final allMakes = _brandOptions.isNotEmpty ? _brandOptions : fallbackMakes;
     final allModels = sortModelsByPopularity(
       '',

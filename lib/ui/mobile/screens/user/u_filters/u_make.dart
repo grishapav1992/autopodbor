@@ -47,9 +47,8 @@ class UMake extends StatelessWidget {
       'Volkswagen',
       'Volvo',
     ];
-    final items = sortMakesByPopularity(
-      {...kPopularMakesRu, ...extraMakes}.toList(),
-    );
+    // No frontend re-sort of brands — preserve source order (T3).
+    final items = {...kPopularMakesRu, ...extraMakes}.toList();
     return CustomBottomSheet(
       height: Get.height * 0.9,
       buttonText: "done".tr,

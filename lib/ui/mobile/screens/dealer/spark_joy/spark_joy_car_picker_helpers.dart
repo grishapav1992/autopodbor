@@ -185,12 +185,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     try {
       final catalog = await storage_api.StorageApi.fetchBrandCatalog();
       if (catalog.items.isNotEmpty) {
-        remoteBrands = List<storage_api.BrandItem>.from(catalog.items)
-          ..sort(
-            (a, b) => brandLabel(
-              a,
-            ).toLowerCase().compareTo(brandLabel(b).toLowerCase()),
-          );
+        // Keep the backend order — it already returns brands sorted by
+        // popularity. The previous alphabetical re-sort overrode that (T3).
+        remoteBrands = List<storage_api.BrandItem>.from(catalog.items);
         useRemoteCatalog = true;
       }
     } catch (_) {
@@ -716,11 +713,37 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                 return ListView.separated(
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
-                  itemCount: generations.length,
+                  // +1 leading row: «Без модификации» finalizes at the model
+                  // level (skip поколение/модификацию) — useful when there
+                  // is no actual modification or it's unknown.
+                  itemCount: generations.length + 1,
                   separatorBuilder: (context, index) =>
                       const Divider(height: 1),
                   itemBuilder: (context, index) {
-                    final generation = generations[index];
+                    if (index == 0) {
+                      return ListTile(
+                        leading: const Icon(
+                          Icons.check_circle_outline_rounded,
+                          color: kSecondaryColor,
+                        ),
+                        title: const Text('Без модификации'),
+                        subtitle: const Text('Остановиться на модели'),
+                        onTap: () {
+                          final brand =
+                              selectedBrand?.name ??
+                              selectedRemoteBrand?.name ??
+                              '';
+                          final model =
+                              selectedModel?.name ??
+                              selectedRemoteModel?.model ??
+                              '';
+                          Navigator.of(context).pop(
+                            buildSelectionForModel(brand: brand, model: model),
+                          );
+                        },
+                      );
+                    }
+                    final generation = generations[index - 1];
                     return ListTile(
                       title: Text('Поколение ${generation.name}'),
                       trailing: const Icon(Icons.chevron_right_rounded),

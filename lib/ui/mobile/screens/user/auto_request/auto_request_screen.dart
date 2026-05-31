@@ -448,15 +448,17 @@ class _RemoteCarCatalog {
   }
 
   static List<String> makes() {
+    // Backend brand list is already popularity-sorted — keep its order, no
+    // frontend re-sort (T3).
     if (brandNames.isNotEmpty) {
-      return sortMakesByPopularity(brandNames);
+      return List<String>.from(brandNames);
     }
 
     if (brandsLoading && !brandsFailed) {
       return [];
     }
 
-    return sortMakesByPopularity(_carCatalog.keys.toList());
+    return _carCatalog.keys.toList();
   }
 
   static List<String> modelsFor(String make) {
