@@ -1508,24 +1508,30 @@ class _SparkJoySpecialistProfileScreenState
     if (!serverSaved) return;
 
     final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('Профиль сохранён')));
-    if (emailChanged) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Email изменён — проверьте почту, потребуется повторное '
-            'подтверждение.',
-          ),
-        ),
-      );
-    }
+    // Один тост на сохранение. Раньше «Профиль сохранён» + «Email изменён»
+    // + guard-warning показывались тремя отдельными SnackBar'ами и
+    // выстраивались в очередь, всплывая друг за другом (особенно заметно
+    // при инлайн-правке города/имени — выглядело как два всплывающих
+    // окна). Схлопываем в одно сообщение и гасим предыдущее (B5).
+    messenger.clearSnackBars();
     if (guardWarning != null) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            'Описание услуг не отправлено на сервер: $guardWarning',
+            'Профиль сохранён. Описание услуг не отправлено: $guardWarning',
           ),
           backgroundColor: kRedColor,
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            emailChanged
+                ? 'Профиль сохранён. Email изменён — подтвердите по ссылке '
+                      'из письма.'
+                : 'Профиль сохранён',
+          ),
         ),
       );
     }
