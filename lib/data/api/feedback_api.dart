@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:http/http.dart' as http;
 
@@ -32,12 +33,12 @@ class FeedbackSubmitResult {
 }
 
 /// Client for the `Feedback.*` RPC family on the storage backend
-/// (`https://carreports.ru:8085`). Per-API transport isolation, same
+/// ([AppEndpoints.appRpc]). Per-API transport isolation, same
 /// JSON-RPC 2.0 envelope as `StorageApi` / `NotificationApi`.
 class FeedbackApi {
   FeedbackApi._();
 
-  static const String _endpoint = 'https://carreports.ru:8085';
+  static const String _endpoint = AppEndpoints.appRpc;
   static int _rpcSeq = 0;
 
   /// Sends a support-ticket-style message to the team. Identity fields
@@ -54,10 +55,7 @@ class FeedbackApi {
   }) async {
     final data = await _postRpc(
       method: 'Feedback.SendFeedback',
-      params: <String, dynamic>{
-        'topic': topic.wireValue,
-        'message': message,
-      },
+      params: <String, dynamic>{'topic': topic.wireValue, 'message': message},
     );
     // Server contract: `errors` array — empty/missing on success,
     // populated on validation/business failures.
@@ -101,9 +99,7 @@ class FeedbackApi {
 
     var accessToken = await UserSimplePreferences.getAccessToken();
     if (accessToken == null || accessToken.isEmpty) {
-      throw const SessionExpiredException(
-        'No access token for FeedbackApi',
-      );
+      throw const SessionExpiredException('No access token for FeedbackApi');
     }
     headers['Authorization'] = 'Bearer $accessToken';
 

@@ -5,10 +5,11 @@ import 'dart:math' as math;
 
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/api/notification_api_models.dart';
 
 /// Singleton long-lived WebSocket client for the realtime notification
-/// channel at `wss://carreports.ru:2350/auth`.
+/// channel at [AppEndpoints.notificationWebSocket].
 ///
 /// Lifecycle:
 ///   1. App boot: bootstrap calls [start] with the persisted
@@ -35,7 +36,7 @@ class NotificationWebsocketService {
   static final NotificationWebsocketService instance =
       NotificationWebsocketService._internal();
 
-  static const String _wsBase = 'wss://carreports.ru:2350/auth';
+  static const String _wsBase = AppEndpoints.notificationWebSocket;
   static const Duration _initialBackoff = Duration(seconds: 1);
   static const Duration _maxBackoff = Duration(seconds: 30);
 
@@ -120,7 +121,7 @@ class NotificationWebsocketService {
     if (token == null || token.isEmpty || !_shouldReconnect || _disposed) {
       return;
     }
-    final uri = Uri.parse('$_wsBase?authorization=$token');
+    final uri = AppEndpoints.notificationWebSocketUri(token);
     _log('connect: $_wsBase');
     try {
       final channel = WebSocketChannel.connect(uri);
@@ -158,7 +159,9 @@ class NotificationWebsocketService {
       if (decoded is! Map) return;
       frame = decoded.map((k, v) => MapEntry(k.toString(), v));
     } catch (_) {
-      _log('drop-non-json frame=${text.length > 80 ? '${text.substring(0, 80)}…' : text}');
+      _log(
+        'drop-non-json frame=${text.length > 80 ? '${text.substring(0, 80)}…' : text}',
+      );
       return;
     }
     // Reset backoff + failure counter on any valid frame — server is
@@ -172,7 +175,9 @@ class NotificationWebsocketService {
       _log('drop-unknown response=${frame['response']}');
       return;
     }
-    _log('push id=${event.notificationId} event=${event.event.name} requiresFetch=${event.requiresFetch}');
+    _log(
+      'push id=${event.notificationId} event=${event.event.name} requiresFetch=${event.requiresFetch}',
+    );
     if (!_eventsController.isClosed) {
       _eventsController.add(event);
     }
@@ -184,7 +189,9 @@ class NotificationWebsocketService {
   }
 
   void _onDone() {
-    _log('done (closeCode=${_channel?.closeCode} reason=${_channel?.closeReason})');
+    _log(
+      'done (closeCode=${_channel?.closeCode} reason=${_channel?.closeReason})',
+    );
     _scheduleReconnect();
   }
 

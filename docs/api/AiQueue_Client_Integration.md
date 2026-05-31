@@ -1,7 +1,7 @@
 # AiQueue · клиентская интеграция
 
 Спецификация для клиентского кода Spark Joy / автоподборщика, описывающая
-как пользоваться сервисом **AiQueue** (`https://carreports.ru:8092`) для
+как пользоваться сервисом **AiQueue** (`https://ai.carreports.ru`) для
 формализации заметок по элементам автомобиля и сборки итоговой заметки по
 отчёту.
 
@@ -32,7 +32,7 @@ TTL продлевается на каждой записи, не на чтен�
 
 | Параметр | Значение |
 |---|---|
-| Endpoint | `https://carreports.ru:8092` |
+| Endpoint | `https://ai.carreports.ru` |
 | HTTP | `POST` |
 | Content-Type | `text/plain;charset=UTF-8` *(не JSON — намеренно, см. ниже)* |
 | Авторизация | JWT через query-параметр `?token=<jwt>` |
@@ -55,7 +55,7 @@ TTL продлевается на каждой записи, не на чтен�
 ### Формат запроса
 
 ```http
-POST https://carreports.ru:8092/?token=<jwt>
+POST https://ai.carreports.ru/?token=<jwt>
 Content-Type: text/plain;charset=UTF-8
 
 {"id": <chatId>, "method": "AiQueue.<method>", "params": {...}}
@@ -175,7 +175,7 @@ presigned URL в S3 настройках бэка (обычно 1–24 часа)
 ### Пример запроса
 
 ```http
-POST https://carreports.ru:8092/?token=eyJ...
+POST https://ai.carreports.ru/?token=eyJ...
 Content-Type: text/plain;charset=UTF-8
 
 {
@@ -381,8 +381,8 @@ generic «AI-помощник вернул ошибку: {message}». Полны
 5. **TTL** — `AI_QUEUE_CHAT_HISTORY_TTL_HOURS=6` — это финальное
    значение для прода, или dev-значение? Для итоговой заметки 6 часов
    мало, если осмотр займёт день.
-6. **Доступ Storage** — Storage.* живёт на `https://carreports.ru:8085`
-   (тэги, отчёты, файлы). Same host, separate port from AiQueue.
+6. **Доступ Storage** — Storage.* живёт на `https://app.carreports.ru`
+   (тэги, отчёты, файлы). Separate host from AiQueue.
 7. **`Content-Type: text/plain`** — это намеренно (избегаем CORS preflight?)
    или просто quirk? Нужно ли клиенту обрабатывать как JSON в Dart-
    парсере несмотря на text/plain?

@@ -5,6 +5,7 @@ import 'dart:developer' as developer;
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'storage_api_models.dart';
@@ -76,7 +77,7 @@ void _notifySessionExpired() {
 }
 
 class StorageApi {
-  static const String _endpoint = 'https://carreports.ru:8085';
+  static const String _endpoint = AppEndpoints.appRpc;
   static String get _authVerifyPlatform => kIsWeb ? 'web' : 'mobile';
 
   // Singleton Dio used only for binary uploads to presigned URLs. Other
@@ -1973,8 +1974,7 @@ class StorageApi {
         return _MapPage(
           items: list.whereType<Map>().map((e) => _asMap(e)).toList(),
           page: _asInt(pagination['page']) ?? _asInt(map['page']) ?? page,
-          limit:
-              _asInt(pagination['limit']) ?? _asInt(map['limit']) ?? limit,
+          limit: _asInt(pagination['limit']) ?? _asInt(map['limit']) ?? limit,
           total: _asInt(pagination['total']) ?? _asInt(map['total']),
           pages:
               _asInt(pagination['pages']) ??

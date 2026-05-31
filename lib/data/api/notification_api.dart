@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
+import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'notification_api_models.dart';
@@ -11,7 +12,7 @@ import 'storage_api.dart' show StorageApi, SessionExpiredException;
 export 'notification_api_models.dart';
 
 /// Client for the `Notification.*` RPC family on the storage backend
-/// (`https://carreports.ru:8085`).
+/// ([AppEndpoints.appRpc]).
 ///
 /// Same JSON-RPC 2.0 transport as [StorageApi] (POST,
 /// `application/json`, `{jsonrpc, id, method, params}`). Auth Bearer
@@ -27,7 +28,7 @@ export 'notification_api_models.dart';
 class NotificationApi {
   NotificationApi._();
 
-  static const String _endpoint = 'https://carreports.ru:8085';
+  static const String _endpoint = AppEndpoints.appRpc;
   static int _rpcSeq = 0;
 
   // ── Public surface ────────────────────────────────────────────────────
@@ -58,9 +59,11 @@ class NotificationApi {
     if (rawList is List) {
       for (final raw in rawList) {
         if (raw is Map) {
-          items.add(BackendNotification.fromJson(
-            raw.map((k, v) => MapEntry(k.toString(), v)),
-          ));
+          items.add(
+            BackendNotification.fromJson(
+              raw.map((k, v) => MapEntry(k.toString(), v)),
+            ),
+          );
         }
       }
     }
@@ -68,7 +71,9 @@ class NotificationApi {
     final nextCursor = pagination['nextCursor']?.toString();
     return NotificationsPage(
       items: items,
-      nextCursor: (nextCursor == null || nextCursor.isEmpty) ? null : nextCursor,
+      nextCursor: (nextCursor == null || nextCursor.isEmpty)
+          ? null
+          : nextCursor,
     );
   }
 
@@ -120,10 +125,7 @@ class NotificationApi {
     };
     if (body != null && body.isNotEmpty) params['body'] = body;
     if (payload != null && payload.isNotEmpty) params['payload'] = payload;
-    await _postRpc(
-      method: 'Notification.SendNotification',
-      params: params,
-    );
+    await _postRpc(method: 'Notification.SendNotification', params: params);
   }
 
   /// Debug-only — server requires `APP_DEBUG=true`. Sends a `reminder` or
@@ -139,10 +141,7 @@ class NotificationApi {
       type == NotificationType.reminder || type == NotificationType.system,
       'DebugSendNotificationToSelf accepts only reminder or system',
     );
-    final params = <String, dynamic>{
-      'type': type.wireValue,
-      'title': title,
-    };
+    final params = <String, dynamic>{'type': type.wireValue, 'title': title};
     if (body != null && body.isNotEmpty) params['body'] = body;
     if (payload != null && payload.isNotEmpty) params['payload'] = payload;
     await _postRpc(
@@ -202,7 +201,8 @@ class NotificationApi {
       'send',
       seq: seq,
       method: method,
-      extra: 'bytes=${bytes.length} timeout=${timeout.inSeconds}s auth=$hasAuth',
+      extra:
+          'bytes=${bytes.length} timeout=${timeout.inSeconds}s auth=$hasAuth',
     );
 
     http.Response response;

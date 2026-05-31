@@ -167,7 +167,7 @@ C. **Invitation-первый flow:** добавить `Storage.InviteSpecialist(
 
 ## Технические детали для всех новых методов
 
-- JSON-RPC 2.0, POST на `https://carreports.ru:8085`
+- JSON-RPC 2.0, POST на `https://app.carreports.ru`
 - Bearer-токен типа AUTH в `Authorization` header
 - Role-gating через JWT claims
 - System-notifications через `Notification.Push` + `Notification.GetNotifications`

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
+import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'ai_queue_api_models.dart';
@@ -10,11 +11,11 @@ import 'storage_api.dart' show StorageApi, SessionExpiredException;
 
 export 'ai_queue_api_models.dart';
 
-/// Client for the AiQueue RPC API (`https://carreports.ru:8092`).
+/// Client for the AiQueue RPC API ([AppEndpoints.aiRpc]).
 ///
 /// Transport differs from [StorageApi] — see the contrast table:
 ///
-/// | | StorageApi (podbor-av) | AiQueueApi (aiqueue) |
+/// | | StorageApi | AiQueueApi |
 /// |---|---|---|
 /// | Content-Type | application/json | text/plain;charset=UTF-8 |
 /// | Auth         | Bearer header    | Bearer header |
@@ -33,7 +34,7 @@ export 'ai_queue_api_models.dart';
 class AiQueueApi {
   AiQueueApi._();
 
-  static const String _endpoint = 'https://carreports.ru:8092';
+  static const String _endpoint = AppEndpoints.aiRpc;
   static int _rpcSeq = 0;
 
   static const String _defaultChatModel = 'gpt-5.4';
