@@ -23,6 +23,22 @@ void main() {
       );
     });
 
+    test('surfaces a clear message when the email is already taken (B3)', () {
+      for (final code in const [
+        'email_already_exists',
+        'email_already_in_use',
+        'email_taken',
+      ]) {
+        expect(
+          sparkJoyReadableErrorText(
+            Exception('Bad response from Storage.UpdateProfile: $code'),
+          ),
+          'Этот email уже зарегистрирован',
+          reason: code,
+        );
+      }
+    });
+
     test('hides technical transport messages from user text', () {
       expect(
         sparkJoyReadableErrorText(

@@ -16,6 +16,7 @@ import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'spark_joy_data.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_feedback_screen.dart';
 import 'spark_joy_company_public_profile_screen.dart';
 import 'spark_joy_storage.dart';
@@ -666,11 +667,14 @@ class _SparkJoySpecialistProfileScreenState
         debugPrint('[profile] UpdateProfile failed: $e');
       }
       if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Не удалось сохранить профиль. Попробуйте ещё раз'),
-          backgroundColor: kRedColor,
-        ),
+      // Сёрфим КОНКРЕТНУЮ причину от бэкенда (например «Этот email уже
+      // зарегистрирован») вместо generic «Не удалось сохранить профиль».
+      // sparkJoyReadableError извлекает код ошибки из RPC-исключения и
+      // маппит его в человекочитаемое сообщение (B3).
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось сохранить профиль',
       );
       return false;
     }
@@ -1409,11 +1413,12 @@ class _SparkJoySpecialistProfileScreenState
       );
     } catch (e) {
       if (!mounted) return;
-      final message = e.toString().contains('код')
-          ? e.toString()
-          : 'Не удалось подтвердить email. Проверьте код и попробуйте ещё раз.';
-      messenger.showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: kRedColor),
+      // Конкретная причина от бэкенда (код истёк / неверный код / email
+      // занят) вместо generic «Проверьте код» (B3).
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось подтвердить email',
       );
     } finally {
       if (mounted) {
