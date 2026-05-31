@@ -185,17 +185,10 @@ List<String> _popularModelsForMake(String make) {
   return kPopularModelsGlobalRu;
 }
 
-int compareMakesByPopularity(String a, String b) {
-  final rank = {
-    for (int i = 0; i < kPopularMakesRu.length; i++)
-      _normalizeKey(kPopularMakesRu[i]): i,
-  };
-  final ra = _rankFor(a, rank);
-  final rb = _rankFor(b, rank);
-  if (ra != rb) return ra.compareTo(rb);
-  return a.toLowerCase().compareTo(b.toLowerCase());
-}
-
+// compareMakesByPopularity / sortMakesByPopularity removed (T3): the backend
+// returns brands already sorted by popularity, so the frontend no longer
+// re-sorts the make list anywhere. Model sorting stays — the backend doesn't
+// pre-sort models per make.
 int compareModelsByPopularity(String make, String a, String b) {
   final popular = _popularModelsForMake(make);
   final rank = {
@@ -205,12 +198,6 @@ int compareModelsByPopularity(String make, String a, String b) {
   final rb = _rankFor(b, rank);
   if (ra != rb) return ra.compareTo(rb);
   return a.toLowerCase().compareTo(b.toLowerCase());
-}
-
-List<String> sortMakesByPopularity(List<String> makes) {
-  final sorted = List<String>.from(makes);
-  sorted.sort(compareMakesByPopularity);
-  return sorted;
 }
 
 List<String> sortModelsByPopularity(String make, List<String> models) {

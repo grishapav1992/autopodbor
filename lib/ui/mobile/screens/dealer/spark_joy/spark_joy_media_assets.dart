@@ -88,12 +88,18 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     required MediaPartInspection partInspection,
     required List<UploadedItem> files,
     String fallbackNote = '',
+    // True for the add/delete-media paths, where `partInspection` is the
+    // stale cached group inspection (not a fresh editor edit). Then the group
+    // note must come from the FILES, never from the stale group value or the
+    // stale `fallbackNote` — otherwise deleting the photo that carried a note
+    // leaves the group note resurrected (B16, delete/add paths).
+    bool deriveNoteFromFiles = false,
   }) {
     if (files.isEmpty) return const MediaPartInspection();
     if (_mediaPartInspectionIsEmpty(partInspection)) {
       return _deriveGroupPartInspection(
         files: files,
-        fallbackNote: fallbackNote,
+        fallbackNote: deriveNoteFromFiles ? '' : fallbackNote,
       );
     }
 
@@ -161,10 +167,13 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       // Derive the group note from the editor's explicit value or the files
       // (never the stale group-level `fallbackNote`) — otherwise clearing a
       // photo's note resurrected the previous group note on the next sync
-      // (B16). Pure helper so the rule is unit-tested.
-      note: sparkJoyDeriveGroupNote(partInspection.note, [
-        for (final file in files) file.inspection.note,
-      ]),
+      // (B16). On the add/delete paths we ignore `partInspection.note` too (it's
+      // the stale cached value) and derive purely from files. Pure helper so the
+      // rule is unit-tested.
+      note: sparkJoyDeriveGroupNote(
+        deriveNoteFromFiles ? '' : partInspection.note,
+        [for (final file in files) file.inspection.note],
+      ),
       elementType: (partInspection.elementType ?? '').trim().isEmpty
           ? null
           : partInspection.elementType,

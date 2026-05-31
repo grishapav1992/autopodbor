@@ -80,11 +80,14 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         final nextPartInspection = _syncPartInspectionWithFiles(
           partInspection: state.partInspection,
           files: currentFiles,
-          fallbackNote: state.note,
+          deriveNoteFromFiles: true,
         );
         _mediaState[groupKey] = state.copyWith(
           files: nextFiles,
           partInspection: nextPartInspection,
+          // Keep the top-level group note in sync with the (file-derived)
+          // partInspection note so it can't drift on reload (B16).
+          note: nextPartInspection.note.trim(),
           hasIssue: nextFiles.any(_mediaItemHasIssue),
         );
       });
@@ -1340,7 +1343,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
       final nextPartInspection = _syncPartInspectionWithFiles(
         partInspection: current.partInspection,
         files: next,
-        fallbackNote: current.note,
+        deriveNoteFromFiles: true,
       );
       final nextFiles = _applyPartInspectionToFiles(
         files: next,
@@ -1350,6 +1353,9 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         files: nextFiles,
         hasIssue: nextFiles.any(_mediaItemHasIssue),
         partInspection: nextPartInspection,
+        // Keep the top-level group note in sync with the (file-derived)
+        // partInspection note so a deleted photo's note can't linger (B16).
+        note: nextPartInspection.note.trim(),
       );
       _mediaGroupSelectedIndexes = <int>{};
       _mediaGroupSelectMode = false;
