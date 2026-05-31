@@ -83,7 +83,8 @@ void main() {
     // Sheet is up.
     expect(find.text('Выберите город'), findsOneWidget);
 
-    // The search field has autofocus; type into it.
+    // Type into the search field (it does not autofocus — see the
+    // dedicated test below).
     await tester.enterText(find.byType(TextField), 'мос');
     // Wait for the 80ms debounce + a frame.
     await tester.pump(const Duration(milliseconds: 100));
@@ -102,6 +103,20 @@ void main() {
     expect(picked!.nameRu, 'Москва');
     expect(picked!.displayLabel, 'Россия, Москва');
     expect(picked!.countryCode, 'RU');
+  });
+
+  testWidgets('search field does not autofocus — no keyboard on open (B5)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host((ctx) => showCityPickerBottomSheet(ctx)));
+    await tester.tap(find.text('Открыть'));
+    await tester.pumpAndSettle();
+
+    // autofocus=true used to pop the keyboard together with the sheet, so
+    // the user saw «два окна» (picker + keyboard). The field must stay
+    // unfocused until tapped.
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.autofocus, isFalse);
   });
 
   testWidgets('fixed RU scope hides non-Russian cities', (tester) async {

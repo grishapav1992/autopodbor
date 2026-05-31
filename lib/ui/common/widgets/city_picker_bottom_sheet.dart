@@ -186,7 +186,12 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
       child: TextField(
         controller: _searchController,
         focusNode: _searchFocus,
-        autofocus: true,
+        // No autofocus: opening the picker used to pop the keyboard at the
+        // same time as the sheet, so the user saw «два окна» (sheet +
+        // keyboard) and half the city list was hidden. The list is shown
+        // immediately; the keyboard appears only when the user taps the
+        // search field (B5).
+        autofocus: false,
         textInputAction: TextInputAction.search,
         onChanged: _onSearchChanged,
         decoration: InputDecoration(
