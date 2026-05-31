@@ -391,15 +391,34 @@ class _SparkJoyCompanyStaffScreenState
       throw Exception('${specialist.displayName} уже в штате компании');
     }
 
+    // Name the inviting company so the recipient sees WHO invites them and
+    // can open the company from the notification (B6). senderId already lets
+    // the recipient navigate, but the name makes the short text clear.
+    var companyName = '';
+    int? companyId;
+    try {
+      final me = await storage_api.StorageApi.getProfile();
+      companyName = (me['companyName'] ?? me['name'] ?? '').toString().trim();
+      final rawId = me['id'] ?? me['companyId'];
+      companyId = rawId is int ? rawId : int.tryParse('${rawId ?? ''}');
+    } catch (_) {
+      // Best-effort enrichment — fall back to the generic copy below.
+    }
+
     await NotificationApi.sendNotification(
       type: NotificationType.invitation,
       recipientId: specialist.id,
       title: 'Приглашение в штат',
-      body:
-          'Компания приглашает вас присоединиться к штату специалистов в Autopodbor.',
+      body: companyName.isNotEmpty
+          ? 'Компания «$companyName» приглашает вас присоединиться к штату '
+                'специалистов в Autopodbor.'
+          : 'Компания приглашает вас присоединиться к штату специалистов в '
+                'Autopodbor.',
       payload: <String, dynamic>{
         'source': 'spark_joy_company_staff',
         'phone': phone,
+        if (companyName.isNotEmpty) 'companyName': companyName,
+        if (companyId != null && companyId > 0) 'companyId': companyId,
       },
     );
     return specialist.displayName;

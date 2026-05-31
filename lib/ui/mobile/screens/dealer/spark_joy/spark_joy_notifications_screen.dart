@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -8,6 +6,7 @@ import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
+import 'spark_joy_company_public_profile_screen.dart';
 import 'spark_joy_notification_actions.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -102,6 +101,30 @@ class _SparkJoyNotificationsScreenState
     await widget.onOpenRequest!(requestId);
   }
 
+  /// Company a notification points at: an explicit `companyId` in the
+  /// payload, else the sender of an invitation (the inviting company is the
+  /// sender). Used to offer «Открыть компанию» (B6).
+  int? _companyIdForNotification(BackendNotification n) {
+    final raw = n.payload['companyId'] ?? n.payload['company_id'];
+    final fromPayload = raw is int ? raw : int.tryParse('${raw ?? ''}');
+    if (fromPayload != null && fromPayload > 0) return fromPayload;
+    if (n.type == NotificationType.invitation && (n.senderId ?? 0) > 0) {
+      return n.senderId;
+    }
+    return null;
+  }
+
+  void _openCompany(BackendNotification n) {
+    final companyId = _companyIdForNotification(n);
+    if (companyId == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            SparkJoyCompanyPublicProfileScreen(companyId: companyId),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Obx(() {
@@ -155,6 +178,9 @@ class _SparkJoyNotificationsScreenState
                 onOpenRequest:
                     n.requestId != null && widget.onOpenRequest != null
                     ? () => _openRequest(n)
+                    : null,
+                onOpenCompany: _companyIdForNotification(n) != null
+                    ? () => _openCompany(n)
                     : null,
               ),
           ],
@@ -223,12 +249,14 @@ class _NotificationCard extends StatelessWidget {
     required this.expanded,
     required this.onTap,
     this.onOpenRequest,
+    this.onOpenCompany,
   });
 
   final BackendNotification notification;
   final bool expanded;
   final VoidCallback onTap;
   final VoidCallback? onOpenRequest;
+  final VoidCallback? onOpenCompany;
 
   _TypeStyle _styleForType(NotificationType type) {
     switch (type) {
@@ -338,6 +366,7 @@ class _NotificationCard extends StatelessWidget {
             secondChild: _NotificationDetails(
               notification: notification,
               onOpenRequest: onOpenRequest,
+              onOpenCompany: onOpenCompany,
             ),
             crossFadeState: expanded
                 ? CrossFadeState.showSecond
@@ -357,10 +386,12 @@ class _NotificationDetails extends StatelessWidget {
   const _NotificationDetails({
     required this.notification,
     required this.onOpenRequest,
+    this.onOpenCompany,
   });
 
   final BackendNotification notification;
   final VoidCallback? onOpenRequest;
+  final VoidCallback? onOpenCompany;
 
   @override
   Widget build(BuildContext context) {
@@ -445,6 +476,43 @@ class _NotificationDetails extends StatelessWidget {
                 ),
               ),
             ],
+            if (onOpenCompany != null) ...[
+              const SizedBox(height: SparkSpace.sm),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  onTap: onOpenCompany,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.md,
+                      vertical: SparkSpace.sm,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kSecondaryColor,
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.business_rounded,
+                          size: 16,
+                          color: kWhiteColor,
+                        ),
+                        SizedBox(width: SparkSpace.xs),
+                        MyText(
+                          text: 'Открыть компанию',
+                          size: SparkTextSize.chip,
+                          weight: FontWeight.w700,
+                          color: kWhiteColor,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -478,11 +546,64 @@ List<_DetailRow> _notificationDetailRows(BackendNotification n) {
   final payload = n.payload.entries.toList()
     ..sort((a, b) => a.key.compareTo(b.key));
   for (final entry in payload) {
-    final value = _stringifyPayloadValue(entry.value);
-    if (value.isEmpty) continue;
-    rows.add(_DetailRow(_payloadLabel(entry.key), value));
+    _appendPayloadRows(rows, entry.key, entry.value);
   }
   return rows;
+}
+
+// Internal/no-value keys that only add noise to the details list.
+const _hiddenPayloadKeys = <String>{'source', 'entityType', 'entity_type'};
+
+/// Flattens a payload entry into human-readable rows. Nested objects/lists
+/// are expanded (preferring a readable name) instead of being dumped as raw
+/// JSON text, which is what users used to see in «Подробнее» (B6).
+void _appendPayloadRows(List<_DetailRow> rows, String key, Object? value) {
+  if (value == null) return;
+  if (_hiddenPayloadKeys.contains(key)) return;
+  if (value is Map) {
+    final name = _readableMapLabel(value);
+    if (name.isNotEmpty) {
+      rows.add(_DetailRow(_payloadLabel(key), name));
+      return;
+    }
+    final nested = value.entries.toList()
+      ..sort((a, b) => a.key.toString().compareTo(b.key.toString()));
+    for (final e in nested) {
+      _appendPayloadRows(rows, e.key.toString(), e.value);
+    }
+    return;
+  }
+  if (value is List) {
+    final parts = value
+        .map((e) => e is Map ? _readableMapLabel(e) : e.toString().trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isNotEmpty) {
+      rows.add(_DetailRow(_payloadLabel(key), parts.join(', ')));
+    }
+    return;
+  }
+  final str = value.toString().trim();
+  if (str.isNotEmpty) rows.add(_DetailRow(_payloadLabel(key), str));
+}
+
+/// Picks a readable label from a nested object (company/specialist/etc.),
+/// or '' when none of the known name fields are present.
+String _readableMapLabel(Map value) {
+  for (final k in const [
+    'name',
+    'companyName',
+    'title',
+    'displayName',
+    'fullName',
+    'label',
+  ]) {
+    final v = value[k];
+    if (v != null && v.toString().trim().isNotEmpty) {
+      return v.toString().trim();
+    }
+  }
+  return '';
 }
 
 String _payloadLabel(String key) {
@@ -502,17 +623,6 @@ String _payloadLabel(String key) {
     'message': 'Сообщение',
   };
   return labels[key] ?? key;
-}
-
-String _stringifyPayloadValue(Object? value) {
-  if (value == null) return '';
-  if (value is String) return value.trim();
-  if (value is num || value is bool) return value.toString();
-  try {
-    return const JsonEncoder.withIndent('  ').convert(value);
-  } catch (_) {
-    return value.toString();
-  }
 }
 
 String _typeLabel(NotificationType type) {
