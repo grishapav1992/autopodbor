@@ -17,7 +17,7 @@ export 'ai_queue_api_models.dart';
 ///
 /// | | StorageApi | AiQueueApi |
 /// |---|---|---|
-/// | Content-Type | application/json | text/plain;charset=UTF-8 |
+/// | Content-Type | application/json | application/json |
 /// | Auth         | Bearer header    | Bearer header |
 /// | Payload      | `{jsonrpc, id, method, params}` | `{id, method, params}` |
 /// | id semantic  | counter          | chatId (stable per element) |
@@ -200,8 +200,10 @@ class AiQueueApi {
     var hasAuth = false;
     final headers = <String, String>{
       'Accept': 'application/json',
-      // The aiqueue spec is explicit about this: text/plain, NOT json.
-      'Content-Type': 'text/plain;charset=UTF-8',
+      // Backend now expects JSON content-type on the AiQueue route too (same
+      // as the Storage route) — the old text/plain (chosen to skip CORS
+      // preflight) is no longer accepted server-side.
+      'Content-Type': 'application/json',
       'Content-Length': bytes.length.toString(),
     };
     if (requiresAuth) {
