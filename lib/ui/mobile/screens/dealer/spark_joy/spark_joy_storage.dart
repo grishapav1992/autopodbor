@@ -5,6 +5,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/state/permissions_controller.dart';
+import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'spark_joy_data.dart';
@@ -155,6 +157,13 @@ class SparkJoyStorage {
             );
           }
         }
+      }
+      // RBAC: refresh effective permissions in the background. Fire-and-
+      // forget so it never blocks splash/login bootstrap — the controller is
+      // already seeded from cache, and gated UI rebuilds reactively when the
+      // fresh list lands. Covers role changes too (this runs after re-auth).
+      if (Get.isRegistered<PermissionsController>()) {
+        unawaited(Get.find<PermissionsController>().syncFromServer());
       }
     } catch (e) {
       // Network/offline — оставляем локальный кэш. Будущие GetProfile

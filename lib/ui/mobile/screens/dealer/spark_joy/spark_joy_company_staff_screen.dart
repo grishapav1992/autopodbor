@@ -5,7 +5,9 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
+import 'package:flutter_application_1/state/permissions_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:get/get.dart';
 
 import 'spark_joy_company_staff_detail_screen.dart';
 import 'spark_joy_error_snackbar.dart';
@@ -561,8 +563,35 @@ class _SparkJoyCompanyStaffScreenState
 
   @override
   Widget build(BuildContext context) {
+    // RBAC: управление штатом требует право manage_company. Гейтим
+    // реактивно через Obx — если права прилетят позже (холодный старт без
+    // кэша), экран перестроится сам. Вне app-контекста (контроллер не
+    // зарегистрирован — напр. в тестах) не гейтим. Это проактивный слой
+    // поверх graceful-403: бэкенд всё равно отдаёт 403 на
+    // GetCompanySpecialists без права.
+    if (Get.isRegistered<PermissionsController>()) {
+      final perms = Get.find<PermissionsController>();
+      return Obx(() => _buildList(canManage: perms.can('manage_company')));
+    }
+    return _buildList(canManage: true);
+  }
+
+  Widget _buildList({required bool canManage}) {
     final all = _buildEntries();
     final entries = _filter(all);
+
+    if (!canManage) {
+      return SparkScreenList(
+        bottomInset: 56,
+        children: [
+          SparkHintCard(
+            text:
+                'Недостаточно прав для управления сотрудниками. '
+                'Обратитесь к администратору компании.',
+          ),
+        ],
+      );
+    }
 
     return SparkScreenList(
       bottomInset: 56,

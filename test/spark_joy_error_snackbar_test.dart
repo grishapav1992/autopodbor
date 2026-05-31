@@ -1,3 +1,5 @@
+import 'package:flutter_application_1/data/api/storage_api.dart'
+    show PermissionDeniedException;
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_error_snackbar.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,6 +59,19 @@ void main() {
       expect(readable.supportText, contains('Код ошибки: request_not_found'));
       expect(readable.supportText, contains('Метод: Storage.CancelRequest'));
       expect(readable.supportText, contains('Техническая ошибка:'));
+    });
+
+    test('maps PermissionDeniedException to a clean RBAC message (B1)', () {
+      final readable = sparkJoyReadableError(
+        PermissionDeniedException('Storage.GetCompanySpecialists', 'forbidden'),
+      );
+      expect(readable.message, 'Недостаточно прав для этого действия');
+      // Method + server detail stay in the copyable support text.
+      expect(
+        readable.supportText,
+        contains('Метод: Storage.GetCompanySpecialists'),
+      );
+      expect(readable.supportText, contains('forbidden'));
     });
   });
 }

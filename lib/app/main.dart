@@ -13,6 +13,7 @@ import 'package:flutter_application_1/core/localization/localization_controller/
 import 'package:flutter_application_1/data/api/storage_api.dart'
     show sessionExpiredTicker;
 import 'package:flutter_application_1/state/notification_controller.dart';
+import 'package:flutter_application_1/state/permissions_controller.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,12 @@ Future<void> main() async {
     Get.put(LanguageController());
     Get.put(UserController());
     await UserSimplePreferences.init();
+    // RBAC permissions controller, registered eagerly so any screen can gate
+    // via Get.find. Seeded from the local cache now (instant, last-known
+    // rights); the authoritative refetch is fired from the role-sync
+    // bootstrap (SparkJoyStorage.syncRoleFromServer).
+    final permissions = Get.put(PermissionsController(), permanent: true);
+    unawaited(permissions.seedFromCache());
     // Notification controller is registered eagerly so any screen can
     // resolve it via Get.find. Bootstrap (WS connect + first fetch) is
     // a no-op if there's no persisted notification token, so this is

@@ -81,6 +81,22 @@ void _notifySessionExpired() {
   sessionExpiredTicker.value = sessionExpiredTicker.value + 1;
 }
 
+/// Thrown when an authenticated RPC is rejected because the user lacks the
+/// required backend permission — either HTTP 403 or an RPC-level error whose
+/// text signals "forbidden" / "нет прав". Carries the method + server message
+/// so the UI can show a clean «недостаточно прав» instead of a raw dump, and
+/// so callsites can `catch (PermissionDeniedException)` distinctly from
+/// network/transport errors.
+class PermissionDeniedException implements Exception {
+  PermissionDeniedException(this.method, [this.serverMessage = '']);
+  final String method;
+  final String serverMessage;
+  @override
+  String toString() => serverMessage.isEmpty
+      ? 'Недостаточно прав для $method'
+      : 'Недостаточно прав для $method: $serverMessage';
+}
+
 class StorageApi {
   static const String _endpoint = AppEndpoints.appRpc;
   static String get _authVerifyPlatform => kIsWeb ? 'web' : 'mobile';
@@ -454,6 +470,9 @@ class StorageApi {
         method: method,
         extra: 'status=${response.statusCode} body=$shortBody',
       );
+      if (response.statusCode == 403) {
+        throw PermissionDeniedException(method, shortBody);
+      }
       if (shortBody.isNotEmpty) {
         throw Exception('HTTP ${response.statusCode} from $method: $shortBody');
       }
@@ -502,6 +521,9 @@ class StorageApi {
         extra:
             'response=$responseFlag errors=${errors.isEmpty ? '(none)' : errors}',
       );
+      if (_isForbiddenResponse(data, responseFlag)) {
+        throw PermissionDeniedException(method, errors);
+      }
       if (errors.isNotEmpty) {
         throw Exception(
           'Bad response from $method (response=$responseFlag): $errors',
@@ -531,6 +553,26 @@ class StorageApi {
         .map((m) => m.trim())
         .where((m) => m.isNotEmpty)
         .any((m) => m.toLowerCase().contains('unauthor') || m.contains('401'));
+  }
+
+  /// True when an RPC-level error (HTTP 200, `response != 'ok'`) signals a
+  /// permission/forbidden denial rather than an expired session. Used to
+  /// surface [PermissionDeniedException] for graceful RBAC handling.
+  static bool _isForbiddenResponse(
+    Map<String, dynamic> data,
+    String responseFlag,
+  ) {
+    if (responseFlag.contains('forbidden') || responseFlag.contains('denied')) {
+      return true;
+    }
+    final errorsText = _extractErrorsText(data).toLowerCase();
+    if (errorsText.isEmpty) return false;
+    return errorsText.contains('forbidden') ||
+        errorsText.contains('permission') ||
+        errorsText.contains('доступ') ||
+        errorsText.contains('недостаточно прав') ||
+        errorsText.contains('access denied') ||
+        errorsText.contains('403');
   }
 
   static Future<bool> hasSavedSession({bool probeWithGetBrand = false}) async {
@@ -3094,6 +3136,24 @@ class StorageApi {
   }) async {
     final data = await _postRpc(
       method: 'Storage.GetProfile',
+      params: const {},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Returns the current user's effective RBAC permissions.
+  ///
+  /// Backend `result` = `{role: string, permissions: [string]}` — the
+  /// permission slugs (e.g. `edit_profile`, `edit_reports`, `view_reports`,
+  /// `manage_company`, `run_legal_review`) the user currently holds. Needs
+  /// only an AUTH token (no specific permission). Mirrors [getProfile]'s
+  /// shape so the caller parses the raw result map.
+  static Future<Map<String, dynamic>> getPermissions({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetPermissions',
       params: const {},
       timeout: timeout,
     );

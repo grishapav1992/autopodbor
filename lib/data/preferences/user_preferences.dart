@@ -75,6 +75,10 @@ class UserSimplePreferences {
   static const _refreshTokenKey = 'refreshToken';
   static const _notificationTokenKey = 'notificationToken';
   static const _userRoleKey = 'userRole';
+  // Last-known effective RBAC permissions (Storage.GetPermissions). Cached
+  // so the first frame after a cold start can gate UI by last-known rights
+  // before the background refetch lands. Cleared on logout alongside tokens.
+  static const _permissionsKey = 'userPermissions';
   // Email, ожидающий подтверждения через Storage.VerifyEmail.
   // Set когда пользователь сменил email через UpdateProfile, clear при
   // успешной верификации или logout. Local-only — backend пока не даёт
@@ -404,6 +408,9 @@ class UserSimplePreferences {
     await prefs.remove(_accessTokenKey);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_notificationTokenKey);
+    // RBAC permissions привязаны к юзеру — не должны утечь в следующего
+    // на том же девайсе (иначе он увидел бы гейтинг по чужим правам).
+    await prefs.remove(_permissionsKey);
     // Pending email verify тоже привязан к сессии пользователя — чтобы
     // banner из прошлого аккаунта не утёк в новый при logout/re-login.
     await prefs.remove(_pendingEmailVerifyKey);
@@ -443,6 +450,22 @@ class UserSimplePreferences {
   static Future<String?> getUserRole() async {
     // ignore: await_only_futures
     return (await _prefs()).getString(_userRoleKey);
+  }
+
+  /// Persists the user's effective RBAC permission slugs. Stored as a string
+  /// list so the cold-start seed in [PermissionsController] is cheap.
+  static Future<void> setPermissions(List<String> permissions) async {
+    await (await _prefs()).setStringList(_permissionsKey, permissions);
+  }
+
+  static Future<List<String>> getPermissions() async {
+    // ignore: await_only_futures
+    return (await _prefs()).getStringList(_permissionsKey) ??
+        const <String>[];
+  }
+
+  static Future<void> clearPermissions() async {
+    await (await _prefs()).remove(_permissionsKey);
   }
 
   /// Сохраняет email, который ожидает подтверждения через

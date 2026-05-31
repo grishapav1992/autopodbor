@@ -1,11 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart'
+    show PermissionDeniedException;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
 
 typedef SparkJoyReadableError = ({String message, String supportText});
 
 SparkJoyReadableError sparkJoyReadableError(Object error, {String? fallback}) {
+  // RBAC: a backend permission denial (HTTP 403 / forbidden RPC) always maps
+  // to the same clean message regardless of which method was blocked — the
+  // method name stays in the copyable support text for diagnostics.
+  if (error is PermissionDeniedException) {
+    const msg = 'Недостаточно прав для этого действия';
+    final support = <String>[
+      'Сообщение: $msg',
+      'Метод: ${error.method}',
+      if (error.serverMessage.trim().isNotEmpty)
+        'Техническая ошибка: ${error.serverMessage.trim()}',
+    ].join('\n');
+    return (message: _withFallback(fallback, msg), supportText: support);
+  }
   final rawText = _rawErrorText(error);
   final code = _errorCode(error, rawText);
   final mapped = _mappedBackendError(
