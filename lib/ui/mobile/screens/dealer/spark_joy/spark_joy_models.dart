@@ -196,6 +196,11 @@ Future<String?> _resolveSparkJoyVideoThumbRemote(
         return outPath;
       }
       didDecode = true;
+      // Hard timeout: this is network I/O (AVURLAsset streams the first frame).
+      // Without it an expired/unreachable presigned URL would hold the single
+      // shared decoder gate forever, freezing EVERY video thumbnail — local and
+      // remote — for the rest of the session. On timeout the catch below
+      // returns null (placeholder) and frees the slot.
       final generated = await VideoThumbnail.thumbnailFile(
         video: url,
         thumbnailPath: outPath,
@@ -204,7 +209,7 @@ Future<String?> _resolveSparkJoyVideoThumbRemote(
         maxHeight: 300,
         timeMs: 0,
         quality: 70,
-      );
+      ).timeout(const Duration(seconds: 15));
       if (generated == null || generated.isEmpty) return null;
       if (!await File(generated).exists()) return null;
       _sparkJoyVideoThumbDiskCache[cacheKey] = generated;

@@ -2261,6 +2261,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           await Future.wait(
             pendingPartNumbers.map((partNumber) {
               return partGate.withSlot(() async {
+                // Stop picking up new parts the moment the user cancels — the
+                // PUT(s) already in flight finish (one part each), but we don't
+                // keep uploading the rest of a large file (B17).
+                if (_uploadCancelled) return;
                 final metaIndex = urlsResult.urls.indexWhere(
                   (part) => part.partNumber == partNumber,
                 );
@@ -2302,6 +2306,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
             eagerError: true,
           );
         }
+
+        // Cancelled mid-file: don't list/finalize the multipart. Leaving it
+        // open (not completed) lets _abortAllOpenMultipartUploads abort the
+        // session cleanly — finalizing would create a completed S3 object the
+        // cancel path would then orphan (B17).
+        if (_uploadCancelled) return false;
 
         if (etagsByPart.length < partCount) {
           final listed = await storage_api.StorageApi.listMultipartParts(

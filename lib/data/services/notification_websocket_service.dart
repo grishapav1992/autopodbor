@@ -229,6 +229,12 @@ class NotificationWebsocketService {
 
   void _scheduleReconnect() {
     if (_disposed || !_shouldReconnect || _markedDead) return;
+    // A token refresh is already in flight (B18). The old channel's straggler
+    // onError/onDone must NOT increment failures or mark the channel dead here
+    // — otherwise it flips _shouldReconnect=false and the refresh, on success,
+    // bails at its own `!_shouldReconnect` guard and throws away a fresh token.
+    // Let the in-flight refresh own the reconnect/give-up decision.
+    if (_refreshingToken) return;
     // Coalesce — onError + onDone often fire back-to-back for the same
     // disconnect; without this guard backoff would double per failure.
     if (_reconnectTimer?.isActive == true) return;
@@ -284,6 +290,9 @@ class NotificationWebsocketService {
       '$_consecutiveFailures failures',
     );
     try {
+      // Tear down the dead channel up front so its straggler onError/onDone
+      // can't fire while the refresh RPC is pending.
+      await _closeChannel();
       final fresh = await onTokenRefresh?.call();
       if (_disposed || !_shouldReconnect) return;
       if (fresh != null && fresh.isNotEmpty) {
@@ -292,7 +301,6 @@ class NotificationWebsocketService {
         _currentBackoff = _initialBackoff;
         _markedDead = false;
         _log('token refreshed — reconnecting');
-        await _closeChannel();
         _connect();
         return;
       }
