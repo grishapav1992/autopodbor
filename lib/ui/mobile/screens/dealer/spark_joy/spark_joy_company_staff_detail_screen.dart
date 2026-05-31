@@ -165,6 +165,15 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
         rating > 0 ||
         likeUp > 0 ||
         likeDown > 0;
+    // At-a-glance workload for the company viewing this staff member (B10).
+    final totalRequests = requests.length;
+    final completedRequests = requests
+        .where((r) => normalizeRequestStatus(_str(r, 'status')) == 'done')
+        .length;
+    final activeRequests = requests.where((r) {
+      final s = normalizeRequestStatus(_str(r, 'status'));
+      return s == 'in_work' || s == 'paid_escrow';
+    }).length;
 
     return SparkPageScaffold(
       appBar: AppBar(centerTitle: false, title: Text(staffName)),
@@ -269,6 +278,35 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
             ),
           ),
         ],
+        const SparkSectionTitle('Активность', top: SparkSpace.xl),
+        SparkCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.md,
+            vertical: SparkSpace.sm,
+          ),
+          child: Column(
+            children: [
+              SparkProfileRow(
+                icon: Icons.assignment_outlined,
+                label: 'Всего заявок',
+                value: totalRequests.toString(),
+                muted: true,
+              ),
+              SparkProfileRow(
+                icon: Icons.pending_actions_outlined,
+                label: 'В работе',
+                value: activeRequests.toString(),
+                muted: true,
+              ),
+              SparkProfileRow(
+                icon: Icons.task_alt_rounded,
+                label: 'Завершено',
+                value: completedRequests.toString(),
+                muted: true,
+              ),
+            ],
+          ),
+        ),
         const SizedBox(height: SparkSpace.xl),
         const SparkSectionTitle('Назначенные заявки'),
         if (requests.isEmpty)
