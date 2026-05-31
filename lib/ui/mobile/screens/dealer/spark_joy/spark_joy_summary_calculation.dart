@@ -103,9 +103,9 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         checkTypes: checkTypes,
         vin: vin.isEmpty ? null : vin,
         gosNumber: plate.isEmpty ? null : plate,
-        // searchString приоритетен для gost/taxi/converter: шлём VIN,
-        // иначе госномер (бэкенд сам делает fallback по типу проверки).
-        searchString: vin.isNotEmpty ? vin : (plate.isEmpty ? null : plate),
+        // searchString не задаём — для gost/taxi/converter бэкенд сам делает
+        // fallback vin → gosNumber (подтверждено рабочим live-запросом).
+        // Враппер всё равно отправит полную структуру params + extra:{}.
       );
       if (!mounted || token != _legalLoadToken) return;
       final batchNumber = (started['batchNumber'] ?? '').toString().trim();

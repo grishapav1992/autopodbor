@@ -2634,19 +2634,27 @@ class StorageApi {
     String? chassis,
     String? bodyNumber,
     String? searchString,
+    Map<String, dynamic>? extra,
     Duration timeout = const Duration(seconds: 30),
   }) async {
+    // ВАЖНО: бэкенд ожидает ПОЛНУЮ структуру params, включая `extra` (хотя бы
+    // `{}`). Если слать частично (без `extra`/опущенными ключами) — обработчик
+    // на бэке падает с HTTP 502 (проверено live). Поэтому всегда отдаём все
+    // ключи: vin/gosNumber как строки (возможно пустые), chassis/bodyNumber/
+    // searchString как null при отсутствии, extra как объект.
+    String? clean(String? v) {
+      final t = v?.trim() ?? '';
+      return t.isEmpty ? null : t;
+    }
+
     final params = <String, dynamic>{
       'checkTypes': checkTypes,
-      if (vin != null && vin.trim().isNotEmpty) 'vin': vin.trim(),
-      if (gosNumber != null && gosNumber.trim().isNotEmpty)
-        'gosNumber': gosNumber.trim(),
-      if (chassis != null && chassis.trim().isNotEmpty)
-        'chassis': chassis.trim(),
-      if (bodyNumber != null && bodyNumber.trim().isNotEmpty)
-        'bodyNumber': bodyNumber.trim(),
-      if (searchString != null && searchString.trim().isNotEmpty)
-        'searchString': searchString.trim(),
+      'vin': vin?.trim() ?? '',
+      'gosNumber': gosNumber?.trim() ?? '',
+      'chassis': clean(chassis),
+      'bodyNumber': clean(bodyNumber),
+      'searchString': clean(searchString),
+      'extra': extra ?? const <String, dynamic>{},
     };
     final data = await _postRpc(
       method: 'Storage.RunBatchLegalReview',
