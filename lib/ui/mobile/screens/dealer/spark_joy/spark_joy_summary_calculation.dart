@@ -1,22 +1,90 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
-  void _scheduleLegalResult(int token) {
-    Future<void>.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      if (!_legalLoading || token != _legalLoadToken) return;
-      _setStateSafely(() {
-        _legalTimedOut = false;
-        _legalLoaded = true;
-        _legalSkipped = false;
-        _legalLoading = false;
-      });
-      _markDraftDirty();
+  /// Поллит `GetBatchLegalReviewResults` пока все проверки не выйдут из
+  /// pending (или пока не упрёмся в потолок попыток → `_legalTimedOut`).
+  /// [token] отсекает устаревший прогон; выходим, если экран закрыт или
+  /// стартовал новый прогон.
+  Future<void> _pollLegalBatchResults(int token, String batchNumber) async {
+    const interval = Duration(seconds: 3);
+    const maxAttempts = 20; // ~60s потолок
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      await Future<void>.delayed(interval);
+      if (!mounted || token != _legalLoadToken) return;
+      Map<String, dynamic> result;
+      try {
+        result = await storage_api.StorageApi.getBatchLegalReviewResults(
+          batchNumber: batchNumber,
+        );
+      } catch (_) {
+        continue; // transient — повторим на следующем тике
+      }
+      if (!mounted || token != _legalLoadToken) return;
+      final rawChecks = result['checks'];
+      final checks = rawChecks is List
+          ? rawChecks
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+      _setStateSafely(() => _legalCheckResults = checks);
+      final stillPending = storage_api.legalReviewBatchPending(checks);
+      if (!stillPending) {
+        _setStateSafely(() {
+          _legalLoading = false;
+          _legalLoaded = true;
+          _legalTimedOut = false;
+        });
+        _markDraftDirty();
+        return;
+      }
+    }
+    if (!mounted || token != _legalLoadToken) return;
+    _setStateSafely(() {
+      _legalLoading = false;
+      _legalTimedOut = true;
     });
+    _markDraftDirty();
+  }
+
+  /// Однократно подгружает мета-данные шага «Материалы проверки»:
+  /// право `run_legal_review` (из кэша прав, который B1 сидит на старте) и
+  /// каталог доступных типов проверок. Безопасно звать из build шага —
+  /// guard `_legalReviewMetaLoadStarted` гарантирует один запуск, а setState
+  /// происходит только после await (не во время build).
+  Future<void> _ensureLegalReviewMeta() async {
+    if (_legalReviewMetaLoadStarted) return;
+    _legalReviewMetaLoadStarted = true;
+    try {
+      final perms = await UserSimplePreferences.getPermissions();
+      if (mounted) {
+        _setStateSafely(
+          () => _legalCanRunReview = perms.contains('run_legal_review'),
+        );
+      }
+    } catch (_) {}
+    try {
+      final types =
+          await storage_api.StorageApi.getAvailableLegalReviewCheckTypes();
+      if (mounted && types.isNotEmpty) {
+        _setStateSafely(() => _legalAvailableCheckTypes = types);
+      }
+    } catch (_) {}
   }
 
   Future<void> _startLegalLoading() async {
     if (_legalLoading) return;
+    final checkTypes = _legalSelectedCheckTypes.toList();
+    if (checkTypes.isEmpty) {
+      if (mounted) {
+        showSparkJoyErrorSnackBar(
+          context,
+          Exception('Выберите хотя бы одну проверку'),
+          fallback: 'Не выбрано ни одной проверки',
+        );
+      }
+      return;
+    }
     final token = _legalLoadToken + 1;
     _setStateSafely(() {
       _legalLoadToken = token;
@@ -27,7 +95,39 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       _legalLoaded = false;
     });
     _markDraftDirty();
-    _scheduleLegalResult(token);
+
+    final vin = _vinController.text.trim();
+    final plate = _sanitizePlate(_plateController.text.trim());
+    try {
+      final started = await storage_api.StorageApi.runBatchLegalReview(
+        checkTypes: checkTypes,
+        vin: vin.isEmpty ? null : vin,
+        gosNumber: plate.isEmpty ? null : plate,
+        // searchString приоритетен для gost/taxi/converter: шлём VIN,
+        // иначе госномер (бэкенд сам делает fallback по типу проверки).
+        searchString: vin.isNotEmpty ? vin : (plate.isEmpty ? null : plate),
+      );
+      if (!mounted || token != _legalLoadToken) return;
+      final batchNumber = (started['batchNumber'] ?? '').toString().trim();
+      if (batchNumber.isEmpty) {
+        throw Exception('Бэкенд не вернул batchNumber');
+      }
+      _setStateSafely(() => _legalBatchNumber = batchNumber);
+      _markDraftDirty();
+      await _pollLegalBatchResults(token, batchNumber);
+    } catch (e) {
+      if (!mounted || token != _legalLoadToken) return;
+      _setStateSafely(() {
+        _legalLoading = false;
+        _legalTimedOut = true;
+      });
+      _markDraftDirty();
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось запустить проверки',
+      );
+    }
   }
 
   _CalculatedSummary _calculateSummary() {

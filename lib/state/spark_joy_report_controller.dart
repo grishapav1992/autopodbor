@@ -127,6 +127,23 @@ class SparkJoyReportController extends GetxController {
   final Rxn<String> tdMode = Rxn<String>();
 
   // ──────────────────────────────────────────────────────────────────
+  // Chunk 6b — ApiCloud legal-review (Материалы проверки) — B2
+  //
+  //   • legalSelectedCheckTypes — slug'и проверок, отмеченные чекбоксами
+  //   • legalBatchNumber        — batchNumber текущего/последнего прогона
+  //   • legalCheckResults       — нормализованные результаты по проверкам
+  //   • legalAvailableCheckTypes — каталог из GetAvailableLegalReviewCheckTypes
+  // Persisted в черновике (кроме availableCheckTypes — он подгружается).
+  // ──────────────────────────────────────────────────────────────────
+
+  final RxList<String> legalSelectedCheckTypes = <String>[].obs;
+  final Rxn<String> legalBatchNumber = Rxn<String>();
+  final RxList<Map<String, dynamic>> legalCheckResults =
+      <Map<String, dynamic>>[].obs;
+  final RxList<({String value, String name})> legalAvailableCheckTypes =
+      <({String value, String name})>[].obs;
+
+  // ──────────────────────────────────────────────────────────────────
   // Chunk 7 — Draft autosave meta-state
   //
   // Tracks the state of the background autosave pipeline. Timers and

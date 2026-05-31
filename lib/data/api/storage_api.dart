@@ -97,6 +97,22 @@ class PermissionDeniedException implements Exception {
       : 'Недостаточно прав для $method: $serverMessage';
 }
 
+/// True while a legal-review batch still has at least one check in a
+/// non-terminal state (or the list is empty — nothing settled yet). Drives
+/// the [StorageApi.getBatchLegalReviewResults] polling loop's stop condition.
+/// Terminal = anything that isn't pending/processing/in_progress/running.
+bool legalReviewBatchPending(List<Map<String, dynamic>> checks) {
+  if (checks.isEmpty) return true;
+  return checks.any((c) {
+    final s = (c['status'] ?? '').toString().toLowerCase();
+    return s.isEmpty ||
+        s == 'pending' ||
+        s == 'processing' ||
+        s == 'in_progress' ||
+        s == 'running';
+  });
+}
+
 class StorageApi {
   static const String _endpoint = AppEndpoints.appRpc;
   static String get _authVerifyPlatform => kIsWeb ? 'web' : 'mobile';
@@ -2567,6 +2583,124 @@ class StorageApi {
     final data = await _postRpc(
       method: 'Storage.GetVin',
       params: {'vin': vin.trim()},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Legal review (ApiCloud) — «Материалы проверки»
+  // ---------------------------------------------------------------------------
+
+  /// Available ApiCloud check types for [runBatchLegalReview].
+  /// Backend `result.checkTypes` = `[{value, name}]`; `value` is the string
+  /// passed back in `checkTypes`, `name` is the human-readable enum name.
+  static Future<List<({String value, String name})>>
+  getAvailableLegalReviewCheckTypes({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetAvailableLegalReviewCheckTypes',
+      params: const {},
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final raw = result['checkTypes'];
+    final out = <({String value, String name})>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is! Map) continue;
+        final m = _asMap(item);
+        final value = (m['value'] ?? '').toString().trim();
+        if (value.isEmpty) continue;
+        final name = (m['name'] ?? value).toString().trim();
+        out.add((value: value, name: name));
+      }
+    }
+    return out;
+  }
+
+  /// Starts a batch of ApiCloud legal-review checks. **PAID**; requires the
+  /// `run_legal_review` permission. Returns `{batchNumber, checks:[…]}`.
+  ///
+  /// Param usage by check type (see Doc): zalog checks use vin/chassis/
+  /// bodyNumber; gost/taxi/converter use searchString → vin → gosNumber;
+  /// fgis_taxi uses gosNumber. The batch is attached to a report later via
+  /// PrepareSpecialistReport `legalReviewStep.batchIds` (no stepId here).
+  static Future<Map<String, dynamic>> runBatchLegalReview({
+    required List<String> checkTypes,
+    String? vin,
+    String? gosNumber,
+    String? chassis,
+    String? bodyNumber,
+    String? searchString,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final params = <String, dynamic>{
+      'checkTypes': checkTypes,
+      if (vin != null && vin.trim().isNotEmpty) 'vin': vin.trim(),
+      if (gosNumber != null && gosNumber.trim().isNotEmpty)
+        'gosNumber': gosNumber.trim(),
+      if (chassis != null && chassis.trim().isNotEmpty)
+        'chassis': chassis.trim(),
+      if (bodyNumber != null && bodyNumber.trim().isNotEmpty)
+        'bodyNumber': bodyNumber.trim(),
+      if (searchString != null && searchString.trim().isNotEmpty)
+        'searchString': searchString.trim(),
+    };
+    final data = await _postRpc(
+      method: 'Storage.RunBatchLegalReview',
+      params: params,
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Returns all checks of a [batchNumber] with normalized API results
+  /// (`responseNormalized`) + batch `summary`. Used to poll progress and read
+  /// final results.
+  static Future<Map<String, dynamic>> getBatchLegalReviewResults({
+    required String batchNumber,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetBatchLegalReviewResults',
+      params: <String, dynamic>{'batchNumber': batchNumber},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Paginated list of LegalReviewCheck records, filterable (e.g. by
+  /// [legalReviewStepId]) — used to render a saved report's check materials.
+  static Future<Map<String, dynamic>> getLegalReviewChecks({
+    int? page,
+    int? limit,
+    String? vehicleVin,
+    String? vehicleGosNumber,
+    String? batchNumber,
+    String? checkType,
+    String? status,
+    int? legalReviewStepId,
+    Duration timeout = const Duration(seconds: 15),
+  }) async {
+    final params = <String, dynamic>{
+      if (page != null) 'page': page,
+      if (limit != null) 'limit': limit,
+      if (vehicleVin != null && vehicleVin.trim().isNotEmpty)
+        'vehicleVin': vehicleVin.trim(),
+      if (vehicleGosNumber != null && vehicleGosNumber.trim().isNotEmpty)
+        'vehicleGosNumber': vehicleGosNumber.trim(),
+      if (batchNumber != null && batchNumber.trim().isNotEmpty)
+        'batchNumber': batchNumber.trim(),
+      if (checkType != null && checkType.trim().isNotEmpty)
+        'checkType': checkType.trim(),
+      if (status != null && status.trim().isNotEmpty) 'status': status.trim(),
+      if (legalReviewStepId != null) 'legalReviewStepId': legalReviewStepId,
+    };
+    final data = await _postRpc(
+      method: 'Storage.GetLegalReviewChecks',
+      params: params,
       timeout: timeout,
     );
     return _asMap(data['result']);

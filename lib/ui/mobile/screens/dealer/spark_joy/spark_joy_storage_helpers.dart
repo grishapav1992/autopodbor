@@ -1447,9 +1447,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         'type': _prepareFileTypeFromMime(file.mimeType),
       });
     }
+    // B2: привязка batch ApiCloud-проверок к отчёту. Бэкенд линкует batch к
+    // legalReviewStep по batchIds (см. RunBatchLegalReview Doc — stepId туда
+    // не передаётся, связь идёт здесь).
+    final batchNumber = _legalBatchNumber?.trim() ?? '';
     return <String, dynamic>{
       'otherLegalReviews': otherLegalReviews,
       'legalReview': legalReview,
+      if (batchNumber.isNotEmpty) 'batchIds': <String>[batchNumber],
     };
   }
 
@@ -2513,6 +2518,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'legalFiles': _uploadedToJson(_legalFiles),
       'legalNote': _legalNoteController.text.trim(),
       'legalCommentAudioFiles': _uploadedToJson(_legalCommentAudioFiles),
+      // B2 — ApiCloud legal-review: batch + выбор проверок + кэш результатов,
+      // чтобы переоткрытый черновик показал статус/результаты без повторного
+      // (платного) прогона.
+      'legalBatchNumber': _legalBatchNumber,
+      'legalSelectedCheckTypes': _legalSelectedCheckTypes.toList(),
+      'legalCheckResults': _legalCheckResults,
       'bodyPaintFrom': _bodyPaintFrom,
       'bodyPaintTo': _bodyPaintTo,
       'structPaintFrom': _structPaintFrom,

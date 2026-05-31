@@ -29,6 +29,7 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_comment_utils.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_company_request_detail_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_error_snackbar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_i18n.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_media_note_logic.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_onboarding.dart';
@@ -178,6 +179,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _docsCommentAiBusy = false;
   bool _legalCommentAiBusy = false;
   bool _tdCommentAiBusy = false;
+  // B2 — ApiCloud legal-review: гейт по праву run_legal_review (читается из
+  // кэша прав, который B1 сидит на старте) + однократный ленивый load
+  // каталога типов проверок.
+  bool _legalCanRunReview = false;
+  bool _legalReviewMetaLoadStarted = false;
   late final TextEditingController _inspectorController;
   late String _assignedSpecialistId;
   late String _assignedSpecialistName;
@@ -380,6 +386,27 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   int get _legalLoadToken => _reportController.legalLoadToken.value;
   set _legalLoadToken(int value) =>
       _reportController.legalLoadToken.value = value;
+
+  // B2 — ApiCloud legal-review (Материалы проверки). Proxies to the
+  // controller so Obx() in the legal step rebuilds on change.
+  List<String> get _legalSelectedCheckTypes =>
+      _reportController.legalSelectedCheckTypes;
+  set _legalSelectedCheckTypes(List<String> value) =>
+      _reportController.legalSelectedCheckTypes.value = value;
+
+  String? get _legalBatchNumber => _reportController.legalBatchNumber.value;
+  set _legalBatchNumber(String? value) =>
+      _reportController.legalBatchNumber.value = value;
+
+  List<Map<String, dynamic>> get _legalCheckResults =>
+      _reportController.legalCheckResults;
+  set _legalCheckResults(List<Map<String, dynamic>> value) =>
+      _reportController.legalCheckResults.value = value;
+
+  List<({String value, String name})> get _legalAvailableCheckTypes =>
+      _reportController.legalAvailableCheckTypes;
+  set _legalAvailableCheckTypes(List<({String value, String name})> value) =>
+      _reportController.legalAvailableCheckTypes.value = value;
   // ┌─ Phase 4.1 · Chunk 13: uploaded file lists → controller ──────────────┐
   // │ `_UploadedItem` was renamed to `UploadedItem` so the controller can   │
   // │ type them without living in this `part of` library.                   │

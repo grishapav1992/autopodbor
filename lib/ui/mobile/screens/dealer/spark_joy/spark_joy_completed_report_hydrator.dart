@@ -158,6 +158,14 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   // 4. Legal files list.
   final legalFiles = _buildLegalFiles(legalReviewStep, urls: urls);
 
+  // 4b. ApiCloud legal-review check results (B2) — для рендера материалов
+  // проверок в разделе «Материалы проверки» при in-app просмотре отчёта.
+  final legalCheckResults = await _buildLegalCheckResults(legalReviewStep);
+  final legalBatchIds = legalReviewStep['batchIds'];
+  final legalBatchNumber = (legalBatchIds is List && legalBatchIds.isNotEmpty)
+      ? legalBatchIds.first.toString().trim()
+      : '';
+
   // 5. Test-drive tag names.
   final tdEngineTags = _resolveTagNames(
     testDriveStep['testDriveEngineTags'],
@@ -216,6 +224,9 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
     if (serverExpert.isNotEmpty) 'expertConclusionTouched': true,
     'mediaGroupsState': mediaGroupsState,
     if (legalFiles.isNotEmpty) 'legalFiles': legalFiles,
+    if (legalCheckResults.isNotEmpty) 'legalCheckResults': legalCheckResults,
+    if (legalCheckResults.isNotEmpty) 'legalLoaded': true,
+    if (legalBatchNumber.isNotEmpty) 'legalBatchNumber': legalBatchNumber,
     'tdEngineTags': tdEngineTags,
     'tdGearboxTags': tdGearboxTags,
     'tdSteeringTags': tdSteeringTags,
@@ -328,6 +339,64 @@ void _collectLegalFilenames(Map legalStep, Set<String> out) {
       if (name.isNotEmpty) out.add(name);
     }
   }
+}
+
+/// Извлекает результаты ApiCloud-проверок из `legalReviewStep` для рендера
+/// в разделе «Материалы проверки» завершённого отчёта. Источник зависит от
+/// формы ответа `ViewSpecialistReport` (подтвердить live):
+///   (а) встроенный массив проверок под одним из ожидаемых ключей;
+///   (б) иначе — дотянуть по `legalReviewStepId`, затем по `batchIds`, через
+///       getLegalReviewChecks / getBatchLegalReviewResults.
+/// Возвращаемый формат совпадает с тем, что рендерит редактор
+/// (`checkType` / `status` / `responseNormalized`).
+Future<List<Map<String, dynamic>>> _buildLegalCheckResults(
+  Map<String, dynamic> legalStep,
+) async {
+  List<Map<String, dynamic>> asMapList(dynamic raw) => raw is List
+      ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+      : <Map<String, dynamic>>[];
+
+  // (а) встроенные результаты.
+  for (final key in const [
+    'checks',
+    'legalReviewChecks',
+    'batchChecks',
+    'results',
+    'legalChecks',
+  ]) {
+    final embedded = asMapList(legalStep[key]);
+    if (embedded.isNotEmpty) return embedded;
+  }
+
+  // (б) дотянуть по stepId, затем по batchIds.
+  try {
+    final stepIdRaw = legalStep['legalReviewStepId'] ?? legalStep['id'];
+    final stepId = stepIdRaw is int
+        ? stepIdRaw
+        : int.tryParse('${stepIdRaw ?? ''}');
+    if (stepId != null && stepId > 0) {
+      final res = await storage_api.StorageApi.getLegalReviewChecks(
+        legalReviewStepId: stepId,
+        limit: 100,
+      );
+      final byStep = asMapList(res['checks']);
+      if (byStep.isNotEmpty) return byStep;
+    }
+    final batchIds = legalStep['batchIds'];
+    if (batchIds is List && batchIds.isNotEmpty) {
+      final batchNumber = batchIds.first.toString().trim();
+      if (batchNumber.isNotEmpty) {
+        final res = await storage_api.StorageApi.getBatchLegalReviewResults(
+          batchNumber: batchNumber,
+        );
+        final byBatch = asMapList(res['checks']);
+        if (byBatch.isNotEmpty) return byBatch;
+      }
+    }
+  } catch (e) {
+    debugPrint('[CompletedReportHydrator] legal checks fetch failed: $e');
+  }
+  return const <Map<String, dynamic>>[];
 }
 
 List<Map<String, dynamic>> _buildLegalFiles(

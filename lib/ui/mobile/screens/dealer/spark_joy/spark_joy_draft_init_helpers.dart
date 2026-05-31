@@ -242,6 +242,25 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _legalSkipped = _readBool(draft, 'legalSkipped');
     _legalTimedOut = _readBool(draft, 'legalTimedOut');
     _legalPurchased = _readBool(draft, 'legalPurchased');
+    // B2 — ApiCloud legal-review state.
+    final rawBatch = draft['legalBatchNumber'];
+    _legalBatchNumber = (rawBatch is String && rawBatch.trim().isNotEmpty)
+        ? rawBatch.trim()
+        : null;
+    final rawSelectedChecks = draft['legalSelectedCheckTypes'];
+    _legalSelectedCheckTypes = rawSelectedChecks is List
+        ? rawSelectedChecks
+              .map((e) => e.toString())
+              .where((e) => e.isNotEmpty)
+              .toList()
+        : <String>[];
+    final rawCheckResults = draft['legalCheckResults'];
+    _legalCheckResults = rawCheckResults is List
+        ? rawCheckResults
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+        : <Map<String, dynamic>>[];
     _legalFiles = _readUploadedList(draft['legalFiles']);
     _docsCommentAudioFiles = _readUploadedList(draft['docsCommentAudioFiles']);
     _legalCommentAudioFiles = _readUploadedList(

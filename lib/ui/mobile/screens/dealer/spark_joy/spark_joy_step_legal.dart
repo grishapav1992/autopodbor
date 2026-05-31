@@ -151,63 +151,151 @@ Widget _buildSparkJoyLegalFilesCard(
   );
 }
 
-/// Feature flag for the «Сформировать отчёт» card on the Материалы
-/// проверки step. Off by default — backend integration for legal-report
-/// formation is paused; we keep all the supporting state (legalLoading
-/// / Loaded / Skipped / TimedOut / Purchased) in the controller and
-/// draft so existing reports load without losing their status, but the
-/// card itself is hidden. Flip to true to bring the UI back unchanged.
-const bool _kShowLegalReportCard = false;
+/// Рендер результатов batch-проверок (ApiCloud) — по одной записи на
+/// checkType: имя проверки, статус и нормализованный ответ (компактно).
+/// Форма `responseNormalized` зависит от типа проверки, поэтому показываем
+/// её обобщённо (строка как есть / JSON), а детальный рендер допилим после
+/// первого live-прогона.
+List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
+  final results = s._legalCheckResults;
+  if (results.isEmpty) return const <Widget>[];
+  final nameByValue = <String, String>{
+    for (final t in s._legalAvailableCheckTypes) t.value: t.name,
+  };
+  return <Widget>[
+    const SizedBox(height: SparkSpace.md),
+    s._sectionHeading('Результаты проверок', icon: Icons.fact_check_outlined),
+    const SizedBox(height: SparkSpace.sm),
+    ...results.map((c) {
+      final type = (c['checkType'] ?? '').toString();
+      final title = nameByValue[type] ?? (type.isEmpty ? 'Проверка' : type);
+      final status = (c['status'] ?? '').toString();
+      final normalized = c['responseNormalized'];
+      final summary = normalized == null
+          ? ''
+          : (normalized is String ? normalized : jsonEncode(normalized));
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: SparkSpace.sm),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            MyText(
+              text: title,
+              size: SparkTextSize.caption,
+              weight: FontWeight.w600,
+            ),
+            MyText(
+              text: 'Статус: $status',
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+            if (summary.isNotEmpty)
+              MyText(
+                text: summary.length > 300
+                    ? '${summary.substring(0, 300)}…'
+                    : summary,
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+              ),
+          ],
+        ),
+      );
+    }),
+  ];
+}
 
 Widget _buildSparkJoyStepLegal(
   _SparkJoyCreateReportScreenState s, {
   required void Function(VoidCallback fn) setStateFn,
 }) {
+  // Однократно подтянуть право run_legal_review + каталог типов проверок
+  // (guard внутри метода; setState только после await, не во время build).
+  unawaited(s._ensureLegalReviewMeta());
+
   final statusColor = s._legalLoading
       ? kSecondaryColor
       : (s._legalLoaded
             ? kGreenColor
-            : (s._legalTimedOut
-                  ? kRedColor
-                  : (s._legalSkipped ? kYellowColor : kGreyColor)));
+            : (s._legalTimedOut ? kRedColor : kGreyColor));
   final statusSubtitle = s._legalLoading
-      ? 'Формируем отчёт…'
+      ? 'Формируем материалы…'
       : (s._legalLoaded
-            ? 'Отчёт сформирован'
+            ? 'Материалы сформированы'
             : (s._legalTimedOut
-                  ? 'Автопроверка не завершилась'
-                  : (s._legalSkipped
-                        ? 'Раздел отложен'
-                        : 'Отчёт ещё не сформирован')));
+                  ? 'Проверки не завершились вовремя'
+                  : 'Материалы ещё не сформированы'));
+
+  final selected = s._legalSelectedCheckTypes;
 
   return Column(
     children: [
-      if (_kShowLegalReportCard) ...[
-        s._card(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: MyText(
-                      text: statusSubtitle,
-                      size: SparkTextSize.caption,
-                      color: kTertiaryColor,
-                      weight: FontWeight.w600,
-                    ),
+      s._card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: MyText(
+                    text: 'Автопроверки ApiCloud',
+                    size: SparkTextSize.caption,
+                    color: kTertiaryColor,
+                    weight: FontWeight.w700,
                   ),
-                  Container(
-                    width: SparkSize.iconSm,
-                    height: SparkSize.iconSm,
-                    decoration: BoxDecoration(
-                      color: statusColor.withValues(alpha: 0.16),
-                      shape: BoxShape.circle,
-                    ),
+                ),
+                Container(
+                  width: SparkSize.iconSm,
+                  height: SparkSize.iconSm,
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.16),
+                    shape: BoxShape.circle,
                   ),
-                ],
-              ),
-              const SizedBox(height: SparkSpace.md),
+                ),
+              ],
+            ),
+            const SizedBox(height: SparkSpace.sm),
+            MyText(
+              text: statusSubtitle,
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+            const SizedBox(height: SparkSpace.md),
+            if (!s._legalCanRunReview)
+              SparkHintCard(
+                text:
+                    'Недостаточно прав для запуска проверок. Обратитесь к '
+                    'администратору компании (право run_legal_review).',
+              )
+            else ...[
+              if (s._legalAvailableCheckTypes.isEmpty)
+                const MyText(
+                  text: 'Загрузка списка проверок…',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                )
+              else
+                ...s._legalAvailableCheckTypes.map(
+                  (t) => CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    value: selected.contains(t.value),
+                    title: MyText(text: t.name, size: SparkTextSize.caption),
+                    onChanged: s._legalLoading
+                        ? null
+                        : (checked) {
+                            setStateFn(() {
+                              final next = selected.toList();
+                              if (checked == true) {
+                                if (!next.contains(t.value)) next.add(t.value);
+                              } else {
+                                next.remove(t.value);
+                              }
+                              s._legalSelectedCheckTypes = next;
+                            });
+                          },
+                  ),
+                ),
               if (s._legalLoading) ...[
                 const SizedBox(height: SparkSpace.sm),
                 ClipRRect(
@@ -217,28 +305,32 @@ Widget _buildSparkJoyStepLegal(
                   ),
                 ),
               ],
-              const SizedBox(height: SparkSpace.lg),
+              const SizedBox(height: SparkSpace.md),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: s._legalLoading ? null : s._startLegalLoading,
+                  onPressed: (s._legalLoading || selected.isEmpty)
+                      ? null
+                      : s._startLegalLoading,
                   icon: Icon(
-                    s._legalLoaded ? Icons.refresh_rounded : Icons.gavel_rounded,
+                    s._legalLoaded
+                        ? Icons.refresh_rounded
+                        : Icons.gavel_rounded,
                     size: SparkSize.iconSm,
                   ),
                   label: Text(
-                    s._legalLoaded
-                        ? 'Обновить отчет'
-                        : (s._legalLoading
-                              ? 'Формирование...'
-                              : 'Сформировать отчет'),
+                    s._legalLoading
+                        ? 'Формирование…'
+                        : (s._legalLoaded ? 'Обновить' : 'Сформировать'),
                   ),
                 ),
               ),
+              ..._buildSparkJoyLegalResults(s),
             ],
-          ),
+          ],
         ),
-      ],
+      ),
+      const SizedBox(height: SparkSpace.xl),
       s._sectionHeading('Файлы специалиста', icon: Icons.folder_open_outlined),
       const SizedBox(height: SparkSpace.lg),
       _buildSparkJoyLegalFilesCard(s, setStateFn: setStateFn),
