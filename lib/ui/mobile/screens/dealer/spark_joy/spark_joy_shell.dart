@@ -20,6 +20,7 @@ import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_notifications_screen.dart';
 import 'spark_joy_notifications_storage.dart';
 import 'spark_joy_onboarding.dart';
+import 'spark_joy_profile_refresh_bus.dart';
 import 'spark_joy_reports_list_screen.dart';
 import 'spark_joy_specialist_requests_screen.dart';
 import 'spark_joy_specialist_profile_screen.dart';
@@ -54,12 +55,33 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   void initState() {
     super.initState();
     _bootstrap();
+    // Re-sync role/nav when the profile changes elsewhere (e.g. accepting a
+    // staff invite that links the user to a company) so the bottom nav and
+    // tabs reflect the new state immediately (B7).
+    SparkJoyProfileRefreshBus.notifier.addListener(_onProfileRefreshRequested);
   }
 
   @override
   void dispose() {
+    SparkJoyProfileRefreshBus.notifier.removeListener(
+      _onProfileRefreshRequested,
+    );
     _requestedReportsTab.dispose();
     super.dispose();
+  }
+
+  void _onProfileRefreshRequested() {
+    unawaited(_refreshRoleFromServer());
+  }
+
+  Future<void> _refreshRoleFromServer() async {
+    if (!await SparkJoyStorage.isLoggedIn()) return;
+    await SparkJoyStorage.syncRoleFromServer();
+    final businessType = await SparkJoyStorage.currentBusinessType();
+    if (!mounted) return;
+    // Route through the existing role-transition handler so the active tab
+    // is preserved across a specialist→company layout change.
+    _onBusinessStatusChanged(businessType);
   }
 
   /// Fires tab-specific onboarding bottom sheets that don't belong on

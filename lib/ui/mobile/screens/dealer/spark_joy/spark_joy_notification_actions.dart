@@ -6,6 +6,7 @@ import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
+import 'spark_joy_profile_refresh_bus.dart';
 import 'spark_joy_request_refresh_bus.dart';
 import 'spark_joy_tokens.dart';
 
@@ -44,6 +45,13 @@ class _SparkJoyNotificationActionsState
       );
       if (result.isOk && widget.notification.type == NotificationType.task) {
         SparkJoyRequestRefreshBus.notifyChanged();
+      }
+      // Accepting a staff invite changes the user's company/role — refresh
+      // the profile (linked company) and the shell nav immediately (B7).
+      if (result.isOk &&
+          action == NotificationAction.accept &&
+          widget.notification.type == NotificationType.invitation) {
+        SparkJoyProfileRefreshBus.notifyChanged();
       }
       if (!mounted) return;
       _showResultFeedback(action, result);

@@ -19,6 +19,7 @@ import 'spark_joy_data.dart';
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_feedback_screen.dart';
 import 'spark_joy_company_public_profile_screen.dart';
+import 'spark_joy_profile_refresh_bus.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -169,10 +170,24 @@ class _SparkJoySpecialistProfileScreenState
     super.initState();
     _loadProfile();
     _loadBusinessStatus();
+    // Refresh when the profile changes elsewhere — e.g. accepting a staff
+    // invite from a notification links a company that must show up here
+    // immediately (B7). The screen stays mounted in the shell IndexedStack,
+    // so it receives the signal even when another tab is active.
+    SparkJoyProfileRefreshBus.notifier.addListener(_onProfileRefreshRequested);
+  }
+
+  void _onProfileRefreshRequested() {
+    if (!mounted) return;
+    unawaited(_fetchServerProfile());
+    unawaited(_loadBusinessStatus());
   }
 
   @override
   void dispose() {
+    SparkJoyProfileRefreshBus.notifier.removeListener(
+      _onProfileRefreshRequested,
+    );
     _innController.dispose();
     _lastNameController.dispose();
     _firstNameController.dispose();
