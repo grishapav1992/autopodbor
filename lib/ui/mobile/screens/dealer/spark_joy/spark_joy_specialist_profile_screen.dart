@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/data/api/local_llm_profile_guard_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
@@ -78,10 +77,6 @@ class _SparkJoySpecialistProfileScreenState
   // Название компании. Парная companyInn (см. _verifiedInn) — пара
   // имя+ИНН отправляется на сервер атомарно (server требует оба).
   final _companyNameController = TextEditingController();
-
-  // LLM-guard для description — проверяет на «контакты в обход
-  // платформы» перед push'ом на сервер.
-  final _llmGuard = LocalLlmProfileGuardApi();
 
   bool _isVerifying = false;
   bool _isSavingProfile = false;
@@ -559,7 +554,7 @@ class _SparkJoySpecialistProfileScreenState
   /// Fire-and-forget push изменений профиля на сервер. Локально уже
   /// сохранено к этому моменту — на ошибку показываем тонкий снэк
   /// (или silent если можно).
-  Future<bool> _pushProfileToServer({required bool descriptionAllowed}) async {
+  Future<bool> _pushProfileToServer() async {
     final payload = <String, dynamic>{};
     final lastName = _lastNameController.text.trim();
     final firstName = _firstNameController.text.trim();
@@ -595,7 +590,7 @@ class _SparkJoySpecialistProfileScreenState
     if (middleNameChanged) payload['middleName'] = middleName;
     if (emailChanged) payload['email'] = email;
     if (cityChanged) payload['city'] = city;
-    if (descriptionChanged && descriptionAllowed) {
+    if (descriptionChanged) {
       payload['description'] = description;
     }
     // companyName и companyInn сервер сохраняет только парой — шлём
@@ -619,7 +614,7 @@ class _SparkJoySpecialistProfileScreenState
       _originalLastName = lastName;
       _originalMiddleName = middleName;
       _originalCity = city;
-      if (descriptionAllowed) _originalDescription = description;
+      _originalDescription = description;
       if (companyNameChanged &&
           companyName.isNotEmpty &&
           companyInn.isNotEmpty) {
@@ -1487,35 +1482,9 @@ class _SparkJoySpecialistProfileScreenState
         newEmail.isNotEmpty &&
         newEmail.toLowerCase() != previousEmail.toLowerCase();
 
-    // Прогоняем description («Описание услуг») через локальный
-    // LLM-guard перед server push — он блокирует контакты в обход
-    // платформы (phone/email/@-handle). Локально description
-    // сохраняется в любом случае; на сервер шлём только если guard
-    // не заблокировал.
-    //
-    // На web guard'а нет (нет ожидания, что у юзера крутится локальный
-    // llama.cpp на 127.0.0.1:8081) — пропускаем call, иначе каждый
-    // save выдаёт красный CORS preflight fail в DevTools. Боевая
-    // защита от контактов в любом случае должна быть на сервере.
+    // «Описание услуг» уходит на сервер как есть — модерация контактов в
+    // обход платформы остаётся на сервере (локальный LLM-guard удалён).
     final description = _specializationController.text.trim();
-    var descriptionAllowed = true;
-    String? guardWarning;
-    if (description.isNotEmpty && !kIsWeb) {
-      try {
-        final guard = await _llmGuard.checkAboutText(description);
-        if (guard.blocked) {
-          descriptionAllowed = false;
-          guardWarning = guard.errors.isNotEmpty
-              ? guard.errors.join('; ')
-              : (guard.note ?? 'Описание содержит контактные данные');
-        }
-      } catch (e) {
-        // Guard offline — не блокируем save, отправляем как есть.
-        if (kDebugMode) {
-          debugPrint('[profile] LLM guard failed: $e');
-        }
-      }
-    }
 
     final current = _specialist();
     final next = {
@@ -1547,9 +1516,7 @@ class _SparkJoySpecialistProfileScreenState
       _specialistProfile = next;
     });
 
-    final serverSaved = await _pushProfileToServer(
-      descriptionAllowed: descriptionAllowed,
-    );
+    final serverSaved = await _pushProfileToServer();
     if (!mounted) return;
     setState(() => _isSavingProfile = false);
     if (!serverSaved) return;
@@ -1561,27 +1528,16 @@ class _SparkJoySpecialistProfileScreenState
     // при инлайн-правке города/имени — выглядело как два всплывающих
     // окна). Схлопываем в одно сообщение и гасим предыдущее (B5).
     messenger.clearSnackBars();
-    if (guardWarning != null) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Профиль сохранён. Описание услуг не отправлено: $guardWarning',
-          ),
-          backgroundColor: kRedColor,
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          emailChanged
+              ? 'Профиль сохранён. Email изменён — подтвердите по ссылке '
+                    'из письма.'
+              : 'Профиль сохранён',
         ),
-      );
-    } else {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            emailChanged
-                ? 'Профиль сохранён. Email изменён — подтвердите по ссылке '
-                      'из письма.'
-                : 'Профиль сохранён',
-          ),
-        ),
-      );
-    }
+      ),
+    );
   }
 
   Widget _buildLinkedCompanyProfile() {
