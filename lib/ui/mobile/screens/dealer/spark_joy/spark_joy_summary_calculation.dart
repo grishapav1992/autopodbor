@@ -112,14 +112,67 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       }
       return;
     }
-    _setStateSafely(() => _vinConverterBusy = true);
+    _setStateSafely(() {
+      _vinConverterBusy = true;
+      _vinLookupInfo = const <String, String>{};
+    });
     try {
       final r = await storage_api.StorageApi.runVinPlateConverter(
         vin: fromVin ? vin : null,
         gosNumber: fromVin ? null : plate,
       );
       if (!mounted) return;
-      if (!r.found) {
+
+      final info = <String, String>{};
+      var resolvedVin = fromVin ? vin : r.vin;
+
+      // Конвертер нашёл авто → заполняем поля + собираем инфу.
+      if (r.found) {
+        _setStateSafely(() {
+          if (fromVin) {
+            if (r.gosNumber.isNotEmpty) _applyDetectedPlate(r.gosNumber);
+          } else {
+            if (r.vin.isNotEmpty) _vinController.text = _sanitizeVin(r.vin);
+          }
+          if (r.brand.isNotEmpty) _brandController.text = r.brand;
+          if (r.model.isNotEmpty) _modelController.text = r.model;
+        });
+        _markDraftDirty();
+        if (r.brand.isNotEmpty) info['Марка'] = r.brand;
+        if (r.model.isNotEmpty) info['Модель'] = r.model;
+        if (r.year != null) info['Год'] = '${r.year}';
+        final shownVin = fromVin ? vin : r.vin;
+        if (shownVin.isNotEmpty) info['VIN'] = shownVin;
+        final shownPlate = fromVin ? r.gosNumber : plate;
+        if (shownPlate.isNotEmpty) info['Госномер'] = shownPlate;
+        resolvedVin = shownVin;
+      }
+
+      // Доп. инфа из DecodeVin (бесплатный WMI-декод) по доступному VIN —
+      // как обогащение (регион/страна) и как фолбэк, если конвертер не нашёл
+      // (производитель + диапазон годов — чтобы пользователь получил хоть что-то).
+      if (resolvedVin.isNotEmpty) {
+        try {
+          final dv = await storage_api.StorageApi.decodeVin(vin: resolvedVin);
+          if (mounted) {
+            final manufacturer = (dv['manufacturer'] ?? '').toString().trim();
+            final region = (dv['region'] ?? '').toString().trim();
+            final country = (dv['country'] ?? '').toString().trim();
+            final my = dv['modelYear'];
+            if (!r.found && manufacturer.isNotEmpty) {
+              info['Производитель'] = manufacturer;
+            }
+            if (!r.found && my is List && my.length == 2) {
+              info['Годы выпуска'] = '${my.first}–${my.last}';
+            }
+            if (region.isNotEmpty) info['Регион'] = region;
+            if (country.isNotEmpty) info['Страна'] = country;
+          }
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+      if (info.isEmpty) {
         showSparkJoyErrorSnackBar(
           context,
           Exception('not_found'),
@@ -129,24 +182,17 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         );
         return;
       }
-      _setStateSafely(() {
-        if (fromVin) {
-          if (r.gosNumber.isNotEmpty) _applyDetectedPlate(r.gosNumber);
-        } else {
-          if (r.vin.isNotEmpty) _vinController.text = _sanitizeVin(r.vin);
-        }
-        if (r.brand.isNotEmpty) _brandController.text = r.brand;
-        if (r.model.isNotEmpty) _modelController.text = r.model;
-      });
-      _markDraftDirty();
-      final name = [r.brand, r.model].where((e) => e.isNotEmpty).join(' ');
-      final year = r.year != null ? ' ${r.year}' : '';
-      final extra = fromVin
-          ? (r.gosNumber.isNotEmpty ? ', госномер ${r.gosNumber}' : '')
-          : (r.vin.isNotEmpty ? ', VIN ${r.vin}' : '');
+      _setStateSafely(() => _vinLookupInfo = info);
+      final name = [info['Марка'] ?? '', info['Модель'] ?? '']
+          .where((e) => e.isNotEmpty)
+          .join(' ');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Найдено: $name$year$extra')),
+          SnackBar(
+            content: Text(
+              name.isEmpty ? 'Информация найдена' : 'Найдено: $name',
+            ),
+          ),
         );
       }
     } catch (e) {

@@ -186,6 +186,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _legalReviewMetaLoadStarted = false;
   // P2 — VIN↔госномер конвертер (api_cloud_converter_search) в шаге «Авто».
   bool _vinConverterBusy = false;
+  // Найденная по VIN/госномеру инфа (label→value) для карточки результата.
+  Map<String, String> _vinLookupInfo = const <String, String>{};
   late final TextEditingController _inspectorController;
   late String _assignedSpecialistId;
   late String _assignedSpecialistName;

@@ -292,6 +292,53 @@ Widget _buildSparkJoyStepVehicle(
                 ),
               ),
             ],
+            if (s._vinLookupInfo.isNotEmpty) ...[
+              const SizedBox(height: SparkSpace.md),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(SparkSpace.md),
+                decoration: BoxDecoration(
+                  color: kLightGreyColor,
+                  borderRadius: BorderRadius.circular(SparkRadius.md),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MyText(
+                      text: 'Найденная информация',
+                      size: SparkTextSize.caption,
+                      weight: FontWeight.w700,
+                    ),
+                    const SizedBox(height: SparkSpace.sm),
+                    ...s._vinLookupInfo.entries.map(
+                      (e) => Padding(
+                        padding: const EdgeInsets.only(bottom: SparkSpace.xxs),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: 116,
+                              child: MyText(
+                                text: e.key,
+                                size: SparkTextSize.caption,
+                                color: kGreyColor,
+                              ),
+                            ),
+                            Expanded(
+                              child: MyText(
+                                text: e.value,
+                                size: SparkTextSize.caption,
+                                weight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
