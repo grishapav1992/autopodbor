@@ -22,6 +22,7 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
           TextField(
             controller: _brandController,
             textCapitalization: TextCapitalization.words,
+            onChanged: (_) => _onCarIdentityEdited(),
             decoration: _fieldDecoration('Напр. LADA'),
           ),
           const SizedBox(height: SparkSpace.md),
@@ -34,6 +35,7 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
           TextField(
             controller: _modelController,
             textCapitalization: TextCapitalization.words,
+            onChanged: (_) => _onCarIdentityEdited(),
             decoration: _fieldDecoration('Напр. VESTA'),
           ),
           const SizedBox(height: SparkSpace.md),
@@ -45,6 +47,7 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
           const SizedBox(height: SparkSpace.sm),
           TextField(
             controller: _generationController,
+            onChanged: (_) => _onCarIdentityEdited(),
             decoration: _fieldDecoration('Можно не заполнять'),
           ),
           const SizedBox(height: SparkSpace.md),

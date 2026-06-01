@@ -372,8 +372,11 @@ Widget _buildSparkJoyStepLegal(
                   ),
                 ),
               ),
-              ..._buildSparkJoyLegalResults(s),
             ],
+            // Результаты показываем ВНЕ permission-гейта: просмотр уже
+            // сохранённых материалов не требует права на запуск (гидратор
+            // подтянул их и для зрителя без run_legal_review).
+            ..._buildSparkJoyLegalResults(s),
           ],
         ),
       ),

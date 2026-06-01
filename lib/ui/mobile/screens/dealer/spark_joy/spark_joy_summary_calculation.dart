@@ -56,16 +56,22 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// guard `_legalReviewMetaLoadStarted` гарантирует один запуск, а setState
   /// происходит только после await (не во время build).
   Future<void> _ensureLegalReviewMeta() async {
+    // Право читаем НЕ один раз: на первом логине кэш прав ещё пуст (его пишет
+    // PermissionsController.syncFromServer параллельно), и одноразовый guard
+    // навсегда спрятал бы фичу у авторизованного юзера. Перечитываем prefs
+    // (дёшево) на каждый вызов, пока право не появится; как только выдано —
+    // больше не перечитываем.
+    if (!_legalCanRunReview) {
+      try {
+        final perms = await UserSimplePreferences.getPermissions();
+        if (mounted && perms.contains('run_legal_review')) {
+          _setStateSafely(() => _legalCanRunReview = true);
+        }
+      } catch (_) {}
+    }
+    // Каталог типов проверок — сетевой запрос, тянем один раз.
     if (_legalReviewMetaLoadStarted) return;
     _legalReviewMetaLoadStarted = true;
-    try {
-      final perms = await UserSimplePreferences.getPermissions();
-      if (mounted) {
-        _setStateSafely(
-          () => _legalCanRunReview = perms.contains('run_legal_review'),
-        );
-      }
-    } catch (_) {}
     try {
       final types =
           await storage_api.StorageApi.getAvailableLegalReviewCheckTypes();
@@ -135,6 +141,9 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       // Конвертер нашёл авто → заполняем поля + собираем инфу.
       if (r.found) {
         _setStateSafely(() {
+          // Новая идентичность от конвертера → каталожная мета (фото/frameId/
+          // рестайлинг) от прошлого выбора больше не относится к этому авто.
+          _clearCatalogCarMeta();
           if (fromVin) {
             if (r.gosNumber.isNotEmpty) _applyDetectedPlate(r.gosNumber);
           } else {
@@ -227,6 +236,25 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           )
         : permissive;
     _plateBlurred = true;
+  }
+
+  /// Сбрасывает каталожные данные авто (фото / рестайлинг / фреймы / frameId).
+  /// Они валидны только когда выбраны АТОМАРНО через каталог-пикер; при ручной
+  /// правке марки/модели/поколения или после VIN-конвертера относились бы к
+  /// другому авто (в отчёт утекли бы чужие фото/frameId). Только присваивания —
+  /// без setState (зовётся как из setState-блока, так и из [_onCarIdentityEdited]).
+  void _clearCatalogCarMeta() {
+    _carPhotoUrl = '';
+    _restylingLabel = '';
+    _carFrames = '';
+    _modelGenerationRestylingFrameId = null;
+  }
+
+  /// onChanged для ручных полей марка/модель/поколение: пользователь отходит от
+  /// каталожного выбора → сбрасываем каталожную мету и перерисовываем карточку.
+  void _onCarIdentityEdited() {
+    _setStateSafely(_clearCatalogCarMeta);
+    _markDraftDirty();
   }
 
   Future<void> _startLegalLoading() async {

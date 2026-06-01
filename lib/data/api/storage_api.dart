@@ -633,12 +633,13 @@ class StorageApi {
     }
     final errorsText = _extractErrorsText(data).toLowerCase();
     if (errorsText.isEmpty) return false;
+    // Узкие маркеры: 'доступ' матчил бы «недоступен» (сервис недоступен), а
+    // голый '403' — любой ID с этими цифрами. Берём только однозначное.
     return errorsText.contains('forbidden') ||
         errorsText.contains('permission') ||
-        errorsText.contains('доступ') ||
-        errorsText.contains('недостаточно прав') ||
         errorsText.contains('access denied') ||
-        errorsText.contains('403');
+        errorsText.contains('нет доступа') ||
+        errorsText.contains('недостаточно прав');
   }
 
   static Future<bool> hasSavedSession({bool probeWithGetBrand = false}) async {
