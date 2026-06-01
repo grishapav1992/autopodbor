@@ -8,6 +8,9 @@ Widget _buildSparkJoyStepVehicle(
   final vinError = s._vinError();
   final plateError = s._plateError();
 
+  // P2: один раз подтянуть право run_legal_review (для кнопок «Определить»).
+  unawaited(s._ensureLegalReviewMeta());
+
   return Column(
     children: [
       s._sectionHeading(
@@ -76,6 +79,37 @@ Widget _buildSparkJoyStepVehicle(
                     child: const Icon(Icons.document_scanner_outlined),
                   ),
                 ),
+                if (s._legalCanRunReview) ...[
+                  const SizedBox(width: SparkSpace.md),
+                  SizedBox(
+                    width: 52,
+                    height: 52,
+                    child: Tooltip(
+                      message: 'Определить по VIN (ApiCloud)',
+                      child: OutlinedButton(
+                        onPressed: (s._vinUnreadable || s._vinConverterBusy)
+                            ? null
+                            : () => unawaited(
+                                s._runVinPlateConverter(fromVin: true),
+                              ),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          side: const BorderSide(color: kBorderColor),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(SparkRadius.lg),
+                          ),
+                        ),
+                        child: s._vinConverterBusy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.travel_explore),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             InkWell(
@@ -226,6 +260,36 @@ Widget _buildSparkJoyStepVehicle(
                 text: plateError,
                 size: SparkTextSize.caption,
                 color: kRedColor,
+              ),
+            ],
+            if (s._legalCanRunReview) ...[
+              const SizedBox(height: SparkSpace.md),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: s._vinConverterBusy
+                      ? null
+                      : () => unawaited(
+                          s._runVinPlateConverter(fromVin: false),
+                        ),
+                  icon: s._vinConverterBusy
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(
+                          Icons.travel_explore,
+                          size: SparkSize.iconSm,
+                        ),
+                  label: const Text('Определить по госномеру'),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: kBorderColor),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SparkRadius.lg),
+                    ),
+                  ),
+                ),
               ),
             ],
           ],

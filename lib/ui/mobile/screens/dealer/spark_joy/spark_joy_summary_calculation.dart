@@ -75,6 +75,108 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     } catch (_) {}
   }
 
+  /// P2 — ApiCloud VIN↔госномер конвертер. [fromVin]=true: по VIN подставить
+  /// госномер+марку+модель; false: по госномеру подставить VIN+марку+модель.
+  /// Платно, требует `run_legal_review` (гейт + 403 → snackbar из B1).
+  Future<void> _runVinPlateConverter({required bool fromVin}) async {
+    if (_vinConverterBusy) return;
+    if (!_legalCanRunReview) {
+      if (mounted) {
+        showSparkJoyErrorSnackBar(
+          context,
+          Exception('permission_denied'),
+          fallback: 'Недостаточно прав для определения по VIN',
+        );
+      }
+      return;
+    }
+    final vin = _vinController.text.trim();
+    final plate = _sanitizePlate(_plateController.text.trim());
+    if (fromVin && vin.isEmpty) {
+      if (mounted) {
+        showSparkJoyErrorSnackBar(
+          context,
+          Exception('vin_required'),
+          fallback: 'Введите VIN',
+        );
+      }
+      return;
+    }
+    if (!fromVin && plate.isEmpty) {
+      if (mounted) {
+        showSparkJoyErrorSnackBar(
+          context,
+          Exception('gos_number_required'),
+          fallback: 'Введите госномер',
+        );
+      }
+      return;
+    }
+    _setStateSafely(() => _vinConverterBusy = true);
+    try {
+      final r = await storage_api.StorageApi.runVinPlateConverter(
+        vin: fromVin ? vin : null,
+        gosNumber: fromVin ? null : plate,
+      );
+      if (!mounted) return;
+      if (!r.found) {
+        showSparkJoyErrorSnackBar(
+          context,
+          Exception('not_found'),
+          fallback: fromVin
+              ? 'По VIN ничего не найдено'
+              : 'По госномеру ничего не найдено',
+        );
+        return;
+      }
+      _setStateSafely(() {
+        if (fromVin) {
+          if (r.gosNumber.isNotEmpty) _applyDetectedPlate(r.gosNumber);
+        } else {
+          if (r.vin.isNotEmpty) _vinController.text = _sanitizeVin(r.vin);
+        }
+        if (r.brand.isNotEmpty) _brandController.text = r.brand;
+        if (r.model.isNotEmpty) _modelController.text = r.model;
+      });
+      _markDraftDirty();
+      final name = [r.brand, r.model].where((e) => e.isNotEmpty).join(' ');
+      final year = r.year != null ? ' ${r.year}' : '';
+      final extra = fromVin
+          ? (r.gosNumber.isNotEmpty ? ', госномер ${r.gosNumber}' : '')
+          : (r.vin.isNotEmpty ? ', VIN ${r.vin}' : '');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Найдено: $name$year$extra')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось определить по VIN/госномеру',
+      );
+    } finally {
+      if (mounted) _setStateSafely(() => _vinConverterBusy = false);
+    }
+  }
+
+  /// Программно проставляет госномер с авто-детектом страны/формата —
+  /// `TextField.onChanged` на программный `.text =` не срабатывает, поэтому
+  /// повторяем ту же логику, что в обработчике ввода (spark_joy_step_vehicle).
+  void _applyDetectedPlate(String raw) {
+    final permissive = sanitizePlatePermissive(raw);
+    final detected = detectPlateCountry(permissive);
+    _plateCountry = detected ?? PlateCountry.other;
+    _plateController.text = detected != null
+        ? formatPlate(
+            sanitizePlate(permissive, plateFormatFor(detected)),
+            plateFormatFor(detected),
+          )
+        : permissive;
+    _plateBlurred = true;
+  }
+
   Future<void> _startLegalLoading() async {
     if (_legalLoading) return;
     final checkTypes = _legalSelectedCheckTypes.toList();

@@ -106,24 +106,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return [brand, model, generation].where((e) => e.isNotEmpty).join(' ');
   }
 
-  String _carButtonName() {
-    final brand = _brandController.text.trim();
-    final model = _modelController.text.trim();
-    return [brand, model].where((e) => e.isNotEmpty).join(' ');
-  }
-
-  String _carMetaLabel() {
-    final generation = _generationController.text.trim();
-    final restyling = _restylingLabel.trim();
-    final frames = _carFrames.trim();
-    final parts = <String>[
-      if (generation.isNotEmpty) 'Поколение $generation',
-      if (restyling.isNotEmpty) restyling,
-      if (frames.isNotEmpty) frames,
-    ];
-    return parts.join(' · ');
-  }
-
   /// Compact `brand, model, generation, restyling, engine + transmission`
   /// string for AI cliché. Empty → returns `null` so the cliché can
   /// skip the «Контекст автомобиля» block entirely instead of

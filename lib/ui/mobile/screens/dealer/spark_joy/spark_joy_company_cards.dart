@@ -2,108 +2,88 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
   Widget _carSelectionCard() {
-    final carButtonTitle = _carButtonName();
-    final carTitle = _carName();
-    final carMeta = _carMetaLabel();
+    // P2 — раздельные поля: марку/модель можно ввести вручную, выбрать из
+    // каталога («Выбрать из каталога») или подставить авто-конвертером по
+    // VIN/госномеру (шаг «Идентификация»). Поколение — необязательное
+    // (валидация требует только марку+модель). Все три пишут в те же
+    // контроллеры (_brand/_model/_generationController), что и каталог-пикер.
+    final photo = _carPhotoUrl.trim();
 
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: _openCarPickerDialog,
-            borderRadius: BorderRadius.circular(SparkRadius.lg),
-            child: Container(
-              height: SparkSize.inputHeightLg,
-              padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
-              decoration: BoxDecoration(
-                border: Border.all(color: kBorderColor),
-                borderRadius: BorderRadius.circular(SparkRadius.lg),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: MyText(
-                      text: carButtonTitle.isEmpty
-                          ? 'Выбрать автомобиль'
-                          : carButtonTitle,
-                      size: SparkTextSize.bodyLg,
-                      color: carButtonTitle.isEmpty
-                          ? kGreyColor
-                          : kTertiaryColor,
-                      maxLines: 1,
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: kGreyColor),
-                ],
+          const MyText(
+            text: 'Марка',
+            size: SparkTextSize.body,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: SparkSpace.sm),
+          TextField(
+            controller: _brandController,
+            textCapitalization: TextCapitalization.words,
+            decoration: _fieldDecoration('Напр. LADA'),
+          ),
+          const SizedBox(height: SparkSpace.md),
+          const MyText(
+            text: 'Модель',
+            size: SparkTextSize.body,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: SparkSpace.sm),
+          TextField(
+            controller: _modelController,
+            textCapitalization: TextCapitalization.words,
+            decoration: _fieldDecoration('Напр. VESTA'),
+          ),
+          const SizedBox(height: SparkSpace.md),
+          const MyText(
+            text: 'Поколение (необязательно)',
+            size: SparkTextSize.body,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: SparkSpace.sm),
+          TextField(
+            controller: _generationController,
+            decoration: _fieldDecoration('Можно не заполнять'),
+          ),
+          const SizedBox(height: SparkSpace.md),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _openCarPickerDialog,
+              icon: const Icon(Icons.list_alt_rounded, size: SparkSize.iconSm),
+              label: const Text('Выбрать из каталога'),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: kBorderColor),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                ),
               ),
             ),
           ),
-          // Detail card surfaces information that the picker button can't —
-          // photo, generation/restyling/frames meta. The title line itself
-          // is shown only when carTitle ≠ carButtonTitle (i.e. поколение
-          // adds something beyond «BMW 3-series»). Without this guard the
-          // picker button «BMW 3-series» and the detail title «BMW 3-series»
-          // duplicated each other for any car without a generation.
-          if (_carPhotoUrl.trim().isNotEmpty ||
-              carTitle != carButtonTitle ||
-              carMeta.isNotEmpty) ...[
+          // Фото из каталога (если авто выбрано через каталог-пикер).
+          if (photo.isNotEmpty) ...[
             const SizedBox(height: SparkSpace.md),
-            _card(
-              padding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.lg,
-                vertical: SparkSpace.md,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_carPhotoUrl.trim().isNotEmpty) ...[
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(SparkRadius.sm),
-                            child: CachedNetworkImage(
-                              imageUrl: _carPhotoUrl.trim(),
-                              width: double.infinity,
-                              height: SparkSize.mediaCardThumb,
-                              fit: BoxFit.cover,
-                              errorWidget: (context, url, error) {
-                                return Container(
-                                  width: double.infinity,
-                                  height: SparkSize.mediaCardThumb,
-                                  color: kLightGreyColor,
-                                  alignment: Alignment.center,
-                                  child: const Icon(
-                                    Icons.directions_car_outlined,
-                                    color: kGreyColor,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          if (carTitle != carButtonTitle || carMeta.isNotEmpty)
-                            const SizedBox(height: SparkSpace.md),
-                        ],
-                        if (carTitle != carButtonTitle && carTitle.isNotEmpty)
-                          MyText(
-                            text: carTitle,
-                            size: SparkTextSize.body,
-                            weight: FontWeight.w700,
-                          ),
-                        if (carMeta.isNotEmpty) ...[
-                          if (carTitle != carButtonTitle && carTitle.isNotEmpty)
-                            const SizedBox(height: SparkSpace.xxs),
-                          MyText(
-                            text: carMeta,
-                            size: SparkTextSize.caption,
-                            color: kGreyColor,
-                          ),
-                        ],
-                      ],
+            ClipRRect(
+              borderRadius: BorderRadius.circular(SparkRadius.sm),
+              child: CachedNetworkImage(
+                imageUrl: photo,
+                width: double.infinity,
+                height: SparkSize.mediaCardThumb,
+                fit: BoxFit.cover,
+                errorWidget: (context, url, error) {
+                  return Container(
+                    width: double.infinity,
+                    height: SparkSize.mediaCardThumb,
+                    color: kLightGreyColor,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.directions_car_outlined,
+                      color: kGreyColor,
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             ),
           ],

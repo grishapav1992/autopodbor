@@ -184,6 +184,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // каталога типов проверок.
   bool _legalCanRunReview = false;
   bool _legalReviewMetaLoadStarted = false;
+  // P2 — VIN↔госномер конвертер (api_cloud_converter_search) в шаге «Авто».
+  bool _vinConverterBusy = false;
   late final TextEditingController _inspectorController;
   late String _assignedSpecialistId;
   late String _assignedSpecialistName;

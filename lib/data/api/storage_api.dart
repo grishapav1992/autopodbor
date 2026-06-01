@@ -113,6 +113,56 @@ bool legalReviewBatchPending(List<Map<String, dynamic>> checks) {
   });
 }
 
+/// Parsed result of the ApiCloud VIN↔plate converter
+/// (`api_cloud_converter_search`). `found=false` means the vehicle isn't in
+/// ApiCloud's DB (or the payload was empty/unparseable) — callers should not
+/// overwrite form fields in that case.
+typedef VinPlateConverterResult = ({
+  bool found,
+  String vin,
+  String gosNumber,
+  String brand,
+  String model,
+  int? year,
+});
+
+const VinPlateConverterResult _emptyVinPlateResult = (
+  found: false,
+  vin: '',
+  gosNumber: '',
+  brand: '',
+  model: '',
+  year: null,
+);
+
+/// Parses a converter check's `responseNormalized` (a JSON STRING like
+/// `{"vin":"…","gos_number":"…","brand":"LADA","model":"VESTA","year":2017,
+/// "found":true}`, occasionally already a Map) into [VinPlateConverterResult].
+VinPlateConverterResult parseVinPlateConverterResult(dynamic responseNormalized) {
+  dynamic m = responseNormalized;
+  if (m is String) {
+    final s = m.trim();
+    if (s.isEmpty) return _emptyVinPlateResult;
+    try {
+      m = json.decode(s);
+    } catch (_) {
+      return _emptyVinPlateResult;
+    }
+  }
+  if (m is! Map) return _emptyVinPlateResult;
+  String str(String k) => (m[k] ?? '').toString().trim();
+  final yearRaw = m['year'];
+  final year = yearRaw is int ? yearRaw : int.tryParse('${yearRaw ?? ''}');
+  return (
+    found: m['found'] == true,
+    vin: str('vin'),
+    gosNumber: str('gos_number'),
+    brand: str('brand'),
+    model: str('model'),
+    year: year,
+  );
+}
+
 class StorageApi {
   static const String _endpoint = AppEndpoints.appRpc;
   static String get _authVerifyPlatform => kIsWeb ? 'web' : 'mobile';
@@ -2712,6 +2762,53 @@ class StorageApi {
       timeout: timeout,
     );
     return _asMap(data['result']);
+  }
+
+  /// Runs the ApiCloud VIN↔plate converter (`api_cloud_converter_search`) and
+  /// polls until it settles. **Paid**; requires `run_legal_review`. Pass `vin`
+  /// OR `gosNumber` (converter resolves the other + brand/model/year). Throws
+  /// [PermissionDeniedException] on 403 (caller surfaces it). Returns
+  /// [VinPlateConverterResult] with `found:false` on not-found / timeout
+  /// (~`maxPolls*pollInterval` ≈ 120s; late results aren't lost server-side).
+  static Future<VinPlateConverterResult> runVinPlateConverter({
+    String? vin,
+    String? gosNumber,
+    Duration pollInterval = const Duration(seconds: 3),
+    int maxPolls = 40,
+  }) async {
+    final started = await runBatchLegalReview(
+      checkTypes: const ['api_cloud_converter_search'],
+      vin: vin,
+      gosNumber: gosNumber,
+    );
+    final batchNumber = (started['batchNumber'] ?? '').toString().trim();
+    if (batchNumber.isEmpty) return _emptyVinPlateResult;
+    for (var i = 0; i < maxPolls; i++) {
+      await Future<void>.delayed(pollInterval);
+      Map<String, dynamic> res;
+      try {
+        res = await getBatchLegalReviewResults(batchNumber: batchNumber);
+      } catch (_) {
+        continue; // transient — retry next tick
+      }
+      final rawChecks = res['checks'];
+      final checks = rawChecks is List
+          ? rawChecks
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+      if (!legalReviewBatchPending(checks)) {
+        for (final c in checks) {
+          if ((c['checkType'] ?? '').toString() ==
+              'api_cloud_converter_search') {
+            return parseVinPlateConverterResult(c['responseNormalized']);
+          }
+        }
+        return _emptyVinPlateResult;
+      }
+    }
+    return _emptyVinPlateResult;
   }
 
   static Future<List<String>> getRequestTags({
