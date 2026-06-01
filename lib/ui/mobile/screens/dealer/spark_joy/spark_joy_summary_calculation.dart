@@ -69,8 +69,14 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     try {
       final types =
           await storage_api.StorageApi.getAvailableLegalReviewCheckTypes();
-      if (mounted && types.isNotEmpty) {
-        _setStateSafely(() => _legalAvailableCheckTypes = types);
+      // Конвертер (api_cloud_converter_search) — инструмент идентификации в
+      // шаге «Автомобиль», а НЕ материал проверки. В «Материалах проверки»
+      // показываем только содержательные проверки (залог/ГОСТ/такси/ФГИС).
+      final filtered = types
+          .where((t) => t.value != 'api_cloud_converter_search')
+          .toList();
+      if (mounted && filtered.isNotEmpty) {
+        _setStateSafely(() => _legalAvailableCheckTypes = filtered);
       }
     } catch (_) {}
   }
@@ -225,7 +231,11 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
 
   Future<void> _startLegalLoading() async {
     if (_legalLoading) return;
-    final checkTypes = _legalSelectedCheckTypes.toList();
+    // Конвертер не запускается в «Материалах проверки» (он только для
+    // идентификации в шаге «Автомобиль») — фильтруем на случай stale-драфта.
+    final checkTypes = _legalSelectedCheckTypes
+        .where((t) => t != 'api_cloud_converter_search')
+        .toList();
     if (checkTypes.isEmpty) {
       if (mounted) {
         showSparkJoyErrorSnackBar(
