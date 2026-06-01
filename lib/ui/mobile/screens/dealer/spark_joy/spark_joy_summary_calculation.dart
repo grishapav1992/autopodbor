@@ -9,7 +9,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     const interval = Duration(seconds: 3);
     // ~120s потолок: live ApiCloud-проверки идут десятки секунд (zalog/taxi/
     // converter). Недозавершённые к таймауту не теряются — hydrator подтянет
-    // их по batchIds при повторном открытии завершённого отчёта.
+    // их по batches при повторном открытии завершённого отчёта.
     const maxAttempts = 40;
     var emptyStreak = 0;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {

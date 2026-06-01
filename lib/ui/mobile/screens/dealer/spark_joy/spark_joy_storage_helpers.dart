@@ -1447,14 +1447,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         'type': _prepareFileTypeFromMime(file.mimeType),
       });
     }
-    // B2: привязка batch ApiCloud-проверок к отчёту. Бэкенд линкует batch к
-    // legalReviewStep по batchIds (см. RunBatchLegalReview Doc — stepId туда
-    // не передаётся, связь идёт здесь).
+    // B2: привязка batch ApiCloud-проверок к отчёту. Бэкенд хранит/отдаёт
+    // привязанные batch'и в legalReviewStep.batches (live-проверено 2026-06-01:
+    // ViewSpecialistReport.result.legalReviewStep = {id, files, batches}).
+    // stepId в RunBatch не передаётся — связь идёт здесь.
     final batchNumber = _legalBatchNumber?.trim() ?? '';
     return <String, dynamic>{
       'otherLegalReviews': otherLegalReviews,
       'legalReview': legalReview,
-      if (batchNumber.isNotEmpty) 'batchIds': <String>[batchNumber],
+      if (batchNumber.isNotEmpty) 'batches': <String>[batchNumber],
     };
   }
 

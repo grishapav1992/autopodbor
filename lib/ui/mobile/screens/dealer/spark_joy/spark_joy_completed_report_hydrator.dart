@@ -161,10 +161,8 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
   // 4b. ApiCloud legal-review check results (B2) — для рендера материалов
   // проверок в разделе «Материалы проверки» при in-app просмотре отчёта.
   final legalCheckResults = await _buildLegalCheckResults(legalReviewStep);
-  final legalBatchIds = legalReviewStep['batchIds'];
-  final legalBatchNumber = (legalBatchIds is List && legalBatchIds.isNotEmpty)
-      ? legalBatchIds.first.toString().trim()
-      : '';
+  final legalBatchNums = storage_api.legalReviewBatchNumbers(legalReviewStep);
+  final legalBatchNumber = legalBatchNums.isNotEmpty ? legalBatchNums.first : '';
 
   // 5. Test-drive tag names.
   final tdEngineTags = _resolveTagNames(
@@ -342,11 +340,13 @@ void _collectLegalFilenames(Map legalStep, Set<String> out) {
 }
 
 /// Извлекает результаты ApiCloud-проверок из `legalReviewStep` для рендера
-/// в разделе «Материалы проверки» завершённого отчёта. Источник зависит от
-/// формы ответа `ViewSpecialistReport` (подтвердить live):
-///   (а) встроенный массив проверок под одним из ожидаемых ключей;
-///   (б) иначе — дотянуть по `legalReviewStepId`, затем по `batchIds`, через
-///       getLegalReviewChecks / getBatchLegalReviewResults.
+/// в разделе «Материалы проверки» завершённого отчёта. Форма ответа
+/// `ViewSpecialistReport` (live-проверено 2026-06-01 — шаг = `{id, files,
+/// batches}`):
+///   (а) встроенный массив проверок — на уровне шага либо внутри `batches`;
+///   (б) иначе — дотянуть по `batches` (batchNumber'ы), затем по
+///       `legalReviewStepId`, через getBatchLegalReviewResults /
+///       getLegalReviewChecks.
 /// Возвращаемый формат совпадает с тем, что рендерит редактор
 /// (`checkType` / `status` / `responseNormalized`).
 Future<List<Map<String, dynamic>>> _buildLegalCheckResults(
@@ -356,32 +356,47 @@ Future<List<Map<String, dynamic>>> _buildLegalCheckResults(
       ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
       : <Map<String, dynamic>>[];
 
-  // (а) встроенные результаты.
-  for (final key in const [
+  const embeddedKeys = <String>[
     'checks',
     'legalReviewChecks',
     'batchChecks',
     'results',
     'legalChecks',
-  ]) {
+  ];
+
+  // (а) встроенные результаты — на уровне шага…
+  for (final key in embeddedKeys) {
     final embedded = asMapList(legalStep[key]);
     if (embedded.isNotEmpty) return embedded;
   }
+  // …либо внутри объектов `batches`, если бэк отдаёт их с вложенными проверками.
+  final batchesRaw = legalStep['batches'] ?? legalStep['batchIds'];
+  if (batchesRaw is List) {
+    final fromBatches = <Map<String, dynamic>>[];
+    for (final batch in batchesRaw) {
+      if (batch is Map) {
+        for (final key in embeddedKeys) {
+          fromBatches.addAll(asMapList(batch[key]));
+        }
+      }
+    }
+    if (fromBatches.isNotEmpty) return fromBatches;
+  }
 
-  // (б) дотянуть: batchIds приоритетнее — GetBatchLegalReviewResults содержит
+  // (б) дотянуть по batchNumber — GetBatchLegalReviewResults содержит
   // `responseNormalized` (а GetLegalReviewChecks по stepId — нет). stepId как
   // fallback (метаданные без нормализованного ответа).
   try {
-    final batchIds = legalStep['batchIds'];
-    if (batchIds is List && batchIds.isNotEmpty) {
-      final batchNumber = batchIds.first.toString().trim();
-      if (batchNumber.isNotEmpty) {
+    final batchNumbers = storage_api.legalReviewBatchNumbers(legalStep);
+    if (batchNumbers.isNotEmpty) {
+      final collected = <Map<String, dynamic>>[];
+      for (final batchNumber in batchNumbers) {
         final res = await storage_api.StorageApi.getBatchLegalReviewResults(
           batchNumber: batchNumber,
         );
-        final byBatch = asMapList(res['checks']);
-        if (byBatch.isNotEmpty) return byBatch;
+        collected.addAll(asMapList(res['checks']));
       }
+      if (collected.isNotEmpty) return collected;
     }
     final stepIdRaw = legalStep['legalReviewStepId'] ?? legalStep['id'];
     final stepId = stepIdRaw is int

@@ -113,6 +113,35 @@ bool legalReviewBatchPending(List<Map<String, dynamic>> checks) {
   });
 }
 
+/// Extracts ApiCloud batch numbers from a report's `legalReviewStep` as
+/// returned by `ViewSpecialistReport`. Live-confirmed 2026-06-01 that the
+/// backend stores attached batches under **`legalReviewStep.batches`**
+/// (shape `{id, files, batches}`); the older/doc-implied `batchIds` key is
+/// tolerated as a fallback. Each element is either a bare batch-number string
+/// (`"LEG-A416822"`) or an object carrying it under `batchNumber`/`number`/
+/// `batch`/`id`. Returns de-duplicated, non-empty batch numbers in order.
+List<String> legalReviewBatchNumbers(Map<String, dynamic> legalStep) {
+  final raw = legalStep['batches'] ?? legalStep['batchIds'];
+  if (raw is! List) return const <String>[];
+  final out = <String>[];
+  for (final el in raw) {
+    var number = '';
+    if (el is String) {
+      number = el.trim();
+    } else if (el is Map) {
+      for (final key in const ['batchNumber', 'number', 'batch', 'id']) {
+        final value = el[key];
+        if (value != null && value.toString().trim().isNotEmpty) {
+          number = value.toString().trim();
+          break;
+        }
+      }
+    }
+    if (number.isNotEmpty && !out.contains(number)) out.add(number);
+  }
+  return out;
+}
+
 /// Parsed result of the ApiCloud VIN↔plate converter
 /// (`api_cloud_converter_search`). `found=false` means the vehicle isn't in
 /// ApiCloud's DB (or the payload was empty/unparseable) — callers should not
@@ -2677,7 +2706,7 @@ class StorageApi {
   /// Param usage by check type (see Doc): zalog checks use vin/chassis/
   /// bodyNumber; gost/taxi/converter use searchString → vin → gosNumber;
   /// fgis_taxi uses gosNumber. The batch is attached to a report later via
-  /// PrepareSpecialistReport `legalReviewStep.batchIds` (no stepId here).
+  /// PrepareSpecialistReport `legalReviewStep.batches` (no stepId here).
   static Future<Map<String, dynamic>> runBatchLegalReview({
     required List<String> checkTypes,
     String? vin,
