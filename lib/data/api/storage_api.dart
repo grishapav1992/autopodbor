@@ -2784,6 +2784,7 @@ class StorageApi {
     );
     final batchNumber = (started['batchNumber'] ?? '').toString().trim();
     if (batchNumber.isEmpty) return _emptyVinPlateResult;
+    var emptyStreak = 0;
     for (var i = 0; i < maxPolls; i++) {
       await Future<void>.delayed(pollInterval);
       Map<String, dynamic> res;
@@ -2799,6 +2800,13 @@ class StorageApi {
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList()
           : <Map<String, dynamic>>[];
+      if (checks.isEmpty) {
+        // Пустой ответ — несколько попыток, потом сдаёмся (не крутим весь
+        // потолок ~120с на аномально пустом batch).
+        if (++emptyStreak >= 3) return _emptyVinPlateResult;
+        continue;
+      }
+      emptyStreak = 0;
       if (!legalReviewBatchPending(checks)) {
         for (final c in checks) {
           if ((c['checkType'] ?? '').toString() ==

@@ -11,6 +11,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     // converter). Недозавершённые к таймауту не теряются — hydrator подтянет
     // их по batchIds при повторном открытии завершённого отчёта.
     const maxAttempts = 40;
+    var emptyStreak = 0;
     for (var attempt = 0; attempt < maxAttempts; attempt++) {
       await Future<void>.delayed(interval);
       if (!mounted || token != _legalLoadToken) return;
@@ -30,9 +31,15 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList()
           : <Map<String, dynamic>>[];
+      if (checks.isEmpty) {
+        // Пустой ответ: бэкенд ещё не зарегистрировал проверки или batch пуст.
+        // Несколько коротких попыток вместо траты всего ~120с потолка.
+        if (++emptyStreak >= 3) break;
+        continue;
+      }
+      emptyStreak = 0;
       _setStateSafely(() => _legalCheckResults = checks);
-      final stillPending = storage_api.legalReviewBatchPending(checks);
-      if (!stillPending) {
+      if (!storage_api.legalReviewBatchPending(checks)) {
         _setStateSafely(() {
           _legalLoading = false;
           _legalLoaded = true;
