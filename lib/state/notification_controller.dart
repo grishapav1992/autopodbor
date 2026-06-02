@@ -30,6 +30,11 @@ class NotificationController extends GetxController {
   static const int _pageLimit = 20;
   static const Duration _refetchDebounce = Duration(milliseconds: 300);
 
+  /// Минимальный интервал между рефетчами по WS-пушам. Защита от шторма
+  /// `GetNotifications`, если сервер шлёт пуши часто или WS переподключается
+  /// в цикле (debounce схлопывает лишь короткие всплески, не устойчивый поток).
+  static const Duration _minPushReloadInterval = Duration(seconds: 10);
+
   // Rx state
   final RxList<BackendNotification> items = <BackendNotification>[].obs;
   final RxBool loading = false.obs;
@@ -48,6 +53,7 @@ class NotificationController extends GetxController {
 
   StreamSubscription<NotificationPushEvent>? _pushSub;
   Timer? _refetchTimer;
+  DateTime? _lastPushReloadAt;
   bool _started = false;
 
   /// Set when a push arrives while [reload] is mid-flight. Without this
@@ -99,6 +105,7 @@ class NotificationController extends GetxController {
     nextCursor.value = null;
     errorMessage.value = null;
     _pendingReload = false;
+    _lastPushReloadAt = null;
     _started = false;
     _bumpNotifier();
   }
@@ -216,9 +223,18 @@ class NotificationController extends GetxController {
 
   void _onPushEvent(NotificationPushEvent event) {
     if (!event.requiresFetch) return;
-    // Debounce — collapse a burst of pushes into one refetch.
+    // Debounce схлопывает короткий всплеск пушей в один рефетч; троттлинг
+    // ограничивает устойчивый поток (частые пуши / цикл переподключения WS)
+    // до одного GetNotifications раз в [_minPushReloadInterval]. Одиночный
+    // пуш после паузы отрабатывает почти мгновенно (через debounce).
     _refetchTimer?.cancel();
-    _refetchTimer = Timer(_refetchDebounce, () {
+    final last = _lastPushReloadAt;
+    final sinceLast = last == null ? null : DateTime.now().difference(last);
+    final delay = (sinceLast != null && sinceLast < _minPushReloadInterval)
+        ? (_minPushReloadInterval - sinceLast)
+        : _refetchDebounce;
+    _refetchTimer = Timer(delay, () {
+      _lastPushReloadAt = DateTime.now();
       reload();
       // A push can also mean a new/changed request (e.g. a task assigned to
       // a specialist). Signal the request lists to reload too so the
