@@ -246,6 +246,25 @@ String _legalNormalizedToText(dynamic normalized) {
   return message;
 }
 
+/// Подзаголовок статуса во время поллинга: живой прогресс (сколько проверок
+/// уже доехало из общего числа), чтобы спиннер не был «глухим». Пустой список
+/// ⇒ батч ещё регистрируется на бэке.
+String _legalLoadingSubtitle(List<Map<String, dynamic>> results) {
+  if (results.isEmpty) return 'Формируем материалы…';
+  bool isTerminal(Map<String, dynamic> c) {
+    final st = (c['status'] ?? '').toString().toLowerCase();
+    return st.isNotEmpty &&
+        st != 'pending' &&
+        st != 'processing' &&
+        st != 'in_progress' &&
+        st != 'running';
+  }
+
+  final total = results.length;
+  final done = results.where(isTerminal).length;
+  return 'Идёт проверка: готово $done из $total…';
+}
+
 List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
   final results = s._legalCheckResults;
   if (results.isEmpty) return const <Widget>[];
@@ -302,7 +321,7 @@ Widget _buildSparkJoyStepLegal(
             ? kGreenColor
             : (s._legalTimedOut ? kSecondaryColor : kGreyColor));
   final statusSubtitle = s._legalLoading
-      ? 'Формируем материалы…'
+      ? _legalLoadingSubtitle(s._legalCheckResults)
       : (s._legalLoaded
             ? 'Материалы сформированы'
             : (s._legalTimedOut
