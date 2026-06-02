@@ -14,6 +14,7 @@ void main() {
       expect(r.brand, 'LADA');
       expect(r.model, 'VESTA');
       expect(r.year, 2017);
+      expect(r.timedOut, isFalse);
     });
 
     test('accepts an already-decoded map + string year', () {
@@ -38,6 +39,9 @@ void main() {
       final empty = parseVinPlateConverterResult(null);
       expect(empty.vin, isEmpty);
       expect(empty.year, isNull);
+      // A settled not-found is NOT a timeout — drives «не найдено» vs
+      // «ещё обрабатывается» in the UI.
+      expect(empty.timedOut, isFalse);
     });
   });
 }

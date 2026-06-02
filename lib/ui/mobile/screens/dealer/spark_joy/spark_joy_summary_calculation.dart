@@ -142,6 +142,17 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       );
       if (!mounted) return;
 
+      // Бэк не успел исполнить проверку в окне поллинга (ApiCloud-воркер может
+      // лагать) — это не «не найдено». Просим повторить позже, не блокируя UI.
+      if (r.timedOut) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ApiCloud ещё обрабатывает запрос. Попробуйте позже.'),
+          ),
+        );
+        return;
+      }
+
       final info = <String, String>{};
       var resolvedVin = fromVin ? vin : r.vin;
 

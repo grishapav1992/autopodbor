@@ -144,8 +144,10 @@ List<String> legalReviewBatchNumbers(Map<String, dynamic> legalStep) {
 
 /// Parsed result of the ApiCloud VIN↔plate converter
 /// (`api_cloud_converter_search`). `found=false` means the vehicle isn't in
-/// ApiCloud's DB (or the payload was empty/unparseable) — callers should not
-/// overwrite form fields in that case.
+/// ApiCloud's DB (or the payload was empty/unparseable). `timedOut=true` means
+/// the check didn't settle within the poll window (the ApiCloud worker can lag
+/// hours — results aren't lost server-side); callers should show «попробуйте
+/// позже», not «не найдено». In both cases callers must not overwrite fields.
 typedef VinPlateConverterResult = ({
   bool found,
   String vin,
@@ -153,6 +155,7 @@ typedef VinPlateConverterResult = ({
   String brand,
   String model,
   int? year,
+  bool timedOut,
 });
 
 const VinPlateConverterResult _emptyVinPlateResult = (
@@ -162,6 +165,17 @@ const VinPlateConverterResult _emptyVinPlateResult = (
   brand: '',
   model: '',
   year: null,
+  timedOut: false,
+);
+
+const VinPlateConverterResult _timedOutVinPlateResult = (
+  found: false,
+  vin: '',
+  gosNumber: '',
+  brand: '',
+  model: '',
+  year: null,
+  timedOut: true,
 );
 
 /// Parses a converter check's `responseNormalized` (a JSON STRING like
@@ -189,6 +203,7 @@ VinPlateConverterResult parseVinPlateConverterResult(dynamic responseNormalized)
     brand: str('brand'),
     model: str('model'),
     year: year,
+    timedOut: false,
   );
 }
 
@@ -2798,13 +2813,17 @@ class StorageApi {
   /// polls until it settles. **Paid**; requires `run_legal_review`. Pass `vin`
   /// OR `gosNumber` (converter resolves the other + brand/model/year). Throws
   /// [PermissionDeniedException] on 403 (caller surfaces it). Returns
-  /// [VinPlateConverterResult] with `found:false` on not-found / timeout
-  /// (~`maxPolls*pollInterval` ≈ 120s; late results aren't lost server-side).
+  /// [VinPlateConverterResult]: `found:false` on a settled not-found; or
+  /// `timedOut:true` if the check stays pending past the poll window
+  /// (~`maxPolls*pollInterval` ≈ 36s) or polling keeps failing. The ApiCloud
+  /// worker can lag (observed ~8h on 2026-06-01); late results aren't lost
+  /// server-side — so on `timedOut` callers show «попробуйте позже», not
+  /// «не найдено», and the UI isn't blocked for minutes.
   static Future<VinPlateConverterResult> runVinPlateConverter({
     String? vin,
     String? gosNumber,
     Duration pollInterval = const Duration(seconds: 3),
-    int maxPolls = 40,
+    int maxPolls = 12,
   }) async {
     final started = await runBatchLegalReview(
       checkTypes: const ['api_cloud_converter_search'],
@@ -2814,14 +2833,23 @@ class StorageApi {
     final batchNumber = (started['batchNumber'] ?? '').toString().trim();
     if (batchNumber.isEmpty) return _emptyVinPlateResult;
     var emptyStreak = 0;
+    var failStreak = 0;
     for (var i = 0; i < maxPolls; i++) {
       await Future<void>.delayed(pollInterval);
       Map<String, dynamic> res;
       try {
-        res = await getBatchLegalReviewResults(batchNumber: batchNumber);
+        res = await getBatchLegalReviewResults(
+          batchNumber: batchNumber,
+          timeout: const Duration(seconds: 10),
+        );
       } catch (_) {
-        continue; // transient — retry next tick
+        // Таймаут/сбой поллинга: пара попыток, потом считаем, что бэк не
+        // отвечает вовремя → timedOut (а не «не найдено»), чтобы не растягивать
+        // цикл на минуты на тормозящем воркере.
+        if (++failStreak >= 3) return _timedOutVinPlateResult;
+        continue;
       }
+      failStreak = 0;
       final rawChecks = res['checks'];
       final checks = rawChecks is List
           ? rawChecks
@@ -2830,8 +2858,7 @@ class StorageApi {
                 .toList()
           : <Map<String, dynamic>>[];
       if (checks.isEmpty) {
-        // Пустой ответ — несколько попыток, потом сдаёмся (не крутим весь
-        // потолок ~120с на аномально пустом batch).
+        // Пустой ответ — несколько попыток, потом сдаёмся.
         if (++emptyStreak >= 3) return _emptyVinPlateResult;
         continue;
       }
@@ -2846,7 +2873,8 @@ class StorageApi {
         return _emptyVinPlateResult;
       }
     }
-    return _emptyVinPlateResult;
+    // Потолок исчерпан, проверка всё ещё pending → воркер лагает, не «не найдено».
+    return _timedOutVinPlateResult;
   }
 
   static Future<List<String>> getRequestTags({
