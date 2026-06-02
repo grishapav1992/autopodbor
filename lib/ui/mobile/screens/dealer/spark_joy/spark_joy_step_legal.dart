@@ -209,8 +209,9 @@ String _legalCheckTypeLabel(String value) {
 }
 
 /// `responseNormalized` приходит JSON-строкой (напр. `"{\"found\": false}"`),
-/// реже — уже объектом. Декодируем и показываем читабельно (`key: value`),
-/// иначе — как есть.
+/// реже — уже объектом. Сводим к человекочитаемой строке: готовый русский
+/// `message` от бэка, иначе фраза по `found` (+кол-во записей при наличии).
+/// Сырой дамп ключей (count/items/...) пользователю не показываем.
 String _legalNormalizedToText(dynamic normalized) {
   if (normalized == null) return '';
   dynamic decoded = normalized;
@@ -223,15 +224,26 @@ String _legalNormalizedToText(dynamic normalized) {
       return s;
     }
   }
-  if (decoded is Map) {
-    final parts = <String>[];
-    decoded.forEach((k, v) {
-      parts.add('$k: ${v is String ? v : jsonEncode(v)}');
-    });
-    return parts.join('\n');
+  if (decoded is! Map) {
+    if (decoded is List) {
+      return decoded.isEmpty ? '' : 'Записей: ${decoded.length}';
+    }
+    return decoded.toString();
   }
-  if (decoded is List) return jsonEncode(decoded);
-  return decoded.toString();
+  final message = (decoded['message'] ?? '').toString().trim();
+  final found = decoded['found'];
+  final countRaw = decoded['count'] ?? decoded['properties_total'];
+  final count = countRaw is int ? countRaw : int.tryParse('${countRaw ?? ''}');
+  if (found == true) {
+    final base = message.isNotEmpty ? message : 'Обнаружено';
+    return (count != null && count > 0) ? '⚠️ $base (записей: $count)' : '⚠️ $base';
+  }
+  if (found == false) {
+    // Статус-строка уже сообщает «не найдено»; добавляем текст, только если
+    // бэк прислал содержательный `message`.
+    return message;
+  }
+  return message;
 }
 
 List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
