@@ -274,6 +274,22 @@ class _LoginState extends State<Login> {
     Get.offAll(() => const DealerNavBar());
   }
 
+  /// Прерывает ожидание/поллинг звонка и возвращает к вводу номера.
+  /// Инкремент `_opId` отменяет активный цикл `_startAutoVerify` и любые
+  /// in-flight ответы (они проверяют `currentOp != _opId`). Без этого, если
+  /// со звонком что-то пошло не так, экран висел в «Проверяем звонок…» без
+  /// ручного выхода.
+  void _cancelVerification() {
+    _opId++;
+    setState(() {
+      _isAuthLoading = false;
+      _isVerifyLoading = false;
+      _callPhone = '';
+      _sessionId = null;
+      _statusText = '';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -390,7 +406,7 @@ class _LoginState extends State<Login> {
                   ? kGreyColor
                   : kSecondaryColor,
             )
-          else
+          else ...[
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: MyBorderButton(
@@ -401,6 +417,19 @@ class _LoginState extends State<Login> {
                 textSize: 12,
               ),
             ),
+            // Ручной выход из ожидания звонка (если со звонком что-то пошло
+            // не так) — прерывает поллинг и возвращает к вводу номера.
+            Center(
+              child: TextButton(
+                onPressed: _cancelVerification,
+                child: const MyText(
+                  text: 'Отменить и ввести номер заново',
+                  size: 12,
+                  color: kGreyColor,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
