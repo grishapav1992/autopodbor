@@ -300,13 +300,13 @@ Widget _buildSparkJoyStepLegal(
       ? kSecondaryColor
       : (s._legalLoaded
             ? kGreenColor
-            : (s._legalTimedOut ? kRedColor : kGreyColor));
+            : (s._legalTimedOut ? kSecondaryColor : kGreyColor));
   final statusSubtitle = s._legalLoading
       ? 'Формируем материалы…'
       : (s._legalLoaded
             ? 'Материалы сформированы'
             : (s._legalTimedOut
-                  ? 'Проверки не завершились вовремя'
+                  ? 'ApiCloud ещё обрабатывает запросы — результаты подтянутся при повторном открытии отчёта'
                   : 'Материалы ещё не сформированы'));
 
   final selected = s._legalSelectedCheckTypes;

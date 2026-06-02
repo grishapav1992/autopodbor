@@ -303,9 +303,46 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     });
     _markDraftDirty();
 
-    final vin = _vinController.text.trim();
+    var vin = _vinController.text.trim();
     final plate = _sanitizePlate(_plateController.text.trim());
     try {
+      // Проверки ApiCloud ищут по VIN (подтверждено бэком). Если VIN ещё нет,
+      // но есть госномер — сперва конвертируем госномер→VIN (флоу «2 запроса»),
+      // иначе vin-проверки ничего не найдут.
+      if (vin.isEmpty && plate.isNotEmpty) {
+        final conv = await storage_api.StorageApi.runVinPlateConverter(
+          gosNumber: plate,
+        );
+        if (!mounted || token != _legalLoadToken) return;
+        if (conv.found && conv.vin.trim().isNotEmpty) {
+          vin = _sanitizeVin(conv.vin);
+          _setStateSafely(() {
+            _vinController.text = vin;
+            if (conv.brand.isNotEmpty) _brandController.text = conv.brand;
+            if (conv.model.isNotEmpty) _modelController.text = conv.model;
+          });
+          _markDraftDirty();
+        } else if (conv.timedOut) {
+          // Конвертер не успел — не висим, просим повторить позже.
+          _setStateSafely(() {
+            _legalLoading = false;
+            _legalTimedOut = true;
+          });
+          _markDraftDirty();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'ApiCloud ещё обрабатывает определение VIN. Попробуйте позже.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+        // conv.found == false → продолжаем с тем, что есть (fgis ищет по
+        // госномеру; для остального бэк попробует доступные поля).
+      }
       final started = await storage_api.StorageApi.runBatchLegalReview(
         checkTypes: checkTypes,
         vin: vin.isEmpty ? null : vin,
