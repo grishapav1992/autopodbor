@@ -180,6 +180,34 @@ String _legalCheckStatusLabel(String status) {
   }
 }
 
+/// Человекочитаемое русское название типа ApiCloud-проверки по стабильному
+/// `value` (бэк в `name` отдаёт техничный PascalCase: `ApiCloudZalogNotary`).
+/// Неизвестный тип — мягкий фолбэк: убрать префикс `api_cloud_`, `_`→пробел,
+/// первая буква заглавная.
+String _legalCheckTypeLabel(String value) {
+  switch (value) {
+    case 'api_cloud_zalog_notary':
+      return 'Залог (реестр нотариусов)';
+    case 'api_cloud_zalog_fedresurs':
+      return 'Лизинг (Федресурс)';
+    case 'api_cloud_gost_certificate':
+      return 'Сертификат ГОСТ';
+    case 'api_cloud_taxi_search':
+      return 'Работа в такси';
+    case 'api_cloud_fgis_taxi_search':
+      return 'Разрешение такси (ФГИС)';
+    case 'api_cloud_converter_search':
+      return 'Определение по VIN/госномеру';
+    default:
+      final cleaned = value
+          .replaceFirst('api_cloud_', '')
+          .replaceAll('_', ' ')
+          .trim();
+      if (cleaned.isEmpty) return value;
+      return cleaned[0].toUpperCase() + cleaned.substring(1);
+  }
+}
+
 /// `responseNormalized` приходит JSON-строкой (напр. `"{\"found\": false}"`),
 /// реже — уже объектом. Декодируем и показываем читабельно (`key: value`),
 /// иначе — как есть.
@@ -209,16 +237,13 @@ String _legalNormalizedToText(dynamic normalized) {
 List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
   final results = s._legalCheckResults;
   if (results.isEmpty) return const <Widget>[];
-  final nameByValue = <String, String>{
-    for (final t in s._legalAvailableCheckTypes) t.value: t.name,
-  };
   return <Widget>[
     const SizedBox(height: SparkSpace.md),
     s._sectionHeading('Результаты проверок', icon: Icons.fact_check_outlined),
     const SizedBox(height: SparkSpace.sm),
     ...results.map((c) {
       final type = (c['checkType'] ?? '').toString();
-      final title = nameByValue[type] ?? (type.isEmpty ? 'Проверка' : type);
+      final title = type.isEmpty ? 'Проверка' : _legalCheckTypeLabel(type);
       final status = (c['status'] ?? '').toString();
       final summary = _legalNormalizedToText(c['responseNormalized']);
       return Padding(
@@ -327,7 +352,10 @@ Widget _buildSparkJoyStepLegal(
                     dense: true,
                     controlAffinity: ListTileControlAffinity.leading,
                     value: selected.contains(t.value),
-                    title: MyText(text: t.name, size: SparkTextSize.caption),
+                    title: MyText(
+                      text: _legalCheckTypeLabel(t.value),
+                      size: SparkTextSize.caption,
+                    ),
                     onChanged: s._legalLoading
                         ? null
                         : (checked) {
