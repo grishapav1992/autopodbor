@@ -2815,15 +2815,16 @@ class StorageApi {
   /// [PermissionDeniedException] on 403 (caller surfaces it). Returns
   /// [VinPlateConverterResult]: `found:false` on a settled not-found; or
   /// `timedOut:true` if the check stays pending past the poll window
-  /// (~`maxPolls*pollInterval` ≈ 36s) or polling keeps failing. The ApiCloud
-  /// worker can lag (observed ~8h on 2026-06-01); late results aren't lost
-  /// server-side — so on `timedOut` callers show «попробуйте позже», not
-  /// «не найдено», and the UI isn't blocked for minutes.
+  /// (~`maxPolls*pollInterval` ≈ 150s) or polling keeps failing. The ApiCloud
+  /// worker can lag a lot (observed ~116s on 2026-06-03, ~8h on 2026-06-01);
+  /// the ceiling is generous so a slow-but-working check still resolves. Late
+  /// results aren't lost server-side — so on `timedOut` callers show
+  /// «попробуйте позже», not «не найдено», and the UI isn't blocked forever.
   static Future<VinPlateConverterResult> runVinPlateConverter({
     String? vin,
     String? gosNumber,
     Duration pollInterval = const Duration(seconds: 3),
-    int maxPolls = 12,
+    int maxPolls = 50,
   }) async {
     final started = await runBatchLegalReview(
       checkTypes: const ['api_cloud_converter_search'],
