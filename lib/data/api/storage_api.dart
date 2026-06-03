@@ -2730,7 +2730,11 @@ class StorageApi {
     String? bodyNumber,
     String? searchString,
     Map<String, dynamic>? extra,
-    Duration timeout = const Duration(seconds: 30),
+    // Старт batch обычно ~1–2с, но при перегрузке бэка create может зависать
+    // (live 2026-06-03: RunBatchLegalReview таймаутил на 30с). Даём 60с, чтобы
+    // медленный старт успел вернуть batchNumber — исполнение проверок дальше
+    // отслеживается отдельным поллингом с большим потолком.
+    Duration timeout = const Duration(seconds: 60),
   }) async {
     // ВАЖНО: бэкенд ожидает ПОЛНУЮ структуру params, включая `extra` (хотя бы
     // `{}`). Если слать частично (без `extra`/опущенными ключами) — обработчик
