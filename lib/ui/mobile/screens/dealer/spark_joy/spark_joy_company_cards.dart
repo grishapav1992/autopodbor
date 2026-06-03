@@ -73,8 +73,7 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
               child: CachedNetworkImage(
                 imageUrl: photo,
                 width: double.infinity,
-                height: SparkSize.mediaCardThumb,
-                fit: BoxFit.cover,
+                fit: BoxFit.fitWidth,
                 errorWidget: (context, url, error) {
                   return Container(
                     width: double.infinity,

@@ -159,6 +159,17 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
 
       // Конвертер нашёл авто → заполняем поля + собираем инфу.
       if (r.found) {
+        // Сопоставляем марку/модель с каталогом (онлайн GetBrand/GetModel,
+        // фолбэк — локальный), чтобы результат совпадал с ручным выбором.
+        // Поколение пользователь выбирает сам (поле необязательное).
+        final catalogCar = await _resolveCarFromCatalog(r.brand, r.model);
+        if (!mounted) return;
+        final brandToSet = (catalogCar?.brand.trim().isNotEmpty ?? false)
+            ? catalogCar!.brand
+            : r.brand;
+        final modelToSet = (catalogCar?.model.trim().isNotEmpty ?? false)
+            ? catalogCar!.model
+            : r.model;
         _setStateSafely(() {
           // Новая идентичность от конвертера → каталожная мета (фото/frameId/
           // рестайлинг) от прошлого выбора больше не относится к этому авто.
@@ -168,8 +179,8 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           } else {
             if (r.vin.isNotEmpty) _vinController.text = _sanitizeVin(r.vin);
           }
-          if (r.brand.isNotEmpty) _brandController.text = r.brand;
-          if (r.model.isNotEmpty) _modelController.text = r.model;
+          if (brandToSet.isNotEmpty) _brandController.text = brandToSet;
+          if (modelToSet.isNotEmpty) _modelController.text = modelToSet;
         });
         _markDraftDirty();
         if (r.brand.isNotEmpty) info['Марка'] = r.brand;

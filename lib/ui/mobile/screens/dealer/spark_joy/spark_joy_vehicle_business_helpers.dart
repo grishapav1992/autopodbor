@@ -152,6 +152,55 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return cleaned.length > 17 ? cleaned.substring(0, 17) : cleaned;
   }
 
+  /// Сопоставляет марку/модель (как их вернул конвертер по VIN/госномеру) с
+  /// каталогом — чтобы результат совпадал с ручным выбором. Приоритет —
+  /// онлайн `GetBrand`/`GetModel` (`fetchBrandCatalog`/`fetchModels`); при
+  /// отсутствии сети — фолбэк на локальный `_SparkJoyVehicleRegistry`.
+  /// Возвращает каноничные имена из каталога (`full=true`, если нашлись и
+  /// марка, и модель), либо `null`, если марки в каталоге нет совсем. Поколение
+  /// здесь не трогаем — его пользователь выбирает сам (поле необязательное).
+  Future<({String brand, String model, bool full})?> _resolveCarFromCatalog(
+    String brand,
+    String model,
+  ) async {
+    bool eq(String a, String b) =>
+        a.trim().isNotEmpty && a.trim().toLowerCase() == b.trim().toLowerCase();
+    if (brand.trim().isEmpty) return null;
+
+    // 1) Онлайн-каталог (приоритет): GetBrand → GetModel.
+    try {
+      final catalog = await storage_api.StorageApi.fetchBrandCatalog();
+      for (final b in catalog.items) {
+        if (!eq(b.name, brand) && !eq(b.nameRus, brand)) continue;
+        try {
+          final models = await storage_api.StorageApi.fetchModels(
+            brandId: b.id,
+          );
+          for (final m in models) {
+            if (eq(m.model, model) || eq(m.modelRus, model)) {
+              return (brand: b.name, model: m.model, full: true);
+            }
+          }
+        } catch (_) {}
+        return (brand: b.name, model: model, full: false);
+      }
+    } catch (_) {
+      // нет сети / бэк недоступен → локальный фолбэк ниже
+    }
+
+    // 2) Локальный каталог (офлайн-фолбэк).
+    for (final b in _SparkJoyVehicleRegistry.carCatalog) {
+      if (!eq(b.name, brand)) continue;
+      for (final m in b.models) {
+        if (eq(m.name, model)) {
+          return (brand: b.name, model: m.name, full: true);
+        }
+      }
+      return (brand: b.name, model: model, full: false);
+    }
+    return null;
+  }
+
   String _normalizeVinOcrText(String value) {
     return value
         .toUpperCase()
