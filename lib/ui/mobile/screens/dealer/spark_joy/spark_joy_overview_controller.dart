@@ -35,6 +35,7 @@ class _SparkJoyOverviewController {
   ) {
     switch (stepId) {
       case _SparkJoyStepRegistry.idVehicle:
+        if (s._vinConverterBusy) return SparkJoySectionFillState.loading;
         final hasAny =
             s._vinController.text.trim().isNotEmpty ||
             s._vinUnreadable ||
@@ -79,6 +80,7 @@ class _SparkJoyOverviewController {
         if (hasAny) return SparkJoySectionFillState.partial;
         return SparkJoySectionFillState.empty;
       case _SparkJoyStepRegistry.idLegal:
+        if (s._legalLoading) return SparkJoySectionFillState.loading;
         final hasAny =
             s._legalLoading ||
             s._legalLoaded ||

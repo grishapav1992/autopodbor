@@ -105,7 +105,7 @@ String sparkVerdictLabel(String verdict) {
   }
 }
 
-enum SparkJoySectionFillState { empty, partial, done }
+enum SparkJoySectionFillState { empty, partial, done, loading }
 
 class SparkCard extends StatelessWidget {
   const SparkCard({
@@ -1835,6 +1835,7 @@ class SparkSectionNavCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFilled = fillState != SparkJoySectionFillState.empty;
+    final isLoading = fillState == SparkJoySectionFillState.loading;
     final stateColor = isFilled ? kSecondaryColor : kGreyColor;
     final stateBorderColor = isFilled
         ? kSecondaryColor.withValues(alpha: 0.32)
@@ -1865,7 +1866,16 @@ class SparkSectionNavCard extends StatelessWidget {
               border: Border.all(color: stateBorderColor),
               borderRadius: BorderRadius.circular(SparkRadius.md),
             ),
-            child: icon != null
+            child: isLoading
+                ? SizedBox(
+                    width: SparkSize.iconSm,
+                    height: SparkSize.iconSm,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(stateColor),
+                    ),
+                  )
+                : icon != null
                 ? Icon(
                     icon,
                     size: SparkSize.iconSm,
