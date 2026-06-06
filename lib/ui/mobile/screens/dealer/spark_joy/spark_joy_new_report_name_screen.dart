@@ -2,15 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_onboarding.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 
-import 'spark_joy_assignee_picker.dart';
 import 'spark_joy_create_report_screen.dart';
-import 'spark_joy_data.dart';
-import 'spark_joy_storage.dart';
 import 'spark_joy_ui.dart';
 
 class SparkJoyNewReportNameScreen extends StatefulWidget {
@@ -27,7 +22,6 @@ class _SparkJoyNewReportNameScreenState
     extends State<SparkJoyNewReportNameScreen> {
   final _formKey = GlobalKey<FormState>();
   final _controller = TextEditingController();
-  SparkJoyAssigneeSelection _assignee = const SparkJoyAssigneeSelection();
 
   @override
   void dispose() {
@@ -35,156 +29,20 @@ class _SparkJoyNewReportNameScreenState
     super.dispose();
   }
 
-  /// Surfaces the «Назначьте исполнителя» onboarding the first time a
-  /// company user opens the assignee picker. Hooked into
-  /// `SparkJoyAssigneeField.onBeforeOpen` so the explanation lands at
-  /// the exact moment it's contextually useful — not on screen mount.
-  Future<void> _showAssignOnboardingIfFirstTap() {
-    return SparkJoyOnboarding.showOnce(
-      context,
-      flagKey: UserSimplePreferences.sparkOnbAssignReportKey,
-      titleI18nKey: 'spark.onboarding.assignReport.title',
-      titleFallback: 'Назначьте исполнителя',
-      allowedRoles: const ['company'],
-      bullets: const [
-        SparkJoyOnboardingBullet(
-          i18nKey: 'spark.onboarding.assignReport.b1',
-          fallback:
-              'Выберите штатного сотрудника, отправьте задачу по телефону или сгенерируйте ссылку-приглашение для внешнего специалиста.',
-          icon: Icons.assignment_ind_outlined,
-        ),
-        SparkJoyOnboardingBullet(
-          i18nKey: 'spark.onboarding.assignReport.b2',
-          fallback:
-              'Если исполнителя не выбрать — отчёт откроется в вашем редакторе, и вы сможете заполнить его сами.',
-          icon: Icons.edit_note_rounded,
-        ),
-        SparkJoyOnboardingBullet(
-          i18nKey: 'spark.onboarding.assignReport.b3',
-          fallback:
-              'Назначенный отчёт появится у исполнителя и не открывает вам шаги для редактирования — только статус и итог.',
-          icon: Icons.task_alt_outlined,
-        ),
-      ],
-    );
-  }
-
-  /// "Создать" action. Branches on the assignee selection:
-  ///   • empty selection → open the full stepper so the company (or
-  ///     specialist) can fill the report themselves.
-  ///   • specialist / phone / invite → persist a minimal "pending"
-  ///     draft so it shows up for the assignee, fire a notification
-  ///     stub, and close the form with a toast. The company does not
-  ///     open the stepper for work they're not doing.
+  /// Создаёт отчёт и открывает степпер — компания/специалист заполняет его
+  /// сам. Назначение отчёта на сотрудника здесь убрано: теперь это делается
+  /// через раздел «Заявки» (создать заявку → выбрать исполнителя).
   Future<void> _create() async {
     final form = _formKey.currentState;
     if (form == null || !form.validate()) return;
     final name = _controller.text.trim();
-
-    if (_assignee.isEmpty) {
-      final created = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(
-          builder: (_) => SparkJoyCreateReportScreen(
-            initialReportName: name,
-          ),
-        ),
-      );
-      if (!mounted) return;
-      Navigator.of(context).pop(created == true);
-      return;
-    }
-
-    await _createAssignedDraft(name);
-  }
-
-  Future<void> _createAssignedDraft(String name) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final now = DateTime.now();
-    final draftId = 'spark_draft_${now.microsecondsSinceEpoch}';
-    final businessType = await SparkJoyStorage.currentBusinessType();
-    final verifiedInn = await SparkJoyStorage.currentVerifiedInn();
-
-    // Minimal shape consumed by `_loadDraftIntoState` + the reports-list
-    // `_isVisibleDraft` filter. Fields left empty fall through the
-    // draft-init `_read` fallbacks without breaking anything.
-    final draft = <String, dynamic>{
-      'id': draftId,
-      'reportName': name,
-      'reportNumber': '',
-      'currentStep': 1,
-      'createdAt': _formatDate(now),
-      'lastSavedAtIso': now.toIso8601String(),
-      'companyId': kSparkCompanyId,
-      'companyName': _companyName(),
-      'businessType': businessType ?? 'company',
-      'verifiedInn': verifiedInn ?? '',
-      'assignedSpecialistId': _assignee.specialistId,
-      'assignedSpecialistName': _assignee.specialistName,
-      'specialistId': _assignee.specialistId,
-      'specialistName': _assignee.specialistName,
-      'staffInviteLink': _assignee.inviteLink,
-      'status': _assignee.inviteLink.isNotEmpty ? 'awaiting_invite' : 'assigned',
-    };
-
-    await SparkJoyStorage.upsertDraft(draft);
-
-    // TODO(spark-joy): replace with real push/SMS dispatch when backend
-    // lands. Call sites already modeled:
-    //   • specialistId → direct notification to the specialist
-    //   • inviteLink   → invite sent, push arrives after user installs
-    if (_assignee.specialistId.isNotEmpty) {
-      debugPrint(
-        '[spark_joy] assign-notification → user=${_assignee.specialistId} '
-        '(${_assignee.specialistName}) report=$draftId',
-      );
-    } else {
-      debugPrint(
-        '[spark_joy] invite-pending → link=${_assignee.inviteLink} '
-        'report=$draftId',
-      );
-    }
-
-    if (!mounted) return;
-    messenger.showSnackBar(SnackBar(content: Text(_successSnackbar())));
-    Navigator.of(context).pop(true);
-  }
-
-  String _successSnackbar() {
-    if (_assignee.specialistId.isNotEmpty) {
-      final who = _assignee.specialistName.isEmpty
-          ? 'исполнителю'
-          : _assignee.specialistName;
-      return 'Отчёт создан и отправлен $who';
-    }
-    return 'Отчёт создан, ссылка-приглашение готова';
-  }
-
-  String _companyName() {
-    final c = sparkCompanies.firstWhere(
-      (it) => (it['id'] ?? '').toString() == kSparkCompanyId,
-      orElse: () => const {'name': 'Компания'},
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => SparkJoyCreateReportScreen(initialReportName: name),
+      ),
     );
-    return (c['name'] ?? 'Компания').toString();
-  }
-
-  String _formatDate(DateTime d) {
-    final dd = d.day.toString().padLeft(2, '0');
-    final mm = d.month.toString().padLeft(2, '0');
-    return '$dd.$mm.${d.year}';
-  }
-
-  /// Button label reflects what will actually happen: "открыть степпер"
-  /// vs "отправить и закрыть". Keeps the user from wondering what a
-  /// single "Создать" button does in two different flows.
-  String _primaryButtonLabel() {
-    if (_assignee.isEmpty) return 'Создать и начать осмотр';
-    if (_assignee.specialistId.isNotEmpty) {
-      final who = _assignee.specialistName.isEmpty
-          ? 'исполнителю'
-          : _assignee.specialistName;
-      return 'Создать и отправить $who';
-    }
-    return 'Создать и отправить по ссылке';
+    if (!mounted) return;
+    Navigator.of(context).pop(created == true);
   }
 
   @override
@@ -222,7 +80,8 @@ class _SparkJoyNewReportNameScreenState
                     Expanded(
                       child: MyText(
                         text: widget.companyMode
-                            ? 'Создайте отчёт и назначьте исполнителя'
+                            ? 'Создайте отчёт и начните осмотр. Назначить '
+                                  'исполнителя можно через раздел «Заявки».'
                             : 'Введите название и начните осмотр',
                         size: SparkTextSize.body,
                         color: kGreyColor,
@@ -276,50 +135,13 @@ class _SparkJoyNewReportNameScreenState
                   ],
                 ),
               ),
-              if (widget.companyMode) ...[
-                const SizedBox(height: SparkSpace.xl),
-                SparkCard(
-                  padding: const EdgeInsets.fromLTRB(
-                    SparkSpace.xl,
-                    SparkSpace.xl,
-                    SparkSpace.xl,
-                    SparkSpace.md,
-                  ),
-                  radius: SparkRadius.md,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const MyText(
-                        text: 'Исполнитель отчёта',
-                        size: SparkTextSize.title,
-                        weight: FontWeight.w700,
-                      ),
-                      const SizedBox(height: SparkSpace.md),
-                      SparkJoyAssigneeField(
-                        companyId: kSparkCompanyId,
-                        selection: _assignee,
-                        onBeforeOpen: _showAssignOnboardingIfFirstTap,
-                        onChanged: (sel) =>
-                            setState(() => _assignee = sel),
-                      ),
-                      const SizedBox(height: SparkSpace.sm),
-                      const MyText(
-                        text:
-                            'Можно назначить позже — компания, сотрудник или ссылка-приглашение.',
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               const SizedBox(height: SparkSpace.section),
               IgnorePointer(
                 ignoring: !enabled,
                 child: Opacity(
                   opacity: enabled ? 1 : 0.55,
                   child: SparkPrimaryActionButton(
-                    label: _primaryButtonLabel(),
+                    label: 'Создать и начать осмотр',
                     showIcon: false,
                     onTap: () => unawaited(_create()),
                   ),
