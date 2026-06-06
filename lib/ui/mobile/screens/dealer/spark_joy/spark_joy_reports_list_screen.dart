@@ -2,12 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 
@@ -18,6 +16,7 @@ import 'spark_joy_i18n.dart';
 import 'spark_joy_new_report_name_screen.dart';
 import 'spark_joy_onboarding.dart';
 import 'spark_joy_report_context.dart';
+import 'spark_joy_share.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -429,94 +428,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         .toString();
   }
 
-  Future<void> _openShareUrl(String rawUrl) async {
-    final uri = Uri.tryParse(rawUrl.trim());
-    if (uri == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Некорректная ссылка')));
-      return;
-    }
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Не удалось открыть ссылку')));
-  }
-
-  Future<void> _showShareLinkSheet(String url) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Container(
-            margin: const EdgeInsets.all(SparkSpace.xl),
-            decoration: BoxDecoration(
-              color: kWhiteColor,
-              borderRadius: BorderRadius.circular(SparkRadius.xl),
-              border: Border.all(color: kBorderColor),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(SparkSpace.xxxl),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const MyText(
-                    text: 'Ссылка на отчёт',
-                    size: SparkTextSize.title,
-                    weight: FontWeight.w700,
-                  ),
-                  const SizedBox(height: SparkSpace.md),
-                  SparkHintCard(text: url, icon: Icons.link_rounded),
-                  const SizedBox(height: SparkSpace.xl),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await Clipboard.setData(ClipboardData(text: url));
-                            if (!ctx.mounted) return;
-                            Navigator.of(ctx).pop();
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Ссылка скопирована'),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.copy_rounded),
-                          label: const Text('Копировать'),
-                        ),
-                      ),
-                      const SizedBox(width: SparkSpace.md),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () async {
-                            Navigator.of(ctx).pop();
-                            await _openShareUrl(url);
-                          },
-                          icon: const Icon(Icons.open_in_new_rounded),
-                          label: const Text('Открыть'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   Future<void> _createAndCopyReportShareLink(
     Map<String, dynamic> report,
   ) async {
@@ -559,7 +470,11 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       // start will re-resolve via Storage.CreateSpecialistReportShareUrl.
       _controller.patchCompletedReportById(reportId, updated);
       if (!mounted) return;
-      await _showShareLinkSheet(url);
+      await shareSpecialistReportUrl(
+        context,
+        url: url,
+        subject: sjRead(report, 'reportName', fallback: sjRead(report, 'car')),
+      );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
