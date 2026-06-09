@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
@@ -41,6 +43,8 @@ class _SparkJoyCompanyRequestsScreenState
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
   bool _reloadWhenActive = false;
+  bool _loadInFlight = false;
+  bool _loadQueuedWhileInFlight = false;
 
   @override
   void initState() {
@@ -150,6 +154,29 @@ class _SparkJoyCompanyRequestsScreenState
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
+    // WS-пуши статусов приходят пачками (несколько событий
+    // SparkJoyRequestRefreshBus подряд), и каждое запускало свой
+    // GetAllRequests. Коалесим: пока запрос в полёте, новые триггеры
+    // схлопываются в один повторный прогон после текущего. Заодно уходит
+    // гонка «старый ответ перетёр новый» при смене фильтра во время загрузки.
+    if (_loadInFlight) {
+      _loadQueuedWhileInFlight = true;
+      return;
+    }
+    _loadInFlight = true;
+    try {
+      await _loadOnce();
+    } finally {
+      _loadInFlight = false;
+      if (_loadQueuedWhileInFlight && mounted) {
+        _loadQueuedWhileInFlight = false;
+        unawaited(_load());
+      }
+    }
+  }
+
+  Future<void> _loadOnce() async {
     // Если есть данные — refresh идёт «тихо»: spinner не вешаем,
     // снэк появится только при ошибке. Это даёт offline-friendly
     // experience: юзер видит стабильный список, понимает что

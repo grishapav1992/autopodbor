@@ -375,93 +375,115 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     required double to,
     required ValueChanged<RangeValues> onChanged,
   }) {
-    final safeFrom = from.clamp(50, 1500).toDouble();
-    final safeTo = to.clamp(safeFrom, 1500).toDouble();
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        SparkSpace.xxxl,
-        SparkSpace.xl,
-        SparkSpace.xxxl,
-        SparkSpace.xl,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    // Тики перетаскивания RangeSlider живут в локальном StatefulBuilder:
+    // раньше каждый тик шёл через _setStateSafely и перестраивал ВЕСЬ
+    // экран отчёта (все группы осмотра с их .where()-пересчётами) — фриз
+    // на телефоне при каждом движении ползунка. В state экрана значение
+    // коммитится один раз — на отпускании (onChangeEnd) и из ручных полей.
+    RangeValues? drag;
+    return StatefulBuilder(
+      builder: (context, setLocal) {
+        final safeFrom = (drag?.start ?? from).clamp(50, 1500).toDouble();
+        final safeTo = (drag?.end ?? to).clamp(safeFrom, 1500).toDouble();
+        return Container(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: MyText(
-                  text: title.toUpperCase(),
-                  size: SparkTextSize.caption,
-                  color: kGreyColor,
-                  weight: FontWeight.w700,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: title.toUpperCase(),
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: SparkSpace.xs),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 92,
+                    child: _paintManualValueField(
+                      label: 'От',
+                      value: safeFrom,
+                      showLabel: false,
+                      hint: '',
+                      onSubmitted: (manualFrom) {
+                        final fromValue = manualFrom.toDouble();
+                        final toValue = math.max(fromValue, safeTo);
+                        onChanged(RangeValues(fromValue, toValue));
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: SparkSpace.sm),
+                  const MyText(
+                    text: '—',
+                    size: SparkTextSize.label,
+                    color: kGreyColor,
+                  ),
+                  const SizedBox(width: SparkSpace.sm),
+                  SizedBox(
+                    width: 92,
+                    child: _paintManualValueField(
+                      label: 'До',
+                      value: safeTo,
+                      showLabel: false,
+                      hint: '',
+                      onSubmitted: (manualTo) {
+                        final toValue = manualTo.toDouble();
+                        final fromValue = math.min(safeFrom, toValue);
+                        onChanged(RangeValues(fromValue, toValue));
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: SparkSpace.md),
+                  const MyText(
+                    text: 'мкм',
+                    size: SparkTextSize.body,
+                    color: kGreyColor,
+                  ),
+                ],
+              ),
+              const SizedBox(height: SparkSpace.md),
+              RangeSlider(
+                values: RangeValues(safeFrom, safeTo),
+                min: 50,
+                max: 1500,
+                divisions: 145,
+                onChanged: (values) => setLocal(() => drag = values),
+                onChangeEnd: (values) {
+                  drag = null;
+                  onChanged(values);
+                },
+              ),
+              Row(
+                children: const [
+                  MyText(
+                    text: '50',
+                    size: SparkTextSize.chip,
+                    color: kGreyColor,
+                  ),
+                  Spacer(),
+                  MyText(
+                    text: '1500',
+                    size: SparkTextSize.chip,
+                    color: kGreyColor,
+                  ),
+                ],
               ),
             ],
           ),
-          const SizedBox(height: SparkSpace.xs),
-          Row(
-            children: [
-              SizedBox(
-                width: 92,
-                child: _paintManualValueField(
-                  label: 'От',
-                  value: safeFrom,
-                  showLabel: false,
-                  hint: '',
-                  onSubmitted: (manualFrom) {
-                    final fromValue = manualFrom.toDouble();
-                    final toValue = math.max(fromValue, safeTo);
-                    onChanged(RangeValues(fromValue, toValue));
-                  },
-                ),
-              ),
-              const SizedBox(width: SparkSpace.sm),
-              const MyText(
-                text: '—',
-                size: SparkTextSize.label,
-                color: kGreyColor,
-              ),
-              const SizedBox(width: SparkSpace.sm),
-              SizedBox(
-                width: 92,
-                child: _paintManualValueField(
-                  label: 'До',
-                  value: safeTo,
-                  showLabel: false,
-                  hint: '',
-                  onSubmitted: (manualTo) {
-                    final toValue = manualTo.toDouble();
-                    final fromValue = math.min(safeFrom, toValue);
-                    onChanged(RangeValues(fromValue, toValue));
-                  },
-                ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              const MyText(
-                text: 'мкм',
-                size: SparkTextSize.body,
-                color: kGreyColor,
-              ),
-            ],
-          ),
-          const SizedBox(height: SparkSpace.md),
-          RangeSlider(
-            values: RangeValues(safeFrom, safeTo),
-            min: 50,
-            max: 1500,
-            divisions: 145,
-            onChanged: onChanged,
-          ),
-          Row(
-            children: const [
-              MyText(text: '50', size: SparkTextSize.chip, color: kGreyColor),
-              Spacer(),
-              MyText(text: '1500', size: SparkTextSize.chip, color: kGreyColor),
-            ],
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -1110,6 +1132,15 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
             final gridColumns = maxWidth >= 1080
                 ? 4
                 : (maxWidth >= 760 ? 3 : 2);
+            // Декодируем фото ровно под физический размер тайла на этом
+            // экране. Прежняя константа (720,720) на телефоне (тайл ~170
+            // лог.px ≈ 510 физ.px) держала в памяти ~2 МБ на фото вместо
+            // ~1 МБ — на осмотрах с десятками фото это удвоение всего
+            // декод-бюджета без какого-либо выигрыша в чёткости.
+            final tileLogical =
+                (maxWidth - (gridColumns - 1) * SparkSpace.lg) / gridColumns;
+            final tileDecodePx =
+                (tileLogical * MediaQuery.devicePixelRatioOf(context)).ceil();
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -1223,8 +1254,8 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                                     child: _uploadedMediaThumbWidget(
                                       item,
                                       fit: BoxFit.cover,
-                                      cacheWidth: 720,
-                                      cacheHeight: 720,
+                                      cacheWidth: tileDecodePx,
+                                      cacheHeight: tileDecodePx,
                                     ),
                                   ),
                                 ),

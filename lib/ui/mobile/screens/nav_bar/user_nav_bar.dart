@@ -1178,10 +1178,18 @@ class _ReportCarouselState extends State<_ReportCarousel> {
                 itemBuilder: (context, index) {
                   final src = widget.images[index];
                   if (src.startsWith('http://') || src.startsWith('https://')) {
+                    // Бэкенд отдаёт фото как есть (вплоть до 12 МП ≈ 45 МБ
+                    // в декоде на кадр); без memCacheWidth карусель из
+                    // нескольких карточек выедала память на полноразмерных
+                    // битмапах. Декодируем под физическую ширину экрана.
+                    final mq = MediaQuery.of(context);
+                    final decodeWidth = (mq.size.width * mq.devicePixelRatio)
+                        .round();
                     return CachedNetworkImage(
                       imageUrl: src,
                       fit: BoxFit.cover,
                       width: double.infinity,
+                      memCacheWidth: decodeWidth,
                       placeholder: (context, url) => const Center(
                         child: CircularProgressIndicator(strokeWidth: 2),
                       ),

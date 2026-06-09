@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
@@ -31,6 +33,8 @@ class _SparkJoySpecialistRequestsScreenState
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
   bool _reloadWhenActive = false;
+  bool _loadInFlight = false;
+  bool _loadQueuedWhileInFlight = false;
 
   @override
   void initState() {
@@ -101,6 +105,28 @@ class _SparkJoySpecialistRequestsScreenState
 
   Future<void> _load() async {
     if (!mounted) return;
+    // WS-пуши статусов приходят пачками (created→assigned→… даёт несколько
+    // событий SparkJoyRequestRefreshBus подряд), и каждое запускало свой
+    // GetAllRequests. Коалесим: пока запрос в полёте, новые триггеры
+    // схлопываются в один повторный прогон после текущего. Заодно уходит
+    // гонка «старый ответ перетёр новый» при смене фильтра во время загрузки.
+    if (_loadInFlight) {
+      _loadQueuedWhileInFlight = true;
+      return;
+    }
+    _loadInFlight = true;
+    try {
+      await _loadOnce();
+    } finally {
+      _loadInFlight = false;
+      if (_loadQueuedWhileInFlight && mounted) {
+        _loadQueuedWhileInFlight = false;
+        unawaited(_load());
+      }
+    }
+  }
+
+  Future<void> _loadOnce() async {
     final hadData = _requests != null;
     setState(() {
       _loading = !hadData;

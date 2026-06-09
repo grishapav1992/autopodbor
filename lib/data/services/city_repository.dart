@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show compute, visibleForTesting;
 import 'package:flutter/services.dart' show rootBundle;
 
 /// One settlement entry. The schema mirrors the build-time JSON produced
@@ -263,7 +263,13 @@ class CityRepository {
   Future<void> _runLoad() async {
     try {
       final source = await loaderForTest();
-      _loadFromString(source);
+      // 429 КБ JSON → ~5К City-объектов (плюс фолдинг строк в каждом
+      // конструкторе): синхронный парс держал главный изолят десятки мс
+      // ровно в момент открытия city-пикера — шторка дёргалась на входе.
+      // City — плоские строки/int, так что копия результата из compute()
+      // дёшева. Тестовые швы (CityRepository.test / installSingletonForTest)
+      // остаются на синхронном _loadFromString.
+      _cities = await compute(_parseCities, source);
     } catch (_) {
       _loading = null;
       rethrow;
@@ -271,13 +277,17 @@ class CityRepository {
   }
 
   void _loadFromString(String source) {
+    _cities = _parseCities(source);
+  }
+
+  static List<City> _parseCities(String source) {
     final raw = jsonDecode(source);
     if (raw is! List) {
       throw const FormatException(
         'cities_ru_cis.json: expected top-level JSON array',
       );
     }
-    _cities = raw
+    return raw
         .whereType<Map>()
         .map((m) => City.fromJson(Map<String, dynamic>.from(m)))
         .toList(growable: false);

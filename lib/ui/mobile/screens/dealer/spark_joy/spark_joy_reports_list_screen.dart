@@ -1242,6 +1242,18 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   List<Map<String, dynamic>> _drafts = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _completed = <Map<String, dynamic>>[];
 
+  // Мемо фильтрации: экран перестраивается на КАЖДЫЙ notify контроллера
+  // (поиск, спиннеры карточек, фоновая синхронизация), и каждый build гонял
+  // .where() + sparkJoyReportRequestContext() по всем отчётам заново.
+  // _drafts/_completed заменяются целиком (см. load()/_sortCompleted), так
+  // что identical() по источнику — честный ключ инвалидации.
+  List<Map<String, dynamic>>? _filteredDraftsMemo;
+  Object? _filteredDraftsMemoSource;
+  String _filteredDraftsMemoQuery = '';
+  List<Map<String, dynamic>>? _filteredCompletedMemo;
+  Object? _filteredCompletedMemoSource;
+  String _filteredCompletedMemoQuery = '';
+
   String get tab => _tab;
   bool get loading => _loading;
   String? get loadError => _loadError;
@@ -1254,7 +1266,12 @@ class _SparkJoyReportsListController extends ChangeNotifier {
   List<Map<String, dynamic>> get filteredDrafts {
     if (_search.trim().isEmpty) return _drafts;
     final query = _search.toLowerCase();
-    return _drafts.where((d) {
+    if (_filteredDraftsMemo != null &&
+        identical(_filteredDraftsMemoSource, _drafts) &&
+        _filteredDraftsMemoQuery == query) {
+      return _filteredDraftsMemo!;
+    }
+    final result = _drafts.where((d) {
       final text = [
         sjRead(d, 'reportName'),
         sjRead(d, 'car'),
@@ -1264,12 +1281,21 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       ].join(' ').toLowerCase();
       return text.contains(query);
     }).toList();
+    _filteredDraftsMemo = result;
+    _filteredDraftsMemoSource = _drafts;
+    _filteredDraftsMemoQuery = query;
+    return result;
   }
 
   List<Map<String, dynamic>> get filteredCompleted {
     if (_search.trim().isEmpty) return _completed;
     final query = _search.toLowerCase();
-    return _completed.where((r) {
+    if (_filteredCompletedMemo != null &&
+        identical(_filteredCompletedMemoSource, _completed) &&
+        _filteredCompletedMemoQuery == query) {
+      return _filteredCompletedMemo!;
+    }
+    final result = _completed.where((r) {
       final text = [
         sjRead(r, 'reportName'),
         sjRead(r, 'reportNumber'),
@@ -1283,6 +1309,10 @@ class _SparkJoyReportsListController extends ChangeNotifier {
       ].join(' ').toLowerCase();
       return text.contains(query);
     }).toList();
+    _filteredCompletedMemo = result;
+    _filteredCompletedMemoSource = _completed;
+    _filteredCompletedMemoQuery = query;
+    return result;
   }
 
   void setSearch(String value) {
