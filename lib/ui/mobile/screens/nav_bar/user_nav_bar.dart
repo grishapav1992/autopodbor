@@ -30,7 +30,7 @@ class UserNavBar extends StatefulWidget {
   State<UserNavBar> createState() => _UserNavBarState();
 }
 
-class _UserNavBarState extends State<UserNavBar> {
+class _UserNavBarState extends State<UserNavBar> with WidgetsBindingObserver {
   int _currentIndex = 0;
   // Auto-request feature is paused: 2 tabs (Reports + Purchased) instead
   // of the original 3. To restore My-Requests, bump to 3 and put the tab
@@ -54,6 +54,7 @@ class _UserNavBarState extends State<UserNavBar> {
   }
 
   final _key = GlobalKey<ScaffoldState>();
+  final TextEditingController _searchController = TextEditingController();
   String _query = '';
   String _sortOrder =
       '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0432\u044b\u0435';
@@ -69,9 +70,35 @@ class _UserNavBarState extends State<UserNavBar> {
   int _brandRetryCount = 0;
   String _brandError = '';
 
+  // Демо-список строится один раз: build дёргается на каждый символ поиска,
+  // а пересоздание списка карт на каждый кадр ломало бы identical()-ключ
+  // мемоизации _filteredReports.
+  late final List<Map<String, dynamic>> _reports = _allReports();
+
+  // Мемо фильтрации+сортировки (образец — spark_joy_reports_list_screen).
+  List<Map<String, dynamic>>? _filteredReportsMemo;
+  Object? _filteredMemoSource;
+  String _filteredMemoQuery = '';
+  String _filteredMemoSort = '';
+  Object? _filteredMemoMakes;
+  Object? _filteredMemoModels;
+  Object? _filteredMemoStatuses;
+  Object? _filteredMemoInspectors;
+
+  // Отложенная запись настроек: раньше каждый символ поиска, тумблер
+  // сортировки и «Применить» в фильтрах тут же дёргали SharedPreferences.
+  // Копим изменения и пишем одним батчем; хвост сбрасывается при
+  // сворачивании приложения и в dispose.
+  static const Duration _prefsSaveDelay = Duration(milliseconds: 600);
+  Timer? _prefsSaveTimer;
+  bool _dirtyQuery = false;
+  bool _dirtySort = false;
+  bool _dirtyFilters = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     final maxIndex = _navigatorKeys.length - 1;
     final next = widget.initialIndex.clamp(0, maxIndex);
     _currentIndex = next;
@@ -81,8 +108,51 @@ class _UserNavBarState extends State<UserNavBar> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _brandRetryTimer?.cancel();
+    _flushPrefsSave();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _flushPrefsSave();
+    }
+  }
+
+  void _schedulePrefsSave({
+    bool query = false,
+    bool sort = false,
+    bool filters = false,
+  }) {
+    _dirtyQuery = _dirtyQuery || query;
+    _dirtySort = _dirtySort || sort;
+    _dirtyFilters = _dirtyFilters || filters;
+    _prefsSaveTimer?.cancel();
+    _prefsSaveTimer = Timer(_prefsSaveDelay, _flushPrefsSave);
+  }
+
+  void _flushPrefsSave() {
+    _prefsSaveTimer?.cancel();
+    _prefsSaveTimer = null;
+    if (_dirtyQuery) {
+      _dirtyQuery = false;
+      UserSimplePreferences.setReportQuery(_query);
+    }
+    if (_dirtySort) {
+      _dirtySort = false;
+      UserSimplePreferences.setReportSortOrder(_sortOrder);
+    }
+    if (_dirtyFilters) {
+      _dirtyFilters = false;
+      UserSimplePreferences.setReportMakes(_selectedMakes);
+      UserSimplePreferences.setReportModels(_selectedModels);
+      UserSimplePreferences.setReportVerdicts(_selectedStatuses);
+      UserSimplePreferences.setReportInspectors(_selectedInspectors);
+    }
   }
 
   Future<void> _loadPrefs() async {
@@ -94,7 +164,12 @@ class _UserNavBarState extends State<UserNavBar> {
     final verdicts = await UserSimplePreferences.getReportVerdicts();
     if (!mounted) return;
     setState(() {
-      _query = query ?? '';
+      // Не затираем поиск, если пользователь успел начать печатать,
+      // пока префсы читались.
+      if (_searchController.text.isEmpty && !_dirtyQuery) {
+        _query = query ?? '';
+        _searchController.text = _query;
+      }
       _sortOrder =
           sort ??
           '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0432\u044b\u0435';
@@ -288,14 +363,32 @@ class _UserNavBarState extends State<UserNavBar> {
     );
   }
 
-  Widget _buildHome() {
-    final reports = _allReports();
-    final filteredReports = reports.where((r) {
-      final q = _query.trim().toLowerCase();
-      final hay =
-          '${r['car']} ${r['inspector']} ${r['vin']} ${r['plate']} ${r['make']} ${r['model']}'
-              .toLowerCase();
-      if (q.isNotEmpty && !hay.contains(q)) return false;
+  /// Отфильтрованный и отсортированный список с мемоизацией: build экрана
+  /// дёргается setState'ом на каждый введённый символ поиска, и раньше
+  /// .where()+sort гонялись по всем отчётам на каждый кадр. Ключи
+  /// инвалидации — query/sortOrder по значению и identical() по источнику
+  /// и спискам фильтров: они заменяются целиком новыми инстансами
+  /// (см. _loadPrefs и «Применить» в _openFilters).
+  List<Map<String, dynamic>> get _filteredReports {
+    final q = _query.trim().toLowerCase();
+    if (_filteredReportsMemo != null &&
+        identical(_filteredMemoSource, _reports) &&
+        _filteredMemoQuery == q &&
+        _filteredMemoSort == _sortOrder &&
+        identical(_filteredMemoMakes, _selectedMakes) &&
+        identical(_filteredMemoModels, _selectedModels) &&
+        identical(_filteredMemoStatuses, _selectedStatuses) &&
+        identical(_filteredMemoInspectors, _selectedInspectors)) {
+      return _filteredReportsMemo!;
+    }
+
+    final result = _reports.where((r) {
+      if (q.isNotEmpty) {
+        final hay =
+            '${r['car']} ${r['inspector']} ${r['vin']} ${r['plate']} ${r['make']} ${r['model']}'
+                .toLowerCase();
+        if (!hay.contains(q)) return false;
+      }
       if (_selectedMakes.isNotEmpty && !_selectedMakes.contains(r['make'])) {
         return false;
       }
@@ -313,69 +406,111 @@ class _UserNavBarState extends State<UserNavBar> {
       return true;
     }).toList();
 
-    filteredReports.sort((a, b) {
+    final oldestFirst =
+        _sortOrder ==
+        '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0441\u0442\u0430\u0440\u044b\u0435';
+    result.sort((a, b) {
       final ad = _parseDate(a['date'] ?? '');
       final bd = _parseDate(b['date'] ?? '');
-      if (_sortOrder ==
-          '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0441\u0442\u0430\u0440\u044b\u0435') {
-        return ad.compareTo(bd);
-      }
-      return bd.compareTo(ad);
+      return oldestFirst ? ad.compareTo(bd) : bd.compareTo(ad);
     });
+
+    _filteredReportsMemo = result;
+    _filteredMemoSource = _reports;
+    _filteredMemoQuery = q;
+    _filteredMemoSort = _sortOrder;
+    _filteredMemoMakes = _selectedMakes;
+    _filteredMemoModels = _selectedModels;
+    _filteredMemoStatuses = _selectedStatuses;
+    _filteredMemoInspectors = _selectedInspectors;
+    return result;
+  }
+
+  Widget _buildHome() {
+    final filteredReports = _filteredReports;
+    final pagePadding = AppSizes.listPaddingWithBottomBar();
 
     return SafeArea(
       child: Stack(
         children: [
-          ListView(
-            padding: AppSizes.listPaddingWithBottomBar(),
-            children: [
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () => _key.currentState!.openDrawer(),
-                    child: Image.asset(Assets.imagesMenu, height: 24),
+          // Единый CustomScrollView вместо вложенных ListView: раньше
+          // внутренний список с shrinkWrap: true материализовал все карточки
+          // разом, слайвер строит только видимые.
+          CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  pagePadding.left,
+                  pagePadding.top,
+                  pagePadding.right,
+                  0,
+                ),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => _key.currentState!.openDrawer(),
+                            child: Image.asset(Assets.imagesMenu, height: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: MyText(
+                              text:
+                                  '\u041e\u0442\u0447\u0451\u0442\u044b \u0430\u0432\u0442\u043e\u043f\u043e\u0434\u0431\u043e\u0440\u0449\u0438\u043a\u043e\u0432',
+                              size: 18,
+                              weight: FontWeight.w700,
+                              maxLines: 1,
+                              textOverflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          _FilterIconButton(
+                            active:
+                                _selectedMakes.isNotEmpty ||
+                                _selectedModels.isNotEmpty ||
+                                _selectedStatuses.isNotEmpty ||
+                                _selectedInspectors.isNotEmpty,
+                            onTap: () => _openFilters(_reports),
+                          ),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                _sortOrder =
+                                    _sortOrder ==
+                                        '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0432\u044b\u0435'
+                                    ? '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0441\u0442\u0430\u0440\u044b\u0435'
+                                    : '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0432\u044b\u0435';
+                              });
+                              _schedulePrefsSave(sort: true);
+                            },
+                            icon: const Icon(
+                              Icons.sort,
+                              color: kSecondaryColor,
+                            ),
+                            tooltip:
+                                '\u0421\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0430',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      _buildSearch(),
+                      const SizedBox(height: 20),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: MyText(
-                      text:
-                          '\u041e\u0442\u0447\u0451\u0442\u044b \u0430\u0432\u0442\u043e\u043f\u043e\u0434\u0431\u043e\u0440\u0449\u0438\u043a\u043e\u0432',
-                      size: 18,
-                      weight: FontWeight.w700,
-                      maxLines: 1,
-                      textOverflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  _FilterIconButton(
-                    active:
-                        _selectedMakes.isNotEmpty ||
-                        _selectedModels.isNotEmpty ||
-                        _selectedStatuses.isNotEmpty ||
-                        _selectedInspectors.isNotEmpty,
-                    onTap: () => _openFilters(reports),
-                  ),
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        _sortOrder =
-                            _sortOrder ==
-                                '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0432\u044b\u0435'
-                            ? '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0441\u0442\u0430\u0440\u044b\u0435'
-                            : '\u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u043d\u043e\u0432\u044b\u0435';
-                        UserSimplePreferences.setReportSortOrder(_sortOrder);
-                      });
-                    },
-                    icon: const Icon(Icons.sort, color: kSecondaryColor),
-                    tooltip:
-                        '\u0421\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0430',
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 16),
-              _buildSearch(),
-              const SizedBox(height: 20),
-              _ReportsList(reports: filteredReports),
+              SliverPadding(
+                padding: EdgeInsets.fromLTRB(
+                  pagePadding.left,
+                  0,
+                  pagePadding.right,
+                  pagePadding.bottom,
+                ),
+                sliver: _ReportsSliverList(reports: filteredReports),
+              ),
             ],
           ),
           // ┌─ PAUSED: "Новая заявка" FAB (auto-request flow) ───────────┐
@@ -412,10 +547,14 @@ class _UserNavBarState extends State<UserNavBar> {
   }
 
   Widget _buildSearch() {
+    // Контроллер обязателен: хедер теперь живёт в ленивом скролле и может
+    // выгружаться из вьюпорта — без контроллера пересозданный TextField
+    // терял бы введённый текст.
     return TextField(
+      controller: _searchController,
       onChanged: (v) {
         setState(() => _query = v);
-        UserSimplePreferences.setReportQuery(v);
+        _schedulePrefsSave(query: true);
       },
       decoration: InputDecoration(
         hintText:
@@ -771,19 +910,8 @@ class _UserNavBarState extends State<UserNavBar> {
                                   _selectedInspectors = List<String>.from(
                                     tempInspectors,
                                   );
-                                  UserSimplePreferences.setReportMakes(
-                                    _selectedMakes,
-                                  );
-                                  UserSimplePreferences.setReportModels(
-                                    _selectedModels,
-                                  );
-                                  UserSimplePreferences.setReportVerdicts(
-                                    _selectedStatuses,
-                                  );
-                                  UserSimplePreferences.setReportInspectors(
-                                    _selectedInspectors,
-                                  );
                                 });
+                                _schedulePrefsSave(filters: true);
                                 Navigator.pop(ctx);
                               },
                               style: ElevatedButton.styleFrom(
@@ -815,8 +943,8 @@ class _UserNavBarState extends State<UserNavBar> {
   }
 }
 
-class _ReportsList extends StatelessWidget {
-  const _ReportsList({required this.reports});
+class _ReportsSliverList extends StatelessWidget {
+  const _ReportsSliverList({required this.reports});
   final List<Map<String, dynamic>> reports;
 
   /// Stable key for a report card so that reorders / filter changes don't
@@ -830,14 +958,11 @@ class _ReportsList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // NOTE: this list lives inside an outer ListView, so we still materialize
-    // all children. The builder pattern avoids per-frame `.map().toList()`
-    // allocations, and the explicit keys stop Flutter from rebuilding
-    // unchanged cards when the user edits filters / search / sort order.
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
+    // Слайвер во внешнем CustomScrollView: карточки строятся лениво, только
+    // в пределах вьюпорта (раньше вложенный ListView с shrinkWrap: true
+    // материализовал весь список разом). Явные ключи не дают перестраивать
+    // уцелевшие карточки при смене фильтров/поиска/сортировки.
+    return SliverList.builder(
       itemCount: reports.length,
       itemBuilder: (context, index) {
         final r = reports[index];
