@@ -308,6 +308,8 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
         frameId: restyling.frameIds.isNotEmpty
             ? restyling.frameIds.first
             : null,
+        brandId: selectedRemoteBrand?.id,
+        modelCarId: selectedRemoteModel?.id,
       );
     }
 
@@ -322,6 +324,8 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
         restyling: '',
         frames: '',
         photoUrl: '',
+        brandId: selectedRemoteBrand?.id,
+        modelCarId: selectedRemoteModel?.id,
       );
     }
 
@@ -925,6 +929,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       _carFrames = selection.frames;
       _carPhotoUrl = selection.photoUrl;
       _modelGenerationRestylingFrameId = selection.frameId;
+      // Каталожная привязка из пикера → автокомплит марки/модели сразу
+      // консистентен (модели подтянутся для этого brandId).
+      _selectedBrandId = selection.brandId;
+      _selectedModelCarId = selection.modelCarId;
     });
     // Persist a frame-id → metadata entry so the completed-report
     // hydrator can restore brand/model/generation/restyling/photoUrl

@@ -60,6 +60,9 @@ dependencies:
   primer_progress_bar: ^0.5.0
   path_provider: ^2.1.5
   shared_preferences: ^2.3.2
+  # Keychain (iOS) / Keystore-backed encrypted storage (Android) for auth
+  # tokens — see UserSimplePreferences token methods.
+  flutter_secure_storage: ^9.2.4
   smooth_page_indicator: ^1.2.0+3
   step_progress_indicator: ^1.0.2
   syncfusion_flutter_charts: ^27.1.48

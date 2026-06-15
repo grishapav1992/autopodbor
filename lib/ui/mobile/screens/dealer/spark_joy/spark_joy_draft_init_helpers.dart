@@ -132,6 +132,27 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
         : ((frameIdFromChar != null && frameIdFromChar > 0)
               ? frameIdFromChar
               : null);
+    // Каталожная привязка марки/модели (если черновик сохранён новым кодом) —
+    // позволяет автокомплиту сразу предложить модели для brandId. Legacy без
+    // этих ключей → null, восстановление по требованию при фокусе поля модели.
+    final rawBrandId = draft['brandId'];
+    final parsedBrandId = rawBrandId is int
+        ? rawBrandId
+        : (rawBrandId is num
+              ? rawBrandId.toInt()
+              : int.tryParse('${rawBrandId ?? ''}'));
+    _selectedBrandId = (parsedBrandId != null && parsedBrandId > 0)
+        ? parsedBrandId
+        : null;
+    final rawModelCarId = draft['modelCarId'];
+    final parsedModelCarId = rawModelCarId is int
+        ? rawModelCarId
+        : (rawModelCarId is num
+              ? rawModelCarId.toInt()
+              : int.tryParse('${rawModelCarId ?? ''}'));
+    _selectedModelCarId = (parsedModelCarId != null && parsedModelCarId > 0)
+        ? parsedModelCarId
+        : null;
     _adLinkController = TextEditingController(
       text: _read(draft, 'adLink', fallback: _read(assignment, 'listingUrl')),
     );

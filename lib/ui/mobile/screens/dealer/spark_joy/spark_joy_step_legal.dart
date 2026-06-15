@@ -180,33 +180,9 @@ String _legalCheckStatusLabel(String status) {
   }
 }
 
-/// Человекочитаемое русское название типа ApiCloud-проверки по стабильному
-/// `value` (бэк в `name` отдаёт техничный PascalCase: `ApiCloudZalogNotary`).
-/// Неизвестный тип — мягкий фолбэк: убрать префикс `api_cloud_`, `_`→пробел,
-/// первая буква заглавная.
-String _legalCheckTypeLabel(String value) {
-  switch (value) {
-    case 'api_cloud_zalog_notary':
-      return 'Залог (реестр нотариусов)';
-    case 'api_cloud_zalog_fedresurs':
-      return 'Лизинг (Федресурс)';
-    case 'api_cloud_gost_certificate':
-      return 'Сертификат ГОСТ';
-    case 'api_cloud_taxi_search':
-      return 'Работа в такси';
-    case 'api_cloud_fgis_taxi_search':
-      return 'Разрешение такси (ФГИС)';
-    case 'api_cloud_converter_search':
-      return 'Определение по VIN/госномеру';
-    default:
-      final cleaned = value
-          .replaceFirst('api_cloud_', '')
-          .replaceAll('_', ' ')
-          .trim();
-      if (cleaned.isEmpty) return value;
-      return cleaned[0].toUpperCase() + cleaned.substring(1);
-  }
-}
+// Человекочитаемое название типа ApiCloud-проверки вынесено в общий
+// `sparkJoyLegalCheckTypeLabel` (spark_joy_legal_labels.dart) — единый источник
+// для этого шага и ленты уведомлений (чтобы названия не расходились).
 
 /// `responseNormalized` приходит JSON-строкой (напр. `"{\"found\": false}"`),
 /// реже — уже объектом. Сводим к человекочитаемой строке: готовый русский
@@ -274,7 +250,9 @@ List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
     const SizedBox(height: SparkSpace.sm),
     ...results.map((c) {
       final type = (c['checkType'] ?? '').toString();
-      final title = type.isEmpty ? 'Проверка' : _legalCheckTypeLabel(type);
+      final title = type.isEmpty
+          ? 'Проверка'
+          : sparkJoyLegalCheckTypeLabel(type);
       final status = (c['status'] ?? '').toString();
       final summary = _legalNormalizedToText(c['responseNormalized']);
       return Padding(
@@ -384,7 +362,7 @@ Widget _buildSparkJoyStepLegal(
                     controlAffinity: ListTileControlAffinity.leading,
                     value: selected.contains(t.value),
                     title: MyText(
-                      text: _legalCheckTypeLabel(t.value),
+                      text: sparkJoyLegalCheckTypeLabel(t.value),
                       size: SparkTextSize.caption,
                     ),
                     onChanged: s._legalLoading

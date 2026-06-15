@@ -67,4 +67,35 @@ void main() {
       );
     });
   });
+
+  group('Spark Joy video poster filename', () {
+    test('appends .thumb.jpg to the video upload filename', () {
+      expect(
+        sparkJoyVideoPosterFilename('inspection_media_video_1_clip.mov'),
+        'inspection_media_video_1_clip.mov.thumb.jpg',
+      );
+    });
+
+    test('upload side and view side derive the same poster key', () {
+      // The whole feature hinges on both sides computing the SAME name from the
+      // video filename the server echoes back. This guards that contract.
+      final videoFilename = sparkJoyUploadFilename(
+        contextPrefix: 'inspection_media',
+        itemId: 'vid_42',
+        originalName: 'walkaround.mp4',
+        fallbackExtension: 'mp4',
+        index: 3,
+      );
+      final uploadSide = sparkJoyVideoPosterFilename(videoFilename);
+      final viewSide = sparkJoyVideoPosterFilename(videoFilename);
+      expect(uploadSide, viewSide);
+      expect(uploadSide, endsWith('.thumb.jpg'));
+      expect(uploadSide, startsWith(videoFilename));
+    });
+
+    test('empty / whitespace filename yields empty poster name', () {
+      expect(sparkJoyVideoPosterFilename(''), '');
+      expect(sparkJoyVideoPosterFilename('   '), '');
+    });
+  });
 }

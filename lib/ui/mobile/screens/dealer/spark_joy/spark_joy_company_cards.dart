@@ -19,11 +19,34 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
             weight: FontWeight.w700,
           ),
           const SizedBox(height: SparkSpace.sm),
-          TextField(
-            controller: _brandController,
-            textCapitalization: TextCapitalization.words,
-            onChanged: (_) => _onCarIdentityEdited(),
-            decoration: _fieldDecoration('Напр. LADA'),
+          RawAutocomplete<storage_api.BrandItem>(
+            textEditingController: _brandController,
+            focusNode: _brandFocusNode,
+            displayStringForOption: (b) => b.name,
+            optionsBuilder: (value) {
+              unawaited(_ensureBrandCatalogLoaded());
+              return _brandAutocompleteOptions(value.text);
+            },
+            onSelected: _onBrandAutocompleteSelected,
+            fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+              return TextField(
+                controller: controller,
+                focusNode: focusNode,
+                textCapitalization: TextCapitalization.words,
+                onChanged: (_) => _onCarIdentityEdited(),
+                onTap: () => unawaited(_ensureBrandCatalogLoaded()),
+                decoration: _fieldDecoration('Напр. LADA'),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) =>
+                _buildCatalogAutocompleteOptions<storage_api.BrandItem>(
+                  context: context,
+                  onSelected: onSelected,
+                  options: options,
+                  labelOf: (b) => b.nameRus.trim().isNotEmpty
+                      ? '${b.name} · ${b.nameRus}'
+                      : b.name,
+                ),
           ),
           const SizedBox(height: SparkSpace.md),
           const MyText(
@@ -32,11 +55,34 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
             weight: FontWeight.w700,
           ),
           const SizedBox(height: SparkSpace.sm),
-          TextField(
-            controller: _modelController,
-            textCapitalization: TextCapitalization.words,
-            onChanged: (_) => _onCarIdentityEdited(),
-            decoration: _fieldDecoration('Напр. VESTA'),
+          RawAutocomplete<storage_api.ModelItem>(
+            textEditingController: _modelController,
+            focusNode: _modelFocusNode,
+            displayStringForOption: (m) => m.model,
+            optionsBuilder: (value) {
+              unawaited(_ensureModelsForSelectedBrand());
+              return _modelAutocompleteOptions(value.text);
+            },
+            onSelected: _onModelAutocompleteSelected,
+            fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+              return TextField(
+                controller: controller,
+                focusNode: focusNode,
+                textCapitalization: TextCapitalization.words,
+                onChanged: (_) => _onCarIdentityEdited(),
+                onTap: () => unawaited(_ensureModelsForSelectedBrand()),
+                decoration: _fieldDecoration('Напр. VESTA'),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) =>
+                _buildCatalogAutocompleteOptions<storage_api.ModelItem>(
+                  context: context,
+                  onSelected: onSelected,
+                  options: options,
+                  labelOf: (m) => m.modelRus.trim().isNotEmpty
+                      ? '${m.model} · ${m.modelRus}'
+                      : m.model,
+                ),
           ),
           const SizedBox(height: SparkSpace.md),
           const MyText(
@@ -93,4 +139,44 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
       ),
     );
   }
+}
+
+/// Общий overlay-список подсказок для RawAutocomplete марки/модели: карточка
+/// с прокручиваемым списком шириной примерно с поле ввода.
+Widget _buildCatalogAutocompleteOptions<T extends Object>({
+  required BuildContext context,
+  required AutocompleteOnSelected<T> onSelected,
+  required Iterable<T> options,
+  required String Function(T) labelOf,
+}) {
+  final items = options.toList(growable: false);
+  final maxWidth = MediaQuery.of(context).size.width - SparkSpace.lg * 2;
+  return Align(
+    alignment: Alignment.topLeft,
+    child: Material(
+      elevation: 3,
+      borderRadius: BorderRadius.circular(SparkRadius.sm),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: 260, maxWidth: maxWidth),
+        child: ListView.builder(
+          padding: EdgeInsets.zero,
+          shrinkWrap: true,
+          itemCount: items.length,
+          itemBuilder: (context, index) {
+            final option = items[index];
+            return InkWell(
+              onTap: () => onSelected(option),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.md,
+                  vertical: SparkSpace.sm,
+                ),
+                child: MyText(text: labelOf(option), size: SparkTextSize.body),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
 }

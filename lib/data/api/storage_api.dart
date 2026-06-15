@@ -2813,34 +2813,65 @@ class StorageApi {
     return _asMap(data['result']);
   }
 
-  /// Runs the ApiCloud VIN↔plate converter (`api_cloud_converter_search`) and
-  /// polls until it settles. **Paid**; requires `run_legal_review`. Pass `vin`
-  /// OR `gosNumber` (converter resolves the other + brand/model/year). Throws
-  /// [PermissionDeniedException] on 403 (caller surfaces it). Returns
-  /// [VinPlateConverterResult]: `found:false` on a settled not-found; or
-  /// `timedOut:true` if the check stays pending past the poll window
-  /// (~`maxPolls*pollInterval` ≈ 150s) or polling keeps failing. The ApiCloud
-  /// worker can lag a lot (observed ~116s on 2026-06-03, ~8h on 2026-06-01);
-  /// the ceiling is generous so a slow-but-working check still resolves. Late
-  /// results aren't lost server-side — so on `timedOut` callers show
-  /// «попробуйте позже», not «не найдено», and the UI isn't blocked forever.
-  static Future<VinPlateConverterResult> runVinPlateConverter({
+  /// Запускает ApiCloud-конвертер (`api_cloud_converter_search`) и возвращает
+  /// его `batchNumber` (или '' при сбое). **Платно**; требует `run_legal_review`
+  /// (403 → [PermissionDeniedException], surface'ит вызывающий). Передай `vin`
+  /// ИЛИ `gosNumber`.
+  ///
+  /// Разделено с поллингом намеренно: клиент сохраняет `batchNumber` в
+  /// персистентное хранилище ДО опроса, поэтому медленный/прерванный результат
+  /// не теряется, а повторный запуск переиспользует уже **оплаченный** батч
+  /// ([pollVinPlateConverterBatch]) вместо новой оплаты.
+  static Future<String> startVinPlateConverter({
     String? vin,
     String? gosNumber,
-    Duration pollInterval = const Duration(seconds: 3),
-    int maxPolls = 50,
+    Duration timeout = const Duration(seconds: 15),
   }) async {
     final started = await runBatchLegalReview(
       checkTypes: const ['api_cloud_converter_search'],
       vin: vin,
       gosNumber: gosNumber,
+      timeout: timeout,
     );
-    final batchNumber = (started['batchNumber'] ?? '').toString().trim();
-    if (batchNumber.isEmpty) return _emptyVinPlateResult;
+    return (started['batchNumber'] ?? '').toString().trim();
+  }
+
+  /// Опрашивает СУЩЕСТВУЮЩИЙ батч конвертера (**бесплатно** — только чтения
+  /// `GetBatchLegalReviewResults`) до терминального статуса.
+  ///
+  /// Экспоненциальный backoff: интервал растёт [firstInterval] → ×[backoffFactor]
+  /// → cap [maxInterval], пока суммарное ожидание < [maxWait]. То же окно
+  /// ожидания, что и фикс-3с×50, но кратно меньше запросов (≈10–13 вместо 50).
+  /// Воркер ApiCloud может лагать (наблюдали ~84с 2026-06-08, ~116с 2026-06-03);
+  /// потолок щедрый, чтобы медленный-но-рабочий чек дорезолвился. Поздний
+  /// результат на бэке не теряется → на `timedOut` вызывающий показывает
+  /// «попробуйте позже» (НЕ «не найдено») и не блокирует UI навсегда.
+  /// [onProgress] зовётся на каждом опросе (индекс, прошедшее время) — для
+  /// прогресс-индикатора.
+  static Future<VinPlateConverterResult> pollVinPlateConverterBatch(
+    String batchNumber, {
+    Duration firstInterval = const Duration(seconds: 2),
+    double backoffFactor = 1.5,
+    Duration maxInterval = const Duration(seconds: 15),
+    Duration maxWait = const Duration(seconds: 165),
+    void Function(int pollIndex, Duration elapsed)? onProgress,
+  }) async {
+    if (batchNumber.trim().isEmpty) return _emptyVinPlateResult;
+    Duration grow(Duration d) {
+      final next = d * backoffFactor;
+      return next > maxInterval ? maxInterval : next;
+    }
+
+    var interval = firstInterval;
+    var elapsed = Duration.zero;
+    var poll = 0;
     var emptyStreak = 0;
     var failStreak = 0;
-    for (var i = 0; i < maxPolls; i++) {
-      await Future<void>.delayed(pollInterval);
+    while (elapsed < maxWait) {
+      await Future<void>.delayed(interval);
+      elapsed += interval;
+      poll++;
+      onProgress?.call(poll, elapsed);
       Map<String, dynamic> res;
       try {
         res = await getBatchLegalReviewResults(
@@ -2852,6 +2883,7 @@ class StorageApi {
         // отвечает вовремя → timedOut (а не «не найдено»), чтобы не растягивать
         // цикл на минуты на тормозящем воркере.
         if (++failStreak >= 3) return _timedOutVinPlateResult;
+        interval = grow(interval);
         continue;
       }
       failStreak = 0;
@@ -2865,6 +2897,7 @@ class StorageApi {
       if (checks.isEmpty) {
         // Пустой ответ — несколько попыток, потом сдаёмся.
         if (++emptyStreak >= 3) return _emptyVinPlateResult;
+        interval = grow(interval);
         continue;
       }
       emptyStreak = 0;
@@ -2877,9 +2910,35 @@ class StorageApi {
         }
         return _emptyVinPlateResult;
       }
+      interval = grow(interval);
     }
-    // Потолок исчерпан, проверка всё ещё pending → воркер лагает, не «не найдено».
+    // Окно ожидания исчерпано, проверка всё ещё pending → воркер лагает.
     return _timedOutVinPlateResult;
+  }
+
+  /// Convenience: старт (платно) + поллинг (бесплатно) одним вызовом. Прямой
+  /// вызов НЕ переиспользует батч между запусками — клиент в spark_joy ради
+  /// экономии денег дёргает [startVinPlateConverter]/[pollVinPlateConverterBatch]
+  /// раздельно и персистит `batchNumber`. Оставлено для совместимости/тестов;
+  /// по умолчанию сохраняет старое поведение (фикс-интервал, без backoff).
+  static Future<VinPlateConverterResult> runVinPlateConverter({
+    String? vin,
+    String? gosNumber,
+    Duration pollInterval = const Duration(seconds: 3),
+    int maxPolls = 50,
+  }) async {
+    final batchNumber = await startVinPlateConverter(
+      vin: vin,
+      gosNumber: gosNumber,
+    );
+    if (batchNumber.isEmpty) return _emptyVinPlateResult;
+    return pollVinPlateConverterBatch(
+      batchNumber,
+      firstInterval: pollInterval,
+      backoffFactor: 1.0,
+      maxInterval: pollInterval,
+      maxWait: pollInterval * maxPolls,
+    );
   }
 
   static Future<List<String>> getRequestTags({

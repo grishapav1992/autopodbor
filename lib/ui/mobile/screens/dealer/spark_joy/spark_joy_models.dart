@@ -11,6 +11,8 @@ class _CarPickerSelection {
     required this.frames,
     required this.photoUrl,
     this.frameId,
+    this.brandId,
+    this.modelCarId,
   });
 
   final String brand;
@@ -25,6 +27,15 @@ class _CarPickerSelection {
   /// from `Storage.ViewSpecialistReport` responses that only echo
   /// `characteristicsStep.modelGenerationRestylingFrameId`.
   final int? frameId;
+
+  /// Catalog brand id (`Storage.GetBrand`) when picked from the remote
+  /// catalog — null for local-fallback data. Feeds `_selectedBrandId` so the
+  /// brand/model autocomplete stays consistent after a catalog pick.
+  final int? brandId;
+
+  /// Catalog model id (`Storage.GetModelCar`) when picked remotely — null for
+  /// local fallback. Feeds `_selectedModelCarId`.
+  final int? modelCarId;
 }
 
 class _CarCatalogBrand {
@@ -225,31 +236,59 @@ Future<String?> _resolveSparkJoyVideoThumbRemote(
 }
 
 class _SparkJoyVideoThumbnail extends StatelessWidget {
-  const _SparkJoyVideoThumbnail({this.thumbPath, this.fit = BoxFit.cover});
+  const _SparkJoyVideoThumbnail({
+    this.thumbPath,
+    this.thumbUrl,
+    this.fit = BoxFit.cover,
+  });
 
-  /// Pre-resolved on-disk JPEG path. Null → show the static play badge. This
-  /// widget is deliberately dumb: it never triggers extraction, so the eager
-  /// grids can mount any number of tiles without spinning up decoders.
+  /// Pre-resolved on-disk JPEG path (local videos). Null → fall back to
+  /// [thumbUrl], then the static play badge. This widget is deliberately dumb:
+  /// it never triggers native extraction, so the eager grids can mount any
+  /// number of tiles without spinning up decoders.
   final String? thumbPath;
+
+  /// Presigned poster URL (completed-report remote videos). Used only when
+  /// [thumbPath] is absent: the poster was uploaded alongside the video, so the
+  /// tile loads a small network image instead of decoding the remote video —
+  /// which iOS can't do from a presigned URL anyway.
+  final String? thumbUrl;
   final BoxFit fit;
 
   @override
   Widget build(BuildContext context) {
     final path = thumbPath;
-    if (path == null) {
+    final url = thumbUrl;
+    final Widget image;
+    if (path != null) {
+      image = Image.file(
+        File(path),
+        fit: fit,
+        cacheWidth: 300,
+        cacheHeight: 300,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => const _SparkJoyVideoPlaceholder(),
+      );
+    } else if (url != null && url.isNotEmpty) {
+      image = Image.network(
+        url,
+        fit: fit,
+        cacheWidth: 300,
+        cacheHeight: 300,
+        gaplessPlayback: true,
+        errorBuilder: (_, _, _) => const _SparkJoyVideoPlaceholder(),
+        // While the poster streams in, keep the same placeholder so the tile
+        // never flashes empty.
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : const _SparkJoyVideoPlaceholder(),
+      );
+    } else {
       return const _SparkJoyVideoPlaceholder();
     }
     return Stack(
       fit: StackFit.expand,
       children: [
-        Image.file(
-          File(path),
-          fit: fit,
-          cacheWidth: 300,
-          cacheHeight: 300,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => const _SparkJoyVideoPlaceholder(),
-        ),
+        image,
         const Align(
           alignment: Alignment.center,
           child: Icon(
@@ -510,6 +549,7 @@ class UploadedItem {
     required this.dataUrl,
     this.inspection = const MediaInspection(),
     this.videoThumbPath,
+    this.videoThumbUrl,
   });
 
   final String id;
@@ -524,6 +564,14 @@ class UploadedItem {
   /// non-null path, so [copyWith]'s `?? this` idiom never needs to clear it.
   final String? videoThumbPath;
 
+  /// Presigned GET URL of a video's poster (preview JPEG) on S3, for completed
+  /// reports whose videos are remote — set by the hydrator from
+  /// [sparkJoyVideoPosterFilename]. iOS can't extract a frame from the remote
+  /// video URL, so the tile renders this network image instead. Null for local
+  /// videos (those use [videoThumbPath]) and for reports uploaded before the
+  /// poster-on-upload feature shipped.
+  final String? videoThumbUrl;
+
   UploadedItem copyWith({
     String? id,
     String? name,
@@ -531,6 +579,7 @@ class UploadedItem {
     String? dataUrl,
     MediaInspection? inspection,
     String? videoThumbPath,
+    String? videoThumbUrl,
   }) {
     return UploadedItem(
       id: id ?? this.id,
@@ -539,6 +588,7 @@ class UploadedItem {
       dataUrl: dataUrl ?? this.dataUrl,
       inspection: inspection ?? this.inspection,
       videoThumbPath: videoThumbPath ?? this.videoThumbPath,
+      videoThumbUrl: videoThumbUrl ?? this.videoThumbUrl,
     );
   }
 

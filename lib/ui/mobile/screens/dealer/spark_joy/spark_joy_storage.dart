@@ -53,6 +53,14 @@ int _estimateRawBytes(List<String> raw) {
   return total;
 }
 
+/// Последний известный сериализованный размер по ключу списка. Нужен
+/// `_writeList`: размер ДО энкода неизвестен (узнать = заплатить за энкод),
+/// а прошлое значение того же ключа — отличный предиктор, черновики меняются
+/// постепенно. Без этого один большой черновик (сотни КБ инспекций) энкодился
+/// синхронно на главном изоляте при каждом автосейве: порог «≥4 элементов»
+/// для списка из 1–2 черновиков не срабатывал никогда.
+final Map<String, int> _lastKnownListBytes = <String, int>{};
+
 class SparkJoyStorage {
   SparkJoyStorage._();
 
@@ -87,6 +95,8 @@ class SparkJoyStorage {
   static const String _pendingTagDeletesKey =
       'spark_joy_pending_tag_deletes_v1';
   static const String _frameCatalogKey = 'spark_joy_frame_catalog_v1';
+  static const String _converterBatchesKey =
+      'spark_joy_converter_batches_v1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
@@ -197,6 +207,7 @@ class SparkJoyStorage {
     await pref.remove(_draftsKey);
     await pref.remove(_companyRequestDraftKey);
     await pref.remove(_frameCatalogKey);
+    await pref.remove(_converterBatchesKey);
     await pref.remove(_userTagsKey);
     await pref.remove(_userTagsSyncedAtKey);
     await pref.remove(_pendingTagDeletesKey);
@@ -735,8 +746,10 @@ class SparkJoyStorage {
     if (raw.isEmpty) return [];
     // Offload decoding to a background isolate only for non-trivial lists —
     // tiny lists finish in <1 ms sync and would pay a net cost under compute.
+    final rawBytes = _estimateRawBytes(raw);
+    _lastKnownListBytes[key] = rawBytes;
     if (raw.length >= _jsonIsolateThresholdItems ||
-        _estimateRawBytes(raw) >= _jsonIsolateThresholdBytes) {
+        rawBytes >= _jsonIsolateThresholdBytes) {
       return compute(_decodeListFromPrefs, raw);
     }
     return _decodeListFromPrefs(raw);
@@ -751,12 +764,17 @@ class SparkJoyStorage {
     // Same rationale as _readList: only use an isolate for meaningful
     // payloads. For small drafts the sync path is faster and keeps the
     // storage API synchronous up to the SharedPreferences boundary.
+    // Размер решаем по числу элементов ИЛИ по последнему известному
+    // байтовому размеру этого ключа (см. _lastKnownListBytes) — иначе
+    // единственный, но тяжёлый черновик всегда шёл по sync-ветке.
     final List<String> encoded;
-    if (values.length >= _jsonIsolateThresholdItems) {
+    if (values.length >= _jsonIsolateThresholdItems ||
+        (_lastKnownListBytes[key] ?? 0) >= _jsonIsolateThresholdBytes) {
       encoded = await compute(_encodeListForPrefs, values);
     } else {
       encoded = _encodeListForPrefs(values);
     }
+    _lastKnownListBytes[key] = _estimateRawBytes(encoded);
     await pref.setStringList(key, encoded);
   }
 
@@ -834,6 +852,92 @@ class SparkJoyStorage {
     }
     store['$frameId'] = entry;
     await pref.setString(_frameCatalogKey, jsonEncode(store));
+  }
+
+  // ── Конвертер: персист batchNumber по входу (vin/госномер) ───────────────
+  // Конвертер платный (RunBatchLegalReview). Сохраняем batchNumber оплаченного
+  // запуска, чтобы переоткрытие шага / повторный тап ДОЧИТЫВАЛИ уже оплаченный
+  // батч (бесплатно, GetBatchLegalReviewResults), а не платили снова. Это же
+  // спасает медленный (≈84с) результат, потерянный при перезагрузке страницы.
+  // TTL 24ч — дальше бэк/ApiCloud могут не хранить запрос, безопаснее перезапуск.
+  static const Duration _converterBatchTtl = Duration(hours: 24);
+
+  /// Возвращает сохранённый `batchNumber` для входа [inputKey] (или null, если
+  /// записи нет либо она протухла; протухшая попутно удаляется).
+  static Future<String?> loadConverterBatchNumber(String inputKey) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_converterBatchesKey);
+    if (raw == null || raw.isEmpty) return null;
+    Map<String, dynamic> store;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      store = Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+    final entry = store[inputKey];
+    if (entry is! Map) return null;
+    final batchNumber = (entry['batchNumber'] ?? '').toString().trim();
+    final savedRaw = entry['savedAtMs'];
+    final savedMs = savedRaw is int ? savedRaw : int.tryParse('$savedRaw') ?? 0;
+    final ageMs = DateTime.now().millisecondsSinceEpoch - savedMs;
+    if (batchNumber.isEmpty || ageMs > _converterBatchTtl.inMilliseconds) {
+      store.remove(inputKey);
+      await pref.setString(_converterBatchesKey, jsonEncode(store));
+      return null;
+    }
+    return batchNumber;
+  }
+
+  /// Сохраняет `batchNumber` для входа [inputKey] (с меткой времени). Попутно
+  /// выбрасывает протухшие записи, чтобы карта не росла бесконечно.
+  static Future<void> saveConverterBatchNumber(
+    String inputKey,
+    String batchNumber,
+  ) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    if (inputKey.trim().isEmpty || batchNumber.trim().isEmpty) return;
+    Map<String, dynamic> store = <String, dynamic>{};
+    final raw = pref.getString(_converterBatchesKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) store = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    store.removeWhere((_, v) {
+      if (v is! Map) return true;
+      final ms = v['savedAtMs'];
+      final saved = ms is int ? ms : int.tryParse('$ms') ?? 0;
+      return nowMs - saved > _converterBatchTtl.inMilliseconds;
+    });
+    store[inputKey] = <String, dynamic>{
+      'batchNumber': batchNumber.trim(),
+      'savedAtMs': nowMs,
+    };
+    await pref.setString(_converterBatchesKey, jsonEncode(store));
+  }
+
+  /// Сбрасывает сохранённый батч для входа (напр. переиспользованный батч так и
+  /// не доехал → следующая попытка должна стартовать свежий платный чек, а не
+  /// опрашивать мёртвый).
+  static Future<void> removeConverterBatchNumber(String inputKey) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final raw = pref.getString(_converterBatchesKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      final store = Map<String, dynamic>.from(decoded);
+      if (store.remove(inputKey) != null) {
+        await pref.setString(_converterBatchesKey, jsonEncode(store));
+      }
+    } catch (_) {}
   }
 
   static Future<DateTime?> userTagsSyncedAt() async {

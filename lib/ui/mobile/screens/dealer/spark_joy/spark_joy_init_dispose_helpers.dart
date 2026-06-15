@@ -8,6 +8,16 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
       _ensureSummaryAutofill();
     }
     _attachAutosaveListeners();
+    // Восстановленный черновик/назначение могли принести готовый VIN, а
+    // listener'ы цепляются только сейчас (после конструктора) → авто-триггер
+    // дозаполнения «Параметров» на init делаем явно. Only-empty + дедуп
+    // делают повторное открытие заполненного черновика no-op'ом. Пост-фрейм —
+    // нужен живой context для снэкбара.
+    if (!widget.readOnly) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _maybeResolveFromVin();
+      });
+    }
     // Audio recording / playback инфраструктура удалена; раньше здесь
     // монтировался onPlayerComplete listener для синка playing-index.
   }
@@ -20,6 +30,8 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     _adLinkFocusNode.dispose();
     _mileageFocusNode.dispose();
     _inspectionCityFocusNode.dispose();
+    _brandFocusNode.dispose();
+    _modelFocusNode.dispose();
     _reportNameController.dispose();
     _vinController.dispose();
     _plateController.dispose();

@@ -319,17 +319,20 @@ class SparkInitialsAvatar extends StatelessWidget {
       // Verified 2026-05-31 against the live backend: avatars come from
       // S3 (regru) with `Content-Type: binary/octet-stream`, not image/*.
       // cached_network_image silently drops such responses into its
-      // errorWidget (→ initials) — this is why staff/company avatars
-      // weren't showing (B9). Image.network sniffs the magic bytes itself
-      // and renders regardless of the content-type, on every platform, so
-      // we use it unconditionally. Avatars are tiny (~140 KB), so losing
-      // the disk cache is a non-issue; ImageCache still dedupes in-memory.
+      // errorWidget — this is why staff/company avatars weren't showing
+      // (B9). Image.network sniffs the magic bytes itself and renders
+      // regardless of the content-type, on every platform, so we use it
+      // unconditionally. Avatars are tiny (~140 KB), so losing the disk
+      // cache is a non-issue; ImageCache still dedupes in-memory.
+      // On ANY load failure (offline, web CORS, 404, a content-type the
+      // sniffer still can't read) we fall back to the default person icon
+      // (_buildDefaultAvatar) — same as having no avatar at all.
       final Widget networkImage = Image.network(
         url,
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _buildInitials(),
+        errorBuilder: (_, _, _) => _buildDefaultAvatar(),
       );
       return ClipOval(child: networkImage);
     }
@@ -341,30 +344,12 @@ class SparkInitialsAvatar extends StatelessWidget {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _buildInitials(),
+          errorBuilder: (_, _, _) => _buildDefaultAvatar(),
           gaplessPlayback: true,
         ),
       );
     }
     return _buildDefaultAvatar();
-  }
-
-  Widget _buildInitials() {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: backgroundColor ?? kSecondaryColor.withValues(alpha: 0.1),
-      ),
-      alignment: Alignment.center,
-      child: MyText(
-        text: sjInitials(name),
-        size: textSize,
-        weight: FontWeight.w700,
-        color: textColor,
-      ),
-    );
   }
 
   Widget _buildDefaultAvatar() {

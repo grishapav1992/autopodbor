@@ -40,6 +40,15 @@ class _SparkJoyVehicleRegistry {
 
   static const List<String> ownersCounts = ['1', '2', '3', '4+'];
 
+  /// Опции дропдауна объёма двигателя (0.8…5.0 л, шаг 0.1) — единый
+  /// источник для UI (`_stepParams`) и нормализатора AI-вывода
+  /// (`parseVinParamsAiResult`), чтобы списки не разъезжались (иначе
+  /// валидный объём молча отбрасывается при несовпадении).
+  static final List<String> engineVolumeOptions = List<String>.generate(
+    43,
+    (i) => (0.8 + i * 0.1).toStringAsFixed(1),
+  );
+
   static const List<_CarCatalogBrand> carCatalog = [
     _CarCatalogBrand(
       name: 'Toyota',

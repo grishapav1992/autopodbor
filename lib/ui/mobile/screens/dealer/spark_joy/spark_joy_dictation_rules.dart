@@ -277,6 +277,228 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// Единый VIN→всё конвейер: сначала идентификация (заполняет `_carContextForAi`
+  /// для грунтовки ИИ), затем параметры. Оба шага само-гардятся (дедуп/only-empty/
+  /// busy) → идемпотентны. Тихий best-effort. Зовётся из `_maybeResolveFromVin`.
+  Future<void> _resolveAllFromVin(String vin) async {
+    final identityReady = await _maybeAutoResolveIdentityFromVin(vin);
+    // Идентификация в полёте (наш резолв или кнопочный конвертер) либо
+    // транзиентно сорвалась → params НЕ запускаем: ИИ-вызов ушёл бы без
+    // грунтовки, а дедуп `_lastVinAutofilled` «сжёг» бы VIN до появления
+    // марки/модели. Listener ре-триггернёт конвейер, когда поля запишутся.
+    if (!mounted || !identityReady) return;
+    await _autofillParamsFromVinWithAi(vin);
+  }
+
+  /// Авто-резолв идентификации (марка/модель/год) по полному VIN через платный
+  /// конвертер `_runConverterDeduped` (ungated/дедуп/кэш — НЕ зависит от права
+  /// run_legal_review, в отличие от кнопочного `_runVinPlateConverter`). Only-empty:
+  /// трогаем, ТОЛЬКО если марка И модель пусты (иначе уважаем ручной ввод и не
+  /// платим). Дедуп по VIN, busy-гард, тихо. Пишем сырой текст; каталожные id
+  /// (`_selectedBrandId`/…) НЕ ставим — это WIP автокомплита; канонизацию не зовём.
+  /// Год кладём в `_resolvedVinYear` → грунтовка ИИ-параметров.
+  ///
+  /// Возвращает true, когда идентификация ТЕРМИНАЛЬНО определена (свежий
+  /// found/not_found, дедуп-хит или ручная марка/модель) — params можно
+  /// грунтовать. false = резолв в полёте/сорвался → params отложить до
+  /// ре-триггера listener'ом (см. `_resolveAllFromVin`).
+  Future<bool> _maybeAutoResolveIdentityFromVin(String vin) async {
+    if (widget.readOnly) return false;
+    if (_identityResolveBusy || _vinConverterBusy) return false;
+    if (vin == _lastVinIdentityResolved) return true;
+
+    // Смена VIN → чистим прежнюю АВТО-идентификацию, не тронутую пользователем
+    // (current == записанному нами), чтобы новый VIN пере-резолвился. Ручной
+    // ввод и каталожный выбор не трогаем. Год прежнего VIN недействителен в
+    // любом случае (в т.ч. когда map пуст — резолв без записей полей).
+    if (_vinAutoIdentityValues.isNotEmpty || _resolvedVinYear.isNotEmpty) {
+      final stale = staleVinAutofillKeys(_vinAutoIdentityValues, {
+        'brand': _brandController.text,
+        'model': _modelController.text,
+      });
+      _setStateSafely(() {
+        if (stale.contains('brand')) _brandController.clear();
+        if (stale.contains('model')) _modelController.clear();
+        _resolvedVinYear = '';
+        _vinAutoIdentityValues.clear();
+      });
+    }
+
+    // Only-empty гейт: марка ИЛИ модель уже заполнены (вручную/каталог/
+    // кнопочный конвертер) → уважаем, не платим; грунтовка для params есть.
+    if (_brandController.text.trim().isNotEmpty ||
+        _modelController.text.trim().isNotEmpty) {
+      return true;
+    }
+
+    _lastVinIdentityResolved = vin; // дедуп ДО await
+    _setStateSafely(() => _identityResolveBusy = true);
+    try {
+      final r = await _runConverterDeduped(vin: vin); // чёрный ящик (WIP), ungated
+      if (!mounted) return false;
+      if (_sanitizeVin(_vinController.text) != vin) {
+        // VIN сменили за время await — результат про прежнюю машину, не пишем.
+        // Дедуп снимаем: вернутся к этому VIN → повторный резолв бесплатен
+        // (терминальный итог уже в кэше _runConverterDeduped).
+        _lastVinIdentityResolved = '';
+        return false;
+      }
+      if (r.timedOut) {
+        _lastVinIdentityResolved = ''; // транзиент → ретрай при след. триггере
+        return false;
+      }
+      final plan = planIdentityFill(
+        brandEmpty: _brandController.text.trim().isEmpty,
+        modelEmpty: _modelController.text.trim().isEmpty,
+        found: r.found,
+        timedOut: r.timedOut,
+        resolvedBrand: r.brand,
+        resolvedModel: r.model,
+      );
+      _setStateSafely(() {
+        if (plan.brand.isNotEmpty) {
+          _brandController.text = plan.brand;
+          _vinAutoIdentityValues['brand'] = plan.brand;
+        }
+        if (plan.model.isNotEmpty) {
+          _modelController.text = plan.model;
+          _vinAutoIdentityValues['model'] = plan.model;
+        }
+        _resolvedVinYear = (r.found && r.year != null) ? '${r.year}' : '';
+      });
+      // Записи .text= метят черновик dirty через autosave-listener.
+      return true; // терминально (found / not_found) → params можно грунтовать
+    } catch (e) {
+      _lastVinIdentityResolved = ''; // транзиент → ретрай
+      debugPrint('VIN identity auto-resolve failed (silent): $e');
+      return false;
+    } finally {
+      if (mounted) _setStateSafely(() => _identityResolveBusy = false);
+    }
+  }
+
+  /// Авто-дозаполнение шага «Параметры» по полному VIN через AiQueue.
+  /// Авто-триггер, best-effort: при любой ошибке — тихо (`debugPrint`), без
+  /// error-снэкбара (фича срабатывает сама, спамить нельзя). Заполняет
+  /// ТОЛЬКО пустые из 5 целевых полей, никогда не перетирает введённое
+  /// вручную. Успех → один снэкбар, если хоть одно поле легло. Первый
+  /// структурированный AI-вывод (JSON) — парсится `parseVinParamsAiResult`
+  /// и нормализуется к опциям дропдаунов.
+  Future<void> _autofillParamsFromVinWithAi(String vin) async {
+    if (_vinParamsAiBusy || widget.readOnly) return;
+    if (vin == _lastVinAutofilled) return; // этот VIN уже обработан (дедуп)
+    // Помечаем VIN обработанным СРАЗУ (до await) — дедуп против повторных
+    // событий listener'а, пока запрос в полёте. Уважает и ручную очистку
+    // поля позже (повторно заполнять не будем). При сетевой ошибке ниже
+    // снимаем пометку, чтобы следующий триггер повторил (см. catch).
+    _lastVinAutofilled = vin;
+    // Сменился VIN → значения, записанные ИИ для ПРЕЖНЕЙ машины и не тронутые
+    // пользователем, относятся не к той машине: чистим их (ручной ввод
+    // сохраняем — см. staleVinAutofillKeys), чтобы подтянуть данные нового VIN.
+    if (_vinAutofilledValues.isNotEmpty) {
+      final byKey = _vinParamTargetsByKey();
+      final stale = staleVinAutofillKeys(_vinAutofilledValues, {
+        for (final e in byKey.entries) e.key: e.value.text,
+      });
+      _setStateSafely(() {
+        for (final key in stale) {
+          byKey[key]!.clear();
+        }
+        _vinAutofilledValues.clear();
+      });
+    }
+    // Поля могли заполниться вручную за время дебаунса (600 мс) — не тратим
+    // платный вызов ИИ впустую.
+    if (!_hasAnyEmptyParamTarget()) return;
+    final messenger = ScaffoldMessenger.of(context);
+    _setStateSafely(() => _vinParamsAiBusy = true);
+    try {
+      // Грунтовка бесплатным backend-DecodeVin (WMI): производитель/страна/
+      // годы. Не фатально при ошибке — промпт обойдётся carContext'ом.
+      String? wmiInfo;
+      try {
+        final dv = await storage_api.StorageApi.decodeVin(vin: vin);
+        final manufacturer = (dv['manufacturer'] ?? '').toString().trim();
+        final country = (dv['country'] ?? '').toString().trim();
+        final my = dv['modelYear'];
+        final years = (my is List && my.length == 2)
+            ? '${my.first}–${my.last}'
+            : '';
+        final parts = <String>[
+          if (manufacturer.isNotEmpty) 'производитель $manufacturer',
+          if (country.isNotEmpty) 'страна $country',
+          if (years.isNotEmpty) 'годы $years',
+          // Точный год из конвертера (если был) — сужает варианты двигателя.
+          if (_resolvedVinYear.isNotEmpty) 'точный год $_resolvedVinYear',
+        ];
+        if (parts.isNotEmpty) wmiInfo = parts.join(', ');
+      } catch (_) {
+        // грунтовка опциональна
+      }
+      if (!mounted) return;
+
+      final cliche = AiQueueClicheBuilder.buildVinParamsCliche(
+        vin: vin,
+        carContext: _carContextForAi(),
+        wmiInfo: wmiInfo,
+      );
+      final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+      final result = await AiQueueApi.chatCompletions(
+        chatId: newChatId,
+        text: vin,
+        cliche: cliche,
+      );
+      if (!mounted) return;
+
+      final parsed = parseVinParamsAiResult(
+        result.text,
+        allowedEngineTypes: _SparkJoyVehicleRegistry.engineTypes,
+        allowedGearboxTypes: _SparkJoyVehicleRegistry.gearboxTypes,
+        allowedDriveTypes: _SparkJoyVehicleRegistry.driveTypes,
+        allowedEngineVolumes: _SparkJoyVehicleRegistry.engineVolumeOptions,
+      );
+
+      final byKey = _vinParamTargetsByKey();
+      final values = <String, String>{
+        'engineVolume': parsed.engineVolume,
+        'engineType': parsed.engineType,
+        'transmission': parsed.transmission,
+        'driveType': parsed.driveType,
+        'equipment': parsed.equipment,
+      };
+      var filledAny = false;
+      _setStateSafely(() {
+        values.forEach((key, value) {
+          if (value.isEmpty) return;
+          final controller = byKey[key]!;
+          if (controller.text.trim().isNotEmpty) return; // only-empty, не перетираем
+          controller.text = value;
+          _vinAutofilledValues[key] = value; // запоминаем запись ИИ (для #3)
+          filledAny = true;
+        });
+      });
+
+      // Черновик уже помечен dirty через autosave-listener (записи .text=),
+      // явный _markDraftDirty() не нужен.
+      if (filledAny && mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Параметры дозаполнены по VIN')),
+        );
+      }
+    } on storage_api.SessionExpiredException {
+      // Сессия истекла — без релогина не починится, повтор бессмыслен:
+      // _lastVinAutofilled НЕ сбрасываем (иначе пойдут повторные фейлы).
+      debugPrint('VIN params autofill: session expired (silent)');
+    } catch (e) {
+      // Транзиентная ошибка (сеть/таймаут/бэкенд) — снимаем пометку, чтобы
+      // следующий триггер (правка любого поля) повторил попытку.
+      _lastVinAutofilled = '';
+      debugPrint('VIN params autofill failed (silent): $e');
+    } finally {
+      if (mounted) _setStateSafely(() => _vinParamsAiBusy = false);
+    }
+  }
+
   /// AI-fill for the «Комментарий специалиста» field on the «Материалы
   /// проверки» step. Names of attached documents (with count) are
   /// baked into the prompt via `buildLegalCommentCliche` so the model

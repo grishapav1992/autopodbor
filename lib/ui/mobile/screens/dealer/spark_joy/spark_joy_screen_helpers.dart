@@ -158,13 +158,9 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
   );
 
   Widget _stepParams() {
-    final engineVolumes = List<String>.generate(43, (i) {
-      return (0.8 + i * 0.1).toStringAsFixed(1);
-    });
-
     return _buildSparkJoyStepParams(
       this,
-      engineVolumes: engineVolumes,
+      engineVolumes: _SparkJoyVehicleRegistry.engineVolumeOptions,
       colors: _SparkJoyVehicleRegistry.colors,
       engineTypes: _SparkJoyVehicleRegistry.engineTypes,
       gearboxTypes: _SparkJoyVehicleRegistry.gearboxTypes,

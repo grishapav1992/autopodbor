@@ -2291,8 +2291,11 @@ class _SparkJoySpecialistProfileScreenState
       await _uploadAvatarToS3('avatar.jpg', bytes);
     } on PlatformException catch (e) {
       if (!mounted) return;
-      final reason =
-          e.code == 'camera_access_denied' || e.code == 'photo_access_denied'
+      // Коды отказа различаются по платформам: iOS шлёт
+      // camera_access_denied / photo_access_denied, Android — варианты
+      // с PERMISSION/denied, поэтому матчим по подстроке.
+      final code = e.code.toLowerCase();
+      final reason = code.contains('denied') || code.contains('permission')
           ? 'Нет доступа. Разрешите в Настройках устройства.'
           : 'Не удалось загрузить фото: ${e.code}';
       ScaffoldMessenger.of(

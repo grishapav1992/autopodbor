@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ─── Isolate helpers for auto-request list JSON ───────────────────────────
@@ -385,26 +386,70 @@ class UserSimplePreferences {
     return (await _prefs()).getString(_inspectorAboutKey);
   }
 
+  // Auth tokens live in the OS secure store (iOS Keychain / Android
+  // Keystore-backed), never in plaintext SharedPreferences. iOS items use
+  // first_unlock_this_device: readable after first unlock, but never synced
+  // to iCloud nor migrated to a new device. Legacy plaintext tokens written
+  // before this change are moved into secure storage on first read.
+  static const FlutterSecureStorage _secure = FlutterSecureStorage(
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
+
   static Future<void> setAuthTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
-    await (await _prefs()).setString(_accessTokenKey, accessToken);
-    await (await _prefs()).setString(_refreshTokenKey, refreshToken);
+    await _secure.write(key: _accessTokenKey, value: accessToken);
+    await _secure.write(key: _refreshTokenKey, value: refreshToken);
+    // Erase any legacy plaintext copies from before the secure-storage switch.
+    final prefs = await _prefs();
+    await prefs.remove(_accessTokenKey);
+    await prefs.remove(_refreshTokenKey);
   }
 
-  static Future<String?> getAccessToken() async {
-    // ignore: await_only_futures
-    return (await _prefs()).getString(_accessTokenKey);
-  }
+  static Future<String?> getAccessToken() =>
+      _readTokenWithMigration(_accessTokenKey);
 
-  static Future<String?> getRefreshToken() async {
-    // ignore: await_only_futures
-    return (await _prefs()).getString(_refreshTokenKey);
+  static Future<String?> getRefreshToken() =>
+      _readTokenWithMigration(_refreshTokenKey);
+
+  /// Reads a token from secure storage, transparently migrating a legacy
+  /// plaintext SharedPreferences value (written before the secure-storage
+  /// switch) on first read and erasing the plaintext copy afterwards.
+  static Future<String?> _readTokenWithMigration(String key) async {
+    try {
+      final secure = await _secure.read(key: key);
+      if (secure != null && secure.isNotEmpty) return secure;
+    } catch (_) {
+      // Keychain/Keystore hiccup — fall through to the legacy read.
+    }
+    final prefs = await _prefs();
+    final legacy = prefs.getString(key);
+    if (legacy != null && legacy.isNotEmpty) {
+      try {
+        await _secure.write(key: key, value: legacy);
+        await prefs.remove(key);
+      } catch (_) {
+        // Keep the plaintext value if the secure write fails so the session
+        // survives; migration retries on the next read.
+      }
+      return legacy;
+    }
+    return null;
   }
 
   static Future<void> clearAuthTokens() async {
     final prefs = await _prefs();
+    // Tokens now live in secure storage — clear it plus any legacy plaintext.
+    try {
+      await _secure.delete(key: _accessTokenKey);
+      await _secure.delete(key: _refreshTokenKey);
+      await _secure.delete(key: _notificationTokenKey);
+    } catch (_) {
+      // Best-effort; the legacy prefs removals below still run.
+    }
     await prefs.remove(_accessTokenKey);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_notificationTokenKey);
@@ -431,15 +476,19 @@ class UserSimplePreferences {
   }
 
   static Future<void> setNotificationToken(String token) async {
-    await (await _prefs()).setString(_notificationTokenKey, token);
+    await _secure.write(key: _notificationTokenKey, value: token);
+    await (await _prefs()).remove(_notificationTokenKey);
   }
 
-  static Future<String?> getNotificationToken() async {
-    // ignore: await_only_futures
-    return (await _prefs()).getString(_notificationTokenKey);
-  }
+  static Future<String?> getNotificationToken() =>
+      _readTokenWithMigration(_notificationTokenKey);
 
   static Future<void> clearNotificationToken() async {
+    try {
+      await _secure.delete(key: _notificationTokenKey);
+    } catch (_) {
+      // Best-effort.
+    }
     await (await _prefs()).remove(_notificationTokenKey);
   }
 

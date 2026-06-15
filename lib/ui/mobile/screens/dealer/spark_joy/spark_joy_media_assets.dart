@@ -300,6 +300,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
         'dataUrl': e.dataUrl,
         'inspection': e.inspection.toJson(),
         if (e.videoThumbPath != null) 'videoThumbPath': e.videoThumbPath,
+        if (e.videoThumbUrl != null) 'videoThumbUrl': e.videoThumbUrl,
       };
     }).toList();
   }
@@ -411,9 +412,17 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       );
     }
 
+    // Удалённые фото (presigned-URL завершённого отчёта) без decode-размера
+    // декодировались в ПОЛНОЕ разрешение (12 МП ≈ 45 МБ на кадр) — именно
+    // просмотр завершённых отчётов с десятками фото упирался в память.
+    // Локальные ветки выше давно декодируют под размер тайла; выравниваем.
     return Image.network(
       source,
       fit: fit,
+      cacheWidth: decodeWidth,
+      cacheHeight: decodeHeight,
+      filterQuality: filterQuality,
+      gaplessPlayback: true,
       errorBuilder: (context, error, stackTrace) =>
           Icon(Icons.broken_image_outlined, color: errorColor, size: errorSize),
     );
@@ -436,6 +445,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     if (item.isVideo) {
       return _SparkJoyVideoThumbnail(
         thumbPath: item.videoThumbPath,
+        thumbUrl: item.videoThumbUrl,
         fit: fit,
       );
     }

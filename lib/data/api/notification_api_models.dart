@@ -140,6 +140,29 @@ class BackendNotification {
         .trim();
   }
 
+  // ── ApiCloud legal-review (system) notifications ──────────────────────
+  // Бэк шлёт ОДНО уведомление на КАЖДУЮ проверку с payload вида
+  // {event: 'legal_review_persisted', provider: 'api_cloud', status, checkType,
+  //  vehicleVin, vehicleGosNumber, …}. batchNumber/reportNumber/имени отчёта в
+  // payload НЕТ — поэтому навигации в отчёт нет, только читаемый текст.
+
+  /// True для уведомления о завершении ApiCloud-проверки. Матчим по точному
+  /// маркеру `event` (не по одному `provider == 'api_cloud'`), чтобы будущие
+  /// api_cloud-события с другим `event` не рендерились как завершённая проверка.
+  bool get isLegalReview =>
+      (payload['event'] ?? '').toString() == 'legal_review_persisted';
+
+  /// True для уведомления о внутреннем VIN↔госномер конвертере — инструмент
+  /// идентификации, а не материал проверки (в ленте его прячем).
+  bool get isLegalConverter =>
+      isLegalReview && legalCheckType == 'api_cloud_converter_search';
+
+  /// Тип ApiCloud-проверки (`api_cloud_zalog_fedresurs` и т.п.).
+  String get legalCheckType => (payload['checkType'] ?? '').toString().trim();
+
+  /// Статус результата: `success` / `not_found` / `error`.
+  String get legalStatus => (payload['status'] ?? '').toString().trim();
+
   factory BackendNotification.fromJson(Map<String, dynamic> json) {
     final payloadRaw = json['payload'];
     final payload = payloadRaw is Map

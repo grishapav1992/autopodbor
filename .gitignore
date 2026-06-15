@@ -53,3 +53,16 @@ app.*.map.json
 /.mcp.json
 /autopodbor_*.postman_collection.json
 scripts/.cache/
+
+# Secrets / signing material — never commit. Generated locally per-developer.
+**/key.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.mobileprovision
+.env
+.env.*
+**/google-services.json
+**/GoogleService-Info.plist

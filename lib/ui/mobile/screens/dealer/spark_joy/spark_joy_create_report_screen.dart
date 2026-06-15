@@ -31,14 +31,17 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_error_snackbar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_i18n.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_legal_labels.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_media_note_logic.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_onboarding.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_plate_formats.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_report_context.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_share.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_upload_identity.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_vin_params_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_types.dart';
 import 'package:image/image.dart' as img;
@@ -160,6 +163,17 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   String _listingPdfUrl = '';
   int? _modelGenerationRestylingFrameId;
 
+  // P2/каталог — автокомплит марки/модели (Storage.GetBrand / GetModelCar).
+  // Серверная привязка выбранного авто: null = свободный текст (ручной ввод
+  // или локальный фолбэк), не привязан к каталогу.
+  int? _selectedBrandId;
+  int? _selectedModelCarId;
+  // Рантайм-кэши автокомплита (НЕ персистятся): каталог марок грузится один
+  // раз (GetBrand) и фильтруется локально; модели — по brandId.
+  List<storage_api.BrandItem> _brandCatalogCache = const [];
+  final Map<int, List<storage_api.ModelItem>> _modelsByBrandId = {};
+  bool _brandCatalogLoadStarted = false;
+
   late final TextEditingController _mileageController;
   late final TextEditingController _engineVolumeController;
   late final TextEditingController _engineTypeController;
@@ -179,6 +193,24 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _docsCommentAiBusy = false;
   bool _legalCommentAiBusy = false;
   bool _tdCommentAiBusy = false;
+  // VIN→параметры (AiQueue) авто-дозаполнение. _vinParamsAiBusy — гард от
+  // конкурентных запусков; _lastVinAutofilled — дедуп, чтобы не гонять модель
+  // повторно для того же VIN (авто-триггер → стоимость вызовов под контролем).
+  bool _vinParamsAiBusy = false;
+  String _lastVinAutofilled = '';
+  // Что ИИ записал в целевые поля (ключ→значение) для текущего VIN — чтобы при
+  // смене авто очистить только НЕтронутые пользователем (см. staleVinAutofillKeys).
+  final Map<String, String> _vinAutofilledValues = {};
+  // VIN→идентификация (марка/модель/год) авто-резолв через платный конвертер
+  // (_runConverterDeduped — ungated/дедуп/кэш). Гарды зеркалят параметры.
+  // Дебаунс — общий _vinParamsAutofillDebounce (один таймер на весь конвейер).
+  bool _identityResolveBusy = false;
+  String _lastVinIdentityResolved = '';
+  // Что авто-конвертер записал в марку/модель ('brand'/'model') — чтобы при смене
+  // VIN чистить только НЕтронутое пользователем (staleVinAutofillKeys).
+  final Map<String, String> _vinAutoIdentityValues = {};
+  // Резолв года из конвертера (UI-поля нет) — грунтовка ИИ-параметров. '' = нет.
+  String _resolvedVinYear = '';
   // B2 — ApiCloud legal-review: гейт по праву run_legal_review (читается из
   // кэша прав, который B1 сидит на старте) + однократный ленивый load
   // каталога типов проверок.
@@ -186,6 +218,19 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _legalReviewMetaLoadStarted = false;
   // P2 — VIN↔госномер конвертер (api_cloud_converter_search) в шаге «Авто».
   bool _vinConverterBusy = false;
+  // Текст прогресса во время ожидания конвертера (ApiCloud-воркер бывает
+  // медленным, ≈84с) — чтобы спиннер не выглядел зависшим и пользователь не
+  // прерывал/не перезапускал (новый платный запрос).
+  String _vinConverterStatus = '';
+  // Дедуп/кэш конвертера (платный RunBatchLegalReview): один и тот же
+  // vin/госномер НЕ должен порождать новый платный запрос. Кэшируем
+  // терминальный результат (found/not_found) и схлопываем одновременные
+  // запросы на один вход (single-flight). timedOut НЕ кэшируем — транзиентный,
+  // позволяем повторить, когда воркер ApiCloud догонит.
+  final Map<String, storage_api.VinPlateConverterResult>
+  _converterResultCache = {};
+  final Map<String, Future<storage_api.VinPlateConverterResult>>
+  _converterInFlight = {};
   // Найденная по VIN/госномеру инфа (label→value) для карточки результата.
   Map<String, String> _vinLookupInfo = const <String, String>{};
   late final TextEditingController _inspectorController;
@@ -263,6 +308,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _tdShouldDictate(bool value) =>
       _reportController.tdShouldDictate.value = value;
   Timer? _draftAutosaveDebounce;
+  // Дебаунс VIN-конвейера (идентификация + параметры) — гасит посимвольный ввод.
+  Timer? _vinParamsAutofillDebounce;
   // Re-entry guard for the brand/model picker — [`_openCarPickerDialog`] is
   // async (awaits `fetchBrandCatalog` before calling `showDialog`), so
   // mashing the "Выбрать автомобиль" tile during a slow network request used
@@ -333,6 +380,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   final FocusNode _adLinkFocusNode = FocusNode();
   final FocusNode _mileageFocusNode = FocusNode();
   final FocusNode _inspectionCityFocusNode = FocusNode();
+  // Внешние FocusNode для RawAutocomplete марки/модели (виджет требует
+  // передавать textEditingController + focusNode вместе). Контроллеры —
+  // `_brandController`/`_modelController` остаются источником истины.
+  final FocusNode _brandFocusNode = FocusNode();
+  final FocusNode _modelFocusNode = FocusNode();
 
   // ┌─ Phase 4.1 · Chunk 4: car-step non-controller flags → SparkJoyReportController ┐
   // │ 34 references across 12 files use the old `_mileageMismatch` / `_vinUnreadable` │
@@ -745,6 +797,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     WidgetsBinding.instance.removeObserver(this);
     unawaited(_tdSpeechToText.stop());
     _draftAutosaveDebounce?.cancel();
+    _vinParamsAutofillDebounce?.cancel();
     _detachAutosaveListeners();
     _disposeInputResources();
     _disposeRuntimeResources();

@@ -71,5 +71,48 @@ extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
 
   void _onAutosaveInputChanged() {
     _markDraftDirty();
+    // VIN мог измениться из любого источника (ручной ввод, OCR-сканер,
+    // конвертер) — все они дёргают этот listener. Дешёвый guard + дедуп
+    // живут внутри конвейера _resolveAllFromVin.
+    _maybeResolveFromVin();
   }
+
+  /// Единый дебаунс-вход VIN→всё: запускает конвейер `_resolveAllFromVin`
+  /// (идентификация → параметры). Шаги конвейера сами дедупят/гейтят/мьютят,
+  /// поэтому здесь только дешёвые проверки + дебаунс (гасит посимвольный ввод
+  /// и двойные `.text=` конвертера). Безопасно звать на любое изменение поля.
+  /// (Реюзаем _vinParamsAutofillDebounce — один таймер на весь конвейер.)
+  void _maybeResolveFromVin() {
+    if (widget.readOnly) return;
+    final vin = _sanitizeVin(_vinController.text);
+    if (vin.length != 17 || !_isStrictVin(vin)) return; // полный валидный VIN
+    // Оба шага уже терминально отработали этот VIN → даже таймер не заводим,
+    // иначе каждый кейстрок в ЛЮБОМ поле формы гонял бы пустой конвейер.
+    if (vin == _lastVinIdentityResolved && vin == _lastVinAutofilled) return;
+    _vinParamsAutofillDebounce?.cancel();
+    _vinParamsAutofillDebounce = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      final current = _sanitizeVin(_vinController.text);
+      if (current.length == 17 && _isStrictVin(current)) {
+        unawaited(_resolveAllFromVin(current));
+      }
+    });
+  }
+
+  /// 5 целевых полей «Параметров» по стабильным ключам (совпадают с ключами
+  /// `parseVinParamsAiResult` / `_vinAutofilledValues`). Единый источник для
+  /// проверки пустоты, очистки stale-значений и записи.
+  Map<String, TextEditingController> _vinParamTargetsByKey() => {
+    'engineVolume': _engineVolumeController,
+    'engineType': _engineTypeController,
+    'transmission': _gearboxTypeController,
+    'driveType': _driveTypeController,
+    'equipment': _trimController,
+  };
+
+  /// Есть ли среди целевых полей хоть одно пустое. Если нет (и нет stale
+  /// ИИ-значений у вызывающего) — сеть не трогаем, повторное открытие
+  /// заполненного черновика бесплатно.
+  bool _hasAnyEmptyParamTarget() =>
+      _vinParamTargetsByKey().values.any((c) => c.text.trim().isEmpty);
 }

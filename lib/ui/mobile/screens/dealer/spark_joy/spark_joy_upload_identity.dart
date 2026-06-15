@@ -64,6 +64,23 @@ String sparkJoyUploadFilename({
   return '${context}_${itemToken}_$baseToken$extension';
 }
 
+/// Deterministic S3 object name for a video's poster (preview JPEG), derived
+/// from the video's own uploaded filename. MUST stay the single source of
+/// truth for both sides of the contract:
+///   • upload  — `_uploadVideoPostersBestEffort` PUTs the local thumbnail here;
+///   • view    — the completed-report hydrator derives the same name to resolve
+///               a presigned GET URL (`videoThumbUrl`).
+/// Keying off the video filename (which the server echoes back verbatim in
+/// `ViewSpecialistReport`) is what lets the viewer find the poster without any
+/// new server field. iOS can't extract a frame from the remote presigned URL
+/// (sync `AVAssetImageGenerator` fails before the asset's tracks load), so this
+/// pre-made poster is how completed reports get a video thumbnail at all.
+String sparkJoyVideoPosterFilename(String videoFilename) {
+  final base = videoFilename.trim();
+  if (base.isEmpty) return '';
+  return '$base.thumb.jpg';
+}
+
 String sparkJoyUploadStateKey({
   required String filename,
   required String source,

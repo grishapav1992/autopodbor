@@ -47,6 +47,11 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           _legalTimedOut = false;
         });
         _markDraftDirty();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Материалы проверки готовы')),
+          );
+        }
         return;
       }
     }
@@ -56,6 +61,13 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       _legalTimedOut = true;
     });
     _markDraftDirty();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Проверки ещё выполняются — подтянутся позже'),
+        ),
+      );
+    }
   }
 
   /// Однократно подгружает мета-данные шага «Материалы проверки»:
@@ -93,6 +105,115 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         _setStateSafely(() => _legalAvailableCheckTypes = filtered);
       }
     } catch (_) {}
+  }
+
+  // ── Дедуп/кэш конвертера ───────────────────────────────────────────────
+  // Конвертер платный (RunBatchLegalReview). Один и тот же вход не должен
+  // оплачиваться повторно: кэшируем терминальный результат и схлопываем
+  // одновременные запросы на один вход (single-flight). timedOut НЕ кэшируем —
+  // даём повторить позже, когда воркер ApiCloud догонит.
+  String _converterKey({String? vin, String? gosNumber}) {
+    final v = (vin ?? '').trim().toUpperCase();
+    if (v.isNotEmpty) return 'vin:$v';
+    return 'gos:${(gosNumber ?? '').trim().toUpperCase()}';
+  }
+
+  Future<storage_api.VinPlateConverterResult> _runConverterDeduped({
+    String? vin,
+    String? gosNumber,
+    void Function(int pollIndex, Duration elapsed)? onProgress,
+  }) {
+    final key = _converterKey(vin: vin, gosNumber: gosNumber);
+    final cached = _converterResultCache[key];
+    if (cached != null) return Future.value(cached);
+    final inFlight = _converterInFlight[key];
+    if (inFlight != null) return inFlight;
+    final future =
+        _resolveConverterReusingBatch(
+          key: key,
+          vin: vin,
+          gosNumber: gosNumber,
+          onProgress: onProgress,
+        ).then((r) {
+          // Кэшируем только терминальный итог (found/not_found). timedOut —
+          // транзиентный (воркер лагает), кэшировать нельзя, иначе залипнет.
+          if (!r.timedOut) _converterResultCache[key] = r;
+          return r;
+        }).whenComplete(() => _converterInFlight.remove(key));
+    _converterInFlight[key] = future;
+    return future;
+  }
+
+  /// Резолвит конвертер, ПЕРЕИСПОЛЬЗУЯ уже оплаченный батч, если он сохранён
+  /// (в пределах TTL). Платный [startVinPlateConverter] вызывается ТОЛЬКО когда
+  /// живого батча для входа нет. Иначе — бесплатный дочит существующего
+  /// (`pollVinPlateConverterBatch`). Это и спасает медленный (~84с) результат,
+  /// потерянный при перезагрузке страницы, и не даёт повторному тапу оплатить
+  /// тот же вход ещё раз. batchNumber сохраняется ДО опроса, чтобы прерывание
+  /// не потеряло оплаченный запуск.
+  Future<storage_api.VinPlateConverterResult> _resolveConverterReusingBatch({
+    required String key,
+    String? vin,
+    String? gosNumber,
+    void Function(int pollIndex, Duration elapsed)? onProgress,
+  }) async {
+    var batchNumber = await SparkJoyStorage.loadConverterBatchNumber(key);
+    final reused = batchNumber != null && batchNumber.isNotEmpty;
+    if (!reused) {
+      batchNumber = await storage_api.StorageApi.startVinPlateConverter(
+        vin: vin,
+        gosNumber: gosNumber,
+      );
+      if (batchNumber.isEmpty) {
+        return (
+          found: false,
+          vin: '',
+          gosNumber: '',
+          brand: '',
+          model: '',
+          year: null,
+          timedOut: false,
+        );
+      }
+      await SparkJoyStorage.saveConverterBatchNumber(key, batchNumber);
+    }
+    final result = await storage_api.StorageApi.pollVinPlateConverterBatch(
+      batchNumber!,
+      onProgress: onProgress,
+    );
+    if (reused && result.timedOut) {
+      // Переиспользованный батч так и не доехал → сбрасываем, чтобы следующая
+      // попытка стартовала свежий чек, а не опрашивала «мёртвый» вечно.
+      await SparkJoyStorage.removeConverterBatchNumber(key);
+    }
+    return result;
+  }
+
+  /// Фоновая канонизация марки/модели по каталогу (GetBrand/GetModelCar) после
+  /// конвертера. Вызывается через `unawaited`, поэтому НЕ держит спиннер
+  /// конвертера (`_vinConverterBusy`): сырой результат уже показан, а медленный
+  /// каталог на перегруженном бэке больше не «крутит» заявку (регресс fd4ce65).
+  /// Каноничные имена + brandId/modelCarId применяем ТОЛЬКО если пользователь
+  /// ещё не тронул идентичность (поля по-прежнему равны сырому результату) —
+  /// иначе не затираем ручную правку / другой выбор из автокомплита.
+  Future<void> _canonicalizeCarFromCatalog(String rawBrand, String rawModel) async {
+    final catalogCar = await _resolveCarFromCatalog(rawBrand, rawModel);
+    if (!mounted || catalogCar == null) return;
+    if (_brandController.text.trim() != rawBrand.trim() ||
+        _modelController.text.trim() != rawModel.trim()) {
+      return;
+    }
+    _setStateSafely(() {
+      if (catalogCar.brand.trim().isNotEmpty) {
+        _brandController.text = catalogCar.brand;
+      }
+      if (catalogCar.model.trim().isNotEmpty) {
+        _modelController.text = catalogCar.model;
+      }
+      _selectedBrandId = catalogCar.brandId;
+      _selectedModelCarId = catalogCar.modelCarId;
+    });
+    _markDraftDirty();
   }
 
   /// P2 — ApiCloud VIN↔госномер конвертер. [fromVin]=true: по VIN подставить
@@ -134,12 +255,22 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     }
     _setStateSafely(() {
       _vinConverterBusy = true;
+      _vinConverterStatus = 'Запрос отправлен в ApiCloud…';
       _vinLookupInfo = const <String, String>{};
     });
     try {
-      final r = await storage_api.StorageApi.runVinPlateConverter(
+      final r = await _runConverterDeduped(
         vin: fromVin ? vin : null,
         gosNumber: fromVin ? null : plate,
+        onProgress: (poll, elapsed) {
+          if (!mounted) return;
+          // Бэкенд/ApiCloud бывает медленным (~84с) — показываем, что идёт
+          // работа, чтобы спиннер не выглядел зависшим и его не прерывали.
+          _setStateSafely(
+            () => _vinConverterStatus =
+                'ApiCloud обрабатывает запрос… ${elapsed.inSeconds} с',
+          );
+        },
       );
       if (!mounted) return;
 
@@ -157,19 +288,11 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       final info = <String, String>{};
       var resolvedVin = fromVin ? vin : r.vin;
 
-      // Конвертер нашёл авто → заполняем поля + собираем инфу.
+      // Конвертер нашёл авто → СРАЗУ ставим сырой результат (быстро), а
+      // канонизацию по каталогу делаем В ФОНЕ — иначе медленный
+      // GetBrand/GetModelCar на перегруженном бэке держит спиннер конвертера,
+      // хотя результат уже получен (регресс fd4ce65).
       if (r.found) {
-        // Сопоставляем марку/модель с каталогом (онлайн GetBrand/GetModel,
-        // фолбэк — локальный), чтобы результат совпадал с ручным выбором.
-        // Поколение пользователь выбирает сам (поле необязательное).
-        final catalogCar = await _resolveCarFromCatalog(r.brand, r.model);
-        if (!mounted) return;
-        final brandToSet = (catalogCar?.brand.trim().isNotEmpty ?? false)
-            ? catalogCar!.brand
-            : r.brand;
-        final modelToSet = (catalogCar?.model.trim().isNotEmpty ?? false)
-            ? catalogCar!.model
-            : r.model;
         _setStateSafely(() {
           // Новая идентичность от конвертера → каталожная мета (фото/frameId/
           // рестайлинг) от прошлого выбора больше не относится к этому авто.
@@ -179,10 +302,20 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           } else {
             if (r.vin.isNotEmpty) _vinController.text = _sanitizeVin(r.vin);
           }
-          if (brandToSet.isNotEmpty) _brandController.text = brandToSet;
-          if (modelToSet.isNotEmpty) _modelController.text = modelToSet;
+          if (r.brand.isNotEmpty) _brandController.text = r.brand;
+          if (r.model.isNotEmpty) _modelController.text = r.model;
+          // Сменили авто по VIN/госномеру → старое поколение относится к
+          // прежней машине. Конвертер поколение не возвращает (его выбирают
+          // вручную / через каталог), поэтому очищаем, иначе оно «зависает».
+          _generationController.clear();
+          // Привязку проставит фоновая канонизация (если каталог ответит).
+          _selectedBrandId = null;
+          _selectedModelCarId = null;
         });
         _markDraftDirty();
+        // Канонизация имён + brandId/modelCarId по каталогу — в фоне, НЕ держит
+        // спиннер конвертера.
+        unawaited(_canonicalizeCarFromCatalog(r.brand, r.model));
         if (r.brand.isNotEmpty) info['Марка'] = r.brand;
         if (r.model.isNotEmpty) info['Модель'] = r.model;
         if (r.year != null) info['Год'] = '${r.year}';
@@ -248,7 +381,12 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         fallback: 'Не удалось определить по VIN/госномеру',
       );
     } finally {
-      if (mounted) _setStateSafely(() => _vinConverterBusy = false);
+      if (mounted) {
+        _setStateSafely(() {
+          _vinConverterBusy = false;
+          _vinConverterStatus = '';
+        });
+      }
     }
   }
 
@@ -283,7 +421,15 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// onChanged для ручных полей марка/модель/поколение: пользователь отходит от
   /// каталожного выбора → сбрасываем каталожную мету и перерисовываем карточку.
   void _onCarIdentityEdited() {
-    _setStateSafely(_clearCatalogCarMeta);
+    _setStateSafely(() {
+      _clearCatalogCarMeta();
+      // Свободный ввод марки/модели → авто больше НЕ привязано к каталогу.
+      // (Программная запись `.text =` из автокомплита/конвертера/пикера не
+      // дёргает TextField.onChanged, поэтому только что выставленную привязку
+      // этот сброс не затрагивает.)
+      _selectedBrandId = null;
+      _selectedModelCarId = null;
+    });
     _markDraftDirty();
   }
 
@@ -322,9 +468,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       // но есть госномер — сперва конвертируем госномер→VIN (флоу «2 запроса»),
       // иначе vin-проверки ничего не найдут.
       if (vin.isEmpty && plate.isNotEmpty) {
-        final conv = await storage_api.StorageApi.runVinPlateConverter(
-          gosNumber: plate,
-        );
+        final conv = await _runConverterDeduped(gosNumber: plate);
         if (!mounted || token != _legalLoadToken) return;
         if (conv.found && conv.vin.trim().isNotEmpty) {
           vin = _sanitizeVin(conv.vin);
@@ -332,6 +476,11 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
             _vinController.text = vin;
             if (conv.brand.isNotEmpty) _brandController.text = conv.brand;
             if (conv.model.isNotEmpty) _modelController.text = conv.model;
+            // Сырые имена из конвертера (без резолва в каталог) → сбрасываем
+            // каталожную привязку, чтобы автокомплит не подсказывал модели от
+            // прежнего brandId.
+            _selectedBrandId = null;
+            _selectedModelCarId = null;
           });
           _markDraftDirty();
         } else if (conv.timedOut) {

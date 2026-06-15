@@ -86,6 +86,10 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
       if (!item.isVideo) continue;
       final existing = item.videoThumbPath;
       if (existing != null && await File(existing).exists()) continue;
+      // Completed-report videos carry a pre-uploaded poster URL that the tile
+      // renders directly — skip on-device extraction entirely (iOS can't decode
+      // the remote presigned URL, and the poster already covers it).
+      if ((item.videoThumbUrl ?? '').isNotEmpty) continue;
       final localPath = _extractLocalMediaPath(item.dataUrl);
       final String? thumb;
       if (localPath != null) {

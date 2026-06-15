@@ -57,6 +57,27 @@ void main() {
 
       expect(cliche, isNot(contains('рекомендуются клиенту')));
     });
+
+    test('vin-params cliche demands strict JSON with exact enum options', () {
+      final cliche = AiQueueClicheBuilder.buildVinParamsCliche(
+        vin: 'XTAGFL110JY123456',
+        carContext: 'LADA VESTA, 2017, 1.6, бензин',
+        wmiInfo: 'производитель LADA, страна Россия',
+      );
+
+      expect(cliche, contains('XTAGFL110JY123456'));
+      expect(cliche, contains('СТРОГО один JSON'));
+      expect(cliche, contains('{text}'));
+      // Все enum-значения перечислены дословно (дропдаун строгий).
+      expect(cliche, contains('"Газ/Бензин"'));
+      expect(cliche, contains('"Вариатор"'));
+      expect(cliche, contains('"Полный"'));
+      // Анти-галлюцинация + явный отказ угадывать.
+      expect(cliche, contains('не угадывай'));
+      // Грунтовка подмешана в промпт.
+      expect(cliche, contains('LADA VESTA'));
+      expect(cliche, contains('WMI'));
+    });
   });
 }
 

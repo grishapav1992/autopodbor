@@ -51,14 +51,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         );
         return;
       }
-      await Clipboard.setData(ClipboardData(text: url));
-      if (!mounted) return;
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text('Ссылка скопирована: $url'),
-          duration: const Duration(seconds: 6),
-        ),
-      );
+      if (!context.mounted) return;
+      await shareSpecialistReportUrl(context, url: url, subject: _reportTitle());
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -463,6 +457,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   String _normalizeDocumentsLocalPath(String path) {
     final normalized = path.trim();
     if (normalized.isEmpty || kIsWeb) return normalized;
+    // Перешивка нужна только на iOS: там контейнер приложения (и значит
+    // абсолютный путь к Documents) меняется между запусками, и пути из
+    // старых черновиков протухают. На Android путь стабилен, а маркер
+    // '/Documents/' ложно совпадает с публичной папкой
+    // /storage/emulated/0/Documents/ и ломал бы валидный путь.
+    if (defaultTargetPlatform != TargetPlatform.iOS) return normalized;
     final docsPath = _appDocumentsPath;
     if (docsPath == null || docsPath.isEmpty) return normalized;
     const marker = '/Documents/';
@@ -734,6 +734,118 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       consume(_expertAudioFiles[index], index, 'expert_audio');
     }
     return byUploadKey.values.toList(growable: false);
+  }
+
+  /// Best-effort upload of the locally-generated video posters so completed
+  /// reports can show a thumbnail. For each video in [items] that already has
+  /// an on-disk preview JPEG ([UploadedItem.videoThumbPath], produced at pick
+  /// time), the poster is PUT to S3 under the deterministic
+  /// [sparkJoyVideoPosterFilename] key derived from the video's own upload
+  /// filename — the hydrator resolves that same key on the view side. iOS can't
+  /// extract a frame from the remote presigned video URL (sync
+  /// AVAssetImageGenerator fails before the asset's tracks load), so this
+  /// pre-made poster is the only way completed-report videos get a thumbnail.
+  ///
+  /// Strictly non-fatal: every failure (missing thumb, network, expired
+  /// session) is swallowed, so a missing poster just falls back to the
+  /// play-badge placeholder exactly as before this feature. Posters are tiny
+  /// (≤300 px JPEG), so the single-part, whole-file-in-memory upload here can't
+  /// reproduce the big-video OOM the rest of the pipeline guards against.
+  Future<void> _uploadVideoPostersBestEffort({
+    required String reportNumber,
+    required List<_SparkJoyUploadQueueItem> items,
+  }) async {
+    if (reportNumber.trim().isEmpty) return;
+    // Same modest concurrency as the media upload — posters are tiny, but a
+    // video-heavy report shouldn't serialize a dozen 4-RPC handshakes before
+    // the report can finalize.
+    final gate = _UploadConcurrencyGate(_kFileConcurrency);
+    await Future.wait(
+      items.map((queueItem) {
+        return gate.withSlot<void>(() async {
+          if (_uploadCancelled) return;
+          final item = queueItem.item;
+          if (!item.isVideo) return;
+          final thumbPath = item.videoThumbPath?.trim();
+          if (thumbPath == null || thumbPath.isEmpty) return;
+          final posterName = sparkJoyVideoPosterFilename(queueItem.filename);
+          if (posterName.isEmpty) return;
+          await _uploadSingleVideoPoster(
+            reportNumber: reportNumber,
+            posterName: posterName,
+            thumbPath: thumbPath,
+          );
+        });
+      }),
+    );
+  }
+
+  Future<void> _uploadSingleVideoPoster({
+    required String reportNumber,
+    required String posterName,
+    required String thumbPath,
+  }) async {
+    var uploadId = '';
+    try {
+      final file = File(thumbPath);
+      if (!await file.exists()) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.isEmpty) return;
+      final session = await storage_api.StorageApi.initiateMultipartUpload(
+        reportNumber: reportNumber,
+        filename: posterName,
+      );
+      uploadId = session.uploadId;
+      final urlsResult = await storage_api.StorageApi.getPartUploadUrls(
+        reportNumber: reportNumber,
+        filename: posterName,
+        uploadId: uploadId,
+        partCount: 1,
+      );
+      final partUrl = urlsResult.urls.isNotEmpty
+          ? urlsResult.urls.first.url
+          : '';
+      if (partUrl.isEmpty) {
+        await _abortPosterUploadQuietly(reportNumber, posterName, uploadId);
+        return;
+      }
+      final etag = await storage_api.StorageApi.uploadBytesToPresignedUrl(
+        url: partUrl,
+        bytes: bytes,
+        contentType: 'image/jpeg',
+      );
+      if (etag.isEmpty) {
+        await _abortPosterUploadQuietly(reportNumber, posterName, uploadId);
+        return;
+      }
+      await storage_api.StorageApi.completeMultipartUpload(
+        reportNumber: reportNumber,
+        filename: posterName,
+        uploadId: uploadId,
+        parts: [storage_api.MultipartUploadedPart(partNumber: 1, etag: etag)],
+      );
+    } catch (e) {
+      debugPrint('[SparkJoy] video poster upload skipped ($posterName): $e');
+      await _abortPosterUploadQuietly(reportNumber, posterName, uploadId);
+    }
+  }
+
+  Future<void> _abortPosterUploadQuietly(
+    String reportNumber,
+    String filename,
+    String uploadId,
+  ) async {
+    if (uploadId.isEmpty) return;
+    try {
+      await storage_api.StorageApi.abortMultipartUpload(
+        reportNumber: reportNumber,
+        filename: filename,
+        uploadId: uploadId,
+      );
+    } catch (_) {
+      // A stale poster session is harmless — it carries no report data and is
+      // swept by _cleanupStaleMultipartUploads on the next submit.
+    }
   }
 
   bool _uploadListContainsItem(List<UploadedItem> items, UploadedItem target) {
@@ -1464,6 +1576,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   ) {
     const requiredSections = <String, List<String>>{
       'bodySection': <String>[
+        // Нейтральная корзина для фото без выбранного элемента. Бэкенд
+        // добавил эту коллекцию в схему кузова 2026-06-10 (раньше её не
+        // было — кузов был единственной секцией без General-коллекции,
+        // поэтому untyped-фото молча уходили в Капот). Стоит первой, чтобы
+        // last-resort fallback `availableCollections.first` тоже был
+        // нейтральным, а не «Капот».
+        'bodyElementGeneralConditionCollection',
         'bodyElementHoodCollection',
         'bodyElementFrontBumperCollection',
         'bodyElementRearBumperCollection',
@@ -1582,7 +1701,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       _SparkJoyMediaGroupRegistry.keyDiagnostics: 'computerDiagnosticsSection',
     };
     const defaultCollectionByGroup = <String, String>{
-      _SparkJoyMediaGroupRegistry.keyBody: 'bodyElementHoodCollection',
+      // Фото в кузове без выбранного элемента → «Общее состояние», а НЕ
+      // «Капот» (была единственная группа с конкретным дефолтом — корень
+      // бага «untyped-фото = Капот в завершённом отчёте»). Бэк-коллекция
+      // bodyElementGeneralConditionCollection появилась 2026-06-10.
+      _SparkJoyMediaGroupRegistry.keyBody:
+          'bodyElementGeneralConditionCollection',
       _SparkJoyMediaGroupRegistry.keyStructural:
           'bodyReinforcementElementGeneralConditionCollection',
       _SparkJoyMediaGroupRegistry.keyGlass:
@@ -1614,7 +1738,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'right_front_door': 'bodyElementRightFrontDoorCollection',
       'uh_body_elements': 'bodyElementUnderHoodCollection',
       'inner_trunk_lid': 'bodyElementInsideTrunkCollection',
-      'body_general': 'bodyElementHoodCollection',
+      // Явный выбор «Общее состояние» в кузове раньше тоже уходил в Капот.
+      'body_general': 'bodyElementGeneralConditionCollection',
       'a_pillar_left': 'bodyReinforcementElementFrontLeftPillarCollection',
       'a_pillar_right': 'bodyReinforcementElementFrontRightPillarCollection',
       'b_pillar_right': 'bodyReinforcementElementCenterRightPillarCollection',
@@ -2489,6 +2614,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       if (_modelGenerationRestylingFrameId != null &&
           _modelGenerationRestylingFrameId! > 0)
         'modelGenerationRestylingFrameId': _modelGenerationRestylingFrameId,
+      // Каталожная привязка марки/модели (Storage.GetBrand/GetModelCar) — чтобы
+      // переоткрытый черновик сразу предлагал модели для сохранённого brandId.
+      if (_selectedBrandId != null && _selectedBrandId! > 0)
+        'brandId': _selectedBrandId,
+      if (_selectedModelCarId != null && _selectedModelCarId! > 0)
+        'modelCarId': _selectedModelCarId,
       'vin': _vinController.text.trim(),
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),
@@ -3156,6 +3287,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       if (firstFailure != null) {
         throw firstFailure!;
       }
+
+      // Ship the pre-made video posters before finalizing so completed reports
+      // have thumbnails the instant they're viewable. Non-fatal and not part of
+      // the report's checksummed file set, so a poster hiccup never blocks the
+      // report from completing.
+      await _uploadVideoPostersBestEffort(
+        reportNumber: reportNumber,
+        items: items,
+      );
 
       _setBackendUploadProgress(
         inProgress: true,

@@ -40,6 +40,17 @@ extension _SparkJoyCityPickerHelpers on _SparkJoyCreateReportScreenState {
         _inspectionCityController.text = picked.displayLabel;
         _isInspectionCityValid = true;
       });
+    } catch (e, st) {
+      // Раньше тут не было catch — любая ошибка (загрузка датасета городов,
+      // открытие шторки) гасла молча, и тап по полю «Город осмотра» выглядел
+      // как «ничего не происходит». Логируем + показываем ошибку, чтобы сбой
+      // был виден, а не съедался.
+      debugPrint('[_openCityPicker] failed: $e\n$st');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Не удалось открыть выбор города: $e')),
+        );
+      }
     } finally {
       _cityPickerOpening = false;
     }

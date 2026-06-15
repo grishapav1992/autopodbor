@@ -7,6 +7,7 @@ import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_public_profile_screen.dart';
+import 'spark_joy_legal_labels.dart';
 import 'spark_joy_notification_actions.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -130,10 +131,15 @@ class _SparkJoyNotificationsScreenState
     return Obx(() {
       final loading = _controller.loading.value;
       final items = _controller.items;
+      // Конвертер (api_cloud_converter_search) — внутренний инструмент
+      // идентификации, не материал проверки: его уведомления в ленте прячем
+      // (как он скрыт и из сводки отчёта). Прочитанными помечаем по ПОЛНОМУ
+      // списку (ниже), чтобы счётчик непрочитанных оставался консистентным.
+      final visible = items.where((n) => !n.isLegalConverter).toList();
       if (loading && items.isEmpty) {
         return const SparkLoadingState(message: 'Загрузка уведомлений...');
       }
-      if (items.isEmpty) {
+      if (visible.isEmpty) {
         return RefreshIndicator(
           onRefresh: _controller.reload,
           child: ListView(
@@ -150,7 +156,7 @@ class _SparkJoyNotificationsScreenState
           ),
         );
       }
-      final groups = _groupByDate(items.toList());
+      final groups = _groupByDate(visible);
       _scheduleAutoMarkRead(items.toList());
       return SparkScreenList(
         controller: _scrollController,
@@ -278,8 +284,12 @@ class _NotificationCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final style = _styleForType(notification.type);
     final unread = notification.status == NotificationStatus.pending;
+    final title = _notificationDisplayTitle(notification);
+    final body = _notificationDisplayBody(notification);
     return SparkListCard(
-      onTap: onTap,
+      // Legal-уведомления самодостаточны и не разворачиваются → тап-ноль,
+      // чтобы не было ripple/лишних rebuild без видимого эффекта.
+      onTap: notification.isLegalReview ? null : onTap,
       padding: const EdgeInsets.symmetric(
         horizontal: SparkSpace.xl,
         vertical: SparkSpace.lg,
@@ -314,7 +324,7 @@ class _NotificationCard extends StatelessWidget {
                       children: [
                         Expanded(
                           child: MyText(
-                            text: notification.title,
+                            text: title,
                             size: SparkTextSize.body,
                             weight: unread ? FontWeight.w700 : FontWeight.w600,
                           ),
@@ -333,9 +343,9 @@ class _NotificationCard extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if ((notification.body ?? '').isNotEmpty)
+                    if (body.isNotEmpty)
                       MyText(
-                        text: notification.body!,
+                        text: body,
                         size: SparkTextSize.caption,
                         color: kGreyColor,
                         paddingTop: SparkSpace.xxs,
@@ -349,37 +359,95 @@ class _NotificationCard extends StatelessWidget {
                       color: kGreyColor,
                       paddingTop: SparkSpace.sm,
                     ),
-                    MyText(
-                      text: expanded ? 'Свернуть' : 'Подробнее',
-                      size: SparkTextSize.chip,
-                      weight: FontWeight.w700,
-                      color: kSecondaryColor,
-                      paddingTop: SparkSpace.sm,
-                    ),
+                    // Legal-уведомления самодостаточны (коротко всё сказано) —
+                    // у них «Подробнее»/разворота нет.
+                    if (!notification.isLegalReview)
+                      MyText(
+                        text: expanded ? 'Свернуть' : 'Подробнее',
+                        size: SparkTextSize.chip,
+                        weight: FontWeight.w700,
+                        color: kSecondaryColor,
+                        paddingTop: SparkSpace.sm,
+                      ),
                   ],
                 ),
               ),
             ],
           ),
-          AnimatedCrossFade(
-            firstChild: const SizedBox.shrink(),
-            secondChild: _NotificationDetails(
-              notification: notification,
-              onOpenRequest: onOpenRequest,
-              onOpenCompany: onOpenCompany,
+          if (!notification.isLegalReview)
+            AnimatedCrossFade(
+              firstChild: const SizedBox.shrink(),
+              secondChild: _NotificationDetails(
+                notification: notification,
+                onOpenRequest: onOpenRequest,
+                onOpenCompany: onOpenCompany,
+              ),
+              crossFadeState: expanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              duration: const Duration(milliseconds: 180),
+              sizeCurve: Curves.easeOutCubic,
             ),
-            crossFadeState: expanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            duration: const Duration(milliseconds: 180),
-            sizeCurve: Curves.easeOutCubic,
-          ),
           if (notification.isInteractivePending)
             SparkJoyNotificationActions(notification: notification),
         ],
       ),
     );
   }
+}
+
+// ── ApiCloud legal-review (system) уведомления: короткий читаемый текст ──────
+// Бэк шлёт техничный title («…завершена со статусом: not_found») и сырой
+// payload. Здесь переписываем в человеческий вид. Ссылок на черновик/отчёт нет
+// (в payload нет идентификатора отчёта). Ярлыки проверок — общий
+// `sparkJoyLegalCheckTypeLabel` (spark_joy_legal_labels.dart), он же в шаге.
+String _notificationDisplayTitle(BackendNotification n) =>
+    n.isLegalReview ? _legalNotificationTitle(n) : n.title;
+
+String _notificationDisplayBody(BackendNotification n) =>
+    n.isLegalReview ? _legalNotificationSubtitle(n) : (n.body ?? '');
+
+// Статусы ApiCloud-результата. Бэк шлёт success/not_found/error; синонимы — на
+// случай расширения протокола, чтобы негативный исход не подавался как
+// благополучное «завершена» (#5).
+const Set<String> _legalSuccessStatuses = {'success', 'ok', 'found', 'done'};
+const Set<String> _legalErrorStatuses = {
+  'error',
+  'failed',
+  'failure',
+  'timeout',
+  'timed_out',
+};
+
+String _legalNotificationTitle(BackendNotification n) {
+  final label = sparkJoyLegalCheckTypeLabel(n.legalCheckType);
+  final status = n.legalStatus;
+  if (status == 'not_found') return 'Проверка «$label»: данных не найдено';
+  if (_legalErrorStatuses.contains(status)) {
+    return 'Проверка «$label» не выполнилась';
+  }
+  if (_legalSuccessStatuses.contains(status)) {
+    return 'Проверка «$label» выполнена';
+  }
+  return 'Проверка «$label» завершена';
+}
+
+String _legalNotificationSubtitle(BackendNotification n) {
+  // Контекст авто (если есть) сохраняем при любом статусе (#6); для ошибки
+  // добавляем причину — иначе она нигде не видна, разворот скрыт (#1).
+  final parts = <String>[];
+  final vin = (n.payload['vehicleVin'] ?? '').toString().trim();
+  final gos = (n.payload['vehicleGosNumber'] ?? '').toString().trim();
+  if (vin.isNotEmpty) {
+    parts.add('VIN $vin');
+  } else if (gos.isNotEmpty) {
+    parts.add('Госномер $gos');
+  }
+  if (_legalErrorStatuses.contains(n.legalStatus)) {
+    final err = (n.payload['errorMessage'] ?? '').toString().trim();
+    if (err.isNotEmpty) parts.add(err);
+  }
+  return parts.join(' · ');
 }
 
 class _NotificationDetails extends StatelessWidget {

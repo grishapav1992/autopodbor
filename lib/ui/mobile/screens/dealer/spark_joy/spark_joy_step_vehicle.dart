@@ -292,6 +292,26 @@ Widget _buildSparkJoyStepVehicle(
                 ),
               ),
             ],
+            if (s._vinConverterBusy && s._vinConverterStatus.isNotEmpty) ...[
+              const SizedBox(height: SparkSpace.md),
+              Row(
+                children: [
+                  const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  const SizedBox(width: SparkSpace.sm),
+                  Expanded(
+                    child: MyText(
+                      text: s._vinConverterStatus,
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             if (s._vinLookupInfo.isNotEmpty) ...[
               const SizedBox(height: SparkSpace.md),
               Container(

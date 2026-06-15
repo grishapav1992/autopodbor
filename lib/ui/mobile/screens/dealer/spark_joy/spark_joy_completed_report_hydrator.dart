@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_upload_identity.dart';
 
 /// Transforms a `Storage.ViewSpecialistReport` response into the flat
 /// draft-shape map the `SparkJoyCreateReportScreen` editor reads.
@@ -85,7 +86,17 @@ Future<Map<String, dynamic>> hydrateCompletedReport({
       if (raw is! Map) continue;
       final file = _asMap(raw['file']);
       final name = (file['filename'] ?? '').toString().trim();
-      if (name.isNotEmpty) filenames.add(name);
+      if (name.isNotEmpty) {
+        filenames.add(name);
+        // Videos carry a separately-uploaded poster (`<name>.thumb.jpg`) so the
+        // completed-report tile shows a thumbnail without decoding the remote
+        // video (iOS can't extract a frame from the presigned URL). Resolve its
+        // view URL alongside the video's own.
+        if ((file['type'] ?? '').toString() == 'video') {
+          final poster = sparkJoyVideoPosterFilename(name);
+          if (poster.isNotEmpty) filenames.add(poster);
+        }
+      }
       // Audio notes live alongside the photo/video as plain filenames
       // (`voice_memo_1.m4a`). They go to S3 under the same report and
       // need presigned GET URLs too — the lightbox player otherwise
@@ -293,11 +304,20 @@ Map<String, dynamic>? _elementToUploadedItemJson(
   final paintTo = paintToRaw is num ? paintToRaw.toDouble() : null;
   final elementId = raw['id']?.toString();
 
+  // Remote video poster (uploaded at submit-time under `<filename>.thumb.jpg`).
+  // Present only for videos whose report was submitted after the
+  // poster-on-upload feature shipped; older reports resolve to '' and the tile
+  // falls back to the play-badge placeholder.
+  final videoThumbUrl = serverType == 'video'
+      ? (urls[sparkJoyVideoPosterFilename(filename)] ?? '')
+      : '';
+
   return <String, dynamic>{
     'id': '${groupKey}_${elementId ?? filename}',
     'name': filename,
     'mimeType': mimeType,
     'dataUrl': dataUrl,
+    if (videoThumbUrl.isNotEmpty) 'videoThumbUrl': videoThumbUrl,
     'inspection': <String, dynamic>{
       'noDamage': raw['noDamage'] == true,
       'tags': tags,
