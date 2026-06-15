@@ -178,7 +178,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       await SparkJoyStorage.saveConverterBatchNumber(key, batchNumber);
     }
     final result = await storage_api.StorageApi.pollVinPlateConverterBatch(
-      batchNumber!,
+      batchNumber,
       onProgress: onProgress,
     );
     if (reused && result.timedOut) {
