@@ -192,6 +192,15 @@ class SparkJoyStorage {
   static Future<void> logout() async {
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
+    // Wipe on-disk inspection media BEFORE clearing prefs keys: photos,
+    // videos and thumbnails (VIN plates, car interiors, damage shots,
+    // possibly plates / personal data of car owners) live in the app
+    // sandbox and would otherwise survive logout — letting the next user
+    // on a shared device read the previous specialist's media. Drafts
+    // become unreferenced once the keys below are gone, so doing this
+    // first keeps the reference set meaningful if we ever switch back to
+    // a GC-based purge here.
+    await _purgeAllMedia();
     await pref.setBool(_loggedInKey, false);
     // Wipe every per-user cache so switching accounts on the same
     // device (e.g. specialist → company staff sign-in) doesn't leak
@@ -710,6 +719,38 @@ class SparkJoyStorage {
       } catch (_) {
         // A single undeletable entry must not abort the sweep.
       }
+    }
+  }
+
+  /// Deletes the entire spark-joy media subtree (inspection photos/videos in
+  /// Documents/[mediaSubdirName] and generated thumbnails in
+  /// Caches/[thumbsSubdirName]). Called from [logout] so a different
+  /// specialist signing in on the same device can't read the previous
+  /// user's media. Unlike [gcOrphanedMedia] this keeps nothing — every file
+  /// in the two dedicated spark subdirs goes, regardless of draft state.
+  ///
+  /// Best-effort: a failure to delete media must never block logout (the
+  /// prefs/secure-storage wipe below is what actually ends the session).
+  static Future<void> _purgeAllMedia() async {
+    if (kIsWeb) return;
+    try {
+      final docs = await getApplicationDocumentsDirectory();
+      final mediaDir = Directory('${docs.path}/$mediaSubdirName');
+      if (await mediaDir.exists()) {
+        await mediaDir.delete(recursive: true);
+      }
+    } catch (_) {
+      // Best-effort — see method docs.
+    }
+    try {
+      final cache = await getApplicationCacheDirectory();
+      final thumbsDir = Directory('${cache.path}/$thumbsSubdirName');
+      if (await thumbsDir.exists()) {
+        await thumbsDir.delete(recursive: true);
+      }
+    } catch (_) {
+      // getApplicationCacheDirectory can be unavailable on some platforms;
+      // thumbnails are OS-purgeable anyway, so skipping is harmless.
     }
   }
 

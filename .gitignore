@@ -53,6 +53,9 @@ app.*.map.json
 /.mcp.json
 /autopodbor_*.postman_collection.json
 scripts/.cache/
+# Stray shell redirect target (e.g. an accidental `command >0`). Not a
+# real source file — never commit it.
+/0
 
 # Secrets / signing material — never commit. Generated locally per-developer.
 **/key.properties

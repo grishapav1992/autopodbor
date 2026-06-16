@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/core/config/app_endpoints.dart';
+import 'package:flutter_application_1/data/api/pinned_http_client.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'notification_api_models.dart';
@@ -30,6 +31,10 @@ class NotificationApi {
 
   static const String _endpoint = AppEndpoints.appRpc;
   static int _rpcSeq = 0;
+
+  // Pinned HTTP client — MITM defence via cert public-key pinning in
+  // release; plain client in debug (Charles/mitmproxy friendly).
+  static final http.Client _httpClient = makePinnedHttpClient();
 
   // ── Public surface ────────────────────────────────────────────────────
 
@@ -207,7 +212,7 @@ class NotificationApi {
 
     http.Response response;
     try {
-      response = await http
+      response = await _httpClient
           .post(Uri.parse(_endpoint), headers: headers, body: bytes)
           .timeout(timeout);
     } on TimeoutException catch (e) {

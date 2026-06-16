@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_application_1/core/config/app_endpoints.dart';
+import 'package:flutter_application_1/data/api/pinned_http_client.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:http/http.dart' as http;
 
@@ -40,6 +41,10 @@ class FeedbackApi {
 
   static const String _endpoint = AppEndpoints.appRpc;
   static int _rpcSeq = 0;
+
+  // Pinned HTTP client — MITM defence via cert public-key pinning in
+  // release; plain client in debug (Charles/mitmproxy friendly).
+  static final http.Client _httpClient = makePinnedHttpClient();
 
   /// Sends a support-ticket-style message to the team. Identity fields
   /// (name, email, phone, role) are pulled by the server from the JWT —
@@ -107,7 +112,7 @@ class FeedbackApi {
     // и показывает дружелюбный текст «Долго не отвечает сервер».
     // SocketException / http.ClientException пробрасываем как есть —
     // экран распознаёт их по toString() и подменяет на «Нет соединения».
-    final response = await http
+    final response = await _httpClient
         .post(Uri.parse(_endpoint), headers: headers, body: bytes)
         .timeout(timeout);
 

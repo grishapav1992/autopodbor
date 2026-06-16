@@ -1,16 +1,51 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_data.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Routes path_provider calls to a temp dir tree we control, so we can
+/// prove logout wipes on-disk media. The platform interface returns paths
+/// (strings); the plugin wraps them into Directory for the app.
+class _MockPathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  _MockPathProvider(this.docsDir, this.cacheDir);
+
+  final Directory docsDir;
+  final Directory cacheDir;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => docsDir.path;
+
+  @override
+  Future<String?> getTemporaryPath() async => cacheDir.path;
+
+  @override
+  Future<String?> getApplicationCachePath() async => cacheDir.path;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => docsDir.path;
+}
+
 void main() {
+  late Directory tmpRoot;
+
   setUp(() async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     UserSimplePreferences.pref = null;
     await UserSimplePreferences.init();
+    tmpRoot = await Directory.systemTemp.createTemp('spark_joy_storage_test_');
+  });
+
+  tearDown(() async {
+    if (await tmpRoot.exists()) {
+      await tmpRoot.delete(recursive: true);
+    }
   });
 
   group('SparkJoyStorage auth state', () {
@@ -77,6 +112,40 @@ void main() {
 
       expect(pref.containsKey('spark_joy_completed_v1'), isFalse);
       expect(pref.containsKey('spark_joy_completed_synced_at_v1'), isFalse);
+    });
+  });
+
+  group('SparkJoyStorage logout media purge', () {
+    test('logout deletes on-disk inspection media and thumbnails', () async {
+      final docs = Directory('${tmpRoot.path}/docs');
+      final cache = Directory('${tmpRoot.path}/cache');
+      await docs.create(recursive: true);
+      await cache.create(recursive: true);
+
+      // Pre-populate the two spark-owned subtrees exactly as the app does.
+      final mediaDir = Directory(
+        '${docs.path}/${SparkJoyStorage.mediaSubdirName}',
+      );
+      final thumbsDir = Directory(
+        '${cache.path}/${SparkJoyStorage.thumbsSubdirName}',
+      );
+      await mediaDir.create(recursive: true);
+      await thumbsDir.create(recursive: true);
+      await File('${mediaDir.path}/vin_plate.jpg').writeAsBytes([1, 2, 3]);
+      await File('${mediaDir.path}/interior.mp4').writeAsBytes([4, 5, 6]);
+      await File('${thumbsDir.path}/preview.jpg').writeAsBytes([7, 8, 9]);
+      expect(await mediaDir.exists(), isTrue);
+      expect(await thumbsDir.exists(), isTrue);
+
+      PathProviderPlatform.instance = _MockPathProvider(docs, cache);
+
+      await SparkJoyStorage.login(SparkJoyRole.specialist);
+      await SparkJoyStorage.logout();
+
+      expect(await mediaDir.exists(), isFalse,
+          reason: 'inspection media must be wiped on logout');
+      expect(await thumbsDir.exists(), isFalse,
+          reason: 'generated thumbnails must be wiped on logout');
     });
   });
 }

@@ -9,9 +9,18 @@ plugins {
 }
 
 // Release signing credentials are read from android/key.properties (which is
-// git-ignored and generated per-developer — see SECURITY.md / README). When
-// the file is absent (fresh checkout, CI without secrets) we fall back to the
-// debug signing config so `flutter run --release` still works locally.
+// git-ignored and generated per-developer — see SECURITY.md / README).
+//
+// SECURITY: a release build MUST ship signed with the real release key. The
+// debug keystore is publicly known, so an APK/AAB signed with it can be
+// trivially forged/replaced on a device. When key.properties is absent the
+// build now fails fast instead of silently falling back to debug signing.
+//
+// Local dev escape hatch: pass -Pandroid.allowDebugSigning=true (or set it in
+// ~/.gradle/gradle.properties) to opt back into the debug fallback, e.g. for
+// `flutter run --release`. Production/CI builds must NEVER use this flag.
+val allowDebugSigning =
+    (project.findProperty("android.allowDebugSigning") as? String) == "true"
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
 val hasReleaseKeystore = keystorePropertiesFile.exists()
@@ -57,12 +66,18 @@ android {
 
     buildTypes {
         release {
-            // Real release key when key.properties is present, otherwise the
-            // debug key so local `flutter run --release` keeps working.
+            // Real release key when key.properties is present. Without it the
+            // build fails — see the comment above the keystore loading.
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
-            } else {
+            } else if (allowDebugSigning) {
+                logger.warn("⚠️ Release build using DEBUG signing key (android.allowDebugSigning=true). DO NOT ship this artifact.")
                 signingConfigs.getByName("debug")
+            } else {
+                throw GradleException(
+                    "Release build requires android/key.properties. " +
+                        "For local `flutter run --release` pass -Pandroid.allowDebugSigning=true."
+                )
             }
             isMinifyEnabled = true
             isShrinkResources = true

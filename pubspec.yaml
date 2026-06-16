@@ -38,6 +38,9 @@ dependencies:
   dio: ^5.7.0
   cached_network_image: ^3.4.1
   country_picker: ^2.0.26
+  # crypto: SHA-256 used for certificate public-key pinning. Pinned directly
+  # (was previously transitive) so imports of package:crypto are stable.
+  crypto: ^3.0.6
   dotted_border: ^2.1.0
   dropdown_button2: ^2.3.9
   expandable: ^5.0.1
@@ -80,6 +83,11 @@ dev_dependencies:
   # (393×851 @2.625x) — the perf targets called out in the A+ Frost
   # brief. See test/harness/spark_test_harness.dart.
   golden_toolkit: ^0.15.0
+
+  # Pinned directly so the logout-media test can mock path_provider /
+  # platform-channel interfaces without depending on a transitive.
+  path_provider_platform_interface: ^2.1.2
+  plugin_platform_interface: ^2.1.8
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

@@ -7,6 +7,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/api/notification_api_models.dart';
+import 'package:flutter_application_1/data/api/pinned_http_client.dart';
 
 /// Singleton long-lived WebSocket client for the realtime notification
 /// channel at [AppEndpoints.notificationWebSocket].
@@ -139,7 +140,7 @@ class NotificationWebsocketService {
     final uri = AppEndpoints.notificationWebSocketUri(token);
     _log('connect: $_wsBase');
     try {
-      final channel = WebSocketChannel.connect(uri);
+      final channel = connectPinnedWebSocketChannel(uri);
       _channel = channel;
       _channelSub = channel.stream.listen(
         _onMessage,

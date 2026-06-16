@@ -8,7 +8,13 @@ import 'spark_joy_tokens.dart';
 String sparkNormalizeExternalUrl(String raw) {
   var value = raw.trim();
   if (value.isEmpty) return '';
-  if (!value.contains('://')) {
+  // Detect an existing scheme as an alpha-led token followed by ':' that
+  // appears before any '/'. The naive contains('://') check misses
+  // scheme:authority forms (tel:, javascript:, mailto:) and would wrongly
+  // wrap them into bogus https:// URLs, letting a compromised backend
+  // trigger those schemes via launchUrl.
+  final hasScheme = RegExp(r'^[a-zA-Z][a-zA-Z0-9+.\-]*:').hasMatch(value);
+  if (!hasScheme) {
     value = 'https://$value';
   }
   final uri = Uri.tryParse(value);

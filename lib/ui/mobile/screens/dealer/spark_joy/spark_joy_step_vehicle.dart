@@ -758,14 +758,18 @@ extension _SparkJoyListingPdf on _SparkJoyCreateReportScreenState {
   Future<void> _openListingPdf() async {
     final raw = _listingPdfUrl.trim();
     if (raw.isEmpty) return;
-    final uri = Uri.tryParse(raw);
-    if (uri == null) {
+    // The URL comes from server data (presigned S3 link) — reject anything
+    // that isn't http/https with a real host, so a compromised/hijacked
+    // backend can't trigger intent:/tel:/javascript: via launchUrl.
+    final normalized = sparkNormalizeExternalUrl(raw);
+    if (normalized.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Некорректная ссылка на PDF')),
       );
       return;
     }
+    final uri = Uri.parse(normalized);
     try {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {

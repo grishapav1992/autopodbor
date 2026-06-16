@@ -6,6 +6,7 @@ import 'package:dio/dio.dart' as dio;
 import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/core/config/app_endpoints.dart';
+import 'package:flutter_application_1/data/api/pinned_http_client.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'storage_api_models.dart';
@@ -217,6 +218,11 @@ class StorageApi {
   // expose. Reusing one instance keeps the underlying connection pool
   // warm across concurrent part uploads.
   static final dio.Dio _uploadDio = dio.Dio();
+
+  // Pinned HTTP client: in release it enforces certificate public-key
+  // pinning (MITM defence); in debug it is a plain client so developers can
+  // use Charles / mitmproxy. One instance shared by every RPC call.
+  static final http.Client _httpClient = makePinnedHttpClient();
   static final Map<String, Future<CreateRequestResult>>
   _createRequestInFlightByKey = {};
   static final Map<String, _CreateRequestCacheEntry> _recentCreateRequestByKey =
@@ -528,7 +534,7 @@ class StorageApi {
     );
     http.Response response;
     try {
-      response = await http
+      response = await _httpClient
           .post(Uri.parse(_endpoint), headers: headers, body: bytes)
           .timeout(timeout);
     } on TimeoutException catch (e) {

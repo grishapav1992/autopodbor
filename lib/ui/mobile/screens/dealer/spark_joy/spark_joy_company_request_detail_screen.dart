@@ -169,13 +169,18 @@ class _SparkJoyCompanyRequestDetailScreenState
   }
 
   Future<void> _openShareUrl(String rawUrl) async {
-    final uri = Uri.tryParse(rawUrl.trim());
-    if (uri == null) {
+    // The URL comes from server data (createSpecialistReportShareUrl) —
+    // reject anything that isn't http/https with a real host, so a
+    // compromised/hijacked backend can't trigger intent:/tel:/javascript:
+    // via launchUrl.
+    final normalized = sparkNormalizeExternalUrl(rawUrl);
+    if (normalized.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Некорректная ссылка')));
       return;
     }
+    final uri = Uri.parse(normalized);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
       return;

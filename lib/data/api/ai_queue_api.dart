@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/core/config/app_endpoints.dart';
+import 'package:flutter_application_1/data/api/pinned_http_client.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 
 import 'ai_queue_api_models.dart';
@@ -36,6 +37,10 @@ class AiQueueApi {
 
   static const String _endpoint = AppEndpoints.aiRpc;
   static int _rpcSeq = 0;
+
+  // Pinned HTTP client — MITM defence via cert public-key pinning in
+  // release; plain client in debug (Charles/mitmproxy friendly).
+  static final http.Client _httpClient = makePinnedHttpClient();
 
   static const String _defaultChatModel = 'gpt-5.4';
 
@@ -239,7 +244,7 @@ class AiQueueApi {
 
     http.Response response;
     try {
-      response = await http
+      response = await _httpClient
           .post(uri, headers: headers, body: bytes)
           .timeout(timeout);
     } on TimeoutException catch (e) {
