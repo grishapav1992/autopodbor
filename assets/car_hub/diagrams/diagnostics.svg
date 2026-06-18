@@ -1,0 +1,14 @@
+<svg viewBox="0 0 320 240" xmlns="http://www.w3.org/2000/svg">
+  <path id="diag_general" d="M24,24 H296 A12,12 0 0 1 308,36 V204 A12,12 0 0 1 296,216 H24 A12,12 0 0 1 12,204 V36 A12,12 0 0 1 24,24 Z" fill="none" stroke="#15181b" stroke-width="2"/>
+  <path id="diag_engine" d="M30,44 H92 A7,7 0 0 1 99,51 V79 A7,7 0 0 1 92,86 H30 A7,7 0 0 1 23,79 V51 A7,7 0 0 1 30,44 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_transmission" d="M128,44 H192 A7,7 0 0 1 199,51 V79 A7,7 0 0 1 192,86 H128 A7,7 0 0 1 121,79 V51 A7,7 0 0 1 128,44 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_abs_esp" d="M228,44 H290 A7,7 0 0 1 297,51 V79 A7,7 0 0 1 290,86 H228 A7,7 0 0 1 221,79 V51 A7,7 0 0 1 228,44 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_srs_airbag" d="M30,100 H92 A7,7 0 0 1 99,107 V135 A7,7 0 0 1 92,142 H30 A7,7 0 0 1 23,135 V107 A7,7 0 0 1 30,100 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_electric" d="M128,100 H192 A7,7 0 0 1 199,107 V135 A7,7 0 0 1 192,142 H128 A7,7 0 0 1 121,135 V107 A7,7 0 0 1 128,100 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_ecology" d="M228,100 H290 A7,7 0 0 1 297,107 V135 A7,7 0 0 1 290,142 H228 A7,7 0 0 1 221,135 V107 A7,7 0 0 1 228,100 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_body_comfort" d="M30,156 H92 A7,7 0 0 1 99,163 V191 A7,7 0 0 1 92,198 H30 A7,7 0 0 1 23,191 V163 A7,7 0 0 1 30,156 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_steering_suspension" d="M108,156 H150 A7,7 0 0 1 157,163 V191 A7,7 0 0 1 150,198 H108 A7,7 0 0 1 101,191 V163 A7,7 0 0 1 108,156 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_awd" d="M170,156 H212 A7,7 0 0 1 219,163 V191 A7,7 0 0 1 212,198 H170 A7,7 0 0 1 163,191 V163 A7,7 0 0 1 170,156 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_climate" d="M238,156 H290 A7,7 0 0 1 297,163 V173 A7,7 0 0 1 290,180 H238 A7,7 0 0 1 231,173 V163 A7,7 0 0 1 238,156 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="diag_immobilizer" d="M238,184 H290 A7,7 0 0 1 297,191 V201 A7,7 0 0 1 290,208 H238 A7,7 0 0 1 231,201 V191 A7,7 0 0 1 238,184 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+</svg>

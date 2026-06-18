@@ -1,0 +1,17 @@
+<svg viewBox="0 0 280 520" xmlns="http://www.w3.org/2000/svg">
+  <path id="structural_general" d="M140,18 C112,18 92,26 82,46 C74,64 70,96 69,140 C68,188 68,300 69,346 C70,392 74,440 84,470 C92,490 112,502 140,502 C168,502 188,490 196,470 C206,440 210,392 211,346 C212,300 212,188 211,140 C210,96 206,64 198,46 C188,26 168,18 140,18 Z" fill="none" stroke="#15181b" stroke-width="2"/>
+  <path id="rail_left" d="M111,120 H113 A5,5 0 0 1 118,125 V415 A5,5 0 0 1 113,420 H111 A5,5 0 0 1 106,415 V125 A5,5 0 0 1 111,120 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="rail_right" d="M167,120 H169 A5,5 0 0 1 174,125 V415 A5,5 0 0 1 169,420 H167 A5,5 0 0 1 162,415 V125 A5,5 0 0 1 167,120 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="sill_left" d="M96,182 H97 A4,4 0 0 1 101,186 V356 A4,4 0 0 1 97,360 H96 A4,4 0 0 1 92,356 V186 A4,4 0 0 1 96,182 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="sill_right" d="M183,182 H184 A4,4 0 0 1 188,186 V356 A4,4 0 0 1 184,360 H183 A4,4 0 0 1 179,356 V186 A4,4 0 0 1 183,182 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="a_pillar_left" d="M99,166 H105 A4,4 0 0 1 109,170 V178 A4,4 0 0 1 105,182 H99 A4,4 0 0 1 95,178 V170 A4,4 0 0 1 99,166 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="a_pillar_right" d="M175,166 H181 A4,4 0 0 1 185,170 V178 A4,4 0 0 1 181,182 H175 A4,4 0 0 1 171,178 V170 A4,4 0 0 1 175,166 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="b_pillar_left" d="M99,244 H105 A4,4 0 0 1 109,248 V256 A4,4 0 0 1 105,260 H99 A4,4 0 0 1 95,256 V248 A4,4 0 0 1 99,244 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="b_pillar_right" d="M175,244 H181 A4,4 0 0 1 185,248 V256 A4,4 0 0 1 181,260 H175 A4,4 0 0 1 171,256 V248 A4,4 0 0 1 175,244 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="c_pillar_left" d="M99,320 H105 A4,4 0 0 1 109,324 V332 A4,4 0 0 1 105,336 H99 A4,4 0 0 1 95,332 V324 A4,4 0 0 1 99,320 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="c_pillar_right" d="M175,320 H181 A4,4 0 0 1 185,324 V332 A4,4 0 0 1 181,336 H175 A4,4 0 0 1 171,332 V324 A4,4 0 0 1 175,320 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="fender_liner_left_front" d="M86,150 H96 A6,6 0 0 1 102,156 V190 A6,6 0 0 1 96,196 H86 A6,6 0 0 1 80,190 V156 A6,6 0 0 1 86,150 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="fender_liner_right_front" d="M184,150 H194 A6,6 0 0 1 200,156 V190 A6,6 0 0 1 194,196 H184 A6,6 0 0 1 178,190 V156 A6,6 0 0 1 184,150 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="fender_liner_left_rear" d="M86,334 H96 A6,6 0 0 1 102,340 V374 A6,6 0 0 1 96,380 H86 A6,6 0 0 1 80,374 V340 A6,6 0 0 1 86,334 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="fender_liner_right_rear" d="M184,334 H194 A6,6 0 0 1 200,340 V374 A6,6 0 0 1 194,380 H184 A6,6 0 0 1 178,374 V340 A6,6 0 0 1 184,334 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+</svg>

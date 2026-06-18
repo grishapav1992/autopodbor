@@ -104,6 +104,7 @@ part 'spark_joy_overview_controller.dart';
 part 'spark_joy_steps_registry.dart';
 part 'spark_joy_media_groups_registry.dart';
 part 'spark_joy_media_tags_registry.dart';
+part 'spark_joy_inspection_diagram.dart';
 part 'spark_joy_summary_registry.dart';
 part 'spark_joy_test_drive_registry.dart';
 part 'spark_joy_summary_texts_registry.dart';
@@ -228,8 +229,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // терминальный результат (found/not_found) и схлопываем одновременные
   // запросы на один вход (single-flight). timedOut НЕ кэшируем — транзиентный,
   // позволяем повторить, когда воркер ApiCloud догонит.
-  final Map<String, storage_api.VinPlateConverterResult>
-  _converterResultCache = {};
+  final Map<String, storage_api.VinPlateConverterResult> _converterResultCache =
+      {};
   final Map<String, Future<storage_api.VinPlateConverterResult>>
   _converterInFlight = {};
   // Найденная по VIN/госномеру инфа (label→value) для карточки результата.

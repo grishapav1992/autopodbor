@@ -1126,6 +1126,15 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                         )),
           ),
         ),
+        _SparkJoyInspectionDiagram(
+          groupKey: groupKey,
+          files: files,
+          onOpenFile: (index) {
+            if (index < 0 || index >= files.length) return;
+            _openMediaGroupLightbox(groupKey: groupKey, initialIndex: index);
+          },
+        ),
+        const SizedBox(height: SparkSpace.lg),
         LayoutBuilder(
           builder: (context, constraints) {
             final maxWidth = constraints.maxWidth;

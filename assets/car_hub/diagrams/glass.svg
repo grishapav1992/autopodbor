@@ -1,0 +1,11 @@
+<svg viewBox="0 0 280 520" xmlns="http://www.w3.org/2000/svg">
+  <path id="glass_general" d="M140,18 C112,18 92,26 82,46 C74,64 70,96 69,140 C68,188 68,300 69,346 C70,392 74,440 84,470 C92,490 112,502 140,502 C168,502 188,490 196,470 C206,440 210,392 211,346 C212,300 212,188 211,140 C210,96 206,64 198,46 C188,26 168,18 140,18 Z" fill="none" stroke="#15181b" stroke-width="2"/>
+  <path id="windshield" d="M104,134 L176,134 L182,170 L98,170 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="rear_glass" d="M98,332 L182,332 L176,364 L104,364 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="glass_front_left" d="M94,176 H98 A4,4 0 0 1 102,180 V246 A4,4 0 0 1 98,250 H94 A4,4 0 0 1 90,246 V180 A4,4 0 0 1 94,176 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="glass_front_right" d="M182,176 H186 A4,4 0 0 1 190,180 V246 A4,4 0 0 1 186,250 H182 A4,4 0 0 1 178,246 V180 A4,4 0 0 1 182,176 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="glass_rear_left" d="M94,252 H98 A4,4 0 0 1 102,256 V322 A4,4 0 0 1 98,326 H94 A4,4 0 0 1 90,322 V256 A4,4 0 0 1 94,252 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="glass_rear_right" d="M182,252 H186 A4,4 0 0 1 190,256 V322 A4,4 0 0 1 186,326 H182 A4,4 0 0 1 178,322 V256 A4,4 0 0 1 182,252 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="mirror_left" d="M78,174 H86 A4,4 0 0 1 90,178 V183 A4,4 0 0 1 86,187 H78 A4,4 0 0 1 74,183 V178 A4,4 0 0 1 78,174 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+  <path id="mirror_right" d="M194,174 H202 A4,4 0 0 1 206,178 V183 A4,4 0 0 1 202,187 H194 A4,4 0 0 1 190,183 V178 A4,4 0 0 1 194,174 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
+</svg>
