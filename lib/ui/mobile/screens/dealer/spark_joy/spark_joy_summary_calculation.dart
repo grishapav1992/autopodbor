@@ -130,16 +130,23 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     if (inFlight != null) return inFlight;
     final future =
         _resolveConverterReusingBatch(
-          key: key,
-          vin: vin,
-          gosNumber: gosNumber,
-          onProgress: onProgress,
-        ).then((r) {
-          // Кэшируем только терминальный итог (found/not_found). timedOut —
-          // транзиентный (воркер лагает), кэшировать нельзя, иначе залипнет.
-          if (!r.timedOut) _converterResultCache[key] = r;
-          return r;
-        }).whenComplete(() => _converterInFlight.remove(key));
+              key: key,
+              vin: vin,
+              gosNumber: gosNumber,
+              onProgress: onProgress,
+            )
+            .then((r) {
+              // Кэшируем только терминальный итог (found/not_found). timedOut —
+              // транзиентный (воркер лагает), кэшировать нельзя, иначе залипнет.
+              if (!r.timedOut) _converterResultCache[key] = r;
+              return r;
+            })
+            .whenComplete(() {
+              // Стрелочный callback вернул бы значение Map.remove — тот же самый
+              // отслеживаемый Future. Future.whenComplete начал бы ждать сам себя,
+              // поэтому UI-await/finally никогда бы не продолжились.
+              _converterInFlight.remove(key);
+            });
     _converterInFlight[key] = future;
     return future;
   }
@@ -258,6 +265,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       _vinConverterStatus = 'Запрос отправлен в ApiCloud…';
       _vinLookupInfo = const <String, String>{};
     });
+    var resumeVinParamsAutofill = false;
     try {
       final r = await _runConverterDeduped(
         vin: fromVin ? vin : null,
@@ -304,6 +312,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           }
           if (r.brand.isNotEmpty) _brandController.text = r.brand;
           if (r.model.isNotEmpty) _modelController.text = r.model;
+          _resolvedVinYear = r.year?.toString() ?? '';
           // Сменили авто по VIN/госномеру → старое поколение относится к
           // прежней машине. Конвертер поколение не возвращает (его выбирают
           // вручную / через каталог), поэтому очищаем, иначе оно «зависает».
@@ -324,6 +333,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         final shownPlate = fromVin ? r.gosNumber : plate;
         if (shownPlate.isNotEmpty) info['Госномер'] = shownPlate;
         resolvedVin = shownVin;
+        resumeVinParamsAutofill = true;
       }
 
       // Доп. инфа из DecodeVin (бесплатный WMI-декод) по доступному VIN —
@@ -386,6 +396,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           _vinConverterBusy = false;
           _vinConverterStatus = '';
         });
+        // Запись найденного VIN/марки/модели триггерит debounce ещё во время
+        // busy и тот корректно прекращается. После снятия busy запускаем его
+        // повторно, чтобы AI-параметры (включая объём двигателя) не терялись.
+        if (resumeVinParamsAutofill) _maybeResolveFromVin();
       }
     }
   }

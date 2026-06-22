@@ -58,6 +58,28 @@ void main() {
       expect(cliche, isNot(contains('рекомендуются клиенту')));
     });
 
+    test(
+      'legal cliche exposes only performed facts without provider jargon',
+      () {
+        final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
+          filesCount: 0,
+          fileNames: const [],
+          checksInfo:
+              'Залог (реестр нотариусов) — не обнаружено; '
+              'Работа в такси — не обнаружено',
+        );
+
+        expect(cliche, contains('Факты выполненных проверок'));
+        expect(cliche, contains('Залог (реестр нотариусов) — не обнаружено'));
+        expect(cliche, contains('Работа в такси — не обнаружено'));
+        expect(cliche, contains('Назови только реально выполненные проверки'));
+        expect(cliche, contains('даже в виде оговорок'));
+        expect(cliche, isNot(contains('ApiCloud')));
+        expect(cliche, isNot(contains('Документы не приложены')));
+        expect(cliche, isNot(contains('остались непроверенными')));
+      },
+    );
+
     test('vin-params cliche demands strict JSON with exact enum options', () {
       final cliche = AiQueueClicheBuilder.buildVinParamsCliche(
         vin: 'XTAGFL110JY123456',
@@ -77,6 +99,41 @@ void main() {
       // Грунтовка подмешана в промпт.
       expect(cliche, contains('LADA VESTA'));
       expect(cliche, contains('WMI'));
+    });
+
+    test('factual builders: no prescriptions, keep inspector recs, no risk-speculation', () {
+      final cliches = <String>[
+        AiQueueClicheBuilder.buildElementClicheFromLabels(
+          elementLabel: 'Капот',
+          selectedTagLabels: const ['Скол'],
+          seriousTagLabels: const <String>{},
+        ),
+        AiQueueClicheBuilder.buildDocsCheckCommentCliche(
+          ownerMatch: false,
+          vinMatch: true,
+          engineMatch: true,
+        ),
+        AiQueueClicheBuilder.buildTdCommentCliche(
+          tdMode: 'problems',
+          subsystemStatus: const <String, bool?>{'engine': false},
+          subsystemTags: const <String, List<String>>{},
+        ),
+        AiQueueClicheBuilder.buildLegalCommentCliche(
+          filesCount: 1,
+          fileNames: const ['ПТС'],
+        ),
+        AiQueueClicheBuilder.buildReportFactsCliche(reportLabel: 'Осмотр'),
+      ];
+      for (final cliche in cliches) {
+        // факты-только + запрет советов покупателю
+        expect(cliche, contains('ничего не домысливай'), reason: cliche);
+        expect(cliche, contains('Не давай покупателю советов'), reason: cliche);
+        // исключение: рекомендацию инспектора из его текста сохраняем
+        expect(cliche, contains('сохрани её как есть'), reason: cliche);
+        // убраны провокации к домыслам о последствиях
+        expect(cliche, isNot(contains('какие риски это несёт')));
+        expect(cliche, isNot(contains('какие риски они несут')));
+      }
     });
   });
 }

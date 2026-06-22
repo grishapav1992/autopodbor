@@ -17,8 +17,8 @@ import 'package:flutter_application_1/data/api/storage_api.dart'
 ///   • keep responses short & concrete (no «был выполнен анализ…» fluff)
 ///   • route them to a non-technical reader (the buyer)
 ///   • prevent the model from inventing facts when input is sparse
-///   • calibrate the «серьёзное / некритичное» tag severity into a
-///     consistent buy / haggle / refuse axis
+///   • order findings by «серьёзное / некритичное» severity (facts only —
+///     the report never advises buy/haggle/refuse; see [_kNoPrescriptions])
 class AiQueueClicheBuilder {
   AiQueueClicheBuilder._();
 
@@ -64,10 +64,9 @@ class AiQueueClicheBuilder {
       'связанные признаки. ';
 
   /// Severity calibration — used by element + test-drive cliché where
-  /// tags carry «серьёзное / некритичное» wire-labels. The model now
-  /// has a consistent mapping of those tokens to a
-  /// buy-with-haggle-or-refuse axis instead of guessing the impact
-  /// each time.
+  /// tags carry «серьёзное / некритичное» wire-labels. Gives the model a
+  /// consistent rule for ORDERING findings by impact (serious first). Does
+  /// NOT license buy/repair advice — that's banned by [_kNoPrescriptions].
   static const String _kSeverityCalibration =
       'Калибровка серьёзности тегов: '
       '«серьёзное» = существенный дефект (влияет на безопасность, '
@@ -95,6 +94,21 @@ class AiQueueClicheBuilder {
       'непроверенные (НЕ в позитивном ключе). Если есть блок '
       '«Осмотрено без замечаний: …» — можешь подтвердить их '
       'исправность одной фразой. Не объединяй эти две группы. ';
+
+  /// Facts-only / no-prescription guard. The report states OBSERVED facts;
+  /// it must not advise the buyer what to do (buy, haggle, repair, where to
+  /// go) nor speculate beyond the recorded data. One carve-out: if the
+  /// inspector's own input text already contains a recommendation, keep it
+  /// verbatim — never invent new ones. Deliberately bans buyer-advice
+  /// SEMANTICALLY (not by word-list), so factual caveats like «требуется
+  /// отдельная проверка» for un-inspected items still survive.
+  static const String _kNoPrescriptions =
+      'Пиши только факты и зафиксированное состояние; ничего не домысливай '
+      'и не предполагай сверх данных. Не давай покупателю советов и не '
+      'предписывай действий — не пиши, покупать ли авто, торговаться, '
+      'ремонтировать или куда-то обращаться. Оценку рисков давай нейтрально, '
+      'без призыва к действию. Исключение: если рекомендация уже есть в '
+      'исходном тексте ниже — сохрани её как есть, но своих не добавляй. ';
 
   // ── Public cliché builders ────────────────────────────────────────────
 
@@ -211,6 +225,7 @@ class AiQueueClicheBuilder {
         '$_kShortLengthCap'
         '$mustMentionRule'
         '$_kAntiHallucination'
+        '$_kNoPrescriptions'
         'Если приложены фото — учитывай их визуальную информацию. '
         'Верни только финальный текст замечания, без преамбулы и markdown. '
         'Дополнительный контекст: {text}';
@@ -237,12 +252,13 @@ class AiQueueClicheBuilder {
         '- Идентификационные номера (VIN): ${label(vinMatch)}\n'
         '- Модель двигателя: ${label(engineMatch)}\n\n'
         'На основе этих данных и исходного комментария ниже сформулируй '
-        'текст для отчёта о том, что именно не сходится и какие риски '
-        'это несёт для покупателя.\n\n'
+        'текст для отчёта о том, что именно не сходится — только факты, '
+        'без домыслов о причинах.\n\n'
         '$_kAudienceTone'
         '$_kReportVoice'
         '$_kShortLengthCap'
         '$_kAntiHallucination'
+        '$_kNoPrescriptions'
         'Возвращай только готовый текст без преамбулы и markdown.\n\n'
         'Исходный комментарий: {text}';
   }
@@ -281,8 +297,7 @@ class AiQueueClicheBuilder {
         '  "engineType": ОДНО из ["Бензин","Дизель","Гибрид","Электро",'
         '"Газ/Бензин"] или "",\n'
         '  "transmission": ОДНО из ["АКПП","МКПП","Робот","Вариатор"] или "",\n'
-        '  "driveType": ОДНО из ["Передний","Задний","Полный"] или "",\n'
-        '  "equipment": краткое название комплектации (до 80 символов) или ""\n'
+        '  "driveType": ОДНО из ["Передний","Задний","Полный"] или ""\n'
         '}\n'
         'Enum-поля пиши ДОСЛОВНО как в списках выше (та же раскладка и '
         'регистр), иначе они не будут приняты. Для электромобиля объём '
@@ -323,10 +338,7 @@ class AiQueueClicheBuilder {
         'Тест-драйв:\n\n'
         'Материалы проверки:\n\n'
         'Не осмотрено: <через запятую, если есть>\n\n'
-        'Только фактическое описание состояния по разделам. Не давай '
-        'советов о покупке и не пиши, что покупателю нужно сделать '
-        '(никаких «рекомендуется», «требуется», «стоит»). '
-        'Оценку рисков описывай нейтрально, без призыва к действию.\n\n'
+        'Только фактическое описание состояния по разделам.\n\n'
         'Если в контексте есть «Предыдущий черновик» — '
         'возьми из него факты и формулировки, но ОБЯЗАТЕЛЬНО '
         'переоформи в шаблон выше с заголовками. Сплошной абзац НЕ '
@@ -336,6 +348,7 @@ class AiQueueClicheBuilder {
         '$_kReportVoice'
         '$_kVehicleContextUse'
         '$_kAntiHallucination'
+        '$_kNoPrescriptions'
         '$_kCoverageHonesty'
         'Без markdown (никаких **, ##, -/•). Без вступлений. '
         'Начинай сразу с «Кузов:» (или первого непропущенного '
@@ -351,21 +364,30 @@ class AiQueueClicheBuilder {
   static String buildLegalCommentCliche({
     required int filesCount,
     required List<String> fileNames,
+    String checksInfo = '',
   }) {
     final filesPart = filesCount == 0
-        ? 'Документы не приложены. '
-        : 'Приложено документов: $filesCount '
-              '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}). ';
-    return 'Ты эксперт по приёмке автомобилей. '
-        'Сформулируй текст для блока «Материалы проверки» отчёта. '
+        ? ''
+        : 'Приложенные документы: $filesCount '
+              '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}).\n';
+    final checksPart = checksInfo.trim().isEmpty
+        ? ''
+        : 'Факты выполненных проверок:\n${checksInfo.trim()}\n';
+    return 'Ты редактор отчёта об автомобиле. '
+        'Сформулируй краткий текст для блока «Материалы проверки».\n'
         '$filesPart'
-        'На основе приложенных документов и исходного комментария ниже '
-        'опиши ключевые моменты: что было проверено, какие риски/'
-        'нюансы выявлены. Без советов о действиях клиента.\n\n'
+        '$checksPart'
+        'Используй ТОЛЬКО факты, дословно переданные выше, и содержательный '
+        'исходный комментарий ниже. Назови только реально выполненные проверки '
+        'и их результаты. Не называй поставщика данных, внутренние сервисы или '
+        'автоматический способ проверки. Не добавляй отсутствующие сведения — '
+        'даже в виде оговорок о том, что они не подтверждены, не приложены или '
+        'не проверены. Если документов нет в блоке выше, вообще не упоминай '
+        'документы. Не делай общих выводов за пределами переданных фактов. '
+        'Длина: 1-3 коротких предложения.\n\n'
         '$_kAudienceTone'
         '$_kReportVoice'
-        '$_kShortLengthCap'
-        '$_kAntiHallucination'
+        '$_kNoPrescriptions'
         'Возвращай только готовый текст без преамбулы и markdown.\n\n'
         'Исходный комментарий: {text}';
   }
@@ -447,7 +469,7 @@ class AiQueueClicheBuilder {
         '$carLine'
         'На основе этих данных и исходного комментария ниже сформулируй '
         'текст для отчёта о поведении автомобиля на ходу. Если есть '
-        'замечания — опиши их конкретно и какие риски они несут. '
+        'замечания — опиши их конкретно, только факты. '
         'Если все системы помечены «без замечаний» — кратко подтверди '
         'исправность одной фразой, без перечисления каждой системы. '
         'Если часть систем «не отмечено» — отдельно упомяни, что эти '
@@ -458,6 +480,7 @@ class AiQueueClicheBuilder {
         '$_kSeverityCalibration'
         '$_kShortLengthCap'
         '$_kAntiHallucination'
+        '$_kNoPrescriptions'
         'Возвращай только готовый текст без преамбулы и markdown.\n\n'
         'Исходный комментарий: {text}';
   }

@@ -459,12 +459,13 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       );
 
       final byKey = _vinParamTargetsByKey();
+      // Комплектация (parsed.equipment) намеренно НЕ заполняется: по VIN её
+      // надёжно не определить, ИИ угадывал бы. Заполняем только определимые поля.
       final values = <String, String>{
         'engineVolume': parsed.engineVolume,
         'engineType': parsed.engineType,
         'transmission': parsed.transmission,
         'driveType': parsed.driveType,
-        'equipment': parsed.equipment,
       };
       var filledAny = false;
       _setStateSafely(() {
@@ -513,9 +514,36 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
           .map((file) => file.name.trim())
           .where((name) => name.isNotEmpty)
           .toList();
+      // Человекочитаемые результаты ApiCloud-проверок (только терминальные) → в
+      // промпт, чтобы ИИ учитывал залог/такси/ГОСТ/ФГИС, а не только файлы и текст.
+      final checkLines = <String>[];
+      for (final c in _legalCheckResults) {
+        final type = (c['checkType'] ?? '').toString();
+        if (type == 'api_cloud_converter_search') continue; // не материал проверки
+        final status = (c['status'] ?? '').toString().toLowerCase();
+        if (status.isEmpty ||
+            status == 'pending' ||
+            status == 'processing' ||
+            status == 'in_progress' ||
+            status == 'running') {
+          continue; // ещё не доехало — не включаем
+        }
+        final title =
+            type.isEmpty ? 'Проверка' : sparkJoyLegalCheckTypeLabel(type);
+        final summary = _legalNormalizedToText(c['responseNormalized']).trim();
+        final result = summary.isNotEmpty
+            ? summary
+            : (status == 'not_found'
+                  ? 'не найдено'
+                  : (status == 'error' || status == 'failed'
+                        ? 'ошибка проверки'
+                        : 'выполнено'));
+        checkLines.add('$title — $result');
+      }
       final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
         filesCount: _legalFiles.length,
         fileNames: fileNames,
+        checksInfo: checkLines.join('; '),
       );
       final inputText = _legalNoteController.text.trim();
       final newChatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
