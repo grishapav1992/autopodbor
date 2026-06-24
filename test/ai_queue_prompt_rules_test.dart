@@ -50,10 +50,7 @@ void main() {
     });
 
     test('legal cliche does not advise client actions', () {
-      final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
-        filesCount: 2,
-        fileNames: const ['ПТС', 'СТС'],
-      );
+      final cliche = AiQueueClicheBuilder.buildLegalCommentCliche();
 
       expect(cliche, isNot(contains('рекомендуются клиенту')));
     });
@@ -62,8 +59,6 @@ void main() {
       'legal cliche exposes only performed facts without provider jargon',
       () {
         final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
-          filesCount: 0,
-          fileNames: const [],
           checksInfo:
               'Залог (реестр нотариусов) — не обнаружено; '
               'Работа в такси — не обнаружено',
@@ -76,6 +71,8 @@ void main() {
         expect(cliche, contains('даже в виде оговорок'));
         expect(cliche, isNot(contains('ApiCloud')));
         expect(cliche, isNot(contains('Документы не приложены')));
+        // Имена/количество файлов больше НЕ передаются (содержимое недоступно).
+        expect(cliche, isNot(contains('Приложенные документы')));
         expect(cliche, isNot(contains('остались непроверенными')));
       },
     );
@@ -118,10 +115,7 @@ void main() {
           subsystemStatus: const <String, bool?>{'engine': false},
           subsystemTags: const <String, List<String>>{},
         ),
-        AiQueueClicheBuilder.buildLegalCommentCliche(
-          filesCount: 1,
-          fileNames: const ['ПТС'],
-        ),
+        AiQueueClicheBuilder.buildLegalCommentCliche(),
         AiQueueClicheBuilder.buildReportFactsCliche(reportLabel: 'Осмотр'),
       ];
       for (final cliche in cliches) {

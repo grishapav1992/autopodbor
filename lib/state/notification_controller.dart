@@ -244,8 +244,14 @@ class NotificationController extends GetxController {
   }
 
   void _recomputeUnread() {
+    // Конвертерные уведомления (api_cloud_converter_search) скрыты из ленты как
+    // внутренний инструмент идентификации (см. spark_joy_notifications_screen).
+    // Значит и в бейдж-счётчик их не считаем — иначе колокольчик показывает
+    // непрочитанный спам, которого в открытом списке нет.
     unreadCount.value = items
-        .where((n) => n.status == NotificationStatus.pending)
+        .where(
+          (n) => n.status == NotificationStatus.pending && !n.isLegalConverter,
+        )
         .length;
   }
 

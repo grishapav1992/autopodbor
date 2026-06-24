@@ -1,7 +1,0 @@
-<svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg">
-  <path id="lighting_general" d="M48,28 H272 A30,30 0 0 1 302,58 V148 A30,30 0 0 1 272,178 H48 A30,30 0 0 1 18,148 V58 A30,30 0 0 1 48,28 Z" fill="none" stroke="#15181b" stroke-width="2"/>
-  <path id="taillights_rear" d="M48,56 H102 A8,8 0 0 1 110,64 V88 A8,8 0 0 1 102,96 H48 A8,8 0 0 1 40,88 V64 A8,8 0 0 1 48,56 Z M218,56 H272 A8,8 0 0 1 280,64 V88 A8,8 0 0 1 272,96 H218 A8,8 0 0 1 210,88 V64 A8,8 0 0 1 218,56 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-  <path id="brake_lights" d="M51,60 H99 A3,3 0 0 1 102,63 V67 A3,3 0 0 1 99,70 H51 A3,3 0 0 1 48,67 V63 A3,3 0 0 1 51,60 Z M221,60 H269 A3,3 0 0 1 272,63 V67 A3,3 0 0 1 269,70 H221 A3,3 0 0 1 218,67 V63 A3,3 0 0 1 221,60 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-  <path id="turn_signals" d="M49,80 H69 A3,3 0 0 1 72,83 V89 A3,3 0 0 1 69,92 H49 A3,3 0 0 1 46,89 V83 A3,3 0 0 1 49,80 Z M251,80 H271 A3,3 0 0 1 274,83 V89 A3,3 0 0 1 271,92 H251 A3,3 0 0 1 248,89 V83 A3,3 0 0 1 251,80 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-  <path id="plate_light" d="M151,150 H169 A3,3 0 0 1 172,153 V157 A3,3 0 0 1 169,160 H151 A3,3 0 0 1 148,157 V153 A3,3 0 0 1 151,150 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-</svg>

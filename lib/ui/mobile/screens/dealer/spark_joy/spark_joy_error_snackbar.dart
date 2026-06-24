@@ -84,7 +84,13 @@ String _cleanTechnicalText(String raw) {
   var text = raw.trim();
   text = text.replaceFirst(RegExp(r'^Exception:\s*'), '');
   text = text.replaceFirst(RegExp(r'^Bad response from [^:]+:\s*'), '');
-  text = text.replaceFirst(RegExp(r'^Storage\.[A-Za-z0-9_]+:\s*'), '');
+  // Срезаем префикс ЛЮБОГО RPC-неймспейса (был только Storage.) — иначе
+  // ошибки Notification./ObjectStorage./AiQueue. показывались с техничным
+  // «Notification.SendNotification: …» в начале (баг приглашения в штат).
+  text = text.replaceFirst(
+    RegExp(r'^(?:Storage|Notification|ObjectStorage|AiQueue)\.[A-Za-z0-9_]+:\s*'),
+    '',
+  );
   return text.trim();
 }
 
@@ -351,6 +357,22 @@ String _genericReadableMessage(String rawMessage) {
   }
   if (lower.contains('success=false')) {
     return 'Сервер не подтвердил выполнение действия';
+  }
+  // Приглашение в штат (Notification.SendNotification) — бэк отдаёт текст на
+  // английском. Маппим в понятное и НЕпугающее сообщение: дубль приглашения
+  // не «ошибка», а сигнал «уже отправлено, ждём принятия».
+  if (lower.contains('pending invitation') &&
+      (lower.contains('already exist') || lower.contains('already sent'))) {
+    return 'Этому специалисту уже отправлено приглашение — оно ожидает принятия.';
+  }
+  if (lower.contains('invitation') &&
+      (lower.contains('already') || lower.contains('exists'))) {
+    return 'Приглашение этому специалисту уже отправлено.';
+  }
+  if (lower.contains('already') &&
+      lower.contains('specialist') &&
+      (lower.contains('compan') || lower.contains('staff'))) {
+    return 'Этот специалист уже состоит в штате компании.';
   }
   return rawMessage.isEmpty ? 'Неизвестная ошибка' : rawMessage;
 }

@@ -104,7 +104,6 @@ part 'spark_joy_overview_controller.dart';
 part 'spark_joy_steps_registry.dart';
 part 'spark_joy_media_groups_registry.dart';
 part 'spark_joy_media_tags_registry.dart';
-part 'spark_joy_inspection_diagram.dart';
 part 'spark_joy_summary_registry.dart';
 part 'spark_joy_test_drive_registry.dart';
 part 'spark_joy_summary_texts_registry.dart';
@@ -220,10 +219,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _legalReviewMetaLoadStarted = false;
   // P2 — VIN↔госномер конвертер (api_cloud_converter_search) в шаге «Авто».
   bool _vinConverterBusy = false;
-  // Текст прогресса во время ожидания конвертера (ApiCloud-воркер бывает
-  // медленным, ≈84с) — чтобы спиннер не выглядел зависшим и пользователь не
-  // прерывал/не перезапускал (новый платный запрос).
-  String _vinConverterStatus = '';
   // Дедуп/кэш конвертера (платный RunBatchLegalReview): один и тот же
   // vin/госномер НЕ должен порождать новый платный запрос. Кэшируем
   // терминальный результат (found/not_found) и схлопываем одновременные

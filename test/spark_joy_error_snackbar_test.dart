@@ -61,6 +61,27 @@ void main() {
       expect(readable.supportText, contains('Техническая ошибка:'));
     });
 
+    test('maps invite "pending invitation already exists" to friendly text', () {
+      final readable = sparkJoyReadableError(
+        Exception(
+          'Notification.SendNotification: Pending invitation to this '
+          'specialist already exists.',
+        ),
+      );
+      expect(
+        readable.message,
+        'Этому специалисту уже отправлено приглашение — оно ожидает принятия.',
+      );
+      // Сырой техничный текст и метод убраны из сообщения, но остаются в
+      // support-тексте для диагностики.
+      expect(readable.message, isNot(contains('Notification.SendNotification')));
+      expect(readable.message, isNot(contains('Pending invitation')));
+      expect(
+        readable.supportText,
+        contains('Метод: Notification.SendNotification'),
+      );
+    });
+
     test('maps PermissionDeniedException to a clean RBAC message (B1)', () {
       final readable = sparkJoyReadableError(
         PermissionDeniedException('Storage.GetCompanySpecialists', 'forbidden'),

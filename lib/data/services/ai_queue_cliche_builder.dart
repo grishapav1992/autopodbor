@@ -357,33 +357,26 @@ class AiQueueClicheBuilder {
   }
 
   /// Cliché for the «Комментарий специалиста» field on the «Материалы
-  /// проверки» step. Bakes in the count and (top-3 by name length)
-  /// names of the documents the inspector attached so the model can
-  /// reference them in the comment without the user repeating each
-  /// filename manually. The inspector's typed text flows through {text}.
-  static String buildLegalCommentCliche({
-    required int filesCount,
-    required List<String> fileNames,
-    String checksInfo = '',
-  }) {
-    final filesPart = filesCount == 0
-        ? ''
-        : 'Приложенные документы: $filesCount '
-              '(${fileNames.take(3).join(", ")}${fileNames.length > 3 ? ', …' : ''}).\n';
+  /// проверки» step. Bakes in the FACTUAL ApiCloud check results
+  /// ([checksInfo]) so the model summarises what was checked + the outcomes.
+  /// The attached documents' CONTENT is not available to the model, so their
+  /// names/count are deliberately NOT passed (knowing «ПТС.pdf ×2» without
+  /// content is useless and only invites hallucination) — the prompt tells
+  /// the model not to reference the documents at all. Inspector text → {text}.
+  static String buildLegalCommentCliche({String checksInfo = ''}) {
     final checksPart = checksInfo.trim().isEmpty
         ? ''
         : 'Факты выполненных проверок:\n${checksInfo.trim()}\n';
     return 'Ты редактор отчёта об автомобиле. '
         'Сформулируй краткий текст для блока «Материалы проверки».\n'
-        '$filesPart'
         '$checksPart'
         'Используй ТОЛЬКО факты, дословно переданные выше, и содержательный '
         'исходный комментарий ниже. Назови только реально выполненные проверки '
         'и их результаты. Не называй поставщика данных, внутренние сервисы или '
-        'автоматический способ проверки. Не добавляй отсутствующие сведения — '
-        'даже в виде оговорок о том, что они не подтверждены, не приложены или '
-        'не проверены. Если документов нет в блоке выше, вообще не упоминай '
-        'документы. Не делай общих выводов за пределами переданных фактов. '
+        'автоматический способ проверки. Не упоминай приложенные документы и их '
+        'содержимое — оно недоступно. Не добавляй отсутствующие сведения — '
+        'даже в виде оговорок о том, что они не подтверждены или не проверены. '
+        'Не делай общих выводов за пределами переданных фактов. '
         'Длина: 1-3 коротких предложения.\n\n'
         '$_kAudienceTone'
         '$_kReportVoice'

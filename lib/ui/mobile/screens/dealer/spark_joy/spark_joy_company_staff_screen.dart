@@ -363,6 +363,38 @@ class _SparkJoyCompanyStaffScreenState
     return '+7$tail';
   }
 
+  /// Определяет специалиста по введённому телефону БЕЗ отправки приглашения —
+  /// чтобы диалог показал, кого именно пригласят (как вкладка «По телефону»
+  /// при назначении специалиста на заявку).
+  Future<InvitePhoneLookupResult> _lookupSpecialistByPhone(
+    String rawPhone,
+  ) async {
+    final phone = _normalizePhone(rawPhone);
+    if (phone.isEmpty) {
+      return const InvitePhoneLookupResult.notFound();
+    }
+    final page = await storage_api.StorageApi.getSpecialists(
+      search: phone,
+      limit: 20,
+    );
+    final phoneTail = phone.replaceAll(RegExp(r'\D'), '').substring(1);
+    final exact = page.specialists.where((specialist) {
+      final candidate = (specialist.phone ?? '').replaceAll(RegExp(r'\D'), '');
+      final candidateTail = candidate.length >= 10
+          ? candidate.substring(candidate.length - 10)
+          : candidate;
+      return candidateTail == phoneTail;
+    }).toList();
+    if (exact.isEmpty) {
+      return const InvitePhoneLookupResult.notFound();
+    }
+    final specialist = exact.first;
+    if (_staff.any((staff) => staff.id == specialist.id)) {
+      return InvitePhoneLookupResult.alreadyInStaff(specialist);
+    }
+    return InvitePhoneLookupResult.available(specialist);
+  }
+
   Future<String> _sendStaffInvitationByPhone(String rawPhone) async {
     final phone = _normalizePhone(rawPhone);
     if (phone.isEmpty) {
@@ -429,8 +461,10 @@ class _SparkJoyCompanyStaffScreenState
   Future<void> _openInviteByPhoneDialog() async {
     final invitedName = await showDialog<String>(
       context: context,
-      builder: (dialogContext) =>
-          SparkJoyInviteByPhoneDialog(onInvite: _sendStaffInvitationByPhone),
+      builder: (dialogContext) => SparkJoyInviteByPhoneDialog(
+        onLookup: _lookupSpecialistByPhone,
+        onInvite: _sendStaffInvitationByPhone,
+      ),
     );
     if (invitedName == null || !mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

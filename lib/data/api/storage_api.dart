@@ -2833,13 +2833,23 @@ class StorageApi {
     String? gosNumber,
     Duration timeout = const Duration(seconds: 15),
   }) async {
+    // DIAG: trace the paid start call to find why the browser hangs.
+    developer.log(
+      'start: vin="$vin" gosNumber="$gosNumber" timeout=${timeout.inSeconds}s',
+      name: 'StorageApi.converter',
+    );
     final started = await runBatchLegalReview(
       checkTypes: const ['api_cloud_converter_search'],
       vin: vin,
       gosNumber: gosNumber,
       timeout: timeout,
     );
-    return (started['batchNumber'] ?? '').toString().trim();
+    final batchNumber = (started['batchNumber'] ?? '').toString().trim();
+    developer.log(
+      'start done: batchNumber="$batchNumber" raw=${started.keys.toList()}',
+      name: 'StorageApi.converter',
+    );
+    return batchNumber;
   }
 
   /// Опрашивает СУЩЕСТВУЮЩИЙ батч конвертера (**бесплатно** — только чтения
@@ -2868,6 +2878,11 @@ class StorageApi {
       return next > maxInterval ? maxInterval : next;
     }
 
+    // DIAG: trace each poll to find why the browser never resolves.
+    developer.log(
+      'poll start: batch="$batchNumber" maxWait=${maxWait.inSeconds}s',
+      name: 'StorageApi.converter',
+    );
     var interval = firstInterval;
     var elapsed = Duration.zero;
     var poll = 0;
@@ -2884,10 +2899,15 @@ class StorageApi {
           batchNumber: batchNumber,
           timeout: const Duration(seconds: 10),
         );
-      } catch (_) {
+      } catch (e) {
         // Таймаут/сбой поллинга: пара попыток, потом считаем, что бэк не
         // отвечает вовремя → timedOut (а не «не найдено»), чтобы не растягивать
         // цикл на минуты на тормозящем воркере.
+        developer.log(
+          'poll #$poll THREW after ${elapsed.inSeconds}s: $e '
+          '(failStreak=${failStreak + 1})',
+          name: 'StorageApi.converter',
+        );
         if (++failStreak >= 3) return _timedOutVinPlateResult;
         interval = grow(interval);
         continue;
@@ -2902,23 +2922,55 @@ class StorageApi {
           : <Map<String, dynamic>>[];
       if (checks.isEmpty) {
         // Пустой ответ — несколько попыток, потом сдаёмся.
+        developer.log(
+          'poll #$poll EMPTY (no checks) after ${elapsed.inSeconds}s '
+          '(emptyStreak=${emptyStreak + 1})',
+          name: 'StorageApi.converter',
+        );
         if (++emptyStreak >= 3) return _emptyVinPlateResult;
         interval = grow(interval);
         continue;
       }
       emptyStreak = 0;
-      if (!legalReviewBatchPending(checks)) {
+      // DIAG: log the raw status set + checkTypes seen.
+      final statusSet = checks
+          .map((c) => '${c['checkType']}:${c['status']}')
+          .join(',');
+      final pending = legalReviewBatchPending(checks);
+      developer.log(
+        'poll #$poll after ${elapsed.inSeconds}s: pending=$pending '
+        'statuses=[$statusSet]',
+        name: 'StorageApi.converter',
+      );
+      if (!pending) {
         for (final c in checks) {
           if ((c['checkType'] ?? '').toString() ==
               'api_cloud_converter_search') {
-            return parseVinPlateConverterResult(c['responseNormalized']);
+            final normalized = c['responseNormalized'];
+            developer.log(
+              'poll TERMINAL: converter responseNormalized='
+              '${normalized is String ? normalized.substring(0, normalized.length > 200 ? 200 : normalized.length) : normalized}',
+              name: 'StorageApi.converter',
+            );
+            return parseVinPlateConverterResult(normalized);
           }
         }
+        developer.log(
+          'poll TERMINAL but NO converter check in batch '
+          '(types=${checks.map((c) => c['checkType']).join(',')})',
+          name: 'StorageApi.converter',
+        );
         return _emptyVinPlateResult;
       }
       interval = grow(interval);
     }
     // Окно ожидания исчерпано, проверка всё ещё pending → воркер лагает.
+    developer.log(
+      'poll TIMED OUT after ${elapsed.inSeconds}s '
+      '(batch never left pending)',
+      name: 'StorageApi.converter',
+      level: 900, // warning level
+    );
     return _timedOutVinPlateResult;
   }
 

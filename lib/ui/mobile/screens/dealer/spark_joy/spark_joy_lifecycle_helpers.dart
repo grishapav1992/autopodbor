@@ -99,15 +99,16 @@ extension _SparkJoyLifecycleHelpers on _SparkJoyCreateReportScreenState {
     });
   }
 
-  /// 5 целевых полей «Параметров» по стабильным ключам (совпадают с ключами
+  /// Целевые поля «Параметров» по стабильным ключам (совпадают с ключами
   /// `parseVinParamsAiResult` / `_vinAutofilledValues`). Единый источник для
-  /// проверки пустоты, очистки stale-значений и записи.
+  /// проверки пустоты, очистки stale-значений и записи. Комплектация (trim)
+  /// НАМЕРЕННО не входит: по VIN её надёжно не определить (ИИ угадывал бы),
+  /// поэтому ИИ её не заполняет — только объём/тип двигателя/КПП/привод.
   Map<String, TextEditingController> _vinParamTargetsByKey() => {
     'engineVolume': _engineVolumeController,
     'engineType': _engineTypeController,
     'transmission': _gearboxTypeController,
     'driveType': _driveTypeController,
-    'equipment': _trimController,
   };
 
   /// Есть ли среди целевых полей хоть одно пустое. Если нет (и нет stale

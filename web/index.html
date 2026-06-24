@@ -1,6 +1,11 @@
 <!DOCTYPE html>
-<html>
+<!-- lang+translate="no": запрещаем авто-перевод страницы. Google Translate
+     мутирует DOM под Flutter web → краш `removeChild на null` в микротаск-петле
+     (зависал результат конвертера/любое async-обновление UI). -->
+<html lang="ru" translate="no">
 <head>
+  <meta name="google" content="notranslate">
+  <meta name="robots" content="notranslate">
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.

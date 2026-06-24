@@ -397,16 +397,29 @@ class UserSimplePreferences {
     ),
   );
 
+  /// Writes a token to secure storage; on failure falls back to plain
+  /// SharedPreferences so the session still persists and the auth flow is
+  /// never aborted by a storage hiccup. Notably web: flutter_secure_storage
+  /// relies on SubtleCrypto and can throw on write — that must NOT break login
+  /// (the backend Auth already succeeded). [_readTokenWithMigration] reads the
+  /// plain copy back. A successful secure write erases any plain copy.
+  static Future<void> _writeToken(String key, String value) async {
+    try {
+      await _secure.write(key: key, value: value);
+      await (await _prefs()).remove(key);
+    } catch (_) {
+      try {
+        await (await _prefs()).setString(key, value);
+      } catch (_) {}
+    }
+  }
+
   static Future<void> setAuthTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
-    await _secure.write(key: _accessTokenKey, value: accessToken);
-    await _secure.write(key: _refreshTokenKey, value: refreshToken);
-    // Erase any legacy plaintext copies from before the secure-storage switch.
-    final prefs = await _prefs();
-    await prefs.remove(_accessTokenKey);
-    await prefs.remove(_refreshTokenKey);
+    await _writeToken(_accessTokenKey, accessToken);
+    await _writeToken(_refreshTokenKey, refreshToken);
   }
 
   static Future<String?> getAccessToken() =>
@@ -476,8 +489,7 @@ class UserSimplePreferences {
   }
 
   static Future<void> setNotificationToken(String token) async {
-    await _secure.write(key: _notificationTokenKey, value: token);
-    await (await _prefs()).remove(_notificationTokenKey);
+    await _writeToken(_notificationTokenKey, token);
   }
 
   static Future<String?> getNotificationToken() =>

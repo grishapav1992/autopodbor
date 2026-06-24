@@ -57,6 +57,12 @@ extension _SparkJoyFormHelpersMethods on _SparkJoyCreateReportScreenState {
         ? controller.text.trim()
         : null;
     return DropdownButtonFormField<String>(
+      // FormField берёт `initialValue` только при первом построении и
+      // игнорирует его при rebuild → программная установка `controller.text`
+      // (ИИ-автозаполнение по VIN, конвертер) НЕ отображалась бы в дропдауне.
+      // Ключ, завязанный на текущее значение, пересоздаёт FormField при смене →
+      // выбор виден. Hint в ключе — чтобы соседние дропдауны не коллизили.
+      key: ValueKey('$hint::${selected ?? ''}'),
       initialValue: selected,
       // Cap the popup height so long option lists (e.g. 43 engine volumes
       // from 0.8→7.0L) don't render near-full-screen. Short lists like

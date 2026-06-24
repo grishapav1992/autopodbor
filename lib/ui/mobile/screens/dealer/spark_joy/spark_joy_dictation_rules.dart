@@ -510,12 +510,10 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     final messenger = ScaffoldMessenger.of(context);
     _setStateSafely(() => _legalCommentAiBusy = true);
     try {
-      final fileNames = _legalFiles
-          .map((file) => file.name.trim())
-          .where((name) => name.isNotEmpty)
-          .toList();
-      // Человекочитаемые результаты ApiCloud-проверок (только терминальные) → в
-      // промпт, чтобы ИИ учитывал залог/такси/ГОСТ/ФГИС, а не только файлы и текст.
+      // Содержимое приложенных документов ИИ не читает (файлы в вызов не
+      // передаются), поэтому имена/количество в промпт НЕ кладём — только
+      // человекочитаемые результаты ApiCloud-проверок (терминальные) + текст
+      // инспектора. Так ИИ опирается на залог/такси/ГОСТ/ФГИС, а не на файлы.
       final checkLines = <String>[];
       for (final c in _legalCheckResults) {
         final type = (c['checkType'] ?? '').toString();
@@ -541,8 +539,6 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         checkLines.add('$title — $result');
       }
       final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
-        filesCount: _legalFiles.length,
-        fileNames: fileNames,
         checksInfo: checkLines.join('; '),
       );
       final inputText = _legalNoteController.text.trim();

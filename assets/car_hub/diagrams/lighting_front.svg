@@ -1,7 +1,0 @@
-<svg viewBox="0 0 320 200" xmlns="http://www.w3.org/2000/svg">
-  <path id="lighting_general" d="M52,28 H268 A34,34 0 0 1 302,62 V144 A34,34 0 0 1 268,178 H52 A34,34 0 0 1 18,144 V62 A34,34 0 0 1 52,28 Z" fill="none" stroke="#15181b" stroke-width="2"/>
-  <path id="headlights_front" d="M52,58 H96 A10,10 0 0 1 106,68 V78 A10,10 0 0 1 96,88 H52 A10,10 0 0 1 42,78 V68 A10,10 0 0 1 52,58 Z M224,58 H268 A10,10 0 0 1 278,68 V78 A10,10 0 0 1 268,88 H224 A10,10 0 0 1 214,78 V68 A10,10 0 0 1 224,58 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-  <path id="drl" d="M49,90 H99 A3,3 0 0 1 102,93 V94 A3,3 0 0 1 99,97 H49 A3,3 0 0 1 46,94 V93 A3,3 0 0 1 49,90 Z M221,90 H271 A3,3 0 0 1 274,93 V94 A3,3 0 0 1 271,97 H221 A3,3 0 0 1 218,94 V93 A3,3 0 0 1 221,90 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-  <path id="fog_lights" d="M52,150 A12,12 0 1 0 76,150 A12,12 0 1 0 52,150 Z M244,150 A12,12 0 1 0 268,150 A12,12 0 1 0 244,150 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-  <path id="turn_signals" d="M48,62 H52 A4,4 0 0 1 56,66 V80 A4,4 0 0 1 52,84 H48 A4,4 0 0 1 44,80 V66 A4,4 0 0 1 48,62 Z M268,62 H272 A4,4 0 0 1 276,66 V80 A4,4 0 0 1 272,84 H268 A4,4 0 0 1 264,80 V66 A4,4 0 0 1 268,62 Z" fill="#5d6b79" fill-opacity="0.10" stroke="#2b2f33" stroke-width="1.2"/>
-</svg>

@@ -262,7 +262,6 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     }
     _setStateSafely(() {
       _vinConverterBusy = true;
-      _vinConverterStatus = 'Запрос отправлен в ApiCloud…';
       _vinLookupInfo = const <String, String>{};
     });
     var resumeVinParamsAutofill = false;
@@ -270,15 +269,6 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       final r = await _runConverterDeduped(
         vin: fromVin ? vin : null,
         gosNumber: fromVin ? null : plate,
-        onProgress: (poll, elapsed) {
-          if (!mounted) return;
-          // Бэкенд/ApiCloud бывает медленным (~84с) — показываем, что идёт
-          // работа, чтобы спиннер не выглядел зависшим и его не прерывали.
-          _setStateSafely(
-            () => _vinConverterStatus =
-                'ApiCloud обрабатывает запрос… ${elapsed.inSeconds} с',
-          );
-        },
       );
       if (!mounted) return;
 
@@ -394,7 +384,6 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       if (mounted) {
         _setStateSafely(() {
           _vinConverterBusy = false;
-          _vinConverterStatus = '';
         });
         // Запись найденного VIN/марки/модели триггерит debounce ещё во время
         // busy и тот корректно прекращается. После снятия busy запускаем его
