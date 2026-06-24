@@ -24,9 +24,23 @@ import 'package:flutter_application_1/data/api/spki_extractor.dart';
 /// The WebSocket transport shares the same pinning via [pinnedHttpClient].
 http.Client makePinnedHttpClient() {
   if (!CertPins.enabled) {
+    // In debug we mirror the behaviour of the top-level `http.post` helper,
+    // which opens a fresh client per request and closes it afterwards. A
+    // long-lived singleton client here was observed to hang the first RPC
+    // (Storage.Auth) for 30s on a physical iOS device: a stuck keep-alive
+    // connection blocks subsequent requests on the shared pool. Returning a
+    // short-lived client lets each request own its own connection lifecycle.
     return http.Client();
   }
-  return IOClient(pinnedHttpClient);
+  // Release: give EACH RPC client its own pinned [HttpClient] (NOT the shared
+  // singleton). On iOS a stale keep-alive connection left in the *shared* pool
+  // by an earlier call (bootstrap RefreshToken / the notification WebSocket)
+  // hung the next Storage.Auth for ~30s — the release-only login failure
+  // (debug works because it returns a plain per-client http.Client() above, so
+  // it never shared a pool). Per-client pools + a short idleTimeout (see
+  // [_newPinnedHttpClient]) stop a dead connection from being reused. Pinning
+  // is preserved via badCertificateCallback.
+  return IOClient(_newPinnedHttpClient());
 }
 
 /// Opens a WebSocket channel to [uri] using the same pinning policy as the
@@ -53,11 +67,29 @@ HttpClient get pinnedHttpClient {
   // Test seam: allow tests to inject a fresh client after toggling
   // CertPins.enabled via --dart-define between runs.
   if (pinnedHttpClientForTest != null) return pinnedHttpClientForTest!;
-  return _instance ??= HttpClient()
-    ..badCertificateCallback = _pinningCallback;
+  return _instance ??= _newPinnedHttpClient();
 }
 
 HttpClient? _instance;
+
+/// Builds a fresh pinned [HttpClient]: pins the leaf SPKI via
+/// [_pinningCallback], and bounds the connection lifecycle so a stale
+/// keep-alive connection can't hang a later request on iOS:
+/// - [HttpClient.connectionTimeout] caps a stuck TCP/TLS connect.
+/// - A short [HttpClient.idleTimeout] (3s vs the 15s default) reaps idle
+///   keep-alive connections quickly, so one left over from a prior call isn't
+///   reused dead across the (idle) login wait.
+///
+/// Used per-RPC-client by [makePinnedHttpClient] (no shared pool) and once for
+/// the WebSocket singleton via [pinnedHttpClient].
+HttpClient _newPinnedHttpClient() {
+  final test = pinnedHttpClientForTest;
+  if (test != null) return test;
+  return HttpClient()
+    ..badCertificateCallback = _pinningCallback
+    ..connectionTimeout = const Duration(seconds: 10)
+    ..idleTimeout = const Duration(seconds: 3);
+}
 
 /// Pinning validation: returns `true` ONLY when the leaf cert's SPKI matches
 /// a pinned hash for [host]. Fail-closed: unpinned hosts are rejected —

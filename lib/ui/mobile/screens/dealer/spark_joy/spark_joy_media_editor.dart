@@ -137,7 +137,16 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
   /// к активному шагу через `Scrollable.ensureVisible` (точное
   /// центрирование, без estimate-based фокусов).
   Widget _runMediaGroupStepper(String currentKey) {
-    final groups = _SparkJoyMediaGroupRegistry.groups;
+    // Обязательные группы (Кузов/Остекление/Подкапотное/Салон) — вперёд, затем
+    // дополнительные; внутри каждой части сохраняется порядок реестра. Так
+    // степпер совпадает с разнесением «Обязательные/Дополнительные» в списке
+    // разделов и с маркером «*». Это локальная сортировка только для
+    // отображения — реестр и прочие потребители порядка не затрагиваются.
+    final registry = _SparkJoyMediaGroupRegistry.groups;
+    final groups = [
+      ...registry.where((g) => g.required),
+      ...registry.where((g) => !g.required),
+    ];
     final currentIndex = groups.indexWhere((g) => g.key == currentKey);
 
     // Auto-scroll к активному шагу через Scrollable.ensureVisible —
@@ -278,6 +287,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
               textAlign: TextAlign.center,
               maxLines: 2,
               textOverflow: TextOverflow.ellipsis,
+              requiredMark: config.required,
             ),
           ],
         ),
@@ -674,12 +684,10 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                               text: state.config.title,
                               size: SparkTextSize.title,
                               weight: FontWeight.w700,
-                              // «*» только у обязательных для выгрузки групп
-                              // (Кузов/Остекление/Подкапотное/Салон). Источник —
-                              // реальный gate-сет, а не MediaGroupConfig.required.
-                              requiredMark: _SparkJoySummaryRegistry
-                                  .requiredMediaKeysForSummary
-                                  .contains(groupKey),
+                              // «*» у обязательных групп
+                              // (Кузов/Остекление/Подкапотное/Салон) — единый
+                              // источник MediaGroupConfig.required.
+                              requiredMark: state.config.required,
                             ),
                             if (state.config.description.trim().isNotEmpty) ...[
                               const SizedBox(height: SparkSpace.xxs),

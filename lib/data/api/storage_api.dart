@@ -543,6 +543,16 @@ class StorageApi {
           .post(Uri.parse(_endpoint), headers: headers, body: bytes)
           .timeout(timeout);
     } on TimeoutException catch (e) {
+      // DIAG: surface the real transport state at timeout — a bare
+      // TimeoutException hides whether the TLS handshake, the request send,
+      // or the response read stalled. iOS-only hangs land here.
+      developer.log(
+        'RPC TIMEOUT method=$method after ${stopwatch.elapsedMilliseconds}ms '
+        'endpoint=$_endpoint client=${_httpClient.runtimeType}',
+        name: 'StorageApi.diag',
+        level: 900,
+        error: e,
+      );
       _rpcLog(
         'timeout',
         seq: seq,
@@ -553,7 +563,18 @@ class StorageApi {
         'Timeout on $method after ${timeout.inSeconds}s '
         '(elapsed=${stopwatch.elapsedMilliseconds}ms): $e',
       );
-    } catch (e) {
+    } catch (e, st) {
+      // DIAG: log the full stack for any non-timeout transport failure
+      // (SocketException, HandshakeException, ClientException) — critical for
+      // diagnosing the iOS-only Auth hang.
+      developer.log(
+        'RPC TRANSPORT ERROR method=$method '
+        'type=${e.runtimeType} msg=$e',
+        name: 'StorageApi.diag',
+        level: 900,
+        error: e,
+        stackTrace: st,
+      );
       _rpcLog(
         'transport-error',
         seq: seq,

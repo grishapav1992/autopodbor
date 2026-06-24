@@ -17,7 +17,7 @@ class _SparkJoyMediaGroupRegistry {
       key: keyBody,
       title: 'Кузов',
       description: 'ЛКП, вмятины, царапины, дефекты элементов',
-      required: false,
+      required: true,
       severeIfIssue: false,
     ),
     MediaGroupConfig(
@@ -32,7 +32,7 @@ class _SparkJoyMediaGroupRegistry {
       key: keyGlass,
       title: 'Остекление',
       description: 'Лобовое, боковые, заднее стекло',
-      required: false,
+      required: true,
       severeIfIssue: false,
     ),
     MediaGroupConfig(
@@ -48,14 +48,14 @@ class _SparkJoyMediaGroupRegistry {
       title: 'Подкапотное пространство',
       shortLabel: 'Подкапот.',
       description: 'Течи, крепеж, ремни, агрегаты',
-      required: false,
+      required: true,
       severeIfIssue: true,
     ),
     MediaGroupConfig(
       key: keyInterior,
       title: 'Салон',
       description: 'Износ, электроника, функции и опции',
-      required: false,
+      required: true,
       severeIfIssue: false,
     ),
     MediaGroupConfig(

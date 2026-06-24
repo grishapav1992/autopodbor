@@ -9,12 +9,15 @@ class _SparkJoySummaryRegistry {
   static const String reasonPrefixMedia = 'Осмотр —';
   static const String reasonPrefixSummary = 'Итог специалиста —';
 
-  static const Set<String> requiredMediaKeysForSummary = {
-    _SparkJoyMediaGroupRegistry.keyBody,
-    _SparkJoyMediaGroupRegistry.keyGlass,
-    _SparkJoyMediaGroupRegistry.keyUnderhood,
-    _SparkJoyMediaGroupRegistry.keyInterior,
-  };
+  /// Единый источник истины об обязательных медиа-группах — флаг
+  /// `MediaGroupConfig.required` в реестре. Раньше тут был отдельный хардкод-
+  /// сет, который дублировал флаг и разошёлся с ним (флаг был у всех false),
+  /// из-за чего gate шага и fill-state не совпадали с финальной валидацией.
+  static Set<String> get requiredMediaKeysForSummary =>
+      _SparkJoyMediaGroupRegistry.groups
+          .where((g) => g.required)
+          .map((g) => g.key)
+          .toSet();
 
   static const Map<String, String> titleToGroupKey = {
     'Кузов': _SparkJoyMediaGroupRegistry.keyBody,

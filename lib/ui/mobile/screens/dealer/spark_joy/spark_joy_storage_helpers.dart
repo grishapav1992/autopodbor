@@ -736,6 +736,48 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return byUploadKey.values.toList(growable: false);
   }
 
+  /// Upload filenames of EVERY media item the report payload references
+  /// (non-empty filename, regardless of source validity). Unlike
+  /// [_collectUniqueUploadItems] this does NOT drop items whose local source is
+  /// stale/empty — so it is the report's true "manifest" of files that must end
+  /// up on S3. The backend derives `PrepareSpecialistReport.uploadFiles` from
+  /// the same payload, so this set is equivalent to the server's declared list.
+  /// Used by the completeness gate to refuse finalizing a report that is
+  /// missing media (e.g. a video silently skipped by the uploader).
+  Set<String> _declaredMediaFilenames() {
+    final out = <String>{};
+    void add(UploadedItem item, int index, String prefix) {
+      final fn = _preferredUploadFileNameForItem(
+        item,
+        index,
+        contextPrefix: prefix,
+      ).trim().toLowerCase();
+      if (fn.isNotEmpty) out.add(fn);
+    }
+
+    for (final group in _mediaState.values) {
+      for (var index = 0; index < group.files.length; index++) {
+        add(group.files[index], index, 'inspection_media');
+      }
+    }
+    for (var index = 0; index < _legalFiles.length; index++) {
+      add(_legalFiles[index], index, 'legal_file');
+    }
+    for (var index = 0; index < _docsCommentAudioFiles.length; index++) {
+      add(_docsCommentAudioFiles[index], index, 'docs_comment_audio');
+    }
+    for (var index = 0; index < _legalCommentAudioFiles.length; index++) {
+      add(_legalCommentAudioFiles[index], index, 'legal_comment_audio');
+    }
+    for (var index = 0; index < _tdCommentAudioFiles.length; index++) {
+      add(_tdCommentAudioFiles[index], index, 'td_comment_audio');
+    }
+    for (var index = 0; index < _expertAudioFiles.length; index++) {
+      add(_expertAudioFiles[index], index, 'expert_audio');
+    }
+    return out;
+  }
+
   /// Best-effort upload of the locally-generated video posters so completed
   /// reports can show a thumbnail. For each video in [items] that already has
   /// an on-disk preview JPEG ([UploadedItem.videoThumbPath], produced at pick
@@ -1514,12 +1556,42 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     return 0;
   }
 
+  /// Resolves the catalog model id (`Storage.GetModelCar`) the same way as
+  /// [_resolveModelGenerationRestylingFrameId]: live state first, then the
+  /// in-flight payload, then the persisted draft (which stores it inside
+  /// `characteristicsStep` and at the top level).
+  int _resolveModelCarId(Map<String, dynamic> payload) {
+    final stateId = _selectedModelCarId;
+    if (stateId != null && stateId > 0) return stateId;
+    final fromPayload = payload['characteristicsStep'];
+    if (fromPayload is Map) {
+      final id = _asIntFromDynamic(fromPayload['modelCarId']);
+      if (id != null && id > 0) return id;
+    }
+    final fromDraft = widget.draft?['characteristicsStep'];
+    if (fromDraft is Map) {
+      final id = _asIntFromDynamic(fromDraft['modelCarId']);
+      if (id != null && id > 0) return id;
+    }
+    final draftTopId = _asIntFromDynamic(widget.draft?['modelCarId']);
+    if (draftTopId != null && draftTopId > 0) return draftTopId;
+    return 0;
+  }
+
   Map<String, dynamic> _buildCharacteristicsStepPayload(
     Map<String, dynamic> payload,
   ) {
     final frameId = _resolveModelGenerationRestylingFrameId(payload);
+    final modelCarId = _resolveModelCarId(payload);
     return _normalizeOptionalObject(<String, dynamic>{
       if (frameId > 0) 'modelGenerationRestylingFrameId': frameId,
+      // Backend requires model_car_id OR frame_id (server validation
+      // `model_car_id_or_frame_id_required`). A catalog model pick gives us
+      // `modelCarId` even when no specific generation/restyling/frame is
+      // chosen (frameId stays 0), so send it — otherwise a brand+model-only
+      // report can't be saved/uploaded. Verified live: {modelCarId} alone
+      // satisfies the rule.
+      if (modelCarId > 0) 'modelCarId': modelCarId,
       'engineVolume': _parseDecimal(_engineVolumeController.text),
       'engineType': _engineTypeController.text.trim(),
       'transmission': _gearboxTypeController.text.trim(),
@@ -3150,6 +3222,41 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     Navigator.of(context).pop(true);
   }
 
+  /// Ensures the report carries a catalog `modelCarId` (or a frameId) before
+  /// PrepareSpecialistReport — the backend rejects with
+  /// `model_car_id_or_frame_id_required` otherwise. `_selectedModelCarId` is
+  /// lost whenever brand/model came from the VIN converter or free text: those
+  /// paths set it to null and only re-resolve it best-effort in the background
+  /// (see _runVinPlateConverter / _canonicalizeCarFromCatalog), so by upload
+  /// time it's often still null even though the car looks filled in. Resolve it
+  /// synchronously from the catalog by brand+model name; on failure set a clear
+  /// error so the caller surfaces «выберите модель из каталога» instead of the
+  /// raw server message.
+  Future<bool> _ensureModelCarIdForUpload(Map<String, dynamic> payload) async {
+    if (_resolveModelGenerationRestylingFrameId(payload) > 0) return true;
+    if (_resolveModelCarId(payload) > 0) return true;
+    final brand = _brandController.text.trim();
+    final model = _modelController.text.trim();
+    if (brand.isNotEmpty && model.isNotEmpty) {
+      try {
+        final resolved = await _resolveCarFromCatalog(brand, model);
+        final id = resolved?.modelCarId;
+        if (id != null && id > 0) {
+          _selectedModelCarId = id;
+          if (resolved?.brandId != null) _selectedBrandId = resolved!.brandId;
+          _markDraftDirty();
+          return true;
+        }
+      } catch (_) {
+        // Catalog/network failure — fall through to the clear error below.
+      }
+    }
+    _backendUploadErrorText =
+        'Не удалось определить модель из каталога. Откройте параметры авто, '
+        'выберите модель из списка и повторите выгрузку.';
+    return false;
+  }
+
   Future<bool> _uploadReportToBackend(Map<String, dynamic> payload) async {
     if (payload.isEmpty) return false;
     // Batch-level re-entry guard. Per-file gating moved here from
@@ -3186,6 +3293,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         'reportNumber',
       );
       final previousFilesState = _backendUploadFilesState();
+      // Resolve model_car_id/frame_id (or fail with a clear message) BEFORE
+      // building the payload, so _buildCharacteristicsStepPayload picks up the
+      // freshly-resolved _selectedModelCarId.
+      if (!await _ensureModelCarIdForUpload(payload)) {
+        return false;
+      }
       final backendReportPayload = _buildPrepareSpecialistReportPayload(
         payload,
       );
@@ -3275,6 +3388,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       // but their success/failure is ignored.
       final fileGate = _UploadConcurrencyGate(_kFileConcurrency);
       var completedFiles = 0;
+      // Filenames that actually reached S3 this run — fed to the completeness
+      // gate below so a finalize can't proceed with a declared file missing.
+      final uploadedFilenames = <String>{};
       Object? firstFailure;
       void bumpStatus() {
         if (!mounted) return;
@@ -3309,6 +3425,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
                 return;
               }
               completedFiles += 1;
+              uploadedFilenames.add(items[i].filename.trim().toLowerCase());
               bumpStatus();
             } catch (e) {
               firstFailure ??= e;
@@ -3336,6 +3453,38 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
       if (firstFailure != null) {
         throw firstFailure!;
+      }
+
+      // ── Completeness gate ──────────────────────────────────────────────
+      // Do NOT finalize while any declared file is missing from S3. The
+      // payload builder references media by filename even when its local
+      // source is stale, but [_collectUniqueUploadItems] silently drops such
+      // items, so they never upload — yet the report would still complete
+      // without them (observed: a video absent from the finalized report).
+      // A declared file counts as present if it uploaded THIS run
+      // (uploadedFilenames) or is marked completed in the persisted upload
+      // state (a prior run). We gate on the LOCAL manifest only: it uses the
+      // exact same filename scheme as the uploader (no false positives), and
+      // is equivalent to the server's `prepared.uploadFiles` ("status 200"
+      // list) because the backend derives that list from this same payload.
+      final declaredFilenames = _declaredMediaFilenames();
+      final satisfiedFilenames = <String>{...uploadedFilenames};
+      final gateFilesState = _backendUploadFilesState();
+      for (final raw in gateFilesState.values) {
+        if (raw is! Map) continue;
+        final fileState = Map<String, dynamic>.from(raw);
+        if (!_uploadStateBool(fileState, 'completed')) continue;
+        final fn = _uploadStateText(fileState, 'filename').trim().toLowerCase();
+        if (fn.isNotEmpty) satisfiedFilenames.add(fn);
+      }
+      final missingFilenames = declaredFilenames.difference(satisfiedFilenames);
+      if (missingFilenames.isNotEmpty) {
+        _backendUploadErrorText =
+            'Не все файлы выгружены: ${missingFilenames.length} из '
+            '${declaredFilenames.length} отсутствует на сервере (часто это '
+            'видео с устаревшим источником). Откройте отчёт, добавьте '
+            'недостающие файлы заново и повторите выгрузку. Отчёт не завершён.';
+        return false;
       }
 
       // Ship the pre-made video posters before finalizing so completed reports
