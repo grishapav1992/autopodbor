@@ -500,11 +500,42 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// Терминальные ApiCloud-проверки (залог/такси/ГОСТ/ФГИС) → строки
+  /// «<тип> — <результат>». Конвертер (api_cloud_converter_search) и
+  /// нетерминальные статусы (pending/processing/…) исключены. Единый источник
+  /// для legal-комментария И итоговой сводки осмотра (не дублируем логику).
+  List<String> _legalCheckFactLines() {
+    final lines = <String>[];
+    for (final c in _legalCheckResults) {
+      final type = (c['checkType'] ?? '').toString();
+      if (type == 'api_cloud_converter_search') continue; // не материал проверки
+      final status = (c['status'] ?? '').toString().toLowerCase();
+      if (status.isEmpty ||
+          status == 'pending' ||
+          status == 'processing' ||
+          status == 'in_progress' ||
+          status == 'running') {
+        continue; // ещё не доехало — не включаем
+      }
+      final title =
+          type.isEmpty ? 'Проверка' : sparkJoyLegalCheckTypeLabel(type);
+      final summary = _legalNormalizedToText(c['responseNormalized']).trim();
+      final result = summary.isNotEmpty
+          ? summary
+          : (status == 'not_found'
+                ? 'не найдено'
+                : (status == 'error' || status == 'failed'
+                      ? 'ошибка проверки'
+                      : 'выполнено'));
+      lines.add('$title — $result');
+    }
+    return lines;
+  }
+
   /// AI-fill for the «Комментарий специалиста» field on the «Материалы
-  /// проверки» step. Names of attached documents (with count) are
-  /// baked into the prompt via `buildLegalCommentCliche` so the model
-  /// can reference them in the answer even when the typed comment is
-  /// short. Result lands in `_legalNoteController`.
+  /// проверки» step. В промпт идут только факты выполненных ApiCloud-проверок
+  /// (имена/содержимое приложенных файлов ИИ недоступны) + текст инспектора.
+  /// Результат ложится в `_legalNoteController`.
   Future<void> _generateLegalCommentWithAi() async {
     if (_legalCommentAiBusy) return;
     final messenger = ScaffoldMessenger.of(context);
@@ -514,30 +545,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       // передаются), поэтому имена/количество в промпт НЕ кладём — только
       // человекочитаемые результаты ApiCloud-проверок (терминальные) + текст
       // инспектора. Так ИИ опирается на залог/такси/ГОСТ/ФГИС, а не на файлы.
-      final checkLines = <String>[];
-      for (final c in _legalCheckResults) {
-        final type = (c['checkType'] ?? '').toString();
-        if (type == 'api_cloud_converter_search') continue; // не материал проверки
-        final status = (c['status'] ?? '').toString().toLowerCase();
-        if (status.isEmpty ||
-            status == 'pending' ||
-            status == 'processing' ||
-            status == 'in_progress' ||
-            status == 'running') {
-          continue; // ещё не доехало — не включаем
-        }
-        final title =
-            type.isEmpty ? 'Проверка' : sparkJoyLegalCheckTypeLabel(type);
-        final summary = _legalNormalizedToText(c['responseNormalized']).trim();
-        final result = summary.isNotEmpty
-            ? summary
-            : (status == 'not_found'
-                  ? 'не найдено'
-                  : (status == 'error' || status == 'failed'
-                        ? 'ошибка проверки'
-                        : 'выполнено'));
-        checkLines.add('$title — $result');
-      }
+      final checkLines = _legalCheckFactLines();
       final cliche = AiQueueClicheBuilder.buildLegalCommentCliche(
         checksInfo: checkLines.join('; '),
       );
@@ -689,6 +697,72 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         contextParts.add(
           '=== Структурированные данные осмотра ===\n$structured',
         );
+      }
+      // Юридические проверки и материалы — терминальные результаты + коммент
+      // инспектора. Раньше в сводку не попадали (шаблон только флажил «не
+      // выполнена»), из-за чего ИИ не учитывал залог/такси/ГОСТ/ФГИС.
+      final legalLines = _legalCheckFactLines();
+      final legalNote = _legalNoteController.text.trim();
+      if (legalLines.isNotEmpty || legalNote.isNotEmpty) {
+        final buf = StringBuffer('=== Юридические проверки и материалы ===\n');
+        if (legalLines.isNotEmpty) buf.writeln(legalLines.join('\n'));
+        if (legalNote.isNotEmpty) {
+          buf.writeln('Комментарий по материалам проверки: $legalNote');
+        }
+        contextParts.add(buf.toString().trim());
+      }
+      // Идентификация и технические параметры — раньше жили только во
+      // внутреннем carContext и в сводку не шли. Кладём как факты.
+      final idLines = <String>[];
+      void addId(String label, String value) {
+        final v = value.trim();
+        if (v.isNotEmpty) idLines.add('$label: $v');
+      }
+      addId('Автомобиль', _carName());
+      if (_vinUnreadable) {
+        idLines.add('VIN: не читается');
+      } else {
+        addId('VIN', _vinController.text);
+      }
+      addId(
+        'Госномер',
+        _formatPlate(_sanitizePlate(_plateController.text.trim())),
+      );
+      addId('Пробег', _mileageController.text);
+      if (_mileageMismatch == true) {
+        idLines.add('Пробег: расхождение с заявленным/состоянием');
+      }
+      addId('Владельцев по документам', _ownersCountController.text);
+      addId('Объём двигателя', _engineVolumeController.text);
+      addId('Тип двигателя', _engineTypeController.text);
+      addId('КПП', _gearboxTypeController.text);
+      addId('Привод', _driveTypeController.text);
+      addId('Цвет', _colorController.text);
+      addId('Комплектация', _trimController.text);
+      addId('Город осмотра', _inspectionCityController.text);
+      final docMismatches = <String>[];
+      if (_docsOwnerMatch == false) docMismatches.add('владелец');
+      if (_docsVinMatch == false) docMismatches.add('VIN');
+      if (_docsEngineMatch == false) docMismatches.add('двигатель');
+      if (docMismatches.isNotEmpty) {
+        idLines.add(
+          'Сверка документов: расхождения — ${docMismatches.join(', ')}',
+        );
+      }
+      final docsComment = _docsMismatchCommentController.text.trim();
+      if (docsComment.isNotEmpty) {
+        idLines.add('Комментарий по сверке документов: $docsComment');
+      }
+      if (idLines.isNotEmpty) {
+        contextParts.add(
+          '=== Идентификация и технические параметры ===\n'
+          '${idLines.join('\n')}',
+        );
+      }
+      // Свободный комментарий по тест-драйву (структурный шаблон его не несёт).
+      final tdNote = _tdNoteController.text.trim();
+      if (tdNote.isNotEmpty) {
+        contextParts.add('=== Комментарий по тест-драйву ===\n$tdNote');
       }
       if (historyChunks.isNotEmpty) {
         contextParts.add(

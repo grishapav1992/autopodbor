@@ -47,6 +47,12 @@ void main() {
       // The template still drives the descriptive structure.
       expect(cliche, contains('Кузов:'));
       expect(cliche, contains('Не осмотрено'));
+      // Holistic synthesis (fix: «итог по одному элементу» → целостная сводка):
+      // обязательный ведущий абзац + охват всех зон, включая юр-проверки.
+      expect(cliche, contains('Общая оценка состояния'));
+      expect(cliche, contains('Идентификация и параметры:'));
+      expect(cliche, contains('Юридические проверки и материалы:'));
+      expect(cliche, contains('е ограничивайся одним элементом'));
     });
 
     test('legal cliche does not advise client actions', () {
