@@ -1192,7 +1192,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   Duration _multipartPartTimeoutForBytes(int byteCount) {
     const bytesPerWindow = 5 * 1024 * 1024;
     final safeBytes = math.max(1, byteCount);
-    final windows = (safeBytes / bytesPerWindow).ceil().clamp(1, 120);
+    final windows = (safeBytes / bytesPerWindow).ceil().clamp(1, 10);
     return Duration(seconds: windows * 60);
   }
 
@@ -1384,18 +1384,24 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   }
 
   double _backendUploadProgressValue() {
-    if (_backendUploadTotalFiles <= 0) return 0;
     final totalFiles = _backendUploadTotalFiles;
-    final fileIndex = (_backendUploadCurrentFile - 1).clamp(0, totalFiles);
-    double fileProgress = 0;
-    if (_backendUploadTotalParts > 0) {
-      fileProgress = (_backendUploadCurrentPart / _backendUploadTotalParts)
-          .clamp(0.0, 1.0);
-    } else if (_backendUploadCurrentFile > 0) {
-      fileProgress = 1;
+    if (totalFiles <= 0) return 0;
+    // Файлы грузятся параллельно, поэтому общий процент = СРЕДНЕЕ по
+    // побайтному прогрессу каждого файла (per-file progress байт-точный —
+    // emitFileProgress ~10fps). Экранные currentPart/totalParts в параллельном
+    // цикле не выставляются, поэтому считаем по строкам
+    // _backendUploadFilesProgress — это и есть настоящая картина.
+    final files = _backendUploadFilesProgress;
+    if (files.isNotEmpty) {
+      var sum = 0.0;
+      for (final f in files) {
+        sum += f.progress.clamp(0.0, 1.0);
+      }
+      return (sum / files.length).clamp(0.0, 1.0);
     }
-    final progress = (fileIndex + fileProgress) / totalFiles;
-    return progress.clamp(0.0, 1.0);
+    // Фолбэк до инициализации строк: целыми файлами.
+    final fileIndex = (_backendUploadCurrentFile - 1).clamp(0, totalFiles);
+    return (fileIndex / totalFiles).clamp(0.0, 1.0);
   }
 
   DateTime? _parseBackendUploadDateTime(dynamic value) {
@@ -1564,6 +1570,15 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     // ViewSpecialistReport.result.legalReviewStep = {id, files, batches}).
     // stepId в RunBatch не передаётся — связь идёт здесь.
     final batchNumber = _legalBatchNumber?.trim() ?? '';
+    if (batchNumber.isEmpty && _legalCheckResults.isNotEmpty) {
+      // Проверки выполнялись, но batchNumber не сохранился в черновик → привязка
+      // результатов к отчёту молча потеряется (завершённый отчёт покажет
+      // «Материалы проверки» пустыми). Логируем, чтобы было видно при отладке.
+      debugPrint(
+        '[SUBMIT] legal checks present (${_legalCheckResults.length}) but '
+        'batchNumber EMPTY — результаты проверки НЕ будут привязаны к отчёту',
+      );
+    }
     return <String, dynamic>{
       'otherLegalReviews': otherLegalReviews,
       'legalReview': legalReview,
@@ -3060,8 +3075,30 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
 
     _ensureSummaryAutofill();
+    // Показываем индикатор сразу по тапу: флаш AI-описаний блокирующий (до 30с),
+    // и без этого кнопка ещё «Завершить и выгрузить», на экране ничего не
+    // меняется — кажется, что тап не сработал.
+    _setBackendUploadProgress(
+      inProgress: true,
+      statusText: 'Завершаем AI-описания…',
+      currentFile: 0,
+      totalFiles: 0,
+      currentPart: 0,
+      totalParts: 0,
+    );
     final canProceed = await _flushAiQueueBeforeSubmit();
-    if (!canProceed) return;
+    if (!canProceed) {
+      // Снимаем индикатор на раннем выходе, иначе кнопка залипнет в «Выгрузка...».
+      _setBackendUploadProgress(
+        inProgress: false,
+        statusText: '',
+        currentFile: 0,
+        totalFiles: 0,
+        currentPart: 0,
+        totalParts: 0,
+      );
+      return;
+    }
     // Online-only: after finalizing on the server we don't persist a
     // local copy — the list reloads via Storage.GetSpecialistReport and
     // a tap opens via Storage.ViewSpecialistReport + ObjectStorage.
@@ -3070,6 +3107,19 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     final completed = _buildCompletedReport();
     final uploaded = await _uploadReportToBackend(completed);
     if (!uploaded) {
+      // На ЛЮБОМ неуспехе снимаем индикатор, если он ещё горит: ранние
+      // return false в _uploadReportToBackend (профанити / пустой reportNumber)
+      // идут мимо catch и иначе оставили бы кнопку в «Выгрузка...».
+      if (_backendUploadInProgress) {
+        _setBackendUploadProgress(
+          inProgress: false,
+          statusText: '',
+          currentFile: 0,
+          totalFiles: 0,
+          currentPart: 0,
+          totalParts: 0,
+        );
+      }
       if (!mounted) return;
       if (_uploadCancelled) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3121,7 +3171,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       _backendUploadErrorText = '';
       _setBackendUploadProgress(
         inProgress: true,
-        statusText: 'Подготовка отчёта к выгрузке...',
+        statusText: 'Готовим отчёт на сервере (это может занять 1–3 минуты)…',
         currentFile: 0,
         totalFiles: 0,
         currentPart: 0,
@@ -3232,7 +3282,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           inProgress: true,
           statusText: items.isEmpty
               ? 'Файлов для загрузки нет'
-              : 'Выгружено $completedFiles из ${items.length}',
+              : 'Загрузка медиа: $completedFiles/${items.length}',
           currentFile: completedFiles,
           totalFiles: items.length,
         );
@@ -3292,6 +3342,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       // have thumbnails the instant they're viewable. Non-fatal and not part of
       // the report's checksummed file set, so a poster hiccup never blocks the
       // report from completing.
+      _setBackendUploadProgress(
+        inProgress: true,
+        statusText: 'Готовим превью видео…',
+        currentFile: 0,
+        totalFiles: 0,
+        currentPart: 0,
+        totalParts: 0,
+      );
       await _uploadVideoPostersBestEffort(
         reportNumber: reportNumber,
         items: items,
@@ -3299,9 +3357,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
 
       _setBackendUploadProgress(
         inProgress: true,
-        statusText: 'Финализируем отчёт...',
-        currentFile: items.length,
-        totalFiles: items.length,
+        statusText: 'Финализируем отчёт…',
+        currentFile: 0,
+        totalFiles: 0,
         currentPart: 0,
         totalParts: 0,
       );
@@ -3312,9 +3370,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       if (_requestId != null && _requestId! > 0) {
         _setBackendUploadProgress(
           inProgress: true,
-          statusText: 'Завершаем заявку...',
-          currentFile: items.length,
-          totalFiles: items.length,
+          statusText: 'Завершаем заявку…',
+          currentFile: 0,
+          totalFiles: 0,
           currentPart: 0,
           totalParts: 0,
         );

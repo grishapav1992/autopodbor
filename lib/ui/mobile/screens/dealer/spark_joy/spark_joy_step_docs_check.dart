@@ -7,11 +7,13 @@ Widget _buildSparkJoyStepDocsCheck(
 }) {
   return Column(
     children: [
+      s._requiredLegend('— обязательное поле'),
       s._yesNoSelector(
         title: 'Данные владельца',
         value: s._docsOwnerMatch,
         positiveLabel: 'Соответствует',
         negativeLabel: 'Не соответствует',
+        required: true,
         onChanged: (v) => setStateFn(() => s._docsOwnerMatch = v),
       ),
       const SizedBox(height: SparkSpace.lg),
@@ -20,6 +22,7 @@ Widget _buildSparkJoyStepDocsCheck(
         value: s._docsVinMatch,
         positiveLabel: 'Соответствует',
         negativeLabel: 'Не соответствует',
+        required: true,
         onChanged: (v) => setStateFn(() => s._docsVinMatch = v),
       ),
       const SizedBox(height: SparkSpace.lg),
@@ -28,6 +31,7 @@ Widget _buildSparkJoyStepDocsCheck(
         value: s._docsEngineMatch,
         positiveLabel: 'Соответствует',
         negativeLabel: 'Не соответствует',
+        required: true,
         onChanged: (v) => setStateFn(() => s._docsEngineMatch = v),
       ),
       if (hasMismatch) ...[

@@ -187,7 +187,10 @@ Widget _buildSparkJoyUploadFileRow(BackendUploadFileProgress file) {
 
 Widget _buildSparkJoyUploadHint(
   String text, {
-  required double progress,
+  // null → индетерминированный (анимированный) бар: используется на фазах без
+  // пофайлового процента (флаш AI, серверная подготовка, превью, финализация),
+  // чтобы бар не «застывал» на 0% и не выглядел как зависание.
+  required double? progress,
   required List<BackendUploadFileProgress> files,
 }) {
   return SparkCard(
@@ -227,7 +230,7 @@ Widget _buildSparkJoyUploadHint(
         ClipRRect(
           borderRadius: BorderRadius.circular(SparkRadius.pill),
           child: LinearProgressIndicator(
-            value: progress.clamp(0.0, 1.0),
+            value: progress?.clamp(0.0, 1.0),
             minHeight: SparkSize.progressThin,
             backgroundColor: kSecondaryColor.withValues(alpha: 0.14),
             valueColor: const AlwaysStoppedAnimation<Color>(kSecondaryColor),
@@ -366,7 +369,11 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
         if (uploadInSummary) ...[
           _buildSparkJoyUploadHint(
             s._backendUploadStatusLabel(),
-            progress: s._backendUploadProgressValue(),
+            // Точный процент только на фазе заливки медиа (totalFiles > 0);
+            // на безфайловых серверных фазах — индетерминированный бар.
+            progress: s._backendUploadTotalFiles > 0
+                ? s._backendUploadProgressValue()
+                : null,
             files: s._backendUploadFilesProgress,
           ),
           const SizedBox(height: SparkSpace.sm),

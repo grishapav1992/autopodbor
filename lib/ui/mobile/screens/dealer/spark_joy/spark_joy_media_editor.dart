@@ -674,6 +674,12 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                               text: state.config.title,
                               size: SparkTextSize.title,
                               weight: FontWeight.w700,
+                              // «*» только у обязательных для выгрузки групп
+                              // (Кузов/Остекление/Подкапотное/Салон). Источник —
+                              // реальный gate-сет, а не MediaGroupConfig.required.
+                              requiredMark: _SparkJoySummaryRegistry
+                                  .requiredMediaKeysForSummary
+                                  .contains(groupKey),
                             ),
                             if (state.config.description.trim().isNotEmpty) ...[
                               const SizedBox(height: SparkSpace.xxs),

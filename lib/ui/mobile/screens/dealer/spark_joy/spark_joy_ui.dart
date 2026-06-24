@@ -1807,6 +1807,7 @@ class SparkSectionNavCard extends StatelessWidget {
     this.icon,
     this.description = '',
     this.value = '',
+    this.required = false,
   });
 
   final int index;
@@ -1816,6 +1817,7 @@ class SparkSectionNavCard extends StatelessWidget {
   final IconData? icon;
   final String description;
   final String value;
+  final bool required;
 
   @override
   Widget build(BuildContext context) {
@@ -1890,6 +1892,7 @@ class SparkSectionNavCard extends StatelessWidget {
                         size: SparkTextSize.title,
                         weight: FontWeight.w700,
                         color: isFilled ? kSecondaryColor : kTertiaryColor,
+                        requiredMark: required,
                       ),
                     ),
                   ],

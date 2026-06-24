@@ -13,6 +13,7 @@ Widget _buildSparkJoyStepVehicle(
 
   return Column(
     children: [
+      s._requiredLegend('— обязательное поле'),
       s._sectionHeading(
         'Идентификация',
         icon: Icons.fact_check_outlined,
@@ -24,9 +25,10 @@ Widget _buildSparkJoyStepVehicle(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const MyText(
-              text: 'VIN-номер *',
+              text: 'VIN-номер',
               size: SparkTextSize.body,
               weight: FontWeight.w700,
+              requiredMark: true,
             ),
             const SizedBox(height: SparkSpace.md),
             Row(
@@ -451,6 +453,7 @@ Widget _buildSparkJoyStepVehicle(
               text: 'Город осмотра',
               size: SparkTextSize.body,
               weight: FontWeight.w700,
+              requiredMark: true,
             ),
             const SizedBox(height: SparkSpace.md),
             // Tap-to-open city picker. The controller is the source

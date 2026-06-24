@@ -28,6 +28,12 @@ class MyText extends StatelessWidget {
   final bool tracking;
   final bool tabularFigures;
 
+  /// Когда `true`, после текста добавляется красная жирная ` *` —
+  /// единый маркер обязательного поля. Реализован тут, чтобы любой
+  /// лейбл/заголовок мог пометиться обязательным одним флагом без
+  /// дублирования RichText по экранам.
+  final bool requiredMark;
+
   const MyText({
     super.key,
     required this.text,
@@ -49,6 +55,7 @@ class MyText extends StatelessWidget {
     this.fontStyle,
     this.tracking = false,
     this.tabularFigures = false,
+    this.requiredMark = false,
   });
 
   @override
@@ -82,6 +89,51 @@ class MyText extends StatelessWidget {
     final resolvedFeatures = tabularFigures
         ? const [FontFeature.tabularFigures()]
         : null;
+    final baseStyle = TextStyle(
+      fontSize: scaledSize,
+      color: color ?? kTertiaryColor,
+      fontWeight: weight,
+      decoration: decoration,
+      fontFamily: fontFamily ?? AppFonts.URBANIST,
+      fontFamilyFallback: const [
+        'SF Pro Text',
+        'Helvetica',
+        'Roboto',
+        'Arial',
+        'Noto Sans',
+        'sans-serif',
+      ],
+      height: lineHeight,
+      fontStyle: fontStyle,
+      letterSpacing: resolvedLetterSpacing,
+      fontFeatures: resolvedFeatures,
+    );
+    final Widget child = requiredMark
+        ? Text.rich(
+            TextSpan(
+              text: text,
+              children: [
+                TextSpan(
+                  text: ' *',
+                  style: baseStyle.copyWith(
+                    color: kRedColor,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+            style: baseStyle,
+            textAlign: textAlign,
+            maxLines: maxLines,
+            overflow: textOverflow,
+          )
+        : Text(
+            text,
+            style: baseStyle,
+            textAlign: textAlign,
+            maxLines: maxLines,
+            overflow: textOverflow,
+          );
     return Padding(
       padding: EdgeInsets.only(
         top: scaledTop,
@@ -91,31 +143,7 @@ class MyText extends StatelessWidget {
       ),
       child: GestureDetector(
         onTap: onTap,
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: scaledSize,
-            color: color ?? kTertiaryColor,
-            fontWeight: weight,
-            decoration: decoration,
-            fontFamily: fontFamily ?? AppFonts.URBANIST,
-            fontFamilyFallback: const [
-              'SF Pro Text',
-              'Helvetica',
-              'Roboto',
-              'Arial',
-              'Noto Sans',
-              'sans-serif',
-            ],
-            height: lineHeight,
-            fontStyle: fontStyle,
-            letterSpacing: resolvedLetterSpacing,
-            fontFeatures: resolvedFeatures,
-          ),
-          textAlign: textAlign,
-          maxLines: maxLines,
-          overflow: textOverflow,
-        ),
+        child: child,
       ),
     );
   }

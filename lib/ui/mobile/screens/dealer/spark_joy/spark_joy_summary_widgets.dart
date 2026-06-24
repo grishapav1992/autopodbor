@@ -366,6 +366,18 @@ Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // В режиме редактирования у названия нет отдельного лейбла — есть
+        // только крупное значение. Добавляем компактный лейбл с «*», чтобы
+        // обязательность названия читалась так же, как у прочих полей.
+        if (!s.widget.readOnly) ...[
+          const MyText(
+            text: 'Название отчёта',
+            size: SparkTextSize.body,
+            weight: FontWeight.w700,
+            requiredMark: true,
+          ),
+          const SizedBox(height: SparkSpace.md),
+        ],
         // Read-only mode: the name isn't interactive — skip the InkWell
         // wrapper and the trailing edit pencil so the card doesn't
         // promise an affordance that doesn't exist.
@@ -887,6 +899,7 @@ Widget _buildSparkSummaryNoteCard(_SparkJoyCreateReportScreenState s) {
         s._sectionHeading(
           'Итог осмотра',
           icon: Icons.rate_review_outlined,
+          required: !isReadOnly,
           subtitle: isReadOnly
               ? 'Финальный итог по результатам осмотра'
               : 'Соберите итог через ИИ или введите вручную; ваши правки '

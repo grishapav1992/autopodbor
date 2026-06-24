@@ -65,6 +65,9 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                   text: sectionLabel,
                   size: SparkTextSize.caption,
                   color: kGreyColor,
+                  // Узлы рендерятся только при режиме «есть проблемы», т.е.
+                  // когда они обязательны → статичный маркер уместен.
+                  requiredMark: true,
                 ),
               ),
               _mediaMetaPill(
@@ -380,6 +383,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
             text: 'Тест-драйв проводился?',
             size: SparkTextSize.bodyLg,
             weight: FontWeight.w600,
+            requiredMark: true,
           ),
           const SizedBox(height: SparkSpace.md),
           optionButton(

@@ -16,6 +16,7 @@ Widget _buildSparkJoyStepTestDrive(
 
   return Column(
     children: [
+      s._requiredLegend('— обязательное поле'),
       if (tdConducted == null) ...[
         const SparkHintCard(
           text: 'Сначала выберите режим тест-драйва.',

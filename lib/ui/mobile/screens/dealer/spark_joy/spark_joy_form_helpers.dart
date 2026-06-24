@@ -15,6 +15,33 @@ extension _SparkJoyFormHelpersMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
+  /// Строка-легенда «* — …» под/над блоком обязательных полей. Красная «*»
+  /// совпадает с маркером в [MyText.requiredMark]; [text] — пояснение после
+  /// звёздочки (например, «— обязательное поле» / «— обязательный раздел»).
+  Widget _requiredLegend(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: SparkSpace.md),
+      child: Row(
+        children: [
+          const MyText(
+            text: '*',
+            size: SparkTextSize.caption,
+            weight: FontWeight.w700,
+            color: kRedColor,
+          ),
+          const SizedBox(width: SparkSpace.xs),
+          Expanded(
+            child: MyText(
+              text: text,
+              size: SparkTextSize.caption,
+              color: kGreyColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _input(
     TextEditingController controller,
     String hint, {
@@ -111,6 +138,7 @@ extension _SparkJoyFormHelpersMethods on _SparkJoyCreateReportScreenState {
     String clearLabel = 'Сбросить выбор',
     bool compact = false,
     bool wrapWithCard = true,
+    bool required = false,
   }) {
     final buttonShape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(SparkRadius.lg),
@@ -119,7 +147,12 @@ extension _SparkJoyFormHelpersMethods on _SparkJoyCreateReportScreenState {
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        MyText(text: title, size: compact ? 12 : 13, weight: FontWeight.w700),
+        MyText(
+          text: title,
+          size: compact ? 12 : 13,
+          weight: FontWeight.w700,
+          requiredMark: required,
+        ),
         if (subtitle != null) ...[
           const SizedBox(height: SparkSpace.xxxs),
           MyText(text: subtitle, size: compact ? 10 : 11, color: subtitleColor),

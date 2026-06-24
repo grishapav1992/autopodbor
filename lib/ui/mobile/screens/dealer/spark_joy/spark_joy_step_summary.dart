@@ -64,6 +64,7 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
 
   return Column(
     children: [
+      if (!isReadOnly) s._requiredLegend('— обязательное поле'),
       s._summaryHeaderCard(),
       const SizedBox(height: SparkSpace.lg),
       s._summaryNoDamageMediaCard(),

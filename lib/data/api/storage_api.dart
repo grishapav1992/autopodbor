@@ -217,7 +217,12 @@ class StorageApi {
   // upload-progress callbacks (`onSendProgress`) that `http.put` can't
   // expose. Reusing one instance keeps the underlying connection pool
   // warm across concurrent part uploads.
-  static final dio.Dio _uploadDio = dio.Dio();
+  static final dio.Dio _uploadDio = dio.Dio(
+    // connectTimeout bounds a stalled TCP connect / CORS-preflight: without it
+    // a dead presigned-URL connection is bounded only by sendTimeout (60s+) ×
+    // retries and looks frozen for minutes before erroring.
+    dio.BaseOptions(connectTimeout: const Duration(seconds: 30)),
+  );
 
   // Pinned HTTP client: in release it enforces certificate public-key
   // pinning (MITM defence); in debug it is a plain client so developers can
@@ -1787,6 +1792,16 @@ class StorageApi {
       final status = e.response?.statusCode;
       if (status != null) {
         throw Exception('Upload failed: HTTP $status');
+      }
+      // На web null-status транспортная ошибка против s3.regru.cloud почти
+      // всегда = отсутствие CORS на бакете (нет Access-Control-Allow-Origin),
+      // браузер режет запрос до ответа. Даём понятное сообщение вместо «Upload
+      // transport error».
+      if (kIsWeb) {
+        throw Exception(
+          'Браузер заблокировал загрузку в хранилище (CORS). '
+          'Завершите отчёт в приложении на телефоне.',
+        );
       }
       throw Exception(e.message ?? 'Upload transport error');
     }

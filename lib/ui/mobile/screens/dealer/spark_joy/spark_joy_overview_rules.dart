@@ -5,6 +5,7 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
     String title, {
     required IconData icon,
     String subtitle = '',
+    bool required = false,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.md),
@@ -29,6 +30,7 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
                   text: title,
                   size: SparkTextSize.sectionTitle,
                   weight: FontWeight.w700,
+                  requiredMark: required,
                 ),
                 if (subtitle.trim().isNotEmpty)
                   MyText(
@@ -56,6 +58,7 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
       description: step.description,
       value: value,
       fillState: fillState,
+      required: _SparkJoyStepRegistry.isRequiredStep(step.id),
       onTap: () => _openSection(index),
     );
   }
@@ -110,6 +113,7 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
           ),
         ),
         const SizedBox(height: SparkSpace.lg),
+        _requiredLegend('— обязательный раздел'),
         ...List.generate(_SparkJoyStepRegistry.steps.length, (index) {
           return Padding(
             padding: const EdgeInsets.only(bottom: SparkSpace.lg),

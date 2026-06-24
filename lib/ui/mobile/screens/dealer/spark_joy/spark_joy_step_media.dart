@@ -33,11 +33,19 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
     });
   }
 
+  // Разнос на «Обязательные / Дополнительные» — по реальному gate-сету
+  // `requiredMediaKeysForSummary` (Кузов/Остекление/Подкапотное/Салон), а не
+  // по `MediaGroupConfig.required` (он у всех false и оставлял секцию
+  // «Обязательные» пустой, сваливая все группы в «Разделы осмотра»). Это
+  // только раскладка экрана; continue-gate (`_missingRequiredMediaGroups`)
+  // не затрагиваем.
+  bool isRequiredGroup(MediaGroupConfig config) =>
+      _SparkJoySummaryRegistry.requiredMediaKeysForSummary.contains(config.key);
   final requiredGroups = _SparkJoyMediaGroupRegistry.groups
-      .where((config) => config.required)
+      .where(isRequiredGroup)
       .toList();
   final optionalGroups = _SparkJoyMediaGroupRegistry.groups
-      .where((config) => !config.required)
+      .where((config) => !isRequiredGroup(config))
       .toList();
   final requiredFilled = requiredGroups.where((config) {
     final state = s._mediaState[config.key];

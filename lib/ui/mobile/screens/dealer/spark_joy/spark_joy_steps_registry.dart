@@ -69,6 +69,21 @@ class _SparkJoyStepRegistry {
     idTestDrive,
   };
 
+  /// Шаги, содержащие обязательные поля (источник — `_summaryMissingReasons`).
+  /// Используется для статического маркера «*» на карточках шагов в обзоре.
+  /// «Параметры» и «Материалы проверки» полностью необязательны → не входят.
+  static const Set<String> requiredStepIds = {
+    idVehicle,
+    idDocsCheck,
+    idMedia,
+    idTestDrive,
+    idSummary,
+  };
+
+  static bool isRequiredStep(String? stepId) {
+    return requiredStepIds.contains(stepId);
+  }
+
   static IconData iconFor(String? stepId) {
     return _stepIcons[stepId] ?? Icons.description_outlined;
   }

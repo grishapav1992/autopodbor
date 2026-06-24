@@ -149,6 +149,7 @@ extension _SparkJoyLkpWidgets on _SparkJoyCreateReportScreenState {
             text: 'Пробег (км)',
             size: SparkTextSize.body,
             weight: FontWeight.w700,
+            requiredMark: true,
           ),
           const SizedBox(height: SparkSpace.md),
           TextField(
