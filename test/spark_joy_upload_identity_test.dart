@@ -69,16 +69,35 @@ void main() {
   });
 
   group('Spark Joy video poster filename', () {
-    test('appends .thumb.jpg to the video upload filename', () {
+    test('strips the extension before appending .thumb.jpg', () {
       expect(
         sparkJoyVideoPosterFilename('inspection_media_video_1_clip.mov'),
-        'inspection_media_video_1_clip.mov.thumb.jpg',
+        'inspection_media_video_1_clip.thumb.jpg',
       );
     });
 
-    test('upload side and view side derive the same poster key', () {
-      // The whole feature hinges on both sides computing the SAME name from the
-      // video filename the server echoes back. This guards that contract.
+    test('upload (.mov) and view (.m3u8) derive the SAME poster key', () {
+      // The bug this guards: the backend transcodes the uploaded video to HLS
+      // and swaps its extension (.mov → .m3u8) while keeping the base. The
+      // poster is uploaded under the .mov name but the viewer derives from the
+      // .m3u8 name — they must still resolve to one key. Stripping the
+      // extension is what makes that hold.
+      const base = 'inspection_media_vid_42_walkaround';
+      final uploadSide = sparkJoyVideoPosterFilename('$base.mov');
+      final viewSide = sparkJoyVideoPosterFilename('$base.m3u8');
+      expect(uploadSide, '$base.thumb.jpg');
+      expect(viewSide, uploadSide);
+    });
+
+    test('extension-agnostic across .mp4 / .mov / .m3u8 / uppercase', () {
+      const base = 'inspection_media_vid_7_IMG_7061';
+      final expected = '$base.thumb.jpg';
+      for (final ext in ['mp4', 'mov', 'MOV', 'm3u8', 'webm', 'm4v']) {
+        expect(sparkJoyVideoPosterFilename('$base.$ext'), expected);
+      }
+    });
+
+    test('real upload filename round-trips through the helper', () {
       final videoFilename = sparkJoyUploadFilename(
         contextPrefix: 'inspection_media',
         itemId: 'vid_42',
@@ -86,11 +105,15 @@ void main() {
         fallbackExtension: 'mp4',
         index: 3,
       );
-      final uploadSide = sparkJoyVideoPosterFilename(videoFilename);
-      final viewSide = sparkJoyVideoPosterFilename(videoFilename);
-      expect(uploadSide, viewSide);
-      expect(uploadSide, endsWith('.thumb.jpg'));
-      expect(uploadSide, startsWith(videoFilename));
+      final poster = sparkJoyVideoPosterFilename(videoFilename);
+      expect(poster, endsWith('.thumb.jpg'));
+      // base preserved, only the trailing extension dropped
+      final base = videoFilename.substring(0, videoFilename.lastIndexOf('.'));
+      expect(poster, '$base.thumb.jpg');
+    });
+
+    test('no-extension name keeps the full base', () {
+      expect(sparkJoyVideoPosterFilename('plainname'), 'plainname.thumb.jpg');
     });
 
     test('empty / whitespace filename yields empty poster name', () {

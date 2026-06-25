@@ -65,19 +65,26 @@ String sparkJoyUploadFilename({
 }
 
 /// Deterministic S3 object name for a video's poster (preview JPEG), derived
-/// from the video's own uploaded filename. MUST stay the single source of
-/// truth for both sides of the contract:
-///   • upload  — `_uploadVideoPostersBestEffort` PUTs the local thumbnail here;
+/// from the video's filename with the EXTENSION STRIPPED. MUST stay the single
+/// source of truth for both sides of the contract:
+///   • upload  — `_uploadVideoPostersBestEffort` PUTs the local thumbnail here
+///               (called with the uploaded video name, e.g. `…clip.mov`);
 ///   • view    — the completed-report hydrator derives the same name to resolve
 ///               a presigned GET URL (`videoThumbUrl`).
-/// Keying off the video filename (which the server echoes back verbatim in
-/// `ViewSpecialistReport`) is what lets the viewer find the poster without any
-/// new server field. iOS can't extract a frame from the remote presigned URL
-/// (sync `AVAssetImageGenerator` fails before the asset's tracks load), so this
-/// pre-made poster is how completed reports get a video thumbnail at all.
+///
+/// Why strip the extension: the backend transcodes uploaded videos to HLS and
+/// RENAMES them (`…clip.mov` → `…clip.m3u8`) while keeping the base identical
+/// (live-verified 2026-06-25: poster sat in S3 as `…clip.mov.thumb.jpg` but the
+/// view side derived `…clip.m3u8.thumb.jpg` → 404). Dropping the extension makes
+/// both sides agree on `…clip.thumb.jpg` regardless of the swap. iOS can't
+/// extract a frame from the remote presigned URL (sync `AVAssetImageGenerator`
+/// fails before the asset's tracks load), so this pre-made poster is how
+/// completed reports get a video thumbnail at all.
 String sparkJoyVideoPosterFilename(String videoFilename) {
-  final base = videoFilename.trim();
-  if (base.isEmpty) return '';
+  final name = videoFilename.trim();
+  if (name.isEmpty) return '';
+  final dot = name.lastIndexOf('.');
+  final base = dot > 0 ? name.substring(0, dot) : name;
   return '$base.thumb.jpg';
 }
 

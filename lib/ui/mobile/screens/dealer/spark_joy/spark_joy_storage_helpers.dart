@@ -808,7 +808,17 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           if (_uploadCancelled) return;
           final item = queueItem.item;
           if (!item.isVideo) return;
-          final thumbPath = item.videoThumbPath?.trim();
+          var thumbPath = item.videoThumbPath?.trim();
+          // Race guard: pick-time thumbnail generation is fire-and-forget, so a
+          // fast submit can reach here before it finished. Generate on the spot
+          // from the still-on-disk local video (gated, OOM-safe) instead of
+          // silently shipping the report without a poster.
+          if (thumbPath == null || thumbPath.isEmpty) {
+            final localPath = _extractLocalMediaPath(item.dataUrl);
+            if (localPath != null && localPath.isNotEmpty) {
+              thumbPath = await _resolveSparkJoyVideoThumb(localPath);
+            }
+          }
           if (thumbPath == null || thumbPath.isEmpty) return;
           final posterName = sparkJoyVideoPosterFilename(queueItem.filename);
           if (posterName.isEmpty) return;
