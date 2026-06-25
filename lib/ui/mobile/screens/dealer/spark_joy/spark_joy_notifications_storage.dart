@@ -26,6 +26,13 @@ class SparkJoyNotificationsStorage {
     return Get.find<NotificationController>().unreadCount.value;
   }
 
+  /// Marks all passive (`reminder` / `system`) pending notifications as read
+  /// via the live controller. Interactive invitations are left untouched.
+  static Future<void> markAllRead() async {
+    if (!Get.isRegistered<NotificationController>()) return;
+    await Get.find<NotificationController>().markAllRead();
+  }
+
   /// No-op — backend now owns the feed; nothing to seed locally.
   /// Kept so the existing call in `spark_joy_shell.dart` stays valid.
   static Future<void> ensureSeedData() async {}

@@ -47,6 +47,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           _legalTimedOut = false;
         });
         _markDraftDirty();
+        // ГОСТ-сертификат пришёл с проверками → дозаполнить «Параметры»
+        // (объём/тип двигателя/КПП) официальными данными серта, приоритетнее
+        // ИИ. Идемпотентно (см. _autofillParamsFromGostCert в dictation_rules).
+        _autofillParamsFromGostCert();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Материалы проверки готовы')),
@@ -61,6 +65,9 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       _legalTimedOut = true;
     });
     _markDraftDirty();
+    // ГОСТ мог доехать терминально даже при таймауте батча — пробуем (no-op,
+    // если сертификата нет / уже заполнено).
+    _autofillParamsFromGostCert();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

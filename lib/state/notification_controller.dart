@@ -190,6 +190,56 @@ class NotificationController extends GetxController {
     }
   }
 
+  /// Помечает все пассивные (`reminder` / `system`) непрочитанные оповещения
+  /// как прочитанные, проходя ВСЕ серверные pending-страницы (не только
+  /// загруженную). Интерактивные `invitation` не трогаем — их нельзя пометить
+  /// прочитанными без accept/reject (бэкенд отклонит MarkRead). По завершении —
+  /// reload (#2, #6).
+  ///
+  /// Массовой отметки на бэкенде нет — это клиентский цикл по MarkRead; заявка
+  /// на `Notification.MarkAllRead` зафиксирована в docs/BACKEND_REQUESTS.md.
+  Future<void> markAllRead() async {
+    final ids = <String>{};
+    String? cursor;
+    var guard = 0;
+    do {
+      final page = await NotificationApi.getNotifications(
+        status: NotificationStatus.pending,
+        limit: _pageLimit,
+        cursor: cursor,
+      );
+      for (final n in page.items) {
+        if (!n.type.isInteractive) ids.add(n.id);
+      }
+      cursor = page.nextCursor;
+      guard++;
+    } while (cursor != null && cursor.isNotEmpty && guard < 50);
+
+    if (ids.isEmpty) {
+      await reload();
+      return;
+    }
+    // Оптимистично гасим то, что уже загружено в ленту.
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].status == NotificationStatus.pending &&
+          ids.contains(items[i].id)) {
+        items[i] = items[i].copyWith(status: NotificationStatus.read);
+      }
+    }
+    items.refresh();
+    _recomputeUnread();
+    _bumpNotifier();
+    // Персистим на сервере (последовательно, без шторма запросов).
+    for (final id in ids) {
+      try {
+        await NotificationApi.markRead(id);
+      } catch (e) {
+        _log('markAllRead: markRead $id failed: $e');
+      }
+    }
+    await reload();
+  }
+
   /// Accept or reject an interactive `task` / `invitation` notification.
   /// Returns the server result (with `requestId` / `companyId` for
   /// downstream navigation).
@@ -202,15 +252,32 @@ class NotificationController extends GetxController {
         notificationId: notificationId,
         action: action,
       );
-      // Server is the source of truth for status — apply locally.
-      final index = items.indexWhere((n) => n.id == notificationId);
-      if (index >= 0) {
-        items[index] = items[index].copyWith(
-          status: result.status,
-          actedAt: DateTime.now().toUtc(),
-        );
-        _recomputeUnread();
-        _bumpNotifier();
+      // Важно: принимающий/отклоняющий НЕ получает feedback-push — по контракту
+      // он уходит ОТПРАВИТЕЛЮ. Значит CTA «Принять/Отклонить» убирает только
+      // этот локальный апдейт, поэтому статус выставляем авторитетно: берём из
+      // ответа, а если он пришёл не-финальным (напр. pending) — выводим из
+      // самого действия, чтобы кнопки не залипали (#5).
+      if (result.isOk) {
+        final terminal =
+            (result.status == NotificationStatus.accepted ||
+                result.status == NotificationStatus.rejected)
+            ? result.status
+            : (action == NotificationAction.accept
+                  ? NotificationStatus.accepted
+                  : NotificationStatus.rejected);
+        final index = items.indexWhere((n) => n.id == notificationId);
+        if (index >= 0) {
+          items[index] = items[index].copyWith(
+            status: terminal,
+            actedAt: DateTime.now().toUtc(),
+          );
+          items.refresh();
+          _recomputeUnread();
+          _bumpNotifier();
+        }
+        // Сверка с сервером — пуш к нам не придёт (спека: после успеха обновить
+        // список через GetNotifications).
+        unawaited(reload());
       }
       return result;
     } catch (e) {

@@ -500,6 +500,57 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// Дозаполняет «Параметры» (объём/тип двигателя/КПП) из сертификата ГОСТ в
+  /// `_legalCheckResults`. Бесплатно + синхронно. ГОСТ авторитетнее ИИ:
+  /// заполняет пустое И перетирает ТОЛЬКО ранее ИИ-заполненное (ручной ввод не
+  /// трогаем). Пишет в общий `_vinAutofilledValues` → следующий ИИ-шаг only-empty
+  /// его не перетрёт, смена авто корректно чистит (stale). Идемпотентно.
+  void _autofillParamsFromGostCert() {
+    if (widget.readOnly) return;
+    Map<String, dynamic>? cert;
+    for (final c in _legalCheckResults) {
+      if ((c['checkType'] ?? '').toString() == 'api_cloud_gost_certificate') {
+        cert = gostCertificateFields(c['responseNormalized']);
+        break;
+      }
+    }
+    if (cert == null) return; // нет / found:false / пустой certificate
+    final parsed = parseGostCertificateParams(
+      cert,
+      allowedEngineTypes: _SparkJoyVehicleRegistry.engineTypes,
+      allowedGearboxTypes: _SparkJoyVehicleRegistry.gearboxTypes,
+      allowedEngineVolumes: _SparkJoyVehicleRegistry.engineVolumeOptions,
+    );
+    final byKey = _vinParamTargetsByKey();
+    final values = <String, String>{
+      'engineVolume': parsed.engineVolume,
+      'engineType': parsed.engineType,
+      'transmission': parsed.transmission, // → _gearboxTypeController
+    };
+    var filledAny = false;
+    _setStateSafely(() {
+      values.forEach((key, value) {
+        if (value.isEmpty) return;
+        final controller = byKey[key]!;
+        final current = controller.text.trim();
+        if (current == value) return; // уже стоит → no-op (идемпотентность)
+        final wasAiOnly =
+            current.isNotEmpty && _vinAutofilledValues[key] == controller.text;
+        // only-empty ИЛИ перетираем ровно ИИ-значение (ГОСТ приоритетнее ИИ);
+        // ручной ввод (непусто и не равно записи ИИ) не трогаем.
+        if (current.isNotEmpty && !wasAiOnly) return;
+        controller.text = value;
+        _vinAutofilledValues[key] = value; // value-tracking как у ИИ
+        filledAny = true;
+      });
+    });
+    if (filledAny && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Параметры дозаполнены по сертификату')),
+      );
+    }
+  }
+
   /// Терминальные ApiCloud-проверки (залог/такси/ГОСТ/ФГИС) → строки
   /// «<тип> — <результат>». Конвертер (api_cloud_converter_search) и
   /// нетерминальные статусы (pending/processing/…) исключены. Единый источник
@@ -519,6 +570,16 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       }
       final title =
           type.isEmpty ? 'Проверка' : sparkJoyLegalCheckTypeLabel(type);
+      // ГОСТ-сертификат: вместо «Обнаружено» — реальные факты сертификата
+      // (марка/модель/год/двигатель/топливо/КПП/мощность/№). Бэк отдаёт их в
+      // certificate[]; _legalNormalizedToText их теряет, поэтому достаём сами.
+      if (type == 'api_cloud_gost_certificate') {
+        final gost = _gostCertFactLine(c['responseNormalized']);
+        if (gost.isNotEmpty) {
+          lines.add('$title — $gost');
+          continue;
+        }
+      }
       final summary = _legalNormalizedToText(c['responseNormalized']).trim();
       final result = summary.isNotEmpty
           ? summary
@@ -530,6 +591,41 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       lines.add('$title — $result');
     }
     return lines;
+  }
+
+  /// Факт-строка по ГОСТ-сертификату для ИИ (сводка/legal-комментарий): только
+  /// факты, без рекомендаций (гард «не советовать» — в cliché-билдерах). Пусто,
+  /// если сертификата нет.
+  String _gostCertFactLine(dynamic normalized) {
+    final cert = gostCertificateFields(normalized);
+    if (cert == null) return '';
+    String f(String k) => (cert[k] ?? '').toString().trim();
+    final parts = <String>[];
+    final mm = [
+      f('product'),
+      f('tradename'),
+    ].where((s) => s.isNotEmpty).join(' ');
+    if (mm.isNotEmpty) parts.add(mm);
+    if (f('yearofmanufacturing').isNotEmpty) {
+      parts.add('${f('yearofmanufacturing')} г.');
+    }
+    final cc = int.tryParse(
+      RegExp(r'\d+').firstMatch(f('enginecylindersusefulcapacity'))?.group(0) ??
+          '',
+    );
+    final engineBits = <String>[
+      if (cc != null && cc > 0) 'двигатель ${(cc / 1000).toStringAsFixed(1)} л',
+      if (f('enginepetrol').isNotEmpty) f('enginepetrol'),
+    ];
+    if (engineBits.isNotEmpty) parts.add(engineBits.join(', '));
+    if (f('transmission').isNotEmpty) parts.add('КПП ${f('transmission')}');
+    if (f('enginemaxpower').isNotEmpty) {
+      parts.add('мощность ${f('enginemaxpower')}');
+    }
+    if (f('numberofcertificate').isNotEmpty) {
+      parts.add('№ сертификата ${f('numberofcertificate')}');
+    }
+    return parts.join('; ');
   }
 
   /// AI-fill for the «Комментарий специалиста» field on the «Материалы

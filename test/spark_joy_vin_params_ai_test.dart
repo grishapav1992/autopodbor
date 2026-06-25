@@ -230,4 +230,118 @@ void main() {
       expect(p.model, '');
     });
   });
+
+  // ── ГОСТ-сертификат → «Параметры» ────────────────────────────────────
+  final liveCert = <String, dynamic>{
+    'product': 'VOLKSWAGEN',
+    'tradename': 'TIGUAN',
+    'type': '5NZLW',
+    'category': 'M1',
+    'bodytype': 'универсал/5',
+    'fullmass': '1950',
+    'yearofmanufacturing': '2020',
+    'enginepetrol': 'Дизельное топливо',
+    'enginecylindersusefulcapacity': '1968',
+    'transmission': 'Volkswagen, роботизированная с ручным управлением',
+    'enginemaxpower': '110.29(3500)',
+    'eco': '4',
+    'numberofcertificate': 'ТС RU А-DE.НУ08.71226',
+  };
+  GostParamsResult parseGost(Map<String, dynamic> c) =>
+      parseGostCertificateParams(
+        c,
+        allowedEngineTypes: engineTypes,
+        allowedGearboxTypes: gearboxTypes,
+        allowedEngineVolumes: engineVolumes,
+      );
+
+  group('parseGostCertificateParams', () {
+    test('live LEG-A404259 → Дизель / 2.0 / Робот', () {
+      final r = parseGost(liveCert);
+      expect(r.engineType, 'Дизель');
+      expect(r.engineVolume, '2.0'); // 1968 см³ → 1.968 → «2.0»
+      expect(r.transmission, 'Робот');
+    });
+    test('fuel substrings map + canon', () {
+      expect(parseGost({'enginepetrol': 'Бензиновое'}).engineType, 'Бензин');
+      expect(parseGost({'enginepetrol': 'Электродвигатель'}).engineType, 'Электро');
+      expect(parseGost({'enginepetrol': 'Гибридная установка'}).engineType, 'Гибрид');
+      expect(parseGost({'enginepetrol': 'Газовое/бензиновое'}).engineType, 'Газ/Бензин');
+      expect(parseGost({'enginepetrol': 'неизвестно'}).engineType, '');
+      expect(parseGost({'enginepetrol': ''}).engineType, '');
+    });
+    test('transmission substrings', () {
+      expect(parseGost({'transmission': 'автоматическая'}).transmission, 'АКПП');
+      expect(parseGost({'transmission': 'механическая 6-ст'}).transmission, 'МКПП');
+      expect(parseGost({'transmission': 'вариаторного типа'}).transmission, 'Вариатор');
+      expect(parseGost({'transmission': 'роботизированная'}).transmission, 'Робот');
+      expect(parseGost({'transmission': 'странная'}).transmission, '');
+    });
+    test('volume cm3 → liters, only if in dropdown list', () {
+      expect(parseGost({'enginecylindersusefulcapacity': '1598'}).engineVolume, '1.6');
+      expect(parseGost({'enginecylindersusefulcapacity': '799'}).engineVolume, '0.8');
+      expect(parseGost({'enginecylindersusefulcapacity': '99000'}).engineVolume, '');
+      expect(parseGost({'enginecylindersusefulcapacity': ''}).engineVolume, '');
+      expect(parseGost({'enginecylindersusefulcapacity': 'нет'}).engineVolume, '');
+    });
+    test('empty cert → all empty, never throws', () {
+      final r = parseGost(<String, dynamic>{});
+      expect(r.engineVolume, '');
+      expect(r.engineType, '');
+      expect(r.transmission, '');
+    });
+  });
+
+  group('gostCertificateFields', () {
+    const foundJson =
+        '{"found":true,"certificate":[{"product":"VOLKSWAGEN","tradename":"TIGUAN"}]}';
+    test('JSON-string found → first cert map', () {
+      final c = gostCertificateFields(foundJson);
+      expect(c, isNotNull);
+      expect(c!['product'], 'VOLKSWAGEN');
+      expect(c['tradename'], 'TIGUAN');
+    });
+    test('already-decoded Map found → first cert map', () {
+      final c = gostCertificateFields({'found': true, 'certificate': [liveCert]});
+      expect(c!['enginepetrol'], 'Дизельное топливо');
+    });
+    test('found:false → null', () {
+      expect(gostCertificateFields('{"found":false,"certificate":[]}'), isNull);
+    });
+    test('found:true but empty certificate → null', () {
+      expect(gostCertificateFields({'found': true, 'certificate': []}), isNull);
+    });
+    test('null / empty / garbage → null, never throws', () {
+      expect(gostCertificateFields(null), isNull);
+      expect(gostCertificateFields(''), isNull);
+      expect(gostCertificateFields('not json'), isNull);
+    });
+    test('JSON wrapped in prose (extractJsonObject path)', () {
+      final c = gostCertificateFields(
+        'итог: {"found":true,"certificate":[{"product":"BMW"}]} конец',
+      );
+      expect(c!['product'], 'BMW');
+    });
+  });
+
+  group('gostListField / gostMapField (scaffold)', () {
+    test('items populated → list of maps', () {
+      final l = gostListField(
+        '{"found":true,"items":[{"number":"1"},{"number":"2"}]}',
+        'items',
+      );
+      expect(l.length, 2);
+      expect(l.first['number'], '1');
+    });
+    test('items empty / missing → []', () {
+      expect(gostListField('{"items":[]}', 'items'), isEmpty);
+      expect(gostListField('{"found":true}', 'items'), isEmpty);
+      expect(gostListField(null, 'items'), isEmpty);
+    });
+    test('permit populated → map; null/empty → null', () {
+      expect(gostMapField('{"permit":{"number":"X1"}}', 'permit')!['number'], 'X1');
+      expect(gostMapField('{"permit":null}', 'permit'), isNull);
+      expect(gostMapField('{"permit":{}}', 'permit'), isNull);
+    });
+  });
 }

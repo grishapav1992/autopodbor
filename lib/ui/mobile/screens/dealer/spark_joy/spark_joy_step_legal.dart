@@ -255,6 +255,9 @@ List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
           : sparkJoyLegalCheckTypeLabel(type);
       final status = (c['status'] ?? '').toString();
       final summary = _legalNormalizedToText(c['responseNormalized']);
+      final cert = type == 'api_cloud_gost_certificate'
+          ? gostCertificateFields(c['responseNormalized'])
+          : null;
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: SparkSpace.sm),
         child: Column(
@@ -278,11 +281,114 @@ List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
                 size: SparkTextSize.caption,
                 color: kGreyColor,
               ),
+            // ГОСТ-сертификат: официальные поля авто (бэк отдаёт certificate[]).
+            if (cert != null) ..._gostCertDetailRows(cert),
+            // Скелет залог/ФГИС: items[]/permit — дремлет, пока бэк не наполнит.
+            ..._legalDetailScaffoldRows(type, c['responseNormalized']),
           ],
         ),
       );
     }),
   ];
+}
+
+// Одна строка «метка — значение» детали проверки.
+Widget _gostRow(String label, String value) {
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: SparkSpace.xxs),
+    child: Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        MyText(
+          text: '$label  ',
+          size: SparkTextSize.chip,
+          color: kGreyColor,
+          weight: FontWeight.w600,
+        ),
+        MyText(text: value, size: SparkTextSize.caption, color: kTertiaryColor),
+      ],
+    ),
+  );
+}
+
+bool _gostHas(String? v) => v != null && v.trim().isNotEmpty && v.trim() != '-';
+
+/// Детали ГОСТ-сертификата (марка/модель, год, мотор, мощность, кузов, № …).
+List<Widget> _gostCertDetailRows(Map<String, dynamic> cert) {
+  String f(String k) => (cert[k] ?? '').toString().trim();
+  final rows = <Widget>[];
+  final markModel = [
+    f('product'),
+    f('tradename'),
+  ].where((s) => s.isNotEmpty).join(' ');
+  if (markModel.isNotEmpty) rows.add(_gostRow('Марка/модель:', markModel));
+  if (_gostHas(f('yearofmanufacturing'))) {
+    rows.add(_gostRow('Год выпуска:', f('yearofmanufacturing')));
+  }
+  final cc = int.tryParse(
+    RegExp(r'\d+').firstMatch(f('enginecylindersusefulcapacity'))?.group(0) ??
+        '',
+  );
+  if (cc != null && cc > 0) {
+    rows.add(_gostRow('Объём двигателя:', '${(cc / 1000).toStringAsFixed(1)} л'));
+  }
+  if (_gostHas(f('enginepetrol'))) {
+    rows.add(_gostRow('Топливо:', f('enginepetrol')));
+  }
+  final tr = f('transmission');
+  if (_gostHas(tr)) {
+    rows.add(_gostRow('КПП:', tr.length > 60 ? '${tr.substring(0, 60)}…' : tr));
+  }
+  if (_gostHas(f('enginemaxpower'))) {
+    rows.add(_gostRow('Мощность:', f('enginemaxpower')));
+  }
+  if (_gostHas(f('bodytype'))) rows.add(_gostRow('Кузов:', f('bodytype')));
+  if (_gostHas(f('category'))) rows.add(_gostRow('Категория:', f('category')));
+  if (_gostHas(f('fullmass'))) rows.add(_gostRow('Масса, кг:', f('fullmass')));
+  if (_gostHas(f('eco'))) rows.add(_gostRow('Эко-класс:', f('eco')));
+  if (_gostHas(f('numberofcertificate'))) {
+    rows.add(_gostRow('№ сертификата:', f('numberofcertificate')));
+  }
+  return rows;
+}
+
+/// Скелет деталей залога (items[]) / ФГИС-такси (permit). Рендерится, ТОЛЬКО
+/// когда бэк начнёт слать их непустыми (сейчас баг — []/null, ветки дремлют).
+/// Ключи деталей финализировать по схеме бэка после фикса.
+List<Widget> _legalDetailScaffoldRows(String type, dynamic normalized) {
+  if (type == 'api_cloud_zalog_notary' || type == 'api_cloud_zalog_fedresurs') {
+    final items = gostListField(normalized, 'items');
+    if (items.isEmpty) return const [];
+    final rows = <Widget>[];
+    for (var i = 0; i < items.length; i++) {
+      final it = items[i];
+      String f(String k) => (it[k] ?? '').toString().trim();
+      final pledgee = f('pledgee').isNotEmpty ? f('pledgee') : f('name');
+      final date = f('date').isNotEmpty ? f('date') : f('registration_date');
+      final regNum = f('number').isNotEmpty ? f('number') : f('reg_number');
+      if (pledgee.isNotEmpty) rows.add(_gostRow('Залогодержатель:', pledgee));
+      if (date.isNotEmpty) rows.add(_gostRow('Дата:', date));
+      if (regNum.isNotEmpty) rows.add(_gostRow('№ записи:', regNum));
+      if (i < items.length - 1) rows.add(const SizedBox(height: SparkSpace.xxs));
+    }
+    return rows;
+  }
+  if (type == 'api_cloud_fgis_taxi_search') {
+    final permit = gostMapField(normalized, 'permit');
+    if (permit == null) return const [];
+    String f(String k) => (permit[k] ?? '').toString().trim();
+    final rows = <Widget>[];
+    if (f('number').isNotEmpty) rows.add(_gostRow('№ разрешения:', f('number')));
+    if (f('status').isNotEmpty) {
+      rows.add(_gostRow('Статус разрешения:', f('status')));
+    }
+    if (f('region').isNotEmpty) rows.add(_gostRow('Регион:', f('region')));
+    if (f('valid_until').isNotEmpty) {
+      rows.add(_gostRow('Действует до:', f('valid_until')));
+    }
+    return rows;
+  }
+  return const [];
 }
 
 Widget _buildSparkJoyStepLegal(
