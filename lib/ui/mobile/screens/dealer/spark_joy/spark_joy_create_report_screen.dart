@@ -277,6 +277,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   set _mediaTagOrderByScope(Map<String, List<String>> value) =>
       _reportController.mediaTagOrderByScope.value = value;
   final Map<String, Uint8List> _dataUrlImageBytesCache = {};
+  // Ids видео, для которых генерация превью (`_generateVideoThumbsForGroup`)
+  // завершилась без результата. Пока id здесь нет и превью отсутствует, плитка
+  // показывает спиннер «загрузка»; попав сюда — серый плейсхолдер.
+  final Set<String> _videoThumbsUnavailable = <String>{};
   String? _appDocumentsPath;
   // Микрофон-permission прокси удалён вместе с recording-инфраструктурой.
   // Дисктовка использует `_speechPermissionGranted` ниже.

@@ -239,6 +239,7 @@ class _SparkJoyVideoThumbnail extends StatelessWidget {
   const _SparkJoyVideoThumbnail({
     this.thumbPath,
     this.thumbUrl,
+    this.loading = false,
     this.fit = BoxFit.cover,
   });
 
@@ -253,6 +254,12 @@ class _SparkJoyVideoThumbnail extends StatelessWidget {
   /// tile loads a small network image instead of decoding the remote video —
   /// which iOS can't do from a presigned URL anyway.
   final String? thumbUrl;
+
+  /// True while a preview for this video could still appear (its thumbnail is
+  /// queued / being generated). When there's no [thumbPath] or [thumbUrl] yet,
+  /// this picks the spinner over the grey "missing" placeholder — so a video
+  /// that's still loading never reads as absent.
+  final bool loading;
   final BoxFit fit;
 
   @override
@@ -277,13 +284,18 @@ class _SparkJoyVideoThumbnail extends StatelessWidget {
         cacheHeight: 300,
         gaplessPlayback: true,
         errorBuilder: (_, _, _) => const _SparkJoyVideoPlaceholder(),
-        // While the poster streams in, keep the same placeholder so the tile
-        // never flashes empty.
+        // While the poster streams in, show a spinner (not the grey play-badge
+        // placeholder) so "loading" reads differently from "missing/empty" —
+        // the placeholder is reserved for the error branch above.
         loadingBuilder: (context, child, progress) =>
-            progress == null ? child : const _SparkJoyVideoPlaceholder(),
+            progress == null ? child : const _SparkJoyVideoThumbLoading(),
       );
     } else {
-      return const _SparkJoyVideoPlaceholder();
+      // No preview yet: spinner while it could still resolve (queued / being
+      // generated), grey placeholder only once generation has given up.
+      return loading
+          ? const _SparkJoyVideoThumbLoading()
+          : const _SparkJoyVideoPlaceholder();
     }
     return Stack(
       fit: StackFit.expand,
@@ -314,6 +326,25 @@ class _SparkJoyVideoPlaceholder extends StatelessWidget {
         Icons.play_circle_fill_rounded,
         size: SparkSize.iconXl,
         color: Color(0xD9000000),
+      ),
+    );
+  }
+}
+
+/// Shown while a remote poster is still streaming in — distinct from the
+/// play-badge placeholder so a loading tile never looks like a missing one.
+class _SparkJoyVideoThumbLoading extends StatelessWidget {
+  const _SparkJoyVideoThumbLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: kLightGreyColor,
+      alignment: Alignment.center,
+      child: const SizedBox(
+        width: SparkSize.spinner,
+        height: SparkSize.spinner,
+        child: CircularProgressIndicator(strokeWidth: 2),
       ),
     );
   }

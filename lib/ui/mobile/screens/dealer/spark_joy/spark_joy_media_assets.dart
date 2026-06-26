@@ -443,9 +443,17 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       );
     }
     if (item.isVideo) {
+      // No preview yet (no on-disk thumb, no poster URL) and generation hasn't
+      // given up → show the loading spinner instead of the "missing" placeholder
+      // while `_generateVideoThumbsForGroup` works through it.
+      final loading =
+          item.videoThumbPath == null &&
+          item.videoThumbUrl == null &&
+          !_videoThumbsUnavailable.contains(item.id);
       return _SparkJoyVideoThumbnail(
         thumbPath: item.videoThumbPath,
         thumbUrl: item.videoThumbUrl,
+        loading: loading,
         fit: fit,
       );
     }

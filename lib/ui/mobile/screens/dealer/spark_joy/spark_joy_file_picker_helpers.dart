@@ -102,10 +102,17 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
         // any thumbnail.
         thumb = await _resolveSparkJoyVideoThumbRemote(item.dataUrl, item.name);
       } else {
+        // Neither a local file nor a remote URL — no way to produce a preview.
+        _setStateSafely(() => _videoThumbsUnavailable.add(item.id));
         continue;
       }
       if (!mounted) return;
-      if (thumb == null) continue;
+      if (thumb == null) {
+        // Generation gave up (timeout / decode failure): drop the spinner and
+        // show the grey placeholder instead of spinning forever.
+        _setStateSafely(() => _videoThumbsUnavailable.add(item.id));
+        continue;
+      }
       _setStateSafely(() {
         final state = _mediaState[groupKey];
         if (state == null) return;

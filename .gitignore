@@ -47,6 +47,10 @@ app.*.map.json
 
 # Local dev artefacts — not part of the repo
 /tmp/
+# Backend reference (WSWalker): DTOs/context as server-contract reference for the AI.
+# Kept on disk for grep/read, never committed (not this app's source).
+/raf_space-wswalker/
+/raf_space-wswalker-*.zip
 /.claude/worktrees/
 /.claude/knowledge-graph/
 /graphify-out/
