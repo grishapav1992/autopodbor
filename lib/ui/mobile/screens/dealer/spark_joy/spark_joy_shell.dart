@@ -238,6 +238,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 color: kPrimaryColor,
               ),
             ),
+            actions: const [_MarkAllReadAction()],
             bottom: PreferredSize(
               preferredSize: const Size.fromHeight(SparkSpace.hairline),
               child: Container(
@@ -766,6 +767,81 @@ class _NotificationNavIcon extends StatelessWidget {
                   ),
                 ),
               ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+/// AppBar action that marks every passive (`reminder` / `system`) notification
+/// as read in one tap. Visible only while there are PASSIVE unread items it can
+/// actually clear — not for interactive invitations, which need accept/reject,
+/// not MarkRead (#1). Gives the user an obvious way to clear the feed instead of
+/// «просто посмотреть всё» (#2). Backend has no bulk endpoint — the controller
+/// loops `MarkRead` (#6).
+class _MarkAllReadAction extends StatefulWidget {
+  const _MarkAllReadAction();
+
+  @override
+  State<_MarkAllReadAction> createState() => _MarkAllReadActionState();
+}
+
+class _MarkAllReadActionState extends State<_MarkAllReadAction> {
+  bool _busy = false;
+
+  Future<void> _run() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await SparkJoyNotificationsStorage.markAllRead();
+      if (!mounted) return;
+      final String message;
+      if (result.failed > 0) {
+        message = 'Не удалось отметить: ${result.failed}';
+      } else if (result.marked > 0) {
+        message = 'Отмечено прочитанными: ${result.marked}';
+      } else {
+        message = 'Нет уведомлений для отметки';
+      }
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Не удалось: $e')));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_busy) {
+      return const Padding(
+        padding: EdgeInsets.only(right: SparkSpace.lg),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    return ValueListenableBuilder<int>(
+      valueListenable: SparkJoyNotificationsStorage.notifier,
+      builder: (context, _, _) {
+        return FutureBuilder<int>(
+          future: SparkJoyNotificationsStorage.passiveUnreadCount(),
+          builder: (context, snapshot) {
+            final count = snapshot.data ?? 0;
+            if (count <= 0) return const SizedBox.shrink();
+            return TextButton.icon(
+              onPressed: _run,
+              icon: const Icon(Icons.done_all_rounded, size: 18),
+              label: const Text('Прочитать всё'),
+              style: TextButton.styleFrom(foregroundColor: kSecondaryColor),
             );
           },
         );

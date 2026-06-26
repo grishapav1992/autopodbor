@@ -9,6 +9,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'spark_joy_company_public_profile_screen.dart';
 import 'spark_joy_legal_labels.dart';
 import 'spark_joy_notification_actions.dart';
+import 'spark_joy_notification_detail_rows.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
@@ -463,7 +464,7 @@ class _NotificationDetails extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rows = _notificationDetailRows(notification);
+    final rows = notificationDetailRows(notification);
     return Padding(
       padding: const EdgeInsets.only(top: SparkSpace.lg),
       child: Container(
@@ -588,139 +589,6 @@ class _NotificationDetails extends StatelessWidget {
   }
 }
 
-class _DetailRow {
-  const _DetailRow(this.label, this.value);
-
-  final String label;
-  final String value;
-}
-
-List<_DetailRow> _notificationDetailRows(BackendNotification n) {
-  final rows = <_DetailRow>[
-    _DetailRow('Тип', _typeLabel(n.type)),
-    _DetailRow('Статус', _statusLabel(n.status)),
-    _DetailRow('Создано', _formatAbsolute(n.createdAt)),
-  ];
-  if (n.actedAt != null) {
-    rows.add(_DetailRow('Обработано', _formatAbsolute(n.actedAt!)));
-  }
-  if (n.expiresAt != null) {
-    rows.add(_DetailRow('Истекает', _formatAbsolute(n.expiresAt!)));
-  }
-  if (n.senderId != null) {
-    rows.add(_DetailRow('Отправитель', n.senderId.toString()));
-  }
-
-  final payload = n.payload.entries.toList()
-    ..sort((a, b) => a.key.compareTo(b.key));
-  for (final entry in payload) {
-    _appendPayloadRows(rows, entry.key, entry.value);
-  }
-  return rows;
-}
-
-// Internal/no-value keys that only add noise to the details list.
-const _hiddenPayloadKeys = <String>{'source', 'entityType', 'entity_type'};
-
-/// Flattens a payload entry into human-readable rows. Nested objects/lists
-/// are expanded (preferring a readable name) instead of being dumped as raw
-/// JSON text, which is what users used to see in «Подробнее» (B6).
-void _appendPayloadRows(List<_DetailRow> rows, String key, Object? value) {
-  if (value == null) return;
-  if (_hiddenPayloadKeys.contains(key)) return;
-  if (value is Map) {
-    final name = _readableMapLabel(value);
-    if (name.isNotEmpty) {
-      rows.add(_DetailRow(_payloadLabel(key), name));
-      return;
-    }
-    final nested = value.entries.toList()
-      ..sort((a, b) => a.key.toString().compareTo(b.key.toString()));
-    for (final e in nested) {
-      _appendPayloadRows(rows, e.key.toString(), e.value);
-    }
-    return;
-  }
-  if (value is List) {
-    final parts = value
-        .map((e) => e is Map ? _readableMapLabel(e) : e.toString().trim())
-        .where((s) => s.isNotEmpty)
-        .toList();
-    if (parts.isNotEmpty) {
-      rows.add(_DetailRow(_payloadLabel(key), parts.join(', ')));
-    }
-    return;
-  }
-  final str = value.toString().trim();
-  if (str.isNotEmpty) rows.add(_DetailRow(_payloadLabel(key), str));
-}
-
-/// Picks a readable label from a nested object (company/specialist/etc.),
-/// or '' when none of the known name fields are present.
-String _readableMapLabel(Map value) {
-  for (final k in const [
-    'name',
-    'companyName',
-    'title',
-    'displayName',
-    'fullName',
-    'label',
-  ]) {
-    final v = value[k];
-    if (v != null && v.toString().trim().isNotEmpty) {
-      return v.toString().trim();
-    }
-  }
-  return '';
-}
-
-String _payloadLabel(String key) {
-  const labels = <String, String>{
-    'companyId': 'ID компании',
-    'companyName': 'Компания',
-    'entityId': 'ID объекта',
-    'entityType': 'Тип объекта',
-    'requestId': 'ID заявки',
-    'requestNumber': 'Номер заявки',
-    'request_id': 'ID заявки',
-    'request_number': 'Номер заявки',
-    'specialistId': 'ID специалиста',
-    'specialistName': 'Специалист',
-    'reason': 'Причина',
-    'comment': 'Комментарий',
-    'message': 'Сообщение',
-  };
-  return labels[key] ?? key;
-}
-
-String _typeLabel(NotificationType type) {
-  switch (type) {
-    case NotificationType.task:
-      return 'Заявка';
-    case NotificationType.invitation:
-      return 'Приглашение';
-    case NotificationType.reminder:
-      return 'Напоминание';
-    case NotificationType.system:
-      return 'Системное';
-  }
-}
-
-String _statusLabel(NotificationStatus status) {
-  switch (status) {
-    case NotificationStatus.pending:
-      return 'Новое';
-    case NotificationStatus.accepted:
-      return 'Принято';
-    case NotificationStatus.rejected:
-      return 'Отклонено';
-    case NotificationStatus.read:
-      return 'Просмотрено';
-    case NotificationStatus.expired:
-      return 'Истекло';
-  }
-}
-
 class _TypeStyle {
   const _TypeStyle({required this.icon, required this.color});
 
@@ -751,11 +619,6 @@ String _formatRelative(DateTime ts) {
   if (tsDate == yesterday) {
     return 'вчера, ${_hhmm(local)}';
   }
-  return '${_dd(local.day)}.${_dd(local.month)}.${local.year}, ${_hhmm(local)}';
-}
-
-String _formatAbsolute(DateTime ts) {
-  final local = ts.toLocal();
   return '${_dd(local.day)}.${_dd(local.month)}.${local.year}, ${_hhmm(local)}';
 }
 

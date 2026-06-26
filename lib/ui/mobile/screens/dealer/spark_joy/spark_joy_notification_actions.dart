@@ -104,26 +104,60 @@ class _SparkJoyNotificationActionsState
     }
     return Padding(
       padding: const EdgeInsets.only(top: SparkSpace.md),
-      child: Row(
+      child: _busy
+          ? const _ActionProgress()
+          : Row(
+              children: [
+                Expanded(
+                  child: _ActionButton(
+                    label: 'Принять',
+                    icon: Icons.check_rounded,
+                    variant: _ActionVariant.primary,
+                    onTap: () => _runAction(NotificationAction.accept),
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.sm),
+                Expanded(
+                  child: _ActionButton(
+                    label: 'Отклонить',
+                    icon: Icons.close_rounded,
+                    variant: _ActionVariant.secondary,
+                    onTap: () => _runAction(NotificationAction.reject),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// In-flight placeholder shown while accept/reject is processing — makes it
+/// obvious the tap registered and the buttons aren't "stuck" (#5).
+class _ActionProgress extends StatelessWidget {
+  const _ActionProgress();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: SparkSize.actionHeightSm,
+      alignment: Alignment.center,
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: _ActionButton(
-              label: 'Принять',
-              icon: Icons.check_rounded,
-              busy: _busy,
-              variant: _ActionVariant.primary,
-              onTap: () => _runAction(NotificationAction.accept),
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: kSecondaryColor,
             ),
           ),
-          const SizedBox(width: SparkSpace.sm),
-          Expanded(
-            child: _ActionButton(
-              label: 'Отклонить',
-              icon: Icons.close_rounded,
-              busy: _busy,
-              variant: _ActionVariant.secondary,
-              onTap: () => _runAction(NotificationAction.reject),
-            ),
+          SizedBox(width: SparkSpace.sm),
+          MyText(
+            text: 'Обрабатываем…',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+            weight: FontWeight.w600,
           ),
         ],
       ),
@@ -137,14 +171,12 @@ class _ActionButton extends StatelessWidget {
   const _ActionButton({
     required this.label,
     required this.icon,
-    required this.busy,
     required this.variant,
     required this.onTap,
   });
 
   final String label;
   final IconData icon;
-  final bool busy;
   final _ActionVariant variant;
   final VoidCallback onTap;
 
@@ -156,34 +188,31 @@ class _ActionButton extends StatelessWidget {
     final border = isPrimary
         ? null
         : Border.all(color: kRedColor.withValues(alpha: 0.35));
-    return Opacity(
-      opacity: busy ? 0.6 : 1,
-      child: Material(
-        color: bg,
+    return Material(
+      color: bg,
+      borderRadius: BorderRadius.circular(SparkRadius.lg),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(SparkRadius.lg),
-        child: InkWell(
-          onTap: busy ? null : onTap,
-          borderRadius: BorderRadius.circular(SparkRadius.lg),
-          child: Container(
-            height: SparkSize.actionHeightSm,
-            padding: const EdgeInsets.symmetric(horizontal: SparkSpace.md),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(SparkRadius.lg),
-              border: border,
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: fg, size: SparkSize.iconMd),
-                const SizedBox(width: SparkSpace.xs),
-                MyText(
-                  text: label,
-                  size: SparkTextSize.body,
-                  color: fg,
-                  weight: FontWeight.w700,
-                ),
-              ],
-            ),
+        child: Container(
+          height: SparkSize.actionHeightSm,
+          padding: const EdgeInsets.symmetric(horizontal: SparkSpace.md),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+            border: border,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: fg, size: SparkSize.iconMd),
+              const SizedBox(width: SparkSpace.xs),
+              MyText(
+                text: label,
+                size: SparkTextSize.body,
+                color: fg,
+                weight: FontWeight.w700,
+              ),
+            ],
           ),
         ),
       ),

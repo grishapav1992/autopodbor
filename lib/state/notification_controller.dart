@@ -73,8 +73,9 @@ class NotificationController extends GetxController {
       _started = false;
       return;
     }
-    _pushSub ??= NotificationWebsocketService.instance.stream
-        .listen(_onPushEvent);
+    _pushSub ??= NotificationWebsocketService.instance.stream.listen(
+      _onPushEvent,
+    );
     // Let the WS recover from an expired notification token: on repeated
     // disconnects it refreshes all tokens and reconnects with the fresh
     // notification token instead of dying until re-login (B18).
@@ -190,15 +191,30 @@ class NotificationController extends GetxController {
     }
   }
 
-  /// Помечает все пассивные (`reminder` / `system`) непрочитанные оповещения
-  /// как прочитанные, проходя ВСЕ серверные pending-страницы (не только
-  /// загруженную). Интерактивные `invitation` не трогаем — их нельзя пометить
-  /// прочитанными без accept/reject (бэкенд отклонит MarkRead). По завершении —
-  /// reload (#2, #6).
+  /// Загруженные pending-оповещения пассивных типов (`reminder`/`system`, без
+  /// конвертера) — те, что «Прочитать всё» реально может пометить. Управляет
+  /// видимостью этого действия, чтобы оно не показывалось, когда непрочитаны
+  /// только интерактивные приглашения (их нельзя «прочитать» — нужен
+  /// accept/reject) (#1).
+  int get passiveUnreadLoaded => items
+      .where(
+        (n) =>
+            n.status == NotificationStatus.pending &&
+            !n.type.isInteractive &&
+            !n.isLegalConverter,
+      )
+      .length;
+
+  /// Помечает все пассивные (`reminder`/`system`, без конвертера) непрочитанные
+  /// оповещения как прочитанные, проходя ВСЕ серверные pending-страницы.
+  /// Интерактивные `invitation` не трогаем — их нельзя пометить прочитанными без
+  /// accept/reject (бэкенд отклонит MarkRead). Возвращает, сколько помечено и
+  /// сколько не удалось, чтобы UI не рапортовал ложный успех (#1, #3). По
+  /// завершении — авторитетный reload (#6).
   ///
   /// Массовой отметки на бэкенде нет — это клиентский цикл по MarkRead; заявка
   /// на `Notification.MarkAllRead` зафиксирована в docs/BACKEND_REQUESTS.md.
-  Future<void> markAllRead() async {
+  Future<({int marked, int failed})> markAllRead() async {
     final ids = <String>{};
     String? cursor;
     var guard = 0;
@@ -209,35 +225,26 @@ class NotificationController extends GetxController {
         cursor: cursor,
       );
       for (final n in page.items) {
-        if (!n.type.isInteractive) ids.add(n.id);
+        if (!n.type.isInteractive && !n.isLegalConverter) ids.add(n.id);
       }
+      // Зависит от того, что бэкенд отдаёт nextCursor и для фильтра по status;
+      // иначе цикл оборвётся после 1-й страницы (см. docs/BACKEND_REQUESTS.md).
       cursor = page.nextCursor;
       guard++;
     } while (cursor != null && cursor.isNotEmpty && guard < 50);
 
-    if (ids.isEmpty) {
-      await reload();
-      return;
-    }
-    // Оптимистично гасим то, что уже загружено в ленту.
-    for (var i = 0; i < items.length; i++) {
-      if (items[i].status == NotificationStatus.pending &&
-          ids.contains(items[i].id)) {
-        items[i] = items[i].copyWith(status: NotificationStatus.read);
-      }
-    }
-    items.refresh();
-    _recomputeUnread();
-    _bumpNotifier();
-    // Персистим на сервере (последовательно, без шторма запросов).
+    var failed = 0;
     for (final id in ids) {
       try {
         await NotificationApi.markRead(id);
       } catch (e) {
+        failed++;
         _log('markAllRead: markRead $id failed: $e');
       }
     }
+    // Авторитетный срез + пересчёт unread + bump делает сам reload().
     await reload();
+    return (marked: ids.length - failed, failed: failed);
   }
 
   /// Accept or reject an interactive `task` / `invitation` notification.
@@ -275,9 +282,11 @@ class NotificationController extends GetxController {
           _recomputeUnread();
           _bumpNotifier();
         }
-        // Сверка с сервером — пуш к нам не придёт (спека: после успеха обновить
-        // список через GetNotifications).
-        unawaited(reload());
+        // Намеренно НЕ делаем reconcile-reload: оптимистичный терминальный
+        // статус выше авторитетен, а refetch страницы 1 при
+        // read-after-write/реплика-лаге мог бы вернуть оповещение ещё как
+        // pending и снова показать кнопки — это и был баг #5. Смену
+        // компании/заявок дёргают свои refresh-bus в UI.
       }
       return result;
     } catch (e) {
