@@ -27,6 +27,16 @@ val hasReleaseKeystore = keystorePropertiesFile.exists()
 if (hasReleaseKeystore) {
     keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
+val missingReleaseKeystoreMessage =
+    "Release build requires android/key.properties. " +
+        "For local `flutter run --release` pass -Pandroid.allowDebugSigning=true."
+
+gradle.taskGraph.whenReady {
+    val requestedReleaseBuild = allTasks.any { it.name.contains("Release") }
+    if (requestedReleaseBuild && !hasReleaseKeystore && !allowDebugSigning) {
+        throw GradleException(missingReleaseKeystoreMessage)
+    }
+}
 
 android {
     namespace = "com.example.flutter_application_1"
@@ -74,10 +84,7 @@ android {
                 logger.warn("⚠️ Release build using DEBUG signing key (android.allowDebugSigning=true). DO NOT ship this artifact.")
                 signingConfigs.getByName("debug")
             } else {
-                throw GradleException(
-                    "Release build requires android/key.properties. " +
-                        "For local `flutter run --release` pass -Pandroid.allowDebugSigning=true."
-                )
+                signingConfigs.getByName("debug")
             }
             isMinifyEnabled = true
             isShrinkResources = true

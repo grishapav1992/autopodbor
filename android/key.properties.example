@@ -8,8 +8,8 @@
 #
 # 2. Copy this file and fill in the values below.
 #
-# When android/key.properties is absent, build.gradle.kts falls back to the
-# debug signing key so `flutter run --release` still works locally.
+# When android/key.properties is absent, release builds fail fast. For a local
+# release run with debug signing only, pass -Pandroid.allowDebugSigning=true.
 
 storePassword=CHANGE_ME
 keyPassword=CHANGE_ME
