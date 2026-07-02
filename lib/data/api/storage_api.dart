@@ -3653,6 +3653,23 @@ class StorageApi {
     return _asMap(data['result']);
   }
 
+  /// Deactivates the current user account.
+  ///
+  /// Backend contract: no params, requires `edit_profile`, sets
+  /// `is_active=false` without changing `is_delete`, and invalidates mobile
+  /// refresh by resetting mobileJti. Caller must clear local auth tokens after
+  /// a successful response.
+  static Future<Map<String, dynamic>> deactivateAccount({
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.DeactivateAccount',
+      params: const {},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
   static bool _profileUpdateChangesRole(Map<String, dynamic> profile) {
     final role = profile['role']?.toString().trim().toLowerCase();
     return role == 'company' || role == 'specialist';

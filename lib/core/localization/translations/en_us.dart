@@ -153,7 +153,7 @@ const Map<String, String> enUS = {
   "privacyPolicy": 'Privacy Policy',
   "introduction": 'Introduction',
   "loremIpsumDolorSitAmetConsecteturAdipiscingElitSedDoEiusmodTemporIncididuntUtLaboreEtDoloreMagnaAliq":
-      'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.',
+      'AutoBase helps manage vehicle inspection requests, profiles, and reports.',
   "informationWeCollect": 'Information we collect',
   "userProfile": 'User Profile',
   "logout": 'Logout',
@@ -308,7 +308,7 @@ const Map<String, String> enUS = {
   "closed": 'CLOSED ',
   "callSeller": 'Call Seller',
   "loremIpsumDolorSitAmetConsecteturAcEtOrciInterdumAcNibhProinQuisDisNullaUltricesPharetraLectusIpsumS":
-      'Lorem ipsum dolor sit amet consectetur. Ac et orci interdum ac nibh proin quis. Dis nulla ultrices pharetra lectus ipsum semper malesuada erat et. Netus sed nam faucibus ut id mattis. Nibh ultrices pretium amet nunc a urna. Turpis suspendisse ac nulla ut in. Quam fermentum suspendisse massa nunc tellus augue amet. Risus quam sagittis fermentum tellus venenatis,',
+      'Review vehicle details, contact the assigned specialist, and keep inspection results organized.',
   "numberOfSeats": 'Number of Seats',
   "interior": 'Interior',
   "plateRegistration": 'Plate Registration',

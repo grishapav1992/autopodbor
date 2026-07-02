@@ -13,7 +13,8 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_field_widget.dar
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
-import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/personal_data_consent.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -77,7 +78,7 @@ class _LoginState extends State<Login> {
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
     if (!_pdnConsentAccepted) {
-      _showError('Подтвердите согласие на обработку персональных данных.');
+      _showError('Подтвердите согласие на ПДн и условия сервиса.');
       return;
     }
     final phone = _normalizePhone(_phoneController.text.trim());
@@ -193,7 +194,7 @@ class _LoginState extends State<Login> {
   Future<void> _verifyOnceManually() async {
     if (_isAuthLoading || _isVerifyLoading) return;
     if (!_pdnConsentAccepted) {
-      _showError('Подтвердите согласие на обработку персональных данных.');
+      _showError('Подтвердите согласие на ПДн и условия сервиса.');
       return;
     }
     final phone = _normalizePhone(_phoneController.text.trim());
@@ -253,11 +254,16 @@ class _LoginState extends State<Login> {
     }
   }
 
-
   void _openPersonalDataConsent() {
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+    ).push(MaterialPageRoute(builder: (_) => const PersonalDataConsent()));
+  }
+
+  void _openTerms() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const Terms()));
   }
 
   Future<void> _proceedAfterCheck() async {
@@ -313,6 +319,7 @@ class _LoginState extends State<Login> {
               setState(() => _pdnConsentAccepted = value ?? false);
             },
             onOpenConsent: _openPersonalDataConsent,
+            onOpenTerms: _openTerms,
           ),
           if (_callPhone.isNotEmpty)
             Padding(
@@ -442,11 +449,13 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.onOpenConsent,
+    required this.onOpenTerms,
   });
 
   final bool value;
   final ValueChanged<bool?> onChanged;
   final VoidCallback onOpenConsent;
+  final VoidCallback onOpenTerms;
 
   @override
   Widget build(BuildContext context) {
@@ -489,7 +498,7 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
                         fontWeight: FontWeight.w500,
                       ),
                       children: [
-                        const TextSpan(text: 'Согласен на обработку '),
+                        const TextSpan(text: 'Даю согласие на обработку '),
                         WidgetSpan(
                           alignment: PlaceholderAlignment.baseline,
                           baseline: TextBaseline.alphabetic,
@@ -497,6 +506,24 @@ class _PersonalDataConsentCheckbox extends StatelessWidget {
                             onTap: onOpenConsent,
                             child: const Text(
                               'персональных данных',
+                              style: TextStyle(
+                                color: kSecondaryColor,
+                                fontSize: 14,
+                                height: 1.35,
+                                fontWeight: FontWeight.w700,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const TextSpan(text: ' и принимаю '),
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: GestureDetector(
+                            onTap: onOpenTerms,
+                            child: const Text(
+                              'условия использования',
                               style: TextStyle(
                                 color: kSecondaryColor,
                                 fontSize: 14,

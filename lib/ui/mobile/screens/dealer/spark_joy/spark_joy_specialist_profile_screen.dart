@@ -10,6 +10,9 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/personal_data_consent.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
@@ -41,7 +44,7 @@ class SparkJoySpecialistProfileScreen extends StatefulWidget {
   /// «Выйти из аккаунта» с confirm-диалогом). Иконка `Icons.logout` в
   /// правом-верхнем углу AppBar была destructive-action на самом
   /// доступном месте — случайный тап на ней выкидывал из аккаунта.
-  final VoidCallback? onLogout;
+  final Future<void> Function()? onLogout;
 
   @override
   State<SparkJoySpecialistProfileScreen> createState() =>
@@ -80,6 +83,7 @@ class _SparkJoySpecialistProfileScreenState
 
   bool _isVerifying = false;
   bool _isSavingProfile = false;
+  bool _isAccountDeletionRequesting = false;
   // Generation counter для invalidation in-flight _fetchServerProfile.
   // Каждый запрос захватывает myGen в начале и проверяет перед apply.
   // Если кто-то bumped (например _resetBusinessStatus) — fetch больше
@@ -3084,34 +3088,40 @@ class _SparkJoySpecialistProfileScreenState
               ? _buildLinkedCompanyProfile()
               : _buildBusinessUnverified(),
         ),
+        const SparkSectionTitle('Правовая информация', top: SparkSpace.xl),
+        SparkCard(
+          onTap: _openPrivacyPolicy,
+          child: const _ProfileActionRow(
+            icon: Icons.privacy_tip_outlined,
+            title: 'Политика конфиденциальности',
+          ),
+        ),
+        const SizedBox(height: SparkSpace.md),
+        SparkCard(
+          onTap: _openPersonalDataConsent,
+          child: const _ProfileActionRow(
+            icon: Icons.fact_check_outlined,
+            title: 'Согласие на обработку персональных данных',
+          ),
+        ),
+        const SizedBox(height: SparkSpace.md),
+        SparkCard(
+          onTap: _openTerms,
+          child: const _ProfileActionRow(
+            icon: Icons.description_outlined,
+            title: 'Условия использования',
+          ),
+        ),
         const SparkSectionTitle('Поддержка', top: SparkSpace.xl),
         SparkCard(
           onTap: _openFeedback,
-          child: Row(
-            children: [
-              const Icon(
-                Icons.feedback_outlined,
-                color: kSecondaryColor,
-                size: SparkSize.iconLg,
-              ),
-              const SizedBox(width: SparkSpace.md),
-              const Expanded(
-                child: MyText(
-                  text: 'Оставить обратную связь',
-                  size: SparkTextSize.body,
-                  weight: FontWeight.w600,
-                ),
-              ),
-              const Icon(
-                Icons.chevron_right_rounded,
-                color: kGreyColor,
-                size: SparkSize.iconMd,
-              ),
-            ],
+          child: const _ProfileActionRow(
+            icon: Icons.feedback_outlined,
+            title: 'Оставить обратную связь',
           ),
         ),
-        if (widget.onLogout != null) ...[
-          const SparkSectionTitle('Аккаунт', top: SparkSpace.xl),
+        const SparkSectionTitle('Аккаунт', top: SparkSpace.xl),
+        if (widget.onLogout != null)
           SparkCard(
             onTap: _confirmLogout,
             child: Row(
@@ -3133,7 +3143,32 @@ class _SparkJoySpecialistProfileScreenState
               ],
             ),
           ),
-        ],
+        const SizedBox(height: SparkSpace.md),
+        SparkCard(
+          onTap: _isAccountDeletionRequesting
+              ? null
+              : _confirmAccountDeactivation,
+          child: Row(
+            children: [
+              const Icon(
+                Icons.delete_forever_outlined,
+                color: kRedColor,
+                size: SparkSize.iconLg,
+              ),
+              const SizedBox(width: SparkSpace.md),
+              Expanded(
+                child: MyText(
+                  text: _isAccountDeletionRequesting
+                      ? 'Удаляем аккаунт...'
+                      : 'Удалить аккаунт',
+                  size: SparkTextSize.body,
+                  weight: FontWeight.w600,
+                  color: kRedColor,
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }
@@ -3165,7 +3200,7 @@ class _SparkJoySpecialistProfileScreenState
       ),
     );
     if (confirmed == true) {
-      widget.onLogout?.call();
+      await widget.onLogout?.call();
     }
   }
 
@@ -3173,6 +3208,109 @@ class _SparkJoySpecialistProfileScreenState
     Navigator.of(
       context,
     ).push(MaterialPageRoute(builder: (_) => const SparkJoyFeedbackScreen()));
+  }
+
+  void _openPrivacyPolicy() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+  }
+
+  void _openPersonalDataConsent() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PersonalDataConsent()));
+  }
+
+  void _openTerms() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const Terms()));
+  }
+
+  Future<void> _confirmAccountDeactivation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить аккаунт?'),
+        content: const Text(
+          'Аккаунт будет отключён, а сохранённая сессия удалена с устройства. '
+          'Повторный вход по телефону снова активирует аккаунт.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: kRedColor),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _deactivateAccount();
+    }
+  }
+
+  Future<void> _deactivateAccount() async {
+    if (_isAccountDeletionRequesting) return;
+    setState(() => _isAccountDeletionRequesting = true);
+    try {
+      await storage_api.StorageApi.deactivateAccount();
+      if (!mounted) return;
+      if (widget.onLogout != null) {
+        await widget.onLogout!.call();
+      } else {
+        await SparkJoyStorage.logout();
+        await UserSimplePreferences.clearAuthTokens();
+      }
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось удалить аккаунт',
+      );
+    } finally {
+      if (mounted) setState(() => _isAccountDeletionRequesting = false);
+    }
+  }
+}
+
+class _ProfileActionRow extends StatelessWidget {
+  const _ProfileActionRow({required this.icon, required this.title});
+
+  final IconData icon;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: kSecondaryColor, size: SparkSize.iconLg),
+        const SizedBox(width: SparkSpace.md),
+        Expanded(
+          child: MyText(
+            text: title,
+            size: SparkTextSize.body,
+            weight: FontWeight.w600,
+          ),
+        ),
+        const Icon(
+          Icons.chevron_right_rounded,
+          color: kGreyColor,
+          size: SparkSize.iconMd,
+        ),
+      ],
+    );
   }
 }
 

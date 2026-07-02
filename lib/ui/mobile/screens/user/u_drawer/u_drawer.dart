@@ -11,7 +11,9 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_specialist_profile_screen.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_ui.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/personal_data_consent.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 
 class UDrawer extends StatefulWidget {
   const UDrawer({super.key});
@@ -144,6 +146,20 @@ class _UDrawerState extends State<UDrawer> {
                   title: "privacyPolicy".tr,
                   onTap: () {
                     Get.to(() => PrivacyPolicy());
+                  },
+                ),
+                _DrawerTile(
+                  icon: Assets.imagesPrivacyPolicyIcon,
+                  title: 'Согласие на ПДн',
+                  onTap: () {
+                    Get.to(() => PersonalDataConsent());
+                  },
+                ),
+                _DrawerTile(
+                  icon: Assets.imagesTermsIcon,
+                  title: "termsAndConditions".tr,
+                  onTap: () {
+                    Get.to(() => Terms());
                   },
                 ),
               ],

@@ -151,7 +151,7 @@ const Map<String, String> ruRu = {
   "privacyPolicy": "Политика конфиденциальности",
   "introduction": "Введение",
   "loremIpsumDolorSitAmetConsecteturAdipiscingElitSedDoEiusmodTemporIncididuntUtLaboreEtDoloreMagnaAliq":
-      "Описание политики и условий. Текст-заполнитель.",
+      "AutoBase помогает вести заявки, осмотры автомобилей и отчёты по результатам проверки.",
   "informationWeCollect": "Информация, которую мы собираем",
   "userProfile": "Профиль пользователя",
   "logout": "Выйти",
@@ -305,7 +305,7 @@ const Map<String, String> ruRu = {
   "closed": "ЗАКРЫТО",
   "callSeller": "Позвонить продавцу",
   "loremIpsumDolorSitAmetConsecteturAcEtOrciInterdumAcNibhProinQuisDisNullaUltricesPharetraLectusIpsumS":
-      "Описание и преимущества. Текст-заполнитель.",
+      "Проверьте данные автомобиля, свяжитесь с ответственным специалистом и сохраните результаты осмотра.",
   "numberOfSeats": "Количество мест",
   "interior": "Салон",
   "plateRegistration": "Регистрация номера",
