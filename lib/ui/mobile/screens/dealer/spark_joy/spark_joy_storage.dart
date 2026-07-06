@@ -97,6 +97,8 @@ class SparkJoyStorage {
   static const String _frameCatalogKey = 'spark_joy_frame_catalog_v1';
   static const String _converterBatchesKey =
       'spark_joy_converter_batches_v1';
+  static const String _converterResultsKey =
+      'spark_joy_converter_results_v1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
@@ -217,6 +219,7 @@ class SparkJoyStorage {
     await pref.remove(_companyRequestDraftKey);
     await pref.remove(_frameCatalogKey);
     await pref.remove(_converterBatchesKey);
+    await pref.remove(_converterResultsKey);
     await pref.remove(_userTagsKey);
     await pref.remove(_userTagsSyncedAtKey);
     await pref.remove(_pendingTagDeletesKey);
@@ -979,6 +982,126 @@ class SparkJoyStorage {
         await pref.setString(_converterBatchesKey, jsonEncode(store));
       }
     } catch (_) {}
+  }
+
+  // ── Конвертер: персист ТЕРМИНАЛЬНОГО результата по входу ─────────────────
+  // Батч-персист выше спасает от повторной оплаты только пока жив batchNumber
+  // (24ч) и всё равно требует сетевого дочита. Терминальный же результат
+  // (found/not_found) для одного входа не меняется, поэтому храним его целиком:
+  // повторный запрос того же VIN/госномера отвечает из локального кэша — ноль
+  // RPC и ноль списаний. TTL двухуровневый: связка VIN↔госномер может
+  // смениться при перепродаже (найденное держим 30 дней), а «не найдено» —
+  // авто может появиться в базах ApiCloud (держим сутки, дальше даём
+  // перепроверить).
+  static const Duration _converterResultFoundTtl = Duration(days: 30);
+  static const Duration _converterResultNotFoundTtl = Duration(hours: 24);
+
+  /// Каноничный ключ кэша конвертера по входу. VIN приоритетнее госномера —
+  /// как в самом запросе RunBatchLegalReview. Единая точка нормализации:
+  /// её же использует UI (`_converterKey`), иначе ключи записи и чтения
+  /// разъедутся на регистре/пробелах.
+  static String converterInputKey({String? vin, String? gosNumber}) {
+    final v = (vin ?? '').trim().toUpperCase();
+    if (v.isNotEmpty) return 'vin:$v';
+    return 'gos:${(gosNumber ?? '').trim().toUpperCase()}';
+  }
+
+  static bool _converterResultEntryExpired(dynamic entry, int nowMs) {
+    if (entry is! Map) return true;
+    final savedRaw = entry['savedAtMs'];
+    final savedMs = savedRaw is int ? savedRaw : int.tryParse('$savedRaw') ?? 0;
+    final result = entry['result'];
+    final found = result is Map && result['found'] == true;
+    final ttl = found ? _converterResultFoundTtl : _converterResultNotFoundTtl;
+    return nowMs - savedMs > ttl.inMilliseconds;
+  }
+
+  /// Возвращает сохранённый терминальный результат конвертера для входа
+  /// [inputKey] (или null, если записи нет либо она протухла; протухшая
+  /// попутно удаляется). Формат result-мапы тот же, что `responseNormalized`
+  /// сервера, поэтому распарсить его можно существующим
+  /// [parseVinPlateConverterResult].
+  static Future<VinPlateConverterResult?> loadConverterResult(
+    String inputKey,
+  ) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return null;
+    final raw = pref.getString(_converterResultsKey);
+    if (raw == null || raw.isEmpty) return null;
+    Map<String, dynamic> store;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      store = Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      return null;
+    }
+    final entry = store[inputKey];
+    if (entry is! Map) return null;
+    if (_converterResultEntryExpired(
+      entry,
+      DateTime.now().millisecondsSinceEpoch,
+    )) {
+      store.remove(inputKey);
+      await pref.setString(_converterResultsKey, jsonEncode(store));
+      return null;
+    }
+    final result = entry['result'];
+    if (result is! Map) return null;
+    return parseVinPlateConverterResult(Map<String, dynamic>.from(result));
+  }
+
+  /// Сохраняет терминальный результат конвертера. Пишем под ВСЕ известные
+  /// ключи входа/ответа (vin запроса, госномер запроса, vin из ответа,
+  /// госномер из ответа): конвертер двусторонний, и запрос «по госномеру»
+  /// уже оплатил ровно тот же результат, который позже спросят «по VIN».
+  /// timedOut-результаты сюда не попадают (транзиентные) — за этим следит
+  /// вызывающий код. Попутно выбрасывает протухшие записи.
+  static Future<void> saveConverterResult(
+    VinPlateConverterResult result, {
+    String? requestVin,
+    String? requestGosNumber,
+  }) async {
+    final pref = UserSimplePreferences.pref;
+    if (pref == null) return;
+    final keys = <String>{};
+    void addKey({String? vin, String? gosNumber}) {
+      final key = converterInputKey(vin: vin, gosNumber: gosNumber);
+      // converterInputKey на пустой вход вернёт 'gos:' — такое не пишем.
+      if (key != 'vin:' && key != 'gos:') keys.add(key);
+    }
+
+    addKey(vin: requestVin);
+    addKey(gosNumber: requestGosNumber);
+    addKey(vin: result.vin);
+    addKey(gosNumber: result.gosNumber);
+    if (keys.isEmpty) return;
+
+    Map<String, dynamic> store = <String, dynamic>{};
+    final raw = pref.getString(_converterResultsKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) store = Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    store.removeWhere((_, v) => _converterResultEntryExpired(v, nowMs));
+    // Ключи — как в `responseNormalized` сервера (gos_number, не gosNumber),
+    // чтобы чтение шло через тот же parseVinPlateConverterResult.
+    final resultJson = <String, dynamic>{
+      'found': result.found,
+      'vin': result.vin,
+      'gos_number': result.gosNumber,
+      'brand': result.brand,
+      'model': result.model,
+      'year': result.year,
+    };
+    final entry = <String, dynamic>{'result': resultJson, 'savedAtMs': nowMs};
+    for (final key in keys) {
+      store[key] = entry;
+    }
+    await pref.setString(_converterResultsKey, jsonEncode(store));
   }
 
   static Future<DateTime?> userTagsSyncedAt() async {

@@ -50,6 +50,11 @@ dependencies:
   camera: ^0.11.2+1
   image: ^4.5.4
   image_picker: ^1.1.2
+  # Прямые зависимости ради флага useAndroidPhotoPicker (см. lib/app/main.dart):
+  # без него image_picker на Android открывает системный файловый пикер
+  # (ACTION_GET_CONTENT) вместо галереи.
+  image_picker_android: ^0.8.13
+  image_picker_platform_interface: ^2.11.1
   image_cropper: ^9.1.0
   google_mlkit_text_recognition: ^0.15.0
   file_picker: ^10.1.9

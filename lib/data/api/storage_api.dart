@@ -1702,6 +1702,35 @@ class StorageApi {
     return result;
   }
 
+  /// Returns a presigned PUT URL for a direct single-request upload to S3.
+  /// `reportNumber: 'temp'` puts the object under `temp/` where the bucket
+  /// lifecycle rule deletes it after 1 day — use for ephemeral files like
+  /// document photos sent to AI recognition. Unlike [getTemporaryViewUrl]
+  /// this THROWS on failure: callers must handle "can't upload" explicitly
+  /// instead of silently continuing without the file.
+  static Future<({String url, String key})> getTemporaryUploadUrl({
+    required String reportNumber,
+    required String filename,
+    int? expiresInSeconds,
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final data = await _postRpc(
+      method: 'ObjectStorage.GetTemporaryUploadUrl',
+      params: {
+        'reportNumber': reportNumber,
+        'filename': filename,
+        if (expiresInSeconds != null) 'expiresInSeconds': expiresInSeconds,
+      },
+      timeout: timeout,
+    );
+    final result = _asMap(data['result']);
+    final url = _extractString(result, ['url', 'signedUrl']);
+    if (url.isEmpty) {
+      throw Exception('Бэкенд не вернул URL загрузки файла');
+    }
+    return (url: url, key: _extractString(result, ['key']));
+  }
+
   static Future<MultipartUploadSession> initiateMultipartUpload({
     required String reportNumber,
     required String filename,

@@ -116,14 +116,12 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
 
   // ── Дедуп/кэш конвертера ───────────────────────────────────────────────
   // Конвертер платный (RunBatchLegalReview). Один и тот же вход не должен
-  // оплачиваться повторно: кэшируем терминальный результат и схлопываем
+  // оплачиваться повторно: кэшируем терминальный результат (in-memory на
+  // экран + персист в SparkJoyStorage между сессиями) и схлопываем
   // одновременные запросы на один вход (single-flight). timedOut НЕ кэшируем —
   // даём повторить позже, когда воркер ApiCloud догонит.
-  String _converterKey({String? vin, String? gosNumber}) {
-    final v = (vin ?? '').trim().toUpperCase();
-    if (v.isNotEmpty) return 'vin:$v';
-    return 'gos:${(gosNumber ?? '').trim().toUpperCase()}';
-  }
+  String _converterKey({String? vin, String? gosNumber}) =>
+      SparkJoyStorage.converterInputKey(vin: vin, gosNumber: gosNumber);
 
   Future<storage_api.VinPlateConverterResult> _runConverterDeduped({
     String? vin,
@@ -158,19 +156,25 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     return future;
   }
 
-  /// Резолвит конвертер, ПЕРЕИСПОЛЬЗУЯ уже оплаченный батч, если он сохранён
-  /// (в пределах TTL). Платный [startVinPlateConverter] вызывается ТОЛЬКО когда
-  /// живого батча для входа нет. Иначе — бесплатный дочит существующего
-  /// (`pollVinPlateConverterBatch`). Это и спасает медленный (~84с) результат,
-  /// потерянный при перезагрузке страницы, и не даёт повторному тапу оплатить
-  /// тот же вход ещё раз. batchNumber сохраняется ДО опроса, чтобы прерывание
-  /// не потеряло оплаченный запуск.
+  /// Резолвит конвертер по цепочке «дешевле → дороже»:
+  /// 1) персист-кэш терминального результата ([SparkJoyStorage.loadConverterResult])
+  ///    — ноль RPC, переживает закрытие экрана/перезагрузку/рестарт приложения;
+  /// 2) переиспользование уже оплаченного батча (в пределах TTL) — бесплатный
+  ///    дочит существующего (`pollVinPlateConverterBatch`), спасает медленный
+  ///    (~84с) результат, потерянный при перезагрузке страницы;
+  /// 3) платный [startVinPlateConverter] — ТОЛЬКО когда нет ни кэша, ни живого
+  ///    батча. batchNumber сохраняется ДО опроса, чтобы прерывание не потеряло
+  ///    оплаченный запуск.
+  /// Свежий терминальный итог персистится (timedOut — нет: транзиентный), после
+  /// чего батч-запись больше не нужна и удаляется.
   Future<storage_api.VinPlateConverterResult> _resolveConverterReusingBatch({
     required String key,
     String? vin,
     String? gosNumber,
     void Function(int pollIndex, Duration elapsed)? onProgress,
   }) async {
+    final persisted = await SparkJoyStorage.loadConverterResult(key);
+    if (persisted != null) return persisted;
     var batchNumber = await SparkJoyStorage.loadConverterBatchNumber(key);
     final reused = batchNumber != null && batchNumber.isNotEmpty;
     if (!reused) {
@@ -195,11 +199,22 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       batchNumber,
       onProgress: onProgress,
     );
-    if (reused && result.timedOut) {
-      // Переиспользованный батч так и не доехал → сбрасываем, чтобы следующая
-      // попытка стартовала свежий чек, а не опрашивала «мёртвый» вечно.
-      await SparkJoyStorage.removeConverterBatchNumber(key);
+    if (result.timedOut) {
+      if (reused) {
+        // Переиспользованный батч так и не доехал → сбрасываем, чтобы следующая
+        // попытка стартовала свежий чек, а не опрашивала «мёртвый» вечно.
+        await SparkJoyStorage.removeConverterBatchNumber(key);
+      }
+      return result;
     }
+    // Терминальный итог: персистим (сохранение НЕ повторяется при чтении из
+    // кэша, поэтому TTL не «скользит»), батч-запись отработала — убираем.
+    await SparkJoyStorage.saveConverterResult(
+      result,
+      requestVin: vin,
+      requestGosNumber: gosNumber,
+    );
+    await SparkJoyStorage.removeConverterBatchNumber(key);
     return result;
   }
 

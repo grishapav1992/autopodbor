@@ -19,6 +19,8 @@ import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:image_picker_android/image_picker_android.dart';
+import 'package:image_picker_platform_interface/image_picker_platform_interface.dart';
 import 'package:flutter_application_1/core/config/routes/routes.dart';
 import 'package:flutter_application_1/core/config/theme/light_theme.dart';
 import 'package:flutter_application_1/ui/common/responsive/responsive_layout.dart';
@@ -27,6 +29,13 @@ Future<void> main() async {
   await runZonedGuarded<Future<void>>(() async {
     WidgetsFlutterBinding.ensureInitialized();
     _installCrashBoundary();
+    // На Android по умолчанию image_picker открывает файловый менеджер
+    // (ACTION_GET_CONTENT). Переключаем на системный Photo Picker, чтобы
+    // «Фото/видео» открывало галерею; камеры и iOS это не касается.
+    final imagePickerPlatform = ImagePickerPlatform.instance;
+    if (imagePickerPlatform is ImagePickerAndroid) {
+      imagePickerPlatform.useAndroidPhotoPicker = true;
+    }
     await SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
