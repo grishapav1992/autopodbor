@@ -16,6 +16,7 @@ class City {
     required this.countryNameRu,
     required this.regionNameRu,
     required this.population,
+    this.isNameAmbiguous = false,
   }) : displayNameRu = _displayNameForRu(countryCode, nameRu),
        _foldedRu = _fold(_displayNameForRu(countryCode, nameRu)),
        _foldedEn = _fold(nameEn);
@@ -52,6 +53,13 @@ class City {
   /// one floats up.
   final int population;
 
+  /// True when another settlement in the same country shares this
+  /// display name (е.g. «Мирный» в Якутии и в Архангельской области).
+  /// Computed dataset-wide in `_parseCities`; drives [shortLabel] —
+  /// ambiguous names must carry the region or the report reader can't
+  /// tell which city was meant.
+  final bool isNameAmbiguous;
+
   // Pre-computed lowercase + ё→е normalisation for fast `contains`.
   // Stored on the instance so `search()` does zero allocation per
   // candidate during a query — important when the dataset is ~5K rows
@@ -62,30 +70,54 @@ class City {
   static String _fold(String s) =>
       s.toLowerCase().replaceAll('ё', 'е').replaceAll('Ё', 'е');
 
-  /// Full "Country, Region, City" label that's written into the
-  /// inspection report and shown in the picker tile. Skips the region
-  /// when it's missing or duplicates the city name (federal cities
-  /// like Москва / Санкт-Петербург where admin1 == city).
+  /// Region name for subtitles/suffixes, or `null` when it's missing
+  /// or duplicates the city name (federal cities like Москва /
+  /// Санкт-Петербург where admin1 == city).
+  String? get distinctRegionRu {
+    if (regionNameRu.isEmpty) return null;
+    if (regionNameRu.toLowerCase() == displayNameRu.toLowerCase()) return null;
+    return regionNameRu;
+  }
+
+  /// Compact label written into form fields and report payloads:
+  /// just «Краснодар», or «Мирный, Архангельская область» when several
+  /// settlements in the same country share the name. The app is
+  /// RU-only, so the country prefix is pure noise for the reader —
+  /// [displayLabel] keeps the full form for round-trips with drafts
+  /// saved before the rollout.
+  String get shortLabel {
+    final region = distinctRegionRu;
+    if (isNameAmbiguous && region != null) return '$displayNameRu, $region';
+    return displayNameRu;
+  }
+
+  /// Full "Country, Region, City" label. No longer written anywhere,
+  /// but `findByExactRu` still matches it so drafts saved while this
+  /// was the picker's output format stay valid.
   String get displayLabel {
     final parts = <String>[];
     if (countryNameRu.isNotEmpty) parts.add(countryNameRu);
-    if (regionNameRu.isNotEmpty &&
-        regionNameRu.toLowerCase() != displayNameRu.toLowerCase()) {
-      parts.add(regionNameRu);
-    }
+    final region = distinctRegionRu;
+    if (region != null) parts.add(region);
     parts.add(displayNameRu);
     return parts.join(', ');
   }
 
   /// Round-trip (asset → object) constructor. Tolerant to extra fields
-  /// in case the build script grows the schema later.
-  factory City.fromJson(Map<String, dynamic> j) => City(
+  /// in case the build script grows the schema later. Ambiguity is a
+  /// dataset-wide property, so it can't be derived from a single row —
+  /// `_parseCities` passes it in after counting name collisions.
+  factory City.fromJson(
+    Map<String, dynamic> j, {
+    bool isNameAmbiguous = false,
+  }) => City(
     nameRu: (j['r'] ?? '') as String,
     nameEn: (j['e'] ?? '') as String,
     countryCode: (j['c'] ?? '') as String,
     countryNameRu: (j['cn'] ?? '') as String,
     regionNameRu: (j['a'] ?? '') as String,
     population: (j['p'] is num) ? (j['p'] as num).toInt() : 0,
+    isNameAmbiguous: isNameAmbiguous,
   );
 
   @override
@@ -287,15 +319,38 @@ class CityRepository {
         'cities_ru_cis.json: expected top-level JSON array',
       );
     }
-    return raw
+    final maps = raw
         .whereType<Map>()
-        .map((m) => City.fromJson(Map<String, dynamic>.from(m)))
+        .map((m) => Map<String, dynamic>.from(m))
         .toList(growable: false);
+    // Two-pass: count display-name collisions per country first, so
+    // each City knows whether its shortLabel needs the region
+    // («Мирный» есть и в Якутии, и в Архангельской области).
+    final nameCount = <String, int>{};
+    for (final m in maps) {
+      nameCount.update(_collisionKey(m), (v) => v + 1, ifAbsent: () => 1);
+    }
+    return maps
+        .map(
+          (m) => City.fromJson(
+            m,
+            isNameAmbiguous: (nameCount[_collisionKey(m)] ?? 0) > 1,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  static String _collisionKey(Map<String, dynamic> m) {
+    final country = (m['c'] ?? '') as String;
+    final display = _displayNameForRu(country, (m['r'] ?? '') as String);
+    return '$country|${City._fold(display)}';
   }
 
   /// Returns up to [limit] cities matching [query] (case-insensitive,
   /// ё→е folded, matches both Russian and ASCII names). Empty query
-  /// returns the first [limit] entries from the master list. When
+  /// returns the [limit] most populous cities — that's what the picker
+  /// shows before the user types, so the likely answers (Москва,
+  /// Санкт-Петербург, миллионники) surface without a keystroke. When
   /// [countryCode] is set, filters to that country only.
   ///
   /// Sort: `startsWith` matches first, then `contains`, then by
@@ -318,7 +373,17 @@ class CityRepository {
       filtered = filtered.where((c) => c.countryCode == countryCode);
     }
     if (q.isEmpty) {
-      return filtered.take(limit).toList(growable: false);
+      // The dataset ships alphabetically sorted; taking the head would
+      // open the picker on «Абаза, Абакан, …». Sort by population
+      // descending instead (alphabetical tie-break keeps the order
+      // deterministic — List.sort is not stable).
+      final byPopulation = filtered.toList()
+        ..sort((a, b) {
+          final byPop = b.population - a.population;
+          if (byPop != 0) return byPop;
+          return a._foldedRu.compareTo(b._foldedRu);
+        });
+      return byPopulation.take(limit).toList(growable: false);
     }
 
     // Score: 0 = startsWith ru, 1 = startsWith en, 2 = contains ru,
@@ -347,15 +412,17 @@ class CityRepository {
     return scored.take(limit).map((s) => s.city).toList(growable: false);
   }
 
-  /// Strict round-trip lookup: returns the [City] whose name (or full
-  /// "Country, Region, City" display label) equals [s] case-
-  /// insensitively after trim. Matches BOTH formats so that:
+  /// Strict round-trip lookup: returns the [City] whose name (or one
+  /// of its label forms) equals [s] case-insensitively after trim.
+  /// Matches ALL formats the picker has ever written so that:
   ///   - Old drafts with just "Краснодар" stay valid (matched via
   ///     `nameRu`).
-  ///   - New drafts with "Россия, Краснодарский край, Краснодар" are
-  ///     also valid (matched via `displayLabel`).
+  ///   - Ambiguous-name drafts with "Мирный, Архангельская область"
+  ///     are valid (matched via `shortLabel`).
+  ///   - Legacy drafts with "Россия, Краснодарский край, Краснодар"
+  ///     are also valid (matched via `displayLabel`).
   ///
-  /// Returns null when neither matches — the spark_joy / auto_request
+  /// Returns null when nothing matches — the spark_joy / auto_request
   /// submit gate then surfaces the "out-of-list" warning.
   City? findByExactRu(String s) {
     final cities = _cities;
@@ -365,6 +432,9 @@ class CityRepository {
     final folded = City._fold(t);
     for (final c in cities) {
       if (c._foldedRu == folded) return c;
+      // shortLabel differs from the bare folded name only for
+      // ambiguous entries — skip the extra fold for the ~99% rest.
+      if (c.isNameAmbiguous && City._fold(c.shortLabel) == folded) return c;
       if (City._fold(c.displayLabel) == folded) return c;
     }
     return null;

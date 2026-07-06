@@ -3,6 +3,9 @@ part of 'spark_joy_create_report_screen.dart';
 extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
   Future<int> _runPickMediaFiles(String groupKey) async {
     if (_mediaPickerOpening) {
+      // Единственный механизм восстановления после реально зависшего пикера:
+      // повторный тап в первые 25с молча игнорируется (двойной клик),
+      // позже — сбрасывает залипший флаг и открывает пикер заново.
       final startedAt = _mediaPickerStartedAt;
       final isStale =
           startedAt == null ||
@@ -35,17 +38,17 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
         !kIsWeb &&
         (defaultTargetPlatform == TargetPlatform.iOS ||
             defaultTargetPlatform == TargetPlatform.android);
-    var timedOut = false;
 
     try {
+      // Намеренно БЕЗ .timeout: await включает и время, пока пользователь
+      // листает галерею (не ограничено), и копирование выбранных файлов в
+      // хранилище приложения (растёт с размером видео). Прежний дедлайн 30с
+      // ложно срабатывал («Галерея не ответила вовремя») и выбрасывал уже
+      // сделанный выбор, при этом отменить нативный вызов он не мог —
+      // image_picker оставался already_active, и «Попробуйте снова» всё
+      // равно не работало. Залипший флаг снимает stale-check выше.
       final items = nativeGalleryPlatform
-          ? await _pickMediaFromDeviceGallery().timeout(
-              const Duration(seconds: 30),
-              onTimeout: () {
-                timedOut = true;
-                return const <UploadedItem>[];
-              },
-            )
+          ? await _pickMediaFromDeviceGallery()
           : await _pickFiles(
               type: FileType.custom,
               allowedExtensions: const [
@@ -59,16 +62,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                 'mov',
                 'webm',
               ],
-            ).timeout(
-              const Duration(seconds: 30),
-              onTimeout: () {
-                timedOut = true;
-                return const <UploadedItem>[];
-              },
             );
-      if (timedOut) {
-        _showErrorSnack('Галерея не ответила вовремя. Попробуйте снова.');
-      }
       if (items.isEmpty || !mounted) return 0;
       _setStateSafely(() {
         final state = _mediaState[groupKey];
@@ -1193,17 +1187,19 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                 if (index == 0) {
                   return _runMediaAddTile(
                     isBusy: pickerOpeningForGroup,
-                    onTap: pickerOpeningForGroup
-                        ? null
-                        : () async {
-                            try {
-                              await _pickMediaFiles(groupKey);
-                            } catch (error) {
-                              _showErrorSnack(
-                                'Не удалось открыть галерею: $error',
-                              );
-                            }
-                          },
+                    // Тап не блокируется в busy: _runPickMediaFiles сам гасит
+                    // повторные тапы (<25с) и сбрасывает залипший пикер (>25с)
+                    // — иначе после зависшего пикера тайл мёртв до
+                    // пересоздания экрана.
+                    onTap: () async {
+                      try {
+                        await _pickMediaFiles(groupKey);
+                      } catch (error) {
+                        _showErrorSnack(
+                          'Не удалось открыть галерею: $error',
+                        );
+                      }
+                    },
                   );
                 }
 

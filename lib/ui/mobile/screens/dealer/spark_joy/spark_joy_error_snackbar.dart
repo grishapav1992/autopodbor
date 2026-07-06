@@ -5,7 +5,78 @@ import 'package:flutter_application_1/data/api/storage_api.dart'
     show PermissionDeniedException;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
 
-typedef SparkJoyReadableError = ({String message, String supportText});
+/// Стабильные внутренние коды ошибок для техподдержки.
+///
+/// Код показывается пользователю (баннер ошибки выгрузки, строка «Код: …» в
+/// снекбарах) и всегда входит в копируемый support-текст — по нему поддержка
+/// определяет класс проблемы, не разбирая техническое сообщение. Значения
+/// НЕ переиспользовать и не менять: они документированы в
+/// docs/SUPPORT_ERROR_CODES.md (при добавлении кода — обновить таблицу там).
+abstract final class SparkJoyErrorCode {
+  /// Нет доступа к сети: DNS lookup не прошёл, сеть недостижима.
+  static const netNoConnection = 'NET-01';
+
+  /// Соединение или ответ сервера не уложились в таймаут.
+  static const netTimeout = 'NET-02';
+
+  /// Соединение оборвалось на середине (reset / closed / broken pipe).
+  static const netInterrupted = 'NET-03';
+
+  /// Сервер отверг подключение (connection refused).
+  static const netRefused = 'NET-04';
+
+  /// Не установилось защищённое соединение (TLS handshake / сертификат) —
+  /// в т.ч. устаревший cert-pin в старом билде приложения.
+  static const netTls = 'NET-05';
+
+  /// Прочий сетевой сбой (SocketException/ClientException без деталей).
+  static const netGeneric = 'NET-06';
+
+  /// Сервер недоступен: HTTP 5xx / bad gateway.
+  static const serverUnavailable = 'SRV-01';
+
+  /// Сервер ограничил частоту запросов (HTTP 429 / rate limit).
+  static const serverRateLimited = 'SRV-02';
+
+  /// Сервер ответил, но ответ некорректный или действие не подтверждено.
+  static const serverBadResponse = 'SRV-03';
+
+  /// Сервер отклонил операцию бизнес-кодом (snake_case-код — в support-тексте).
+  static const serverRejected = 'SRV-04';
+
+  /// Сессия истекла / нет авторизации (HTTP 401).
+  static const authSession = 'AUTH-01';
+
+  /// Недостаточно прав (HTTP 403 / permission denied).
+  static const authForbidden = 'AUTH-02';
+
+  /// Локальный файл отчёта не прочитался с устройства.
+  static const fileUnreadable = 'FILE-01';
+
+  /// У файла отчёта пустой источник данных (медиа устарело).
+  static const fileEmptySource = 'FILE-02';
+
+  /// У файла отчёта не определилось имя для загрузки.
+  static const fileEmptyName = 'FILE-03';
+
+  /// Финализация остановлена: часть заявленных файлов не дошла до S3.
+  static const fileMissingOnServer = 'FILE-04';
+
+  /// Хранилище не приняло файл (presigned URL / ETag / multipart).
+  static const fileUploadFailed = 'FILE-05';
+
+  /// Не удалось определить модель авто из каталога перед выгрузкой.
+  static const reportModelUnresolved = 'RPT-01';
+
+  /// Не классифицировано — техническое сообщение в support-тексте.
+  static const unknown = 'UNK-01';
+}
+
+typedef SparkJoyReadableError = ({
+  String message,
+  String supportText,
+  String code,
+});
 
 SparkJoyReadableError sparkJoyReadableError(Object error, {String? fallback}) {
   // RBAC: a backend permission denial (HTTP 403 / forbidden RPC) always maps
@@ -13,31 +84,50 @@ SparkJoyReadableError sparkJoyReadableError(Object error, {String? fallback}) {
   // method name stays in the copyable support text for diagnostics.
   if (error is PermissionDeniedException) {
     const msg = 'Недостаточно прав для этого действия';
+    const code = SparkJoyErrorCode.authForbidden;
     final support = <String>[
+      'Код: $code',
       'Сообщение: $msg',
       'Метод: ${error.method}',
       if (error.serverMessage.trim().isNotEmpty)
         'Техническая ошибка: ${error.serverMessage.trim()}',
     ].join('\n');
-    return (message: _withFallback(fallback, msg), supportText: support);
+    return (
+      message: _withFallback(fallback, msg),
+      supportText: support,
+      code: code,
+    );
   }
   final rawText = _rawErrorText(error);
-  final code = _errorCode(error, rawText);
+  final backendCode = _errorCode(error, rawText);
   final mapped = _mappedBackendError(
-    code,
+    backendCode,
     activeAssignedRequests: error is CompanySpecialistUnlinkException
         ? error.activeAssignedRequests
         : null,
   );
   final rawMessage = _cleanTechnicalText(rawText);
-  final message = _withFallback(
-    fallback,
-    mapped ?? _genericReadableMessage(rawMessage),
-  );
+  final String message;
+  final String code;
+  if (mapped != null && backendCode != null) {
+    message = mapped;
+    code = _internalCodeForBackendCode(backendCode);
+  } else {
+    final generic = _classifyGeneric(rawMessage);
+    message = generic.message;
+    code = generic.code;
+  }
+  final finalMessage = _withFallback(fallback, message);
 
   return (
-    message: message,
-    supportText: _supportText(message: message, rawText: rawText, code: code),
+    message: finalMessage,
+    supportText: _supportText(
+      message: finalMessage,
+      rawText: rawText,
+      code: code,
+      backendCode: backendCode,
+    ),
+    code: code,
   );
 }
 
@@ -51,15 +141,42 @@ void showSparkJoyErrorSnackBar(
   String? fallback,
 }) {
   final readable = sparkJoyReadableError(error, fallback: fallback);
+  // Бизнес-отказы (SRV-04) самоописательны — «Заявка не найдена» не требует
+  // кода на экране; для транспортных/непонятных ошибок код в тексте позволяет
+  // опознать проблему даже по скриншоту, без копирования.
+  final showCode = readable.code != SparkJoyErrorCode.serverRejected;
+  showSparkJoySupportErrorSnackBar(
+    context,
+    message: readable.message,
+    supportText: readable.supportText,
+    code: showCode ? readable.code : '',
+  );
+}
+
+/// Красный снекбар с кнопкой копирования support-текста. Для мест, где
+/// читаемое сообщение и код уже вычислены (например, состояние ошибки
+/// выгрузки отчёта), в отличие от [showSparkJoyErrorSnackBar], который
+/// классифицирует исключение сам.
+void showSparkJoySupportErrorSnackBar(
+  BuildContext context, {
+  required String message,
+  String supportText = '',
+  String code = '',
+}) {
+  final text = code.trim().isEmpty ? message : '$message\nКод: ${code.trim()}';
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Row(
         children: [
-          Expanded(child: Text(readable.message)),
+          Expanded(child: Text(text)),
           IconButton(
             tooltip: 'Скопировать ошибку',
             onPressed: () {
-              Clipboard.setData(ClipboardData(text: readable.supportText));
+              Clipboard.setData(
+                ClipboardData(
+                  text: supportText.trim().isEmpty ? text : supportText,
+                ),
+              );
             },
             icon: const Icon(Icons.copy_rounded),
             color: kWhiteColor,
@@ -69,6 +186,8 @@ void showSparkJoyErrorSnackBar(
         ],
       ),
       backgroundColor: kRedColor,
+      // Дольше стандартных 4с: пользователю нужно успеть нажать «копировать».
+      duration: const Duration(seconds: 8),
     ),
   );
 }
@@ -314,67 +433,189 @@ String _activeRequestsMessage(int? count) {
   return 'Нельзя удалить сотрудника: активных заявок $count';
 }
 
-String _genericReadableMessage(String rawMessage) {
+/// Внутренний код для распознанного бизнес-кода бэка: почти все — SRV-04,
+/// кроме кодов, по смыслу совпадающих с транспортными классами (сессия,
+/// права, rate limit) — им отдаём профильный код, чтобы поддержка сразу
+/// видела класс проблемы.
+String _internalCodeForBackendCode(String backendCode) {
+  return switch (backendCode.trim().toLowerCase()) {
+    'unauthorized' || 'token_expired' => SparkJoyErrorCode.authSession,
+    'permission_denied' ||
+    'access_denied' ||
+    'forbidden' => SparkJoyErrorCode.authForbidden,
+    'too_many_requests' ||
+    'rate_limit_exceeded' => SparkJoyErrorCode.serverRateLimited,
+    _ => SparkJoyErrorCode.serverRejected,
+  };
+}
+
+/// Классифицирует техническое сообщение без бизнес-кода бэка в пару
+/// «читаемое сообщение + внутренний код». Порядок проверок важен:
+/// специфичные сетевые случаи (TLS, DNS, таймаут) — раньше общего
+/// SocketException/ClientException.
+({String message, String code}) _classifyGeneric(String rawMessage) {
   final lower = rawMessage.toLowerCase();
   if (lower.contains('sessionexpiredexception') ||
       lower.contains('session expired')) {
-    return 'Сессия истекла. Войдите заново.';
+    return (
+      message: 'Сессия истекла. Войдите заново.',
+      code: SparkJoyErrorCode.authSession,
+    );
   }
-  if (lower.contains('timeout')) {
-    return 'Сервер не ответил вовремя. Проверьте подключение и повторите.';
+  // TLS раньше таймаута и общей сети: «connection terminated during
+  // handshake» содержит и сетевые слова. Сюда же попадает устаревший
+  // cert-pin старого билда — поэтому совет «обновите приложение».
+  if (lower.contains('handshakeexception') ||
+      lower.contains('handshake') ||
+      lower.contains('certificate')) {
+    return (
+      message:
+          'Не удалось установить защищённое соединение. Обновите приложение '
+          'до последней версии или попробуйте другую сеть.',
+      code: SparkJoyErrorCode.netTls,
+    );
   }
   if (lower.contains('failed host lookup') ||
-      lower.contains('socketexception') ||
-      lower.contains('clientexception') ||
-      lower.contains('transport')) {
-    return 'Не удалось подключиться к серверу. Проверьте интернет и повторите.';
+      lower.contains('no address associated') ||
+      lower.contains('network is unreachable') ||
+      lower.contains('no route to host') ||
+      lower.contains('network changed')) {
+    return (
+      message: 'Нет подключения к интернету. Проверьте связь и повторите.',
+      code: SparkJoyErrorCode.netNoConnection,
+    );
   }
-  if (lower.contains('http 401') || lower.contains('http 403')) {
-    return 'Нет доступа к действию. Войдите заново или обратитесь в поддержку.';
+  if (lower.contains('timed out') || lower.contains('timeout')) {
+    return (
+      message: 'Сервер не ответил вовремя. Проверьте подключение и повторите.',
+      code: SparkJoyErrorCode.netTimeout,
+    );
   }
-  if (lower.contains('invalid json response')) {
-    return 'Сервер вернул некорректный ответ. Повторите позже.';
+  if (lower.contains('connection refused')) {
+    return (
+      message: 'Не удалось подключиться к серверу. Попробуйте позже.',
+      code: SparkJoyErrorCode.netRefused,
+    );
   }
-  if (lower.contains('empty response body')) {
-    return 'Сервер вернул пустой ответ. Повторите позже.';
+  if (lower.contains('connection reset') ||
+      lower.contains('connection closed') ||
+      lower.contains('connection abort') ||
+      lower.contains('broken pipe') ||
+      lower.contains('connection terminated')) {
+    return (
+      message: 'Соединение с сервером прервалось. Повторите попытку.',
+      code: SparkJoyErrorCode.netInterrupted,
+    );
   }
-  if (lower.contains('bad response from')) {
-    return 'Сервер не подтвердил выполнение действия';
+  if (lower.contains('http 401')) {
+    return (
+      message: 'Сессия истекла. Войдите заново.',
+      code: SparkJoyErrorCode.authSession,
+    );
   }
-  if (lower.contains('upload failed')) {
-    return 'Не удалось загрузить файл. Повторите позже.';
+  if (lower.contains('http 403')) {
+    return (
+      message: 'Нет доступа к действию. Войдите заново или обратитесь в '
+          'поддержку.',
+      code: SparkJoyErrorCode.authForbidden,
+    );
   }
-  if (lower.contains('presigned url is empty') ||
-      lower.contains('part url not found') ||
-      lower.contains('missing etag')) {
-    return 'Не удалось подготовить загрузку файла. Повторите позже.';
+  if (lower.contains('http 429')) {
+    return (
+      message: 'Слишком много запросов. Подождите минуту и повторите.',
+      code: SparkJoyErrorCode.serverRateLimited,
+    );
   }
   if (lower.contains('http 500') ||
       lower.contains('http 502') ||
       lower.contains('http 503') ||
-      lower.contains('http 504')) {
-    return 'Сервер временно недоступен. Повторите позже.';
+      lower.contains('http 504') ||
+      lower.contains('bad gateway')) {
+    return (
+      message: 'Сервер временно недоступен. Повторите позже.',
+      code: SparkJoyErrorCode.serverUnavailable,
+    );
+  }
+  if (lower.contains('invalid json response')) {
+    return (
+      message: 'Сервер вернул некорректный ответ. Повторите позже.',
+      code: SparkJoyErrorCode.serverBadResponse,
+    );
+  }
+  if (lower.contains('empty response body')) {
+    return (
+      message: 'Сервер вернул пустой ответ. Повторите позже.',
+      code: SparkJoyErrorCode.serverBadResponse,
+    );
+  }
+  if (lower.contains('bad response from')) {
+    return (
+      message: 'Сервер не подтвердил выполнение действия',
+      code: SparkJoyErrorCode.serverBadResponse,
+    );
+  }
+  if (lower.contains('upload failed')) {
+    return (
+      message: 'Не удалось загрузить файл. Повторите позже.',
+      code: SparkJoyErrorCode.fileUploadFailed,
+    );
+  }
+  if (lower.contains('presigned url is empty') ||
+      lower.contains('part url not found') ||
+      lower.contains('missing etag')) {
+    return (
+      message: 'Не удалось подготовить загрузку файла. Повторите позже.',
+      code: SparkJoyErrorCode.fileUploadFailed,
+    );
   }
   if (lower.contains('success=false')) {
-    return 'Сервер не подтвердил выполнение действия';
+    return (
+      message: 'Сервер не подтвердил выполнение действия',
+      code: SparkJoyErrorCode.serverBadResponse,
+    );
   }
   // Приглашение в штат (Notification.SendNotification) — бэк отдаёт текст на
   // английском. Маппим в понятное и НЕпугающее сообщение: дубль приглашения
   // не «ошибка», а сигнал «уже отправлено, ждём принятия».
   if (lower.contains('pending invitation') &&
       (lower.contains('already exist') || lower.contains('already sent'))) {
-    return 'Этому специалисту уже отправлено приглашение — оно ожидает принятия.';
+    return (
+      message:
+          'Этому специалисту уже отправлено приглашение — оно ожидает '
+          'принятия.',
+      code: SparkJoyErrorCode.serverRejected,
+    );
   }
   if (lower.contains('invitation') &&
       (lower.contains('already') || lower.contains('exists'))) {
-    return 'Приглашение этому специалисту уже отправлено.';
+    return (
+      message: 'Приглашение этому специалисту уже отправлено.',
+      code: SparkJoyErrorCode.serverRejected,
+    );
   }
   if (lower.contains('already') &&
       lower.contains('specialist') &&
       (lower.contains('compan') || lower.contains('staff'))) {
-    return 'Этот специалист уже состоит в штате компании.';
+    return (
+      message: 'Этот специалист уже состоит в штате компании.',
+      code: SparkJoyErrorCode.serverRejected,
+    );
   }
-  return rawMessage.isEmpty ? 'Неизвестная ошибка' : rawMessage;
+  // Общая сеть — после всех специфичных сетевых веток выше.
+  if (lower.contains('socketexception') ||
+      lower.contains('clientexception') ||
+      lower.contains('failed to fetch') ||
+      lower.contains('transport')) {
+    return (
+      message:
+          'Не удалось подключиться к серверу. Проверьте интернет и повторите.',
+      code: SparkJoyErrorCode.netGeneric,
+    );
+  }
+  return (
+    message: rawMessage.isEmpty ? 'Неизвестная ошибка' : rawMessage,
+    code: SparkJoyErrorCode.unknown,
+  );
 }
 
 String _withFallback(String? fallback, String message) {
@@ -389,17 +630,44 @@ String _withFallback(String? fallback, String message) {
 String _supportText({
   required String message,
   required String rawText,
-  String? code,
+  required String code,
+  String? backendCode,
 }) {
   final cleanRaw = rawText.trim();
-  final cleanCode = (code ?? '').trim();
+  final cleanBackendCode = (backendCode ?? '').trim();
   final method = _errorMethod(cleanRaw);
   final lines = <String>[
+    'Код: $code',
     'Сообщение: $message',
-    if (cleanCode.isNotEmpty) 'Код ошибки: $cleanCode',
+    if (cleanBackendCode.isNotEmpty) 'Код сервера: $cleanBackendCode',
     if (method != null && method.isNotEmpty) 'Метод: $method',
     if (cleanRaw.isNotEmpty && cleanRaw != message)
       'Техническая ошибка: $cleanRaw',
+  ];
+  return lines.join('\n');
+}
+
+/// Копируемый support-текст для ошибки выгрузки отчёта: код + сообщение +
+/// контекст (номер отчёта, этап выгрузки, время, техническая ошибка) — всё,
+/// что нужно поддержке для поиска инцидента в логах сервера.
+String sparkJoyUploadSupportText({
+  required String code,
+  required String message,
+  String technical = '',
+  String reportNumber = '',
+  String stage = '',
+  DateTime? timestamp,
+}) {
+  final cleanTechnical = technical.trim();
+  final lines = <String>[
+    'Ошибка выгрузки отчёта',
+    'Код: ${code.trim().isEmpty ? SparkJoyErrorCode.unknown : code.trim()}',
+    'Сообщение: ${message.trim()}',
+    if (reportNumber.trim().isNotEmpty) 'Отчёт: ${reportNumber.trim()}',
+    if (stage.trim().isNotEmpty) 'Этап: ${stage.trim()}',
+    if (timestamp != null) 'Время: ${timestamp.toIso8601String()}',
+    if (cleanTechnical.isNotEmpty && cleanTechnical != message.trim())
+      'Техническая ошибка: $cleanTechnical',
   ];
   return lines.join('\n');
 }

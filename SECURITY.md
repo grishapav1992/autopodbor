@@ -50,6 +50,15 @@ installed release build will fail TLS handshakes → no RPC, no WebSocket.
 
 > Observed live on 2026-06-16: the leaf SPKI rotated from
 > `yq74wyn2…75IA=` to `XCR1wYjn…d5WE=` during the security audit itself.
+>
+> Observed live on 2026-07-06 (incident): the leaf rotated EARLY on
+> 2026-07-02 (`XCR1wYjn…d5WE=` → `5Nj0yToN…U1n8=`, ~2.5 months before the
+> old leaf's expiry) and the intermediate switched YE1 → YE2. Shipped
+> release builds (RuStore 1.0.0+3 / iOS) carried only the stale pins:
+> devices whose OS trust store fails to validate the new chain themselves
+> (observed on iPhone) got `badCertificateCallback` → pin mismatch → every
+> RPC failed, i.e. login was impossible. Rotation timing is NOT tied to
+> expiry — re-capture the pin before every release build.
 
 ### Before every leaf rotation
 
@@ -91,7 +100,7 @@ freshly compiled build.
 
 `HttpClient.badCertificateCallback` exposes only the **leaf** certificate, so
 only the leaf SPKI is actively verified. The intermediate CA pin
-(`intermediateYe1Pin`) is documented for reference but is **not** checked by
+(`intermediateYe2Pin`) is documented for reference but is **not** checked by
 the client. Full chain pinning would require a native TLS plugin or a raw
 `SecureSocket` transport — tracked as a future hardening task.
 

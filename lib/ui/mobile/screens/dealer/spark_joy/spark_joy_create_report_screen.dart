@@ -287,6 +287,12 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // завершилась без результата. Пока id здесь нет и превью отсутствует, плитка
   // показывает спиннер «загрузка»; попав сюда — серый плейсхолдер.
   final Set<String> _videoThumbsUnavailable = <String>{};
+  // Ids видео, чей серверный постер (`videoThumbUrl`) не загрузился — бэк
+  // подписывает presigned URL не проверяя существование ключа, так что 404
+  // здесь штатный случай (отчёт со старого билда / выгрузка с web / постер не
+  // залился). Попав сюда, плитка перестаёт доверять постеру и запускает
+  // запасную генерацию превью из самого видео (`_handleVideoPosterError`).
+  final Set<String> _videoPosterFailed = <String>{};
   String? _appDocumentsPath;
   // Микрофон-permission прокси удалён вместе с recording-инфраструктурой.
   // Дисктовка использует `_speechPermissionGranted` ниже.
@@ -664,6 +670,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
       _reportController.backendUploadErrorText.value;
   set _backendUploadErrorText(String value) =>
       _reportController.backendUploadErrorText.value = value;
+
+  String get _backendUploadErrorCode =>
+      _reportController.backendUploadErrorCode.value;
+  set _backendUploadErrorCode(String value) =>
+      _reportController.backendUploadErrorCode.value = value;
+
+  String get _backendUploadErrorSupportText =>
+      _reportController.backendUploadErrorSupportText.value;
+  set _backendUploadErrorSupportText(String value) =>
+      _reportController.backendUploadErrorSupportText.value = value;
 
   int get _backendUploadCurrentFile =>
       _reportController.backendUploadCurrentFile.value;

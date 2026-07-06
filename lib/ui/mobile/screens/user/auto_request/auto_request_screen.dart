@@ -3347,10 +3347,10 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     );
     if (!mounted || picked == null) return;
     setState(() {
-      // Full "Country, Region, City" label — same source string the
-      // picker tile shows. `findByExactRu` matches both this form and
-      // bare `nameRu` so legacy form drafts remain valid.
-      _cityController.text = picked.displayLabel;
+      // Compact «Город[, регион]» label — the region survives only for
+      // ambiguous names. `findByExactRu` also matches bare `nameRu` and
+      // the legacy full «Россия, …» label, so older drafts stay valid.
+      _cityController.text = picked.shortLabel;
       _isCityValid = true;
       _fieldErrors.remove('city');
       if (_fieldErrors.isEmpty) _formError = '';

@@ -274,21 +274,33 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
               const Divider(height: 1, color: kBorderColor),
           itemBuilder: (context, i) {
             final city = results[i];
+            final region = city.distinctRegionRu;
+            // Город — крупно, регион — серой подписью. Страну не
+            // показываем: фильтр жёстко RU, «Россия, …» в каждой
+            // строке было шумом. В контроллер вызывающие экраны пишут
+            // `city.shortLabel` (регион остаётся только у одноимённых
+            // городов вроде Мирного).
             return ListTile(
               dense: false,
-              // Single full-label line — "Россия, Краснодарский край,
-              // Краснодар". Same string is what we write into the
-              // controller on selection so the report and the picker
-              // stay in sync.
               title: Text(
-                city.displayLabel,
+                city.displayNameRu,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 15,
                   fontWeight: FontWeight.w600,
                   color: kTertiaryColor,
                   height: 1.3,
                 ),
               ),
+              subtitle: region == null
+                  ? null
+                  : Text(
+                      region,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        color: kGreyColor,
+                        height: 1.2,
+                      ),
+                    ),
               onTap: () => _pickCity(city),
             );
           },

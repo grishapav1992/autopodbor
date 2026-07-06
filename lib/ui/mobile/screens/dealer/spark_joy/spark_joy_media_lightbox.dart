@@ -286,9 +286,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                           videoSourceUrl == file.dataUrl &&
                           (videoController == null ||
                               !videoController!.value.isInitialized)) {
-                        return const Center(
-                          child: CircularProgressIndicator(color: kWhiteColor),
-                        );
+                        return const _SparkJoyLightboxVideoLoading();
                       }
                       if (videoErrorMessage != null &&
                           videoSourceUrl == file.dataUrl) {
@@ -326,9 +324,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                       if (activeVideo == null ||
                           !activeVideo.value.isInitialized ||
                           videoSourceUrl != file.dataUrl) {
-                        return const Center(
-                          child: CircularProgressIndicator(color: kWhiteColor),
-                        );
+                        return const _SparkJoyLightboxVideoLoading();
                       }
                       final ratio = activeVideo.value.aspectRatio;
                       return GestureDetector(
@@ -366,6 +362,24 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                                     size: SparkSize.icon3xl,
                                   ),
                                 ),
+                              ),
+                              // Большое сетевое видео может встать на
+                              // догрузку уже после старта — без оверлея
+                              // буферизация выглядит как зависший кадр.
+                              ValueListenableBuilder<VideoPlayerValue>(
+                                valueListenable: activeVideo,
+                                builder: (_, value, _) {
+                                  final buffering =
+                                      value.isInitialized &&
+                                      value.isPlaying &&
+                                      value.isBuffering;
+                                  if (!buffering) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return const CircularProgressIndicator(
+                                    color: kWhiteColor,
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -561,5 +575,32 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     // ever non-null in group mode — safe to route back to the editor.
     if (editIndex == null || isFlatMode || !mounted) return;
     await _openMediaInspectionEditor(groupKey: groupKey, index: editIndex);
+  }
+}
+
+/// Спиннер с подписью на время инициализации сетевого видео в лайтбоксе.
+/// Большой ролик с S3 может готовиться десятки секунд — голый спиннер
+/// не отвечал на вопрос «что происходит».
+class _SparkJoyLightboxVideoLoading extends StatelessWidget {
+  const _SparkJoyLightboxVideoLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: kWhiteColor),
+          SizedBox(height: SparkSpace.lg),
+          Text(
+            'Загружаем видео…',
+            style: TextStyle(
+              color: kWhiteColor,
+              fontSize: SparkTextSize.caption,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

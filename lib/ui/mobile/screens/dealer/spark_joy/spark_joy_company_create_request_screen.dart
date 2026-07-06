@@ -287,7 +287,10 @@ class _SparkJoyCompanyCreateRequestScreenState
       currentValue: _city.isEmpty ? null : _city,
     );
     if (picked == null || !mounted) return;
-    setState(() => _city = picked.displayNameRu);
+    // shortLabel, не displayNameRu: для одноимённых городов (Мирный,
+    // Киров…) в заявке нужен регион, иначе специалист не поймёт, куда
+    // ехать.
+    setState(() => _city = picked.shortLabel);
     _scheduleDraftAutosave();
   }
 

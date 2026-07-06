@@ -33,11 +33,12 @@ extension _SparkJoyCityPickerHelpers on _SparkJoyCreateReportScreenState {
       );
       if (!mounted || picked == null) return;
       _setStateSafely(() {
-        // Write the full "Country, Region, City" label so the report
-        // payload (`cityInspection`) and the picker tile read the
-        // same string. `findByExactRu` recognises both this form and
-        // the bare `nameRu` for back-compat with older drafts.
-        _inspectionCityController.text = picked.displayLabel;
+        // Compact «Город[, регион]» label goes into the report payload
+        // (`cityInspection`) — the region survives only for ambiguous
+        // names. `findByExactRu` recognises this form, bare `nameRu`
+        // and the legacy full «Россия, …» label, so older drafts stay
+        // valid.
+        _inspectionCityController.text = picked.shortLabel;
         _isInspectionCityValid = true;
       });
     } catch (e, st) {

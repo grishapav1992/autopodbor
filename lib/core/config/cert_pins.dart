@@ -49,28 +49,33 @@ class CertPins {
   /// pin set.
   static const Map<String, Set<String>> byHost = {
     'app.carreports.ru': {
-      // Current leaf — CN=app.carreports.ru, valid 2026-06-16 .. 2026-09-14.
-      'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
-      // Previous leaf — CN=app.carreports.ru (rotated out 2026-06-16). Kept
+      // Current leaf — CN=app.carreports.ru, valid 2026-07-02 .. 2026-09-30.
+      // ⚠️ The server rotated EARLY (2026-07-02, ~2.5 months before the
+      // previous leaf's 2026-09-14 expiry) — rotation timing is not tied to
+      // expiry dates, so pins must be re-checked before every release.
+      '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
+      // Previous leaf — CN=app.carreports.ru (rotated out 2026-07-02). Kept
       // for one cycle as a rollback safety net; remove after the next
       // rotation is confirmed stable in production.
-      'yq74wyn28jTDXpEfFimpWRng2BxD6LuR2lDQHOO75IA=',
+      'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
     },
     'ai.carreports.ru': {
+      '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
       'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
-      'yq74wyn28jTDXpEfFimpWRng2BxD6LuR2lDQHOO75IA=',
     },
     'ws.carreports.ru': {
+      '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
       'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
-      'yq74wyn28jTDXpEfFimpWRng2BxD6LuR2lDQHOO75IA=',
     },
   };
 
   /// Intermediate CA reference (NOT verified by the client — see class docs).
-  /// CN=YE1, Let's Encrypt, valid 2025-09-03 .. 2028-09-02. Documented so the
-  /// rotation runbook knows which CA the leaves chain to.
-  static const String intermediateYe1Pin =
-      'brzvtCELCIZUo4sD/qPX0ccRtPsd3DY6RfmxpOU9oB4=';
+  /// CN=YE2, Let's Encrypt, valid 2025-09-03 .. 2028-09-02, chains via
+  /// CN=Root YE cross-signed by ISRG Root X2. Documented so the rotation
+  /// runbook knows which CA the leaves chain to. (The 2026-07-02 leaf
+  /// rotation also switched the intermediate from YE1 to YE2.)
+  static const String intermediateYe2Pin =
+      's/tdAOmUzd8syaTuqfgGvFcn6DzA5Cmb+Vby1ST+U3Y=';
 
   /// Returns the accepted pin set for [host], or null when the host is not
   /// pinned (the caller must fail closed — never silently accept).

@@ -241,6 +241,7 @@ class _SparkJoyVideoThumbnail extends StatelessWidget {
     this.thumbUrl,
     this.loading = false,
     this.fit = BoxFit.cover,
+    this.onThumbUrlError,
   });
 
   /// Pre-resolved on-disk JPEG path (local videos). Null → fall back to
@@ -261,6 +262,14 @@ class _SparkJoyVideoThumbnail extends StatelessWidget {
   /// that's still loading never reads as absent.
   final bool loading;
   final BoxFit fit;
+
+  /// Notified (once per failure, post-frame) when [thumbUrl] fails to load —
+  /// presigned poster URLs are signed without checking the key exists, so a
+  /// 404 means "no poster was ever uploaded", not a transient glitch. The
+  /// owner reacts by falling back to frame extraction; while it hasn't
+  /// rebuilt yet the error branch renders the loading spinner, not the
+  /// placeholder. Null → the old behavior (straight to placeholder).
+  final VoidCallback? onThumbUrlError;
 
   @override
   Widget build(BuildContext context) {
@@ -283,7 +292,15 @@ class _SparkJoyVideoThumbnail extends StatelessWidget {
         cacheWidth: 300,
         cacheHeight: 300,
         gaplessPlayback: true,
-        errorBuilder: (_, _, _) => const _SparkJoyVideoPlaceholder(),
+        errorBuilder: (_, _, _) {
+          final onError = onThumbUrlError;
+          if (onError == null) return const _SparkJoyVideoPlaceholder();
+          // errorBuilder runs during build — defer the callback a frame. It
+          // re-fires on every rebuild while the image stays errored; the owner
+          // guards against duplicates.
+          WidgetsBinding.instance.addPostFrameCallback((_) => onError());
+          return const _SparkJoyVideoThumbLoading();
+        },
         // While the poster streams in, show a spinner (not the grey play-badge
         // placeholder) so "loading" reads differently from "missing/empty" —
         // the placeholder is reserved for the error branch above.

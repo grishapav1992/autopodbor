@@ -243,6 +243,12 @@ class SparkJoyReportController extends GetxController {
   final RxBool backendUploadFailed = false.obs;
   final RxString backendUploadStatusText = ''.obs;
   final RxString backendUploadErrorText = ''.obs;
+  // Внутренний код ошибки выгрузки (SparkJoyErrorCode, например NET-02) и
+  // копируемый support-текст для техподдержки. Живут парой с
+  // backendUploadErrorText: сеттятся и чистятся вместе через
+  // _setBackendUploadError/_clearBackendUploadError в хосте.
+  final RxString backendUploadErrorCode = ''.obs;
+  final RxString backendUploadErrorSupportText = ''.obs;
   final RxInt backendUploadCurrentFile = 0.obs;
   final RxInt backendUploadTotalFiles = 0.obs;
   final RxInt backendUploadCurrentPart = 0.obs;

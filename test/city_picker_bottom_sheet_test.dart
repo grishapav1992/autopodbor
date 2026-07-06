@@ -39,6 +39,14 @@ const _fixture = [
     'a': 'Алматы',
     'p': 1977011,
   },
+  {
+    'r': 'Краснодар',
+    'e': 'Krasnodar',
+    'c': 'RU',
+    'cn': 'Россия',
+    'a': 'Краснодарский край',
+    'p': 899541,
+  },
 ];
 
 void main() {
@@ -90,10 +98,11 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpAndSettle();
 
-    // Tile title is now the full "Россия, Москва" displayLabel.
+    // Tile title is the bare city name — the RU-only picker dropped
+    // the «Россия, …» prefix from every row.
     final moscowTile = find.descendant(
       of: find.byType(ListTile),
-      matching: find.text('Россия, Москва'),
+      matching: find.text('Москва'),
     );
     expect(moscowTile, findsOneWidget);
     await tester.tap(moscowTile);
@@ -101,8 +110,40 @@ void main() {
 
     expect(picked, isNotNull);
     expect(picked!.nameRu, 'Москва');
-    expect(picked!.displayLabel, 'Россия, Москва');
+    // What the callers write into their controllers/payloads.
+    expect(picked!.shortLabel, 'Москва');
     expect(picked!.countryCode, 'RU');
+  });
+
+  testWidgets('region renders as a grey subtitle, not inline in the title', (
+    tester,
+  ) async {
+    await tester.pumpWidget(host((ctx) => showCityPickerBottomSheet(ctx)));
+    await tester.tap(find.text('Открыть'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), 'красн');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+
+    final tile = find.widgetWithText(ListTile, 'Краснодар');
+    expect(tile, findsOneWidget);
+    // Region moved out of the title line into the subtitle.
+    expect(
+      find.descendant(of: tile, matching: find.text('Краснодарский край')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Россия,'), findsNothing);
+
+    // Federal cities (admin1 == city) must not get a subtitle: search
+    // Москва and make sure its tile has no second line.
+    await tester.enterText(find.byType(TextField), 'моск');
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    final moscowTile = tester.widget<ListTile>(
+      find.widgetWithText(ListTile, 'Москва'),
+    );
+    expect(moscowTile.subtitle, isNull);
   });
 
   testWidgets('search field does not autofocus — no keyboard on open (B5)', (
@@ -128,14 +169,14 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(ListTile),
-        matching: find.text('Россия, Москва'),
+        matching: find.text('Москва'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byType(ListTile),
-        matching: find.text('Казахстан, Алматы'),
+        matching: find.text('Алматы'),
       ),
       findsNothing,
     );

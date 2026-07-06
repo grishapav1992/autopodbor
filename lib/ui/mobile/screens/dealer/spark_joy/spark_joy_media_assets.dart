@@ -443,20 +443,49 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       );
     }
     if (item.isVideo) {
+      // A poster URL that failed to load (404 — the key may not exist in S3)
+      // is treated as absent: the tile falls back to the spinner while the
+      // frame-extraction fallback kicked off by _handleVideoPosterError runs.
+      final posterFailed = _videoPosterFailed.contains(item.id);
+      final hasPoster =
+          !posterFailed && (item.videoThumbUrl ?? '').isNotEmpty;
       // No preview yet (no on-disk thumb, no poster URL) and generation hasn't
       // given up → show the loading spinner instead of the "missing" placeholder
       // while `_generateVideoThumbsForGroup` works through it.
       final loading =
           item.videoThumbPath == null &&
-          item.videoThumbUrl == null &&
+          !hasPoster &&
           !_videoThumbsUnavailable.contains(item.id);
       return _SparkJoyVideoThumbnail(
         thumbPath: item.videoThumbPath,
-        thumbUrl: item.videoThumbUrl,
+        thumbUrl: hasPoster ? item.videoThumbUrl : null,
         loading: loading,
         fit: fit,
+        onThumbUrlError: hasPoster ? () => _handleVideoPosterError(item) : null,
       );
     }
     return const Icon(Icons.insert_drive_file_outlined, color: kGreyColor);
+  }
+
+  /// Called by the tile when its remote poster failed to load (usually a 404:
+  /// the backend signs view URLs without checking the key exists, so reports
+  /// uploaded before the poster feature — or from web, which can't generate
+  /// posters — resolve a URL to a missing object). Stops trusting the poster
+  /// for this item and falls back to extracting a frame from the video itself,
+  /// keeping the tile on the spinner meanwhile instead of silently flipping to
+  /// the grey placeholder.
+  void _handleVideoPosterError(UploadedItem item) {
+    if (!mounted || _videoPosterFailed.contains(item.id)) return;
+    _setStateSafely(() => _videoPosterFailed.add(item.id));
+    for (final entry in _mediaState.entries) {
+      if (entry.value.files.any((f) => f.id == item.id)) {
+        unawaited(_generateVideoThumbsForGroup(entry.key, [item]));
+        return;
+      }
+    }
+    // The item isn't in any media group (shouldn't happen for video tiles) —
+    // nowhere to write a generated preview back to, so mark it unavailable
+    // rather than leaving the spinner running forever.
+    _setStateSafely(() => _videoThumbsUnavailable.add(item.id));
   }
 }

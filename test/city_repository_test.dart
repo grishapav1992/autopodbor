@@ -64,6 +64,24 @@ const _fixture = [
     'a': '',
     'p': 5500,
   },
+  // Два одноимённых города — «Мирный» есть и в Якутии, и в
+  // Архангельской области. Drives isNameAmbiguous / shortLabel.
+  {
+    'r': 'Мирный',
+    'e': 'Mirny',
+    'c': 'RU',
+    'cn': 'Россия',
+    'a': 'Республика Саха (Якутия)',
+    'p': 37188,
+  },
+  {
+    'r': 'Мирный',
+    'e': 'Mirny',
+    'c': 'RU',
+    'cn': 'Россия',
+    'a': 'Архангельская область',
+    'p': 30280,
+  },
   {
     'r': 'Kurortnyy',
     'e': 'Kurortnyy',
@@ -143,6 +161,21 @@ void main() {
       expect(two.length, 2);
     });
 
+    test('empty query lists cities by population, not dataset order', () {
+      // The shipped JSON is alphabetical («Абаза» first) — the picker's
+      // initial view must instead lead with the biggest cities.
+      final repo = _build();
+      final ru = repo.search('', countryCode: 'RU');
+      expect(ru.first.nameRu, 'Москва');
+      expect(ru[1].nameRu, 'Санкт-Петербург');
+      // Ёлкино (5 500) is the smallest RU entry — it must sink below
+      // Kurortnyy (70 589) even though the fixture lists it earlier.
+      expect(
+        ru.indexWhere((c) => c.nameRu == 'Ёлкино'),
+        greaterThan(ru.indexWhere((c) => c.nameRu == 'Kurortnyy')),
+      );
+    });
+
     test(
       'throws StateError when called before init',
       () {
@@ -183,10 +216,26 @@ void main() {
       expect(p?.nameEn, 'Saint Petersburg');
     });
 
+    test('matches the compact "City, Region" shortLabel', () {
+      // This is what the picker writes for ambiguous names since the
+      // shortLabel rollout — the submit gate must accept it.
+      final repo = _build();
+      final m = repo.findByExactRu('Мирный, Архангельская область');
+      expect(m, isNotNull);
+      expect(m!.regionNameRu, 'Архангельская область');
+      // A bare ambiguous name still resolves (legacy drafts) — to
+      // whichever twin comes first; the gate only needs non-null.
+      expect(repo.findByExactRu('Мирный'), isNotNull);
+    });
+
     test('case-insensitive exact match', () {
       final repo = _build();
       expect(repo.findByExactRu('москва')?.nameEn, 'Moscow');
       expect(repo.findByExactRu('россия, москва')?.nameEn, 'Moscow');
+      expect(
+        repo.findByExactRu('мирный, архангельская область'),
+        isNotNull,
+      );
     });
 
     test('trim is applied', () {
@@ -215,6 +264,46 @@ void main() {
       final repo = _build();
       expect(repo.findByExactRu(''), isNull);
       expect(repo.findByExactRu('   '), isNull);
+    });
+  });
+
+  group('City.shortLabel', () {
+    test('unique name → bare city, no country or region', () {
+      final repo = _build();
+      final spb = repo.findByExactRu('Санкт-Петербург')!;
+      expect(spb.isNameAmbiguous, isFalse);
+      expect(spb.shortLabel, 'Санкт-Петербург');
+    });
+
+    test('ambiguous name carries the region', () {
+      final repo = _build();
+      final both = repo.search('Мирный');
+      expect(both.length, 2);
+      expect(both.every((c) => c.isNameAmbiguous), isTrue);
+      expect(both.map((c) => c.shortLabel).toSet(), {
+        'Мирный, Республика Саха (Якутия)',
+        'Мирный, Архангельская область',
+      });
+    });
+
+    test('federal city: admin1 duplicates the name → bare city', () {
+      final repo = _build();
+      expect(repo.findByExactRu('Москва')!.shortLabel, 'Москва');
+    });
+
+    test('fromJson defaults to unambiguous → bare name', () {
+      // Ambiguity is dataset-wide; a City built in isolation cannot
+      // know about twins and must default to the compact form.
+      final c = City.fromJson({
+        'r': 'Краснодар',
+        'e': 'Krasnodar',
+        'c': 'RU',
+        'cn': 'Россия',
+        'a': 'Краснодарский край',
+        'p': 899541,
+      });
+      expect(c.isNameAmbiguous, isFalse);
+      expect(c.shortLabel, 'Краснодар');
     });
   });
 

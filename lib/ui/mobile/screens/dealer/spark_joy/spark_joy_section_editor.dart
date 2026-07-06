@@ -254,6 +254,8 @@ Widget _buildSparkJoyUploadErrorHint(
   _SparkJoyCreateReportScreenState s, {
   required String text,
 }) {
+  final errorCode = s._backendUploadErrorCode.trim();
+  final supportText = s._backendUploadErrorSupportText.trim();
   return SparkCard(
     padding: const EdgeInsets.symmetric(
       horizontal: SparkSpace.xl,
@@ -282,8 +284,45 @@ Widget _buildSparkJoyUploadErrorHint(
                 weight: FontWeight.w700,
               ),
             ),
+            const SizedBox(width: SparkSpace.sm),
+            IconButton(
+              tooltip: 'Скопировать ошибку',
+              onPressed: () {
+                // Support-текст содержит код, номер отчёта, этап и техническую
+                // ошибку; для старых состояний без него копируем видимый текст.
+                Clipboard.setData(
+                  ClipboardData(text: supportText.isEmpty ? text : supportText),
+                );
+                ScaffoldMessenger.of(s.context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Детали ошибки скопированы — отправьте их в поддержку',
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.copy_rounded),
+              color: kRedColor,
+              iconSize: SparkSize.iconSm,
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
           ],
         ),
+        if (errorCode.isNotEmpty) ...[
+          const SizedBox(height: SparkSpace.xs),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: SparkSize.iconSm + SparkSpace.sm,
+            ),
+            child: MyText(
+              text: 'Код ошибки: $errorCode — назовите его поддержке',
+              size: SparkTextSize.caption,
+              color: kRedColor,
+            ),
+          ),
+        ],
         const SizedBox(height: SparkSpace.md),
         Align(
           alignment: Alignment.centerLeft,

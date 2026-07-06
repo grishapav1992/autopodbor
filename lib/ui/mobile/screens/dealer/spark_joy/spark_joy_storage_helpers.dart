@@ -1121,6 +1121,34 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
+  /// Единая точка записи ошибки выгрузки: читаемое сообщение для баннера /
+  /// снекбара + внутренний код (SparkJoyErrorCode) + копируемый support-текст
+  /// с контекстом (номер отчёта, этап, время, техническая ошибка). Этап
+  /// берётся из текущего статуса прогресса, поэтому вызывать нужно ДО того,
+  /// как статус перезапишется на «Ошибка выгрузки…».
+  void _setBackendUploadError({
+    required String code,
+    required String message,
+    String technical = '',
+  }) {
+    _backendUploadErrorText = message;
+    _backendUploadErrorCode = code;
+    _backendUploadErrorSupportText = sparkJoyUploadSupportText(
+      code: code,
+      message: message,
+      technical: technical,
+      reportNumber: _uploadStateText(_backendUploadState, 'reportNumber'),
+      stage: _backendUploadStatusText,
+      timestamp: DateTime.now(),
+    );
+  }
+
+  void _clearBackendUploadError() {
+    _backendUploadErrorText = '';
+    _backendUploadErrorCode = '';
+    _backendUploadErrorSupportText = '';
+  }
+
   String _backendUploadStateKey(
     String filename,
     UploadedItem item,
@@ -1271,8 +1299,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         );
       } catch (error) {
         lastError = error;
-        _backendUploadErrorText =
-            'Файл $fileIndex/$totalFiles, часть $partNumber/$partCount: $error';
+        final readable = sparkJoyReadableError(error);
+        _setBackendUploadError(
+          code: readable.code,
+          message:
+              'Файл $fileIndex/$totalFiles, часть $partNumber/$partCount: '
+              '${readable.message}',
+          technical: error.toString(),
+        );
         if (attempt < 3) {
           // Roll the visible progress for this part back to 0 before
           // retrying so the UI doesn't claim partial bytes from the
@@ -1283,7 +1317,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         }
       }
     }
-    throw Exception(lastError?.toString() ?? 'Неизвестная ошибка загрузки');
+    // Пробрасываем ОРИГИНАЛЬНОЕ исключение (не обёртку-строку): верхние
+    // catch классифицируют его в код/сообщение для поддержки по типу и
+    // тексту, а Exception('SocketException: …') терял бы тип.
+    throw lastError ?? Exception('Неизвестная ошибка загрузки');
   }
 
   bool _isMultipartCompleteTransientError(Object error) {
@@ -2268,8 +2305,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       final sourceKey = queueItem.stateKey;
       final source = await _openUploadSource(item);
       if (source == null || source.length == 0) {
-        _backendUploadErrorText =
-            'Не удалось прочитать файл ${index + 1}/$totalItems: ${item.name}';
+        _setBackendUploadError(
+          code: SparkJoyErrorCode.fileUnreadable,
+          message:
+              'Не удалось прочитать файл ${index + 1}/$totalItems: '
+              '${item.name}',
+        );
         _updateBackendUploadFileProgress(
           item: item,
           index: index,
@@ -2284,8 +2325,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       }
 
       if (sourceKey.isEmpty) {
-        _backendUploadErrorText =
-            'Пустой источник файла ${index + 1}/$totalItems: ${item.name}';
+        _setBackendUploadError(
+          code: SparkJoyErrorCode.fileEmptySource,
+          message: 'Пустой источник файла ${index + 1}/$totalItems: '
+              '${item.name}',
+        );
         _updateBackendUploadFileProgress(
           item: item,
           index: index,
@@ -2334,8 +2378,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         filename = originalFilename;
       }
       if (filename.isEmpty) {
-        _backendUploadErrorText =
-            'Пустое имя файла ${index + 1}/$totalItems (${item.name}).';
+        _setBackendUploadError(
+          code: SparkJoyErrorCode.fileEmptyName,
+          message: 'Пустое имя файла ${index + 1}/$totalItems (${item.name}).',
+        );
         _updateBackendUploadFileProgress(
           item: item,
           index: index,
@@ -2612,8 +2658,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         _writeUploadedPartsToState(fileState, etagsByPart);
         filesState[sourceKey] = fileState;
         await _persistBackendUploadStateToDraft();
-        _backendUploadErrorText =
-            'Ошибка файла ${index + 1}/$totalItems (${item.name}): $e';
+        final readable = sparkJoyReadableError(e);
+        _setBackendUploadError(
+          code: readable.code,
+          message:
+              'Ошибка файла ${index + 1}/$totalItems (${item.name}): '
+              '${readable.message}',
+          technical: e.toString(),
+        );
         _updateBackendUploadFileProgress(
           item: item,
           index: index,
@@ -3212,14 +3264,13 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       final errorText = _backendUploadErrorText
           .replaceFirst(RegExp(r'^Exception:\s*'), '')
           .trim();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            errorText.isEmpty
-                ? 'Не удалось выгрузить отчёт'
-                : 'Не удалось выгрузить отчёт: $errorText',
-          ),
-        ),
+      showSparkJoySupportErrorSnackBar(
+        context,
+        message: errorText.isEmpty
+            ? 'Не удалось выгрузить отчёт'
+            : 'Не удалось выгрузить отчёт: $errorText',
+        supportText: _backendUploadErrorSupportText,
+        code: _backendUploadErrorCode,
       );
       return;
     }
@@ -3261,9 +3312,12 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // Catalog/network failure — fall through to the clear error below.
       }
     }
-    _backendUploadErrorText =
-        'Не удалось определить модель из каталога. Откройте параметры авто, '
-        'выберите модель из списка и повторите выгрузку.';
+    _setBackendUploadError(
+      code: SparkJoyErrorCode.reportModelUnresolved,
+      message:
+          'Не удалось определить модель из каталога. Откройте параметры авто, '
+          'выберите модель из списка и повторите выгрузку.',
+    );
     return false;
   }
 
@@ -3285,7 +3339,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       );
       backendReportId ??= cachedReportId;
       _backendUploadFailed = false;
-      _backendUploadErrorText = '';
+      _clearBackendUploadError();
       _setBackendUploadProgress(
         inProgress: true,
         statusText: 'Готовим отчёт на сервере (это может занять 1–3 минуты)…',
@@ -3449,7 +3503,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // so a retry starts fresh, and do NOT finalize the report (B17).
         await _abortAllOpenMultipartUploads(reportNumber: reportNumber);
         _backendUploadFailed = false;
-        _backendUploadErrorText = '';
+        _clearBackendUploadError();
         _setBackendUploadProgress(
           inProgress: false,
           statusText: 'Выгрузка отменена',
@@ -3489,11 +3543,16 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       }
       final missingFilenames = declaredFilenames.difference(satisfiedFilenames);
       if (missingFilenames.isNotEmpty) {
-        _backendUploadErrorText =
-            'Не все файлы выгружены: ${missingFilenames.length} из '
-            '${declaredFilenames.length} отсутствует на сервере (часто это '
-            'видео с устаревшим источником). Откройте отчёт, добавьте '
-            'недостающие файлы заново и повторите выгрузку. Отчёт не завершён.';
+        _setBackendUploadError(
+          code: SparkJoyErrorCode.fileMissingOnServer,
+          message:
+              'Не все файлы выгружены: ${missingFilenames.length} из '
+              '${declaredFilenames.length} отсутствует на сервере (часто это '
+              'видео с устаревшим источником). Откройте отчёт, добавьте '
+              'недостающие файлы заново и повторите выгрузку. Отчёт не '
+              'завершён.',
+          technical: 'missing: ${missingFilenames.join(', ')}',
+        );
         return false;
       }
 
@@ -3556,14 +3615,31 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         totalParts: 0,
       );
       _backendUploadFailed = false;
-      _backendUploadErrorText = '';
+      _clearBackendUploadError();
       return true;
     } catch (e) {
+      final raw = e.toString();
+      // Ошибки нижних слоёв (часть файла, файл целиком, гейт полноты) уже
+      // записаны структурно — кодом и support-текстом; batch-цикл заворачивает
+      // их текст в Exception, и повторная классификация здесь стёрла бы код
+      // (русское сообщение → UNK-01). Классифицируем только «сырые» исключения.
+      final alreadyStructured =
+          _backendUploadErrorCode.trim().isNotEmpty &&
+          _backendUploadErrorText.trim().isNotEmpty &&
+          raw.contains(_backendUploadErrorText.trim());
+      if (!alreadyStructured) {
+        final readable = sparkJoyReadableError(e);
+        _setBackendUploadError(
+          code: readable.code,
+          message: readable.message,
+          technical: raw,
+        );
+      }
       _backendUploadState['updatedAt'] = DateTime.now().toIso8601String();
-      _backendUploadState['error'] = e.toString();
+      _backendUploadState['error'] = raw;
+      _backendUploadState['errorCode'] = _backendUploadErrorCode;
       await _persistBackendUploadStateToDraft();
       _backendUploadFailed = true;
-      _backendUploadErrorText = e.toString();
       _setBackendUploadProgress(
         inProgress: false,
         statusText: 'Ошибка выгрузки. Попробуйте снова.',

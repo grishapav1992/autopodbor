@@ -46,12 +46,12 @@ void main() {
       // one cycle so a server-side rollback or a second renewal doesn't
       // break already-shipped release builds. Remove this assertion only
       // after a new pin is confirmed stable in production.
-      const previousLeaf = 'yq74wyn28jTDXpEfFimpWRng2BxD6LuR2lDQHOO75IA=';
+      const previousLeaf = 'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=';
       expect(CertPins.byHost['app.carreports.ru']!, contains(previousLeaf));
     });
 
     test('intermediate CA reference is documented and well-formed', () {
-      final pin = CertPins.intermediateYe1Pin;
+      final pin = CertPins.intermediateYe2Pin;
       expect(pin, matches(RegExp(r'^[A-Za-z0-9+/]{43}=$')));
       expect(base64.decode(pin).length, 32);
     });

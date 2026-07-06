@@ -2648,7 +2648,7 @@ class _SparkJoySpecialistProfileScreenState
           : _cityController.text.trim(),
     );
     if (picked == null || !mounted) return;
-    final city = picked.displayLabel.trim();
+    final city = picked.shortLabel.trim();
     if (city == _cityController.text.trim()) return;
     _cityController.text = city;
     await _saveProfile();
