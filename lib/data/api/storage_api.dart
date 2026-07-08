@@ -22,6 +22,16 @@ class _CreateRequestCacheEntry {
   const _CreateRequestCacheEntry({required this.sentAt, required this.result});
 }
 
+class _CreateRequestTimeoutEntry {
+  final DateTime timedOutAt;
+  final String technicalMessage;
+
+  const _CreateRequestTimeoutEntry({
+    required this.timedOutAt,
+    required this.technicalMessage,
+  });
+}
+
 class _TokenPair {
   final String accessToken;
   final String refreshToken;
@@ -96,6 +106,22 @@ class PermissionDeniedException implements Exception {
   String toString() => serverMessage.isEmpty
       ? 'Недостаточно прав для $method'
       : 'Недостаточно прав для $method: $serverMessage';
+}
+
+/// Thrown when `Storage.CreateRequest` times out after the request has been
+/// sent. The backend may still commit the request, so retrying the same payload
+/// immediately can create duplicates.
+class CreateRequestPossiblyCommittedException implements Exception {
+  const CreateRequestPossiblyCommittedException({this.technicalMessage = ''});
+
+  final String technicalMessage;
+
+  static const userMessage =
+      'Заявка отправлена, но сервер не успел подтвердить создание. '
+      'Обновите список заявок через минуту и не отправляйте её повторно.';
+
+  @override
+  String toString() => userMessage;
 }
 
 /// True while a legal-review batch still has at least one check in a
@@ -182,7 +208,9 @@ const VinPlateConverterResult _timedOutVinPlateResult = (
 /// Parses a converter check's `responseNormalized` (a JSON STRING like
 /// `{"vin":"…","gos_number":"…","brand":"LADA","model":"VESTA","year":2017,
 /// "found":true}`, occasionally already a Map) into [VinPlateConverterResult].
-VinPlateConverterResult parseVinPlateConverterResult(dynamic responseNormalized) {
+VinPlateConverterResult parseVinPlateConverterResult(
+  dynamic responseNormalized,
+) {
   dynamic m = responseNormalized;
   if (m is String) {
     final s = m.trim();
@@ -232,7 +260,12 @@ class StorageApi {
   _createRequestInFlightByKey = {};
   static final Map<String, _CreateRequestCacheEntry> _recentCreateRequestByKey =
       {};
+  static final Map<String, _CreateRequestTimeoutEntry>
+  _recentCreateRequestTimeoutByKey = {};
   static const Duration _createRequestDedupeWindow = Duration(seconds: 20);
+  static const Duration _createRequestTimeoutDedupeWindow = Duration(
+    minutes: 2,
+  );
   static int _createRequestSeq = 0;
 
   static void _debugCreateRequestLog(
@@ -252,6 +285,11 @@ class StorageApi {
       );
       return true;
     }());
+  }
+
+  static bool _isTimeoutError(Object error) {
+    final lower = error.toString().toLowerCase();
+    return lower.contains('timeout') || lower.contains('timed out');
   }
 
   static int? _asInt(dynamic value) {
@@ -1062,6 +1100,23 @@ class StorageApi {
       );
       return recent.result;
     }
+    final recentTimeout = _recentCreateRequestTimeoutByKey[dedupeKey];
+    if (recentTimeout != null) {
+      final age = DateTime.now().difference(recentTimeout.timedOutAt);
+      if (age <= _createRequestTimeoutDedupeWindow) {
+        _debugCreateRequestLog(
+          'dedupe_timeout',
+          seq: seq,
+          requestType: requestType,
+          dedupeKey: dedupeKey,
+          extra: 'age=${age.inSeconds}s',
+        );
+        throw CreateRequestPossiblyCommittedException(
+          technicalMessage: recentTimeout.technicalMessage,
+        );
+      }
+      _recentCreateRequestTimeoutByKey.remove(dedupeKey);
+    }
     final inFlight = _createRequestInFlightByKey[dedupeKey];
     if (inFlight != null) {
       _debugCreateRequestLog(
@@ -1097,6 +1152,7 @@ class StorageApi {
           id: id,
           requestNumber: requestNumber,
         );
+        _recentCreateRequestTimeoutByKey.remove(dedupeKey);
         _recentCreateRequestByKey[dedupeKey] = _CreateRequestCacheEntry(
           sentAt: DateTime.now(),
           result: created,
@@ -1110,6 +1166,23 @@ class StorageApi {
         );
         return created;
       } catch (e) {
+        if (_isTimeoutError(e)) {
+          _recentCreateRequestTimeoutByKey[dedupeKey] =
+              _CreateRequestTimeoutEntry(
+                timedOutAt: DateTime.now(),
+                technicalMessage: e.toString(),
+              );
+          _debugCreateRequestLog(
+            'timeout_uncertain',
+            seq: seq,
+            requestType: requestType,
+            dedupeKey: dedupeKey,
+            extra: e.toString(),
+          );
+          throw CreateRequestPossiblyCommittedException(
+            technicalMessage: e.toString(),
+          );
+        }
         _debugCreateRequestLog(
           'error',
           seq: seq,
@@ -1712,7 +1785,9 @@ class StorageApi {
     required String reportNumber,
     required String filename,
     int? expiresInSeconds,
-    Duration timeout = const Duration(seconds: 10),
+    // Холодный бэк отвечает 7-47с (замеры 2026-06-10) — 10с-таймаут ронял
+    // скан СТС/ПТС первым же вызовом после простоя сервера.
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpc(
       method: 'ObjectStorage.GetTemporaryUploadUrl',
@@ -2408,7 +2483,7 @@ class StorageApi {
   static Future<RequestActionResult> acceptRequest({
     required int requestId,
     String? note,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpc(
       method: 'Storage.AcceptRequest',
@@ -2428,7 +2503,7 @@ class StorageApi {
   static Future<RequestActionResult> rejectRequest({
     required int requestId,
     String? note,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpc(
       method: 'Storage.RejectRequest',
@@ -2448,7 +2523,7 @@ class StorageApi {
   static Future<RequestActionResult> abandonRequest({
     required int requestId,
     required String note,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpc(
       method: 'Storage.AbandonRequest',
@@ -2473,7 +2548,7 @@ class StorageApi {
   static Future<RequestActionResult> assignSpecialist({
     required int requestId,
     required int specialistId,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     final data = await _postRpc(
       method: 'Storage.AssignSpecialist',
@@ -2498,7 +2573,7 @@ class StorageApi {
   static Future<RequestActionResult> cancelRequest({
     required int requestId,
     required String cancelReason,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpc(
       method: 'Storage.CancelRequest',
@@ -2522,7 +2597,7 @@ class StorageApi {
 
   static Future<RequestActionResult> completeRequest({
     required int requestId,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     final data = await _postRpc(
       method: 'Storage.CompleteRequest',
@@ -2689,7 +2764,7 @@ class StorageApi {
 
   static Future<CompanySpecialistUnlinkResult> unlinkCompanySpecialist({
     required int specialistId,
-    Duration timeout = const Duration(seconds: 12),
+    Duration timeout = const Duration(seconds: 45),
   }) async {
     final data = await _postRpc(
       method: 'Storage.UnlinkCompanySpecialist',

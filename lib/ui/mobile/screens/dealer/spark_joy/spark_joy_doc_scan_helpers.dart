@@ -39,7 +39,9 @@ Uint8List _sparkPrepareDocScanPhoto(Uint8List bytes) {
 ///     значения с ID (бэк требует brandId/modelCarId); несовпавшее — в
 ///     снекбар «выберите вручную».
 ///
-/// Фолбэк без сети/ИИ — существующий офлайн OCR-сканер VIN (ML Kit).
+/// Распознаёт ТОЛЬКО нейронка (AiQueue vision) — OCR-фолбэка в этом флоу
+/// нет (решение Григория 2026-07-08); при сбое — штатный снэкбар ошибок с
+/// кодом и этапом. Отдельный OCR-сканер VIN у поля VIN не тронут.
 extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
   Future<void> _openDocScanSourceModal() async {
     final source = await showDialog<ImageSource>(
@@ -161,9 +163,15 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       final viewUrl = await storage_api.StorageApi.getTemporaryViewUrl(
         reportNumber: 'temp',
         filename: filename,
+        // Дефолтные 10с не переживают холодный бэк (7-47с на первом хите
+        // после простоя) — а сам метод глотает таймаут и возвращает ''.
+        timeout: const Duration(seconds: 30),
       );
       if (viewUrl.isEmpty) {
-        throw Exception('Не удалось получить ссылку на загруженное фото');
+        throw Exception(
+          'Не удалось получить ссылку на загруженное фото '
+          '(сервер не ответил вовремя)',
+        );
       }
       if (!mounted) return;
       _setStateSafely(() => _docScanStage = 'Распознавание…');
@@ -181,21 +189,30 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         allowedEngineVolumes: _SparkJoyVehicleRegistry.engineVolumeOptions,
       );
       if (!hasAnyDocScanData(parsed)) {
-        await _showDocScanFallbackDialog(
-          'ИИ не смог прочитать документ на фото. Попробуйте другое фото '
-          '(без бликов, документ целиком) или офлайн-сканер VIN.',
-          source,
+        // Модель ответила, но не разобрала ни одного поля — проблема в фото,
+        // а не в транспорте. Подсказываем, как переснять.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'ИИ не смог прочитать документ на этом фото. Снимите документ '
+              'целиком, без бликов, и попробуйте ещё раз.',
+            ),
+          ),
         );
         return;
       }
       await _showDocScanPreviewDialog(parsed);
     } catch (e) {
-      debugPrint('Doc scan failed: $e');
+      debugPrint('Doc scan failed at "$_docScanStage": $e');
       if (!mounted) return;
-      await _showDocScanFallbackDialog(
-        'ИИ-распознавание сейчас недоступно. Можно распознать VIN '
-        'офлайн-сканером (без интернета).',
-        source,
+      // Штатный снэкбар ошибок: код (NET-xx/SRV-xx/…) + «Скопировать» —
+      // по нему видно, на каком этапе и почему упало распознавание.
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback:
+            'Не удалось распознать документ (этап: '
+            '${_docScanStage.isEmpty ? 'распознавание' : _docScanStage})',
       );
     } finally {
       if (mounted) {
@@ -204,47 +221,6 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
           _docScanStage = '';
         });
       }
-    }
-  }
-
-  /// Сеть/ИИ недоступны или ничего не распозналось → предлагаем существующий
-  /// офлайн OCR-сканер VIN (ML Kit) — тот самый «если нет интернета, выбрать
-  /// OCR-распознавание».
-  Future<void> _showDocScanFallbackDialog(
-    String message,
-    ImageSource source,
-  ) async {
-    if (!mounted) return;
-    final useOcr = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(SparkRadius.xl),
-        ),
-        title: const MyText(
-          text: 'Распознавание не удалось',
-          size: SparkTextSize.titleLg,
-          weight: FontWeight.w700,
-        ),
-        content: MyText(
-          text: message,
-          size: SparkTextSize.body,
-          color: kTertiaryColor,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Закрыть'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('OCR-сканер VIN'),
-          ),
-        ],
-      ),
-    );
-    if (useOcr == true && mounted) {
-      await _openVinScannerDialog(initialSource: source);
     }
   }
 

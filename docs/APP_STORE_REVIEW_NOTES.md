@@ -23,7 +23,7 @@ The app calls authenticated `Storage.DeactivateAccount`, clears saved auth token
 ## Privacy and legal
 
 - Privacy policy and terms are available in Profile -> `Правовая информация`.
-- Support contact: `grishapav1992@gmail.com`.
+- Support contact: `support@carreports.ru`.
 - Operator: `ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ ПАВЛЕНКО ГРИГОРИЙ АЛЕКСАНДРОВИЧ`, INN `237305224179`, OGRNIP `322237500311981`.
 
 ## Permission usage

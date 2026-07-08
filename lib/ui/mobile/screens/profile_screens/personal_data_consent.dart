@@ -16,7 +16,7 @@ class PersonalDataConsent extends StatelessWidget {
   static const _operatorAddress =
       '353217, Россия, Краснодарский край, Динской р-н, п Южный, '
       'ул Новая, д 2/2, кв 12';
-  static const _privacyEmail = 'grishapav1992@gmail.com';
+  static const _privacyEmail = 'support@carreports.ru';
   static const _policyUrl = 'https://carreports.ru/privacy';
 
   @override

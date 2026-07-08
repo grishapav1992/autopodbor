@@ -46,6 +46,19 @@ class NotificationController extends GetxController {
   /// `accepted` / `rejected` / `expired` do not count.
   final RxInt unreadCount = 0.obs;
 
+  /// Number of loaded notifications that are newer than the latest
+  /// notification the user has actually seen in the notifications screen.
+  ///
+  /// This covers cold-start / stale-WS cases: if the backend returns a newer
+  /// item during HTTP reload, the bell still shows a badge even when no
+  /// realtime push was received.
+  final RxInt newSinceLastSeenCount = 0.obs;
+
+  /// Count used by the nav bell. It combines old pending notifications with
+  /// the "newer than last seen" marker without requiring widgets to know why
+  /// the badge is visible.
+  final RxInt badgeCount = 0.obs;
+
   /// Legacy bridge for widgets still watching
   /// `SparkJoyNotificationsStorage.notifier`. Bumped on every state
   /// change so `ValueListenableBuilder` rebuilds.
@@ -55,6 +68,9 @@ class NotificationController extends GetxController {
   Timer? _refetchTimer;
   DateTime? _lastPushReloadAt;
   bool _started = false;
+  bool _lastSeenLoaded = false;
+  String? _lastSeenNotificationId;
+  DateTime? _lastSeenNotificationCreatedAt;
 
   /// Set when a push arrives while [reload] is mid-flight. Without this
   /// flag the second push silently no-ops and the UI stays stale until
@@ -73,6 +89,7 @@ class NotificationController extends GetxController {
       _started = false;
       return;
     }
+    await _ensureLastSeenLoaded();
     _pushSub ??= NotificationWebsocketService.instance.stream.listen(
       _onPushEvent,
     );
@@ -103,10 +120,15 @@ class NotificationController extends GetxController {
     await NotificationWebsocketService.instance.stop();
     items.clear();
     unreadCount.value = 0;
+    newSinceLastSeenCount.value = 0;
+    badgeCount.value = 0;
     nextCursor.value = null;
     errorMessage.value = null;
     _pendingReload = false;
     _lastPushReloadAt = null;
+    _lastSeenLoaded = false;
+    _lastSeenNotificationId = null;
+    _lastSeenNotificationCreatedAt = null;
     _started = false;
     _bumpNotifier();
   }
@@ -128,9 +150,11 @@ class NotificationController extends GetxController {
         page: 1,
         limit: _pageLimit,
       );
+      await _ensureLastSeenLoaded();
       items.assignAll(page.items);
       nextCursor.value = page.nextCursor;
-      _recomputeUnread();
+      await _seedLastSeenFromCurrentPageIfNeeded();
+      _recomputeBadgeState();
     } catch (e) {
       errorMessage.value = e.toString();
       _log('refresh failed: $e');
@@ -157,9 +181,10 @@ class NotificationController extends GetxController {
         limit: _pageLimit,
         cursor: cursor,
       );
+      await _ensureLastSeenLoaded();
       items.addAll(page.items);
       nextCursor.value = page.nextCursor;
-      _recomputeUnread();
+      _recomputeBadgeState();
     } catch (e) {
       errorMessage.value = e.toString();
       _log('loadMore failed: $e');
@@ -177,14 +202,14 @@ class NotificationController extends GetxController {
     final original = items[index];
     if (original.status == NotificationStatus.read) return;
     items[index] = original.copyWith(status: NotificationStatus.read);
-    _recomputeUnread();
+    _recomputeBadgeState();
     _bumpNotifier();
     try {
       await NotificationApi.markRead(notificationId);
     } catch (e) {
       // Revert on failure.
       items[index] = original;
-      _recomputeUnread();
+      _recomputeBadgeState();
       _bumpNotifier();
       _log('markRead failed: $e');
       rethrow;
@@ -345,7 +370,33 @@ class NotificationController extends GetxController {
       actedAt: DateTime.now().toUtc(),
     );
     items.refresh();
-    _recomputeUnread();
+    _recomputeBadgeState();
+    _bumpNotifier();
+  }
+
+  /// Persist the latest loaded notification as seen. Called by the
+  /// notifications screen once the feed is visible, so future HTTP reloads can
+  /// detect a newer backend item even if WebSocket was inactive.
+  Future<void> markLatestNotificationSeen() async {
+    await _ensureLastSeenLoaded();
+    final latest = _latestComparableNotification(items);
+    if (latest == null) return;
+    if (_lastSeenNotificationId == latest.id &&
+        _lastSeenNotificationCreatedAt?.toUtc() == latest.createdAt.toUtc()) {
+      if (newSinceLastSeenCount.value != 0) {
+        newSinceLastSeenCount.value = 0;
+        _recomputeBadgeState();
+        _bumpNotifier();
+      }
+      return;
+    }
+    _lastSeenNotificationId = latest.id;
+    _lastSeenNotificationCreatedAt = latest.createdAt.toUtc();
+    await UserSimplePreferences.setLastSeenNotification(
+      id: latest.id,
+      createdAt: latest.createdAt,
+    );
+    _recomputeBadgeState();
     _bumpNotifier();
   }
 
@@ -389,16 +440,104 @@ class NotificationController extends GetxController {
     });
   }
 
-  void _recomputeUnread() {
+  Future<void> _ensureLastSeenLoaded() async {
+    if (_lastSeenLoaded) return;
+    final marker = await UserSimplePreferences.getLastSeenNotification();
+    _lastSeenNotificationId = marker?.id;
+    _lastSeenNotificationCreatedAt = marker?.createdAt?.toUtc();
+    _lastSeenLoaded = true;
+  }
+
+  Future<void> _seedLastSeenFromCurrentPageIfNeeded() async {
+    if (_lastSeenNotificationId != null ||
+        _lastSeenNotificationCreatedAt != null) {
+      return;
+    }
+    final latest = _latestComparableNotification(items);
+    if (latest == null) return;
+    _lastSeenNotificationId = latest.id;
+    _lastSeenNotificationCreatedAt = latest.createdAt.toUtc();
+    await UserSimplePreferences.setLastSeenNotification(
+      id: latest.id,
+      createdAt: latest.createdAt,
+    );
+  }
+
+  void _recomputeBadgeState() {
     // Конвертерные уведомления (api_cloud_converter_search) скрыты из ленты как
     // внутренний инструмент идентификации (см. spark_joy_notifications_screen).
     // Значит и в бейдж-счётчик их не считаем — иначе колокольчик показывает
     // непрочитанный спам, которого в открытом списке нет.
-    unreadCount.value = items
-        .where(
-          (n) => n.status == NotificationStatus.pending && !n.isLegalConverter,
-        )
+    final visible = items.where((n) => !n.isLegalConverter).toList();
+    unreadCount.value = visible
+        .where((n) => n.status == NotificationStatus.pending)
         .length;
+    newSinceLastSeenCount.value = countNotificationsNewerThanSeen(
+      notifications: visible,
+      seenId: _lastSeenNotificationId,
+      seenCreatedAt: _lastSeenNotificationCreatedAt,
+    );
+    badgeCount.value = _notificationBadgeCount(
+      visible,
+      seenId: _lastSeenNotificationId,
+      seenCreatedAt: _lastSeenNotificationCreatedAt,
+    );
+  }
+
+  BackendNotification? _latestComparableNotification(
+    Iterable<BackendNotification> notifications,
+  ) {
+    for (final n in notifications) {
+      if (n.isLegalConverter) continue;
+      return n;
+    }
+    return null;
+  }
+
+  int _notificationBadgeCount(
+    List<BackendNotification> notifications, {
+    required String? seenId,
+    required DateTime? seenCreatedAt,
+  }) {
+    final badgeIds = <String>{};
+    for (final n in notifications) {
+      if (n.status == NotificationStatus.pending) {
+        badgeIds.add(n.id);
+      }
+    }
+    final seenIndex = seenId == null
+        ? -1
+        : notifications.indexWhere((n) => n.id == seenId);
+    if (seenIndex >= 0) {
+      for (final n in notifications.take(seenIndex)) {
+        badgeIds.add(n.id);
+      }
+    } else if (seenCreatedAt != null) {
+      final seenUtc = seenCreatedAt.toUtc();
+      for (final n in notifications) {
+        if (n.createdAt.toUtc().isAfter(seenUtc)) {
+          badgeIds.add(n.id);
+        }
+      }
+    }
+    return badgeIds.length;
+  }
+
+  @visibleForTesting
+  static int countNotificationsNewerThanSeen({
+    required Iterable<BackendNotification> notifications,
+    required String? seenId,
+    required DateTime? seenCreatedAt,
+  }) {
+    final visible = notifications.where((n) => !n.isLegalConverter).toList();
+    if (seenId == null && seenCreatedAt == null) return 0;
+    final seenIndex = seenId == null
+        ? -1
+        : visible.indexWhere((n) => n.id == seenId);
+    if (seenIndex >= 0) return seenIndex;
+    if (seenCreatedAt == null) return 0;
+    final seenUtc = seenCreatedAt.toUtc();
+    return visible.where((n) => n.createdAt.toUtc().isAfter(seenUtc)).length;
   }
 
   void _bumpNotifier() {

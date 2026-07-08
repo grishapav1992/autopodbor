@@ -42,6 +42,7 @@ class _SparkJoyNotificationsScreenState
   late final ScrollController _scrollController;
   final Set<String> _expandedIds = <String>{};
   final Set<String> _autoReadQueuedIds = <String>{};
+  String? _seenMarkerQueuedForId;
 
   @override
   void initState() {
@@ -86,6 +87,22 @@ class _SparkJoyNotificationsScreenState
           _autoReadQueuedIds.remove(id);
         });
       }
+    });
+  }
+
+  void _scheduleMarkLatestSeen(List<BackendNotification> visibleItems) {
+    if (visibleItems.isEmpty) return;
+    final latest = visibleItems.first;
+    if (_seenMarkerQueuedForId == latest.id) return;
+    final latestId = latest.id;
+    _seenMarkerQueuedForId = latestId;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _controller.markLatestNotificationSeen().catchError((_) {
+        if (_seenMarkerQueuedForId == latestId) {
+          _seenMarkerQueuedForId = null;
+        }
+      });
     });
   }
 
@@ -159,6 +176,7 @@ class _SparkJoyNotificationsScreenState
       }
       final groups = _groupByDate(visible);
       _scheduleAutoMarkRead(items.toList());
+      _scheduleMarkLatestSeen(visible);
       return SparkScreenList(
         controller: _scrollController,
         onRefresh: _controller.reload,

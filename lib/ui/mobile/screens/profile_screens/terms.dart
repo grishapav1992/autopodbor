@@ -11,7 +11,7 @@ class Terms extends StatelessWidget {
       'ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ ПАВЛЕНКО ГРИГОРИЙ АЛЕКСАНДРОВИЧ';
   static const _ogrnip = '322237500311981';
   static const _inn = '237305224179';
-  static const _supportEmail = 'grishapav1992@gmail.com';
+  static const _supportEmail = 'support@carreports.ru';
 
   @override
   Widget build(BuildContext context) {

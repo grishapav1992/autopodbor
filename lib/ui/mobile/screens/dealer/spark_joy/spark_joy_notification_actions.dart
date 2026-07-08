@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -50,6 +52,9 @@ class _SparkJoyNotificationActionsState
       final processed = result.isOk || result.isAlreadyProcessed;
       if (processed && widget.notification.type == NotificationType.task) {
         SparkJoyRequestRefreshBus.notifyChanged();
+        if (action == NotificationAction.accept) {
+          unawaited(_notifyRequestsChangedAfterBackendSettles());
+        }
       }
       // Accepting a staff invite changes the user's company/role — refresh
       // the profile (linked company) and the shell nav immediately (B7).
@@ -77,6 +82,11 @@ class _SparkJoyNotificationActionsState
     }
   }
 
+  Future<void> _notifyRequestsChangedAfterBackendSettles() async {
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    SparkJoyRequestRefreshBus.notifyChanged();
+  }
+
   void _showResultFeedback(
     NotificationAction action,
     NotificationActionResult result,
@@ -85,19 +95,17 @@ class _SparkJoyNotificationActionsState
       // Не провал текущего тапа, а запоздалая правда о прошлом действии —
       // контроллер уже обновил карточку до фактического статуса. Нейтральный
       // снекбар вместо красной ошибки.
-      final isInvite =
-          widget.notification.type == NotificationType.invitation;
+      final isInvite = widget.notification.type == NotificationType.invitation;
       final message = switch (result.status) {
-        NotificationStatus.accepted => isInvite
-            ? 'Приглашение уже принято — вы в компании'
-            : 'Уже принято',
-        NotificationStatus.rejected => isInvite
-            ? 'Приглашение уже отклонено'
-            : 'Уже отклонено',
+        NotificationStatus.accepted =>
+          isInvite ? 'Приглашение уже принято — вы в компании' : 'Уже принято',
+        NotificationStatus.rejected =>
+          isInvite ? 'Приглашение уже отклонено' : 'Уже отклонено',
         NotificationStatus.expired => 'Срок действия оповещения истёк',
-        _ => result.isGoneOnServer
-            ? 'Оповещение больше недоступно'
-            : 'Оповещение уже было обработано ранее',
+        _ =>
+          result.isGoneOnServer
+              ? 'Оповещение больше недоступно'
+              : 'Оповещение уже было обработано ранее',
       };
       ScaffoldMessenger.of(
         context,

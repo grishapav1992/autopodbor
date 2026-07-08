@@ -1062,6 +1062,8 @@ class SparkPageHeader extends StatelessWidget {
 
 class SparkReportEditorAppBar extends StatelessWidget
     implements PreferredSizeWidget {
+  static const double _toolbarHeight = 96;
+
   const SparkReportEditorAppBar({
     super.key,
     required this.title,
@@ -1097,12 +1099,13 @@ class SparkReportEditorAppBar extends StatelessWidget
   final bool sharing;
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize => const Size.fromHeight(_toolbarHeight);
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
       centerTitle: false,
+      toolbarHeight: _toolbarHeight,
       leading: IconButton(
         onPressed: onBack,
         icon: const Icon(Icons.arrow_back_rounded),
@@ -1115,9 +1118,18 @@ class SparkReportEditorAppBar extends StatelessWidget
             text: title,
             size: SparkTextSize.title,
             weight: FontWeight.w700,
+            lineHeight: 1.15,
+            maxLines: 2,
+            textOverflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: SparkSpace.xxs),
-          MyText(text: meta, size: SparkTextSize.body, color: kGreyColor),
+          MyText(
+            text: meta,
+            size: SparkTextSize.body,
+            color: kGreyColor,
+            maxLines: 1,
+            textOverflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: SparkSpace.xs),
           _SparkDraftSaveBadge(
             text: draftStatus,

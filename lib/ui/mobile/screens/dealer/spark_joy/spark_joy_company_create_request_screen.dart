@@ -28,9 +28,8 @@ import 'spark_joy_ui.dart';
 ///  * **Параметры подбора** (опционально): город (RU-only picker),
 ///    бюджет от/до, макс. пробег, макс. число владельцев
 ///  * **Специалист**: 2-режимный picker (Из штата / По телефону).
-///    Реальное назначение пока невозможно — нужны backend-методы
-///    `Storage.GetCompanyStaff` + `Storage.FindUserByPhone`. Заявка
-///    создаётся без `assignedSpecialistId` + показывается warning.
+///    Выбранный специалист передаётся в `Storage.CreateRequest` как
+///    `assignedSpecialistId`.
 ///  * **Срок** (required): RU-date input с дефолтом +7 дней
 class SparkJoyCompanyCreateRequestScreen extends StatefulWidget {
   const SparkJoyCompanyCreateRequestScreen({super.key});
@@ -42,6 +41,11 @@ class SparkJoyCompanyCreateRequestScreen extends StatefulWidget {
 
 class _SparkJoyCompanyCreateRequestScreenState
     extends State<SparkJoyCompanyCreateRequestScreen> {
+  // Assigned request creation also writes assignment state and sends the
+  // specialist notification. The old generic 12s RPC timeout produced false
+  // NET-02 banners while the server was still completing that work.
+  static const _assignedCreateRequestTimeout = Duration(seconds: 45);
+
   // Car picker state
   BrandItem? _brand;
   ModelItem? _model;
@@ -391,10 +395,8 @@ class _SparkJoyCompanyCreateRequestScreenState
         budgetTo: budgetTo,
         maxMileage: maxMileage,
         ownersCount: ownersCount,
-        // Передаём ID только когда picker вернул integer (т.е. бэк
-        // поддерживает лукап). Сейчас всегда null — заявка создаётся
-        // без назначения, юзер уже видит warning об этом.
         assignedSpecialistId: _assignee?.userId,
+        timeout: _assignedCreateRequestTimeout,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

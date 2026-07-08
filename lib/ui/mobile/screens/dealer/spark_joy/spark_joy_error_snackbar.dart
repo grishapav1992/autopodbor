@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart'
-    show PermissionDeniedException;
+    show CreateRequestPossiblyCommittedException, PermissionDeniedException;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
 
 /// Стабильные внутренние коды ошибок для техподдержки.
@@ -91,6 +91,22 @@ SparkJoyReadableError sparkJoyReadableError(Object error, {String? fallback}) {
       'Метод: ${error.method}',
       if (error.serverMessage.trim().isNotEmpty)
         'Техническая ошибка: ${error.serverMessage.trim()}',
+    ].join('\n');
+    return (
+      message: _withFallback(fallback, msg),
+      supportText: support,
+      code: code,
+    );
+  }
+  if (error is CreateRequestPossiblyCommittedException) {
+    const msg = CreateRequestPossiblyCommittedException.userMessage;
+    const code = SparkJoyErrorCode.netTimeout;
+    final support = <String>[
+      'Код: $code',
+      'Сообщение: $msg',
+      'Метод: Storage.CreateRequest',
+      if (error.technicalMessage.trim().isNotEmpty)
+        'Техническая ошибка: ${error.technicalMessage.trim()}',
     ].join('\n');
     return (
       message: _withFallback(fallback, msg),
@@ -207,7 +223,9 @@ String _cleanTechnicalText(String raw) {
   // ошибки Notification./ObjectStorage./AiQueue. показывались с техничным
   // «Notification.SendNotification: …» в начале (баг приглашения в штат).
   text = text.replaceFirst(
-    RegExp(r'^(?:Storage|Notification|ObjectStorage|AiQueue)\.[A-Za-z0-9_]+:\s*'),
+    RegExp(
+      r'^(?:Storage|Notification|ObjectStorage|AiQueue)\.[A-Za-z0-9_]+:\s*',
+    ),
     '',
   );
   return text.trim();
@@ -515,7 +533,8 @@ String _internalCodeForBackendCode(String backendCode) {
   }
   if (lower.contains('http 403')) {
     return (
-      message: 'Нет доступа к действию. Войдите заново или обратитесь в '
+      message:
+          'Нет доступа к действию. Войдите заново или обратитесь в '
           'поддержку.',
       code: SparkJoyErrorCode.authForbidden,
     );

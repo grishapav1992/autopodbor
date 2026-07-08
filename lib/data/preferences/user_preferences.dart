@@ -75,6 +75,9 @@ class UserSimplePreferences {
   static const _accessTokenKey = 'accessToken';
   static const _refreshTokenKey = 'refreshToken';
   static const _notificationTokenKey = 'notificationToken';
+  static const _lastSeenNotificationIdKey = 'notification.lastSeenId';
+  static const _lastSeenNotificationCreatedAtKey =
+      'notification.lastSeenCreatedAt';
   static const _userRoleKey = 'userRole';
   // Last-known effective RBAC permissions (Storage.GetPermissions). Cached
   // so the first frame after a cold start can gate UI by last-known rights
@@ -115,7 +118,6 @@ class UserSimplePreferences {
   // Company-only вкладка «Заявки» (4-я в shell) — список + создание
   // заявок на специалистов.
   static const sparkOnbCompanyRequestsKey = 'sparkOnb.companyRequests';
-
 
   static const List<String> sparkOnboardingKeys = <String>[
     sparkOnbReportsListKey,
@@ -423,6 +425,8 @@ class UserSimplePreferences {
     await prefs.remove(_accessTokenKey);
     await prefs.remove(_refreshTokenKey);
     await prefs.remove(_notificationTokenKey);
+    await prefs.remove(_lastSeenNotificationIdKey);
+    await prefs.remove(_lastSeenNotificationCreatedAtKey);
     // RBAC permissions привязаны к юзеру — не должны утечь в следующего
     // на том же девайсе (иначе он увидел бы гейтинг по чужим правам).
     await prefs.remove(_permissionsKey);
@@ -461,6 +465,36 @@ class UserSimplePreferences {
     await (await _prefs()).remove(_notificationTokenKey);
   }
 
+  static Future<void> setLastSeenNotification({
+    required String id,
+    required DateTime createdAt,
+  }) async {
+    final prefs = await _prefs();
+    await prefs.setString(_lastSeenNotificationIdKey, id);
+    await prefs.setString(
+      _lastSeenNotificationCreatedAtKey,
+      createdAt.toUtc().toIso8601String(),
+    );
+  }
+
+  static Future<({String id, DateTime? createdAt})?>
+  getLastSeenNotification() async {
+    final prefs = await _prefs();
+    final id = prefs.getString(_lastSeenNotificationIdKey);
+    if (id == null || id.isEmpty) return null;
+    final rawCreatedAt = prefs.getString(_lastSeenNotificationCreatedAtKey);
+    return (
+      id: id,
+      createdAt: rawCreatedAt == null ? null : DateTime.tryParse(rawCreatedAt),
+    );
+  }
+
+  static Future<void> clearLastSeenNotification() async {
+    final prefs = await _prefs();
+    await prefs.remove(_lastSeenNotificationIdKey);
+    await prefs.remove(_lastSeenNotificationCreatedAtKey);
+  }
+
   static Future<void> setUserRole(String role) async {
     await (await _prefs()).setString(_userRoleKey, role);
   }
@@ -478,8 +512,7 @@ class UserSimplePreferences {
 
   static Future<List<String>> getPermissions() async {
     // ignore: await_only_futures
-    return (await _prefs()).getStringList(_permissionsKey) ??
-        const <String>[];
+    return (await _prefs()).getStringList(_permissionsKey) ?? const <String>[];
   }
 
   static Future<void> clearPermissions() async {

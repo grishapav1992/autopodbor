@@ -1,5 +1,5 @@
 import 'package:flutter_application_1/data/api/storage_api.dart'
-    show PermissionDeniedException;
+    show CreateRequestPossiblyCommittedException, PermissionDeniedException;
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_error_snackbar.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -92,7 +92,9 @@ void main() {
       // Notification.ActionNotification кладёт русский текст в result.error
       // без какого-либо кода.
       final readable = sparkJoyReadableError(
-        Exception('Notification.ActionNotification: Оповещение уже обработано.'),
+        Exception(
+          'Notification.ActionNotification: Оповещение уже обработано.',
+        ),
       );
       expect(readable.message, 'Оповещение уже обработано.');
       expect(readable.code, SparkJoyErrorCode.serverRejected);
@@ -115,6 +117,25 @@ void main() {
         contains('Метод: Storage.GetCompanySpecialists'),
       );
       expect(readable.supportText, contains('forbidden'));
+    });
+
+    test('maps uncertain CreateRequest timeout to a no-retry message', () {
+      const technical =
+          'Timeout on Storage.CreateRequest after 12s '
+          '(elapsed=12014ms): TimeoutException after 0:00:12.000000';
+      final readable = sparkJoyReadableError(
+        const CreateRequestPossiblyCommittedException(
+          technicalMessage: technical,
+        ),
+      );
+      expect(
+        readable.message,
+        CreateRequestPossiblyCommittedException.userMessage,
+      );
+      expect(readable.code, SparkJoyErrorCode.netTimeout);
+      expect(readable.supportText, contains('Код: NET-02'));
+      expect(readable.supportText, contains('Метод: Storage.CreateRequest'));
+      expect(readable.supportText, contains(technical));
     });
   });
 
