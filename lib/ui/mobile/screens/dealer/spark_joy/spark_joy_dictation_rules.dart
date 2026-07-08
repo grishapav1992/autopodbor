@@ -294,9 +294,10 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
   /// конвертер `_runConverterDeduped` (ungated/дедуп/кэш — НЕ зависит от права
   /// run_legal_review, в отличие от кнопочного `_runVinPlateConverter`). Only-empty:
   /// трогаем, ТОЛЬКО если марка И модель пусты (иначе уважаем ручной ввод и не
-  /// платим). Дедуп по VIN, busy-гард, тихо. Пишем сырой текст; каталожные id
-  /// (`_selectedBrandId`/…) НЕ ставим — это WIP автокомплита; канонизацию не зовём.
-  /// Год кладём в `_resolvedVinYear` → грунтовка ИИ-параметров.
+  /// платим). Дедуп по VIN, busy-гард, тихо. Строгий каталог: результат
+  /// конвертера резолвим в каталог и пишем ТОЛЬКО канон+ID
+  /// (`_selectedBrandId`/`_selectedModelCarId`); не совпало — оставляем пусто,
+  /// сырой текст в поля НЕ пишем. Год → `_resolvedVinYear` (грунтовка ИИ).
   ///
   /// Возвращает true, когда идентификация ТЕРМИНАЛЬНО определена (свежий
   /// found/not_found, дедуп-хит или ручная марка/модель) — params можно
@@ -317,8 +318,17 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         'model': _modelController.text,
       });
       _setStateSafely(() {
-        if (stale.contains('brand')) _brandController.clear();
-        if (stale.contains('model')) _modelController.clear();
+        // Чистим каталожные ID вместе с текстом (авто-идентичность строгая:
+        // текст+ID ставились парой) — иначе от прежнего VIN остался бы
+        // «висячий» ID при пустом поле.
+        if (stale.contains('brand')) {
+          _brandController.clear();
+          _selectedBrandId = null;
+        }
+        if (stale.contains('model')) {
+          _modelController.clear();
+          _selectedModelCarId = null;
+        }
         _resolvedVinYear = '';
         _vinAutoIdentityValues.clear();
       });
@@ -355,14 +365,33 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         resolvedBrand: r.brand,
         resolvedModel: r.model,
       );
-      _setStateSafely(() {
-        if (plan.brand.isNotEmpty) {
-          _brandController.text = plan.brand;
-          _vinAutoIdentityValues['brand'] = plan.brand;
+      // Строгий каталог: сырой текст конвертера в поля НЕ пишем — это был бы
+      // обход «только из каталога» (марка/модель без brandId/modelCarId позже
+      // ломают выгрузку отчёта). Резолвим в каталог, пишем ТОЛЬКО канон+ID; не
+      // совпало — оставляем пусто (пользователь выберет из readOnly-селектора).
+      // Тихо, без снека «выберите вручную»: авто-триггер на ввод VIN спамить нельзя.
+      CatalogCarMatch? match;
+      if (plan.brand.isNotEmpty || plan.model.isNotEmpty) {
+        match = await CarCatalogRepository.instance.resolveCar(r.brand, r.model);
+        if (!mounted) return false;
+        if (_sanitizeVin(_vinController.text) != vin) {
+          _lastVinIdentityResolved = ''; // VIN сменили за резолв → не пишем
+          return false;
         }
-        if (plan.model.isNotEmpty) {
-          _modelController.text = plan.model;
-          _vinAutoIdentityValues['model'] = plan.model;
+      }
+      _setStateSafely(() {
+        if (match != null &&
+            _brandController.text.trim().isEmpty &&
+            _selectedBrandId == null) {
+          _brandController.text = match.brand.name;
+          _selectedBrandId = match.brand.id;
+          _vinAutoIdentityValues['brand'] = match.brand.name;
+          final m = match.model;
+          if (m != null && _modelController.text.trim().isEmpty) {
+            _modelController.text = m.model;
+            _selectedModelCarId = m.id;
+            _vinAutoIdentityValues['model'] = m.model;
+          }
         }
         _resolvedVinYear = (r.found && r.year != null) ? '${r.year}' : '';
       });

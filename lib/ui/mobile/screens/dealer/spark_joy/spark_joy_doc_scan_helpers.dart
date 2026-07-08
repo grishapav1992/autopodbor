@@ -144,13 +144,23 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       _docScanStage = 'Обработка фото…';
     });
     try {
-      // Контраст/ориентация/пережатие в изоляте — текст документа становится
-      // читабельнее для модели, а платим меньшим трафиком.
-      final prepared = await compute(_sparkPrepareDocScanPhoto, bytes);
+      // Контраст/ориентация/пережатие — текст документа становится читабельнее
+      // для модели, платим меньшим трафиком. compute() на web = синхронный
+      // no-op в главном потоке (декод+контраст+пережатие ~5 Мп заморозили бы
+      // PWA — основной канал iOS), поэтому на web шлём как есть: ImagePicker
+      // уже ужал до 2560px/q88, предобработка — только на нативе в изоляте.
+      final prepared = kIsWeb
+          ? bytes
+          : await compute(_sparkPrepareDocScanPhoto, bytes);
       if (!mounted) return;
       _setStateSafely(() => _docScanStage = 'Загрузка фото…');
+      // Случайный суффикс к имени: файл кладётся в ОБЩУЮ папку temp/, а сервер
+      // подписывает view-URL по любому запрошенному имени без проверки
+      // владельца. Предсказуемый ключ (только время в мс) дал бы другому
+      // авторизованному юзеру перебором вытащить чужое фото документа с ПДн.
+      final nonce = math.Random.secure().nextInt(1 << 32).toRadixString(16);
       final filename =
-          'doc_scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
+          'doc_scan_${DateTime.now().millisecondsSinceEpoch}_$nonce.jpg';
       final upload = await storage_api.StorageApi.getTemporaryUploadUrl(
         reportNumber: 'temp',
         filename: filename,
@@ -166,6 +176,9 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         // Дефолтные 10с не переживают холодный бэк (7-47с на первом хите
         // после простоя) — а сам метод глотает таймаут и возвращает ''.
         timeout: const Duration(seconds: 30),
+        // URL нужен на один vision-вызов (≤75с) — не держим сутки живую ссылку
+        // на документ с ПДн (дефолт сервера 86400с).
+        expiresInSeconds: 120,
       );
       if (viewUrl.isEmpty) {
         throw Exception(
@@ -175,13 +188,18 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       }
       if (!mounted) return;
       _setStateSafely(() => _docScanStage = 'Распознавание…');
+      final chatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
       final result = await AiQueueApi.chatCompletions(
-        chatId: DateTime.now().microsecondsSinceEpoch.toUnsigned(32),
+        chatId: chatId,
         text: 'Распознай документ на фото.',
         cliche: AiQueueClicheBuilder.buildDocScanCliche(),
         fileUrls: [viewUrl],
         timeout: const Duration(seconds: 75),
       );
+      // Документ (с ПДн владельца, которые фича намеренно НЕ извлекает) виден
+      // модели — не оставляем его в истории чата AiQueue (KV бэка живёт ~6ч).
+      // Best-effort: сбой очистки не должен ронять успешный скан.
+      unawaited(AiQueueApi.clearChatHistory(chatId: chatId).catchError((_) {}));
       if (!mounted) return;
       final parsed = parseDocScanAiResult(
         result.text,
@@ -397,6 +415,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     final filled = <String>[];
     final unmatched = <String>[];
     var identityWritten = false;
+    var vinWrittenFromScan = false;
     _setStateSafely(() {
       final brandWasEmpty = _brandController.text.trim().isEmpty;
       final modelWasEmpty = _modelController.text.trim().isEmpty;
@@ -440,6 +459,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       if (r.vin.isNotEmpty && _sanitizeVin(_vinController.text).isEmpty) {
         _vinUnreadable = false;
         _vinController.text = r.vin;
+        vinWrittenFromScan = true;
         filled.add('VIN');
       }
       if (r.gosNumber.isNotEmpty && _plateController.text.trim().isEmpty) {
@@ -470,14 +490,17 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     });
     final vinNow = _sanitizeVin(_vinController.text);
     final brandNow = _brandController.text.trim();
-    final modelNow = _modelController.text.trim();
-    if (vinNow.length == 17 && brandNow.isNotEmpty && modelNow.isNotEmpty) {
-      // Идентификация известна → платному VIN→марка/модель резолву делать
-      // нечего. Блокируем ЯВНО, дедуп-флагом конвейера: первая проверка
-      // _maybeAutoResolveIdentityFromVin выходит по нему ДО stale-блока,
-      // поэтому и _resolvedVinYear (год из документа) уцелеет. Полагаться
-      // на порядок записи полей нельзя — гейт читает состояние контроллеров
-      // через 600 мс дебаунса, а не в момент записи.
+    // Блокируем автоматический VIN-резолвер (_maybeAutoResolveIdentityFromVin),
+    // сидируя его дедуп-флаг записанным VIN, если идентичность уже известна:
+    //   • марка легла в поле (каталог совпал) — иначе год из документа сотрёт
+    //     stale-блок резолвера ДО чтения его only-empty гейтом; ЛИБО
+    //   • VIN проставлен этим сканом И документ сам дал марку (даже когда
+    //     каталог промахнулся) — платный конвертер лишь re-derive'нул бы ту же
+    //     марку (тоже вне каталога), т.е. чистое списание за то, что уже есть;
+    //     пользователю показан снек «выберите вручную», это и есть развязка.
+    // Порядок записи полей ни при чём — гейт читает контроллеры через 600мс.
+    if (vinNow.length == 17 &&
+        (brandNow.isNotEmpty || (vinWrittenFromScan && r.brand.isNotEmpty))) {
       _lastVinIdentityResolved = vinNow;
     }
     _markDraftDirty();
