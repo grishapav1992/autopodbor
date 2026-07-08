@@ -73,21 +73,6 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
               color: kRedColor,
             ),
           ],
-          const SizedBox(height: SparkSpace.md),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: () => unawaited(_openCarPickerDialog()),
-              icon: const Icon(Icons.list_alt_rounded, size: SparkSize.iconSm),
-              label: const Text('Выбрать из каталога'),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: kBorderColor),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SparkRadius.lg),
-                ),
-              ),
-            ),
-          ),
           // Фото из каталога (если авто выбрано через каталог-пикер).
           if (photo.isNotEmpty) ...[
             const SizedBox(height: SparkSpace.md),

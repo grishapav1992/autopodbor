@@ -3,8 +3,7 @@ part of 'spark_joy_create_report_screen.dart';
 extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
   /// [startAt] — с какого шага открыть визард: тапы по полям «Марка» /
   /// «Модель» / «Поколение» шага «Автомобиль» ведут на соответствующий
-  /// шаг; null (кнопка «Выбрать из каталога») — «умное» продолжение с
-  /// места текущей привязки.
+  /// шаг; null — «умное» продолжение с места текущей привязки.
   Future<void> _openCarPickerDialog({_CarPickerStep? startAt}) async {
     if (_carPickerOpening) return;
     _carPickerOpening = true;
