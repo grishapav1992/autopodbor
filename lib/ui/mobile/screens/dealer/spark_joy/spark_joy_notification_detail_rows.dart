@@ -19,10 +19,12 @@ class NotificationDetailRow {
 /// [_detailPayloadFields] is dropped.
 List<NotificationDetailRow> notificationDetailRows(BackendNotification n) {
   final rows = <NotificationDetailRow>[
-    NotificationDetailRow('Тип', _typeLabel(n.type)),
     NotificationDetailRow('Статус', _statusLabel(n.status)),
     NotificationDetailRow('Создано', _formatAbsolute(n.createdAt)),
   ];
+  if (n.type != NotificationType.system) {
+    rows.insert(0, NotificationDetailRow('Тип', _typeLabel(n.type)));
+  }
   if (n.actedAt != null) {
     rows.add(NotificationDetailRow('Обработано', _formatAbsolute(n.actedAt!)));
   }
@@ -66,7 +68,6 @@ final List<_PayloadField> _detailPayloadFields = <_PayloadField>[
         _payloadString(p['request_number']);
     return number == null ? null : '№$number';
   }),
-  _PayloadField('Тип заявки', (p) => _requestTypeLabel(p['requestType'])),
   _PayloadField('Срок', (p) => _formatDueDate(p['dueAt'])),
   _PayloadField('Напомнить', (p) {
     final s = _payloadString(p['reminderAt']);
@@ -116,19 +117,6 @@ String _readableMapLabel(Map value) {
     }
   }
   return '';
-}
-
-String? _requestTypeLabel(Object? raw) {
-  final value = _payloadString(raw);
-  if (value == null) return null;
-  switch (value) {
-    case 'by_car':
-      return 'По автомобилю';
-    case 'turnkey':
-      return 'Под ключ';
-    default:
-      return value;
-  }
 }
 
 /// Formats a due date (date-only — the backend sends `dueAt` as a date).

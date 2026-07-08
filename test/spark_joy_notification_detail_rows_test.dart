@@ -52,7 +52,6 @@ void main() {
       expect(map['Компания'], 'ООО Автоподбор');
       expect(map['Клиент'], 'Сергей Клиентов');
       expect(map['Заявка'], '№1234');
-      expect(map['Тип заявки'], 'По автомобилю');
       expect(map['Срок'], '01.07.2026');
       expect(map['Комментарий'], 'Срочно');
       expect(map['Истекает'], isNotNull);
@@ -66,6 +65,7 @@ void main() {
       expect(map.containsKey('companyId'), isFalse);
       expect(map.containsKey('requestId'), isFalse);
       expect(map.containsKey('requestCars'), isFalse);
+      expect(map.containsKey('Тип заявки'), isFalse);
 
       final all = flat(rows);
       expect(all.contains('event'), isFalse);
@@ -90,7 +90,7 @@ void main() {
     final map = labels(rows);
 
     test('только базовые читаемые строки, без полей БД', () {
-      expect(map['Тип'], 'Системное');
+      expect(map.containsKey('Тип'), isFalse);
       expect(map['Статус'], 'Просмотрено');
       expect(map.containsKey('event'), isFalse);
       expect(map.containsKey('companyId'), isFalse);
@@ -98,6 +98,7 @@ void main() {
       final all = flat(rows);
       expect(all.contains('company_specialist_unlinked'), isFalse);
       expect(all.contains('event'), isFalse);
+      expect(all.contains('Системное'), isFalse);
     });
   });
 
@@ -107,7 +108,7 @@ void main() {
     );
     final map = labels(rows);
     expect(map['Заявка'], '№99');
-    expect(map['Тип заявки'], 'Под ключ');
+    expect(map.containsKey('Тип заявки'), isFalse);
   });
 
   test('reminder: reminderAt показывается, entityId скрыт', () {
