@@ -612,6 +612,13 @@ String _internalCodeForBackendCode(String backendCode) {
       code: SparkJoyErrorCode.netGeneric,
     );
   }
+  // Кириллический текст без техничных маркеров выше — адресованное
+  // пользователю сообщение бэка (например, «Оповещение уже обработано.» из
+  // Notification.ActionNotification): показываем как есть и классифицируем
+  // бизнес-отказом, а не UNK-01, чтобы поддержка сразу видела класс проблемы.
+  if (RegExp(r'[а-яё]', caseSensitive: false).hasMatch(rawMessage)) {
+    return (message: rawMessage, code: SparkJoyErrorCode.serverRejected);
+  }
   return (
     message: rawMessage.isEmpty ? 'Неизвестная ошибка' : rawMessage,
     code: SparkJoyErrorCode.unknown,

@@ -101,6 +101,12 @@ class NotificationApi {
         'notificationId': notificationId,
         'action': action.wireValue,
       },
+      // Дольше дефолтных 12с: бэк на этом методе может отвечать медленно
+      // (внутренний IPC без серверного таймаута, NATS/email-рассылка ДО
+      // ответа, таймаут его БД — 25с), а действие мутирующее — пользователь
+      // ждёт с «Обрабатываем…». Прямой ответ лучше ложного таймаута с
+      // последующим reconcile-восстановлением (см. NotificationController).
+      timeout: const Duration(seconds: 30),
     );
     return NotificationActionResult.fromJson(_asMap(data['result']));
   }

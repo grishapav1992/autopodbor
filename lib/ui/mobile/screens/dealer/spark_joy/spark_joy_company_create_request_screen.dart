@@ -13,6 +13,7 @@ import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_specialist_picker.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_external_link.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
@@ -67,7 +68,10 @@ class _SparkJoyCompanyCreateRequestScreenState
 
   // Submit state
   bool _submitting = false;
+  String? _submitErrorTitle;
   String? _submitError;
+  String? _submitErrorCopyText;
+  String _submitErrorCode = '';
   Timer? _draftAutosaveDebounce;
   bool _draftHydrating = true;
   bool _draftSubmitted = false;
@@ -312,32 +316,32 @@ class _SparkJoyCompanyCreateRequestScreenState
 
   Future<void> _submit() async {
     if (_submitting) return;
-    setState(() => _submitError = null);
+    _clearSubmitError();
 
     final restyling = _restyling;
     if (restyling == null) {
-      setState(() => _submitError = 'Выберите автомобиль');
+      _setSubmitValidationError('Выберите автомобиль');
       return;
     }
     if (_assignee == null) {
-      setState(() => _submitError = 'Назначьте специалиста');
+      _setSubmitValidationError('Назначьте специалиста');
       return;
     }
 
     final dueAt = _parseRuDate(_dueAtController.text);
     if (dueAt == null) {
-      setState(() => _submitError = 'Срок: формат ДД.ММ.ГГГГ');
+      _setSubmitValidationError('Срок: формат ДД.ММ.ГГГГ');
       return;
     }
     if (dueAt.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
-      setState(() => _submitError = 'Срок не может быть в прошлом');
+      _setSubmitValidationError('Срок не может быть в прошлом');
       return;
     }
 
     final budgetFrom = int.tryParse(_budgetFromController.text.trim());
     final budgetTo = int.tryParse(_budgetToController.text.trim());
     if (budgetFrom != null && budgetTo != null && budgetTo < budgetFrom) {
-      setState(() => _submitError = 'Бюджет «до» должен быть не меньше «от»');
+      _setSubmitValidationError('Бюджет «до» должен быть не меньше «от»');
       return;
     }
     final maxMileage = int.tryParse(_maxMileageController.text.trim());
@@ -347,7 +351,7 @@ class _SparkJoyCompanyCreateRequestScreenState
     final rawSellerUrl = _sellerUrlController.text.trim();
     final sellerUrl = sparkNormalizeExternalUrl(rawSellerUrl);
     if (rawSellerUrl.isNotEmpty && sellerUrl.isEmpty) {
-      setState(() => _submitError = 'Ссылка: укажите корректный адрес');
+      _setSubmitValidationError('Ссылка: укажите корректный адрес');
       return;
     }
 
@@ -390,19 +394,47 @@ class _SparkJoyCompanyCreateRequestScreenState
       await SparkJoyStorage.clearCompanyRequestDraft();
       if (!mounted) return;
       Navigator.of(context).pop();
-    } on storage_api.SessionExpiredException {
+    } on storage_api.SessionExpiredException catch (e) {
       if (!mounted) return;
-      setState(() {
-        _submitting = false;
-        _submitError = 'Сессия истекла — войдите заново';
-      });
+      _setSubmitRequestError(e, fallback: 'Сессия истекла. Войдите заново.');
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _submitting = false;
-        _submitError = 'Не удалось создать заявку: $e';
-      });
+      _setSubmitRequestError(e);
     }
+  }
+
+  void _clearSubmitError() {
+    setState(() {
+      _submitErrorTitle = null;
+      _submitError = null;
+      _submitErrorCopyText = null;
+      _submitErrorCode = '';
+    });
+  }
+
+  void _setSubmitValidationError(String message) {
+    setState(() {
+      _submitErrorTitle = 'Проверьте заявку';
+      _submitError = message;
+      _submitErrorCopyText = message;
+      _submitErrorCode = '';
+    });
+  }
+
+  void _setSubmitRequestError(Object error, {String? fallback}) {
+    final readable = sparkJoyReadableError(error, fallback: fallback);
+    setState(() {
+      _submitting = false;
+      _submitErrorTitle = 'Не удалось создать заявку';
+      _submitError = readable.message;
+      _submitErrorCopyText = <String>[
+        'Ошибка создания заявки',
+        readable.supportText,
+      ].where((line) => line.trim().isNotEmpty).join('\n');
+      _submitErrorCode = readable.code == SparkJoyErrorCode.serverRejected
+          ? ''
+          : readable.code;
+    });
   }
 
   // ─── UI ─────────────────────────────────────────────────────────────
@@ -636,15 +668,14 @@ class _SparkJoyCompanyCreateRequestScreenState
 
           if (_submitError != null) ...[
             const SizedBox(height: SparkSpace.lg),
-            SparkCard(
-              backgroundColor: kRedColor.withValues(alpha: 0.06),
-              borderColor: kRedColor.withValues(alpha: 0.35),
-              child: MyText(
-                text: _submitError!,
-                size: SparkTextSize.body,
-                color: kRedColor,
-                weight: FontWeight.w600,
-              ),
+            SparkErrorState(
+              title: _submitErrorTitle ?? 'Ошибка',
+              subtitle: _submitErrorCode.isEmpty
+                  ? _submitError!
+                  : '${_submitError!}\nКод ошибки: $_submitErrorCode — '
+                        'назовите его поддержке',
+              copyText: _submitErrorCopyText,
+              topPadding: 0,
             ),
           ],
 

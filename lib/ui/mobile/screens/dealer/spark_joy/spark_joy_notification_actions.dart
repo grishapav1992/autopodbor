@@ -6,6 +6,7 @@ import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_profile_refresh_bus.dart';
 import 'spark_joy_request_refresh_bus.dart';
 import 'spark_joy_tokens.dart';
@@ -43,25 +44,33 @@ class _SparkJoyNotificationActionsState
         notificationId: widget.notification.id,
         action: action,
       );
-      if (result.isOk && widget.notification.type == NotificationType.task) {
+      // «Уже обработано» — тоже применённое действие (первый запрос дошёл,
+      // ответ потерялся): для task заявка создана, для invitation компания
+      // привязана — refresh-басам это так же важно, как свежий успех.
+      final processed = result.isOk || result.isAlreadyProcessed;
+      if (processed && widget.notification.type == NotificationType.task) {
         SparkJoyRequestRefreshBus.notifyChanged();
       }
       // Accepting a staff invite changes the user's company/role — refresh
       // the profile (linked company) and the shell nav immediately (B7).
-      if (result.isOk &&
-          action == NotificationAction.accept &&
-          widget.notification.type == NotificationType.invitation) {
+      final acceptedIntoCompany =
+          widget.notification.type == NotificationType.invitation &&
+          ((result.isOk && action == NotificationAction.accept) ||
+              (result.isAlreadyProcessed &&
+                  result.status == NotificationStatus.accepted));
+      if (acceptedIntoCompany) {
         SparkJoyProfileRefreshBus.notifyChanged();
       }
       if (!mounted) return;
       _showResultFeedback(action, result);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: kRedColor,
-          content: Text('Не удалось выполнить действие: $e'),
-        ),
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: action == NotificationAction.accept
+            ? 'Не удалось принять'
+            : 'Не удалось отклонить',
       );
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -72,12 +81,37 @@ class _SparkJoyNotificationActionsState
     NotificationAction action,
     NotificationActionResult result,
   ) {
+    if (result.isAlreadyProcessed || result.isGoneOnServer) {
+      // Не провал текущего тапа, а запоздалая правда о прошлом действии —
+      // контроллер уже обновил карточку до фактического статуса. Нейтральный
+      // снекбар вместо красной ошибки.
+      final isInvite =
+          widget.notification.type == NotificationType.invitation;
+      final message = switch (result.status) {
+        NotificationStatus.accepted => isInvite
+            ? 'Приглашение уже принято — вы в компании'
+            : 'Уже принято',
+        NotificationStatus.rejected => isInvite
+            ? 'Приглашение уже отклонено'
+            : 'Уже отклонено',
+        NotificationStatus.expired => 'Срок действия оповещения истёк',
+        _ => result.isGoneOnServer
+            ? 'Оповещение больше недоступно'
+            : 'Оповещение уже было обработано ранее',
+      };
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
     if (!result.isOk) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: kRedColor,
-          content: Text(result.error ?? 'Действие не выполнено'),
-        ),
+      // Серверный отказ: через общий классификатор — читаемый текст, код для
+      // поддержки в копируемом блоке, кнопка «Скопировать». Упаковка в
+      // Exception с именем метода повторяет формат app-level ошибок _postRpc,
+      // чтобы метод попал в support-текст.
+      showSparkJoyErrorSnackBar(
+        context,
+        Exception('Notification.ActionNotification: ${result.error}'),
       );
       return;
     }

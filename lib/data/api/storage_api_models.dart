@@ -34,6 +34,19 @@ class BrandItem {
   final String nameRus;
 
   BrandItem({required this.id, required this.name, required this.nameRus});
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'nameRus': nameRus};
+
+  static BrandItem? tryFromJson(dynamic raw) {
+    final map = _catalogJsonMap(raw);
+    final id = _catalogJsonInt(map['id']);
+    if (id == null) return null;
+    return BrandItem(
+      id: id,
+      name: _catalogJsonString(map['name']),
+      nameRus: _catalogJsonString(map['nameRus']),
+    );
+  }
 }
 
 class ModelItem {
@@ -48,6 +61,26 @@ class ModelItem {
     required this.model,
     required this.modelRus,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'brandId': brandId,
+    'model': model,
+    'modelRus': modelRus,
+  };
+
+  static ModelItem? tryFromJson(dynamic raw) {
+    final map = _catalogJsonMap(raw);
+    final id = _catalogJsonInt(map['id']);
+    final brandId = _catalogJsonInt(map['brandId']);
+    if (id == null || brandId == null) return null;
+    return ModelItem(
+      id: id,
+      brandId: brandId,
+      model: _catalogJsonString(map['model']),
+      modelRus: _catalogJsonString(map['modelRus']),
+    );
+  }
 }
 
 class FrameItem {
@@ -55,6 +88,15 @@ class FrameItem {
   final String frame;
 
   FrameItem({required this.id, required this.frame});
+
+  Map<String, dynamic> toJson() => {'id': id, 'frame': frame};
+
+  static FrameItem? tryFromJson(dynamic raw) {
+    final map = _catalogJsonMap(raw);
+    final id = _catalogJsonInt(map['id']);
+    if (id == null) return null;
+    return FrameItem(id: id, frame: _catalogJsonString(map['frame']));
+  }
 }
 
 class PhotoItem {
@@ -69,6 +111,25 @@ class PhotoItem {
     required this.urlX1,
     required this.urlX2,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'size': size,
+    'urlX1': urlX1,
+    'urlX2': urlX2,
+  };
+
+  static PhotoItem? tryFromJson(dynamic raw) {
+    final map = _catalogJsonMap(raw);
+    final id = _catalogJsonInt(map['id']);
+    if (id == null) return null;
+    return PhotoItem(
+      id: id,
+      size: _catalogJsonString(map['size']),
+      urlX1: _catalogJsonString(map['urlX1']),
+      urlX2: _catalogJsonString(map['urlX2']),
+    );
+  }
 }
 
 class RestylingItem {
@@ -87,6 +148,29 @@ class RestylingItem {
     required this.frames,
     required this.photos,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'restyling': restyling,
+    'yearStart': yearStart,
+    'yearEnd': yearEnd,
+    'frames': frames.map((f) => f.toJson()).toList(growable: false),
+    'photos': photos.map((p) => p.toJson()).toList(growable: false),
+  };
+
+  static RestylingItem? tryFromJson(dynamic raw) {
+    final map = _catalogJsonMap(raw);
+    final id = _catalogJsonInt(map['id']);
+    if (id == null) return null;
+    return RestylingItem(
+      id: id,
+      restyling: _catalogJsonString(map['restyling']),
+      yearStart: _catalogJsonInt(map['yearStart']),
+      yearEnd: _catalogJsonInt(map['yearEnd']),
+      frames: _catalogJsonList(map['frames'], FrameItem.tryFromJson),
+      photos: _catalogJsonList(map['photos'], PhotoItem.tryFromJson),
+    );
+  }
 }
 
 class GenerationItem {
@@ -105,6 +189,65 @@ class GenerationItem {
   });
 
   String get label => 'Поколение $generation';
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'modelCarId': modelCarId,
+    'generation': generation,
+    'frames': frames.map((f) => f.toJson()).toList(growable: false),
+    'restylings': restylings.map((r) => r.toJson()).toList(growable: false),
+  };
+
+  static GenerationItem? tryFromJson(dynamic raw) {
+    final map = _catalogJsonMap(raw);
+    final id = _catalogJsonInt(map['id']);
+    if (id == null) return null;
+    return GenerationItem(
+      id: id,
+      modelCarId: _catalogJsonInt(map['modelCarId']) ?? 0,
+      generation: _catalogJsonInt(map['generation']) ?? 0,
+      frames: _catalogJsonList(map['frames'], FrameItem.tryFromJson),
+      restylings: _catalogJsonList(map['restylings'], RestylingItem.tryFromJson),
+    );
+  }
+}
+
+// ── Каталожная JSON-сериализация ────────────────────────────────────────
+// toJson/tryFromJson шести каталожных классов выше — это wire-контракт
+// сразу двух персистов: файлового кэша каталога (CarCatalogStore) и
+// черновика заявки компании (persisted до появления кэша с теми же
+// ключами). Менять имена ключей нельзя — сломаются и старые черновики,
+// и уже записанные файлы кэша. tryFromJson терпимы к мусору: без
+// валидного id запись молча выбрасывается (битый элемент не должен
+// ронять весь кэш).
+
+Map<String, dynamic> _catalogJsonMap(dynamic raw) {
+  if (raw is Map<String, dynamic>) return raw;
+  if (raw is Map) return Map<String, dynamic>.from(raw);
+  return const {};
+}
+
+int? _catalogJsonInt(dynamic raw) {
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  if (raw is String) return int.tryParse(raw.trim());
+  return null;
+}
+
+String _catalogJsonString(dynamic raw) {
+  if (raw is String) return raw;
+  if (raw == null) return '';
+  return raw.toString();
+}
+
+List<T> _catalogJsonList<T>(dynamic raw, T? Function(dynamic) parse) {
+  if (raw is! List) return <T>[];
+  final items = <T>[];
+  for (final entry in raw) {
+    final parsed = parse(entry);
+    if (parsed != null) items.add(parsed);
+  }
+  return items;
 }
 
 class AuthStartResult {

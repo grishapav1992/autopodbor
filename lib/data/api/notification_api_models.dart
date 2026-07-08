@@ -258,6 +258,24 @@ class NotificationActionResult {
 
   bool get isOk => error == null || error!.isEmpty;
 
+  /// Бэк отвечает «Оповещение уже обработано.», когда статус на сервере уже
+  /// финальный: типично первый accept/reject ДОШЁЛ (сервер коммитит смену
+  /// статуса + привязку к компании до рассылки push/email), а его ответ
+  /// потерялся — например, из-за клиентского таймаута. Контракт не даёт
+  /// числового кода — только этот текст в `result.error`
+  /// (ActionNotificationUseCase::resolveActionError), поэтому матчим по
+  /// подстроке.
+  bool get isAlreadyProcessed =>
+      (error ?? '').toLowerCase().contains('уже обработано');
+
+  /// «Оповещение не найдено.» — запись удалена на сервере; локальная карточка
+  /// заведомо мертва, действия по ней невозможны.
+  bool get isGoneOnServer {
+    final text = (error ?? '').toLowerCase();
+    return text.contains('оповещение не найдено') ||
+        text.contains('уведомление не найдено');
+  }
+
   factory NotificationActionResult.fromJson(Map<String, dynamic> json) {
     return NotificationActionResult(
       notificationId: (json['notificationId'] ?? '').toString(),

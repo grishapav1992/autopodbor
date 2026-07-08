@@ -272,27 +272,97 @@ class NotificationController extends GetxController {
             : (action == NotificationAction.accept
                   ? NotificationStatus.accepted
                   : NotificationStatus.rejected);
-        final index = items.indexWhere((n) => n.id == notificationId);
-        if (index >= 0) {
-          items[index] = items[index].copyWith(
-            status: terminal,
-            actedAt: DateTime.now().toUtc(),
-          );
-          items.refresh();
-          _recomputeUnread();
-          _bumpNotifier();
-        }
+        _applyLocalStatus(notificationId, terminal);
         // Намеренно НЕ делаем reconcile-reload: оптимистичный терминальный
         // статус выше авторитетен, а refetch страницы 1 при
         // read-after-write/реплика-лаге мог бы вернуть оповещение ещё как
         // pending и снова показать кнопки — это и был баг #5. Смену
         // компании/заявок дёргают свои refresh-bus в UI.
+        return result;
+      }
+      if (result.isAlreadyProcessed || result.isGoneOnServer) {
+        // Статус на сервере уже финальный (или записи больше нет) — карточку
+        // с кнопками держать pending нельзя: она «вечная», а действия по ней
+        // всегда будут падать этой же ошибкой. Перечитываем список и отдаём
+        // виджету фактический статус (для честного снекбара).
+        var actual = await _reconcileDeadPending(notificationId);
+        if (actual == NotificationStatus.pending) {
+          // Reload ещё отдаёт pending (реплика-лаг / read-after-write), но
+          // сервер уже сказал «финальный». Помечаем локально: `read` не врёт
+          // про принято/отклонено, а мёртвые кнопки убирает.
+          final forced =
+              (result.status == NotificationStatus.accepted ||
+                  result.status == NotificationStatus.rejected)
+              ? result.status
+              : NotificationStatus.read;
+          _applyLocalStatus(notificationId, forced);
+          actual = forced;
+        }
+        return NotificationActionResult(
+          notificationId: notificationId,
+          status: actual ?? result.status,
+          action: action,
+          error: result.error,
+        );
       }
       return result;
     } catch (e) {
       _log('action $action on $notificationId failed: $e');
+      // Транспортный сбой НЕ означает, что действие не применилось: бэк
+      // коммитит транзакцию (статус + привязку к компании) ДО рассылки
+      // push/email, поэтому клиентский таймаут (12с) нередко срабатывает уже
+      // ПОСЛЕ коммита. Перечитываем список: если статус уже финальный —
+      // возвращаем результат вместо ошибки, иначе карточка залипнет в pending
+      // при фактически принятом приглашении.
+      final actual = await _reconcileDeadPending(notificationId);
+      if (actual != null && actual != NotificationStatus.pending) {
+        final matchesAction =
+            (action == NotificationAction.accept &&
+                actual == NotificationStatus.accepted) ||
+            (action == NotificationAction.reject &&
+                actual == NotificationStatus.rejected);
+        return NotificationActionResult(
+          notificationId: notificationId,
+          status: actual,
+          action: action,
+          // Финальный статус от ДРУГОГО действия (например, accept после
+          // давнего успешного reject) — не рапортуем успех текущего действия,
+          // а помечаем как «уже обработано», чтобы UI сказал правду.
+          error: matchesAction ? null : 'Оповещение уже обработано.',
+        );
+      }
       rethrow;
     }
+  }
+
+  /// Локально переводит оповещение в терминальный статус (кнопки Принять/
+  /// Отклонить скрываются реактивно через `items`).
+  void _applyLocalStatus(String notificationId, NotificationStatus status) {
+    final index = items.indexWhere((n) => n.id == notificationId);
+    if (index < 0) return;
+    items[index] = items[index].copyWith(
+      status: status,
+      actedAt: DateTime.now().toUtc(),
+    );
+    items.refresh();
+    _recomputeUnread();
+    _bumpNotifier();
+  }
+
+  /// Авторитетная сверка после сбоя действия: перечитывает страницу 1 и
+  /// возвращает фактический статус оповещения (null — статус выяснить не
+  /// удалось: сеть снова упала или запись ушла со страницы/удалена).
+  Future<NotificationStatus?> _reconcileDeadPending(
+    String notificationId,
+  ) async {
+    try {
+      await reload();
+    } catch (e) {
+      _log('reconcile reload failed: $e');
+    }
+    final index = items.indexWhere((n) => n.id == notificationId);
+    if (index < 0) return null;
+    return items[index].status;
   }
 
   // ── Internals ─────────────────────────────────────────────────────────

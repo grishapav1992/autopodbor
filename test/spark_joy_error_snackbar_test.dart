@@ -76,11 +76,29 @@ void main() {
       );
       // Сырой техничный текст и метод убраны из сообщения, но остаются в
       // support-тексте для диагностики.
-      expect(readable.message, isNot(contains('Notification.SendNotification')));
+      expect(
+        readable.message,
+        isNot(contains('Notification.SendNotification')),
+      );
       expect(readable.message, isNot(contains('Pending invitation')));
       expect(
         readable.supportText,
         contains('Метод: Notification.SendNotification'),
+      );
+    });
+
+    test('shows backend russian rejection text as-is with SRV-04 class', () {
+      // Живой кейс: повторный accept приглашения после таймаута первого —
+      // Notification.ActionNotification кладёт русский текст в result.error
+      // без какого-либо кода.
+      final readable = sparkJoyReadableError(
+        Exception('Notification.ActionNotification: Оповещение уже обработано.'),
+      );
+      expect(readable.message, 'Оповещение уже обработано.');
+      expect(readable.code, SparkJoyErrorCode.serverRejected);
+      expect(
+        readable.supportText,
+        contains('Метод: Notification.ActionNotification'),
       );
     });
 
@@ -111,14 +129,30 @@ void main() {
       // Живой кейс с поля (скриншот 2026-07-06): connect-таймаут RPC.
       c(
         'ClientException with SocketException: HTTP connection timed out '
-        'after 0:00:10.000000, host: app.carreports.ru, port: 443, '
-        'uri=https://app.carreports.ru',
+            'after 0:00:10.000000, host: app.carreports.ru, port: 443, '
+            'uri=https://app.carreports.ru',
         SparkJoyErrorCode.netTimeout,
         'Сервер не ответил вовремя. Проверьте подключение и повторите.',
       ),
       c(
         'TimeoutException after 0:03:00.000000: Future not completed',
         SparkJoyErrorCode.netTimeout,
+      ),
+      c(
+        'Exception: Timeout on Storage.CreateRequest after 12s '
+            '(elapsed=12014ms): TimeoutException after 0:00:12.000000: '
+            'Future not completed',
+        SparkJoyErrorCode.netTimeout,
+        'Сервер не ответил вовремя. Проверьте подключение и повторите.',
+      ),
+      // Живой кейс: «Принять» приглашение в штат — RPC-таймаут 12с, при этом
+      // сервер успел закоммитить accept (см. isAlreadyProcessed).
+      c(
+        'Timeout on Notification.ActionNotification after 12s '
+            '(elapsed=12008ms): TimeoutException after 0:00:12.000000: '
+            'Future not completed',
+        SparkJoyErrorCode.netTimeout,
+        'Сервер не ответил вовремя. Проверьте подключение и повторите.',
       ),
       c(
         "SocketException: Failed host lookup: 'app.carreports.ru'",
@@ -131,15 +165,12 @@ void main() {
       ),
       c(
         'HandshakeException: Handshake error in client '
-        '(OS Error: CERTIFICATE_VERIFY_FAILED)',
+            '(OS Error: CERTIFICATE_VERIFY_FAILED)',
         SparkJoyErrorCode.netTls,
         'Не удалось установить защищённое соединение. Обновите приложение '
             'до последней версии или попробуйте другую сеть.',
       ),
-      c(
-        'SocketException: Connection refused',
-        SparkJoyErrorCode.netRefused,
-      ),
+      c('SocketException: Connection refused', SparkJoyErrorCode.netRefused),
       c(
         'ClientException: Connection closed before full header was received',
         SparkJoyErrorCode.netInterrupted,
@@ -147,7 +178,7 @@ void main() {
       c('ClientException: Failed to fetch', SparkJoyErrorCode.netGeneric),
       c(
         'Bad response from Storage.PrepareSpecialistReport: HTTP 502 '
-        '<html>Bad Gateway</html>',
+            '<html>Bad Gateway</html>',
         SparkJoyErrorCode.serverUnavailable,
         'Сервер временно недоступен. Повторите позже.',
       ),
@@ -161,7 +192,14 @@ void main() {
         SparkJoyErrorCode.serverBadResponse,
       ),
       c('HTTP 401 Unauthorized', SparkJoyErrorCode.authSession),
-      c('совсем незнакомый текст ошибки', SparkJoyErrorCode.unknown),
+      // Кириллический текст без техничных маркеров = адресованное
+      // пользователю сообщение бэка → показывается как есть, класс SRV-04.
+      c(
+        'совсем незнакомый текст ошибки',
+        SparkJoyErrorCode.serverRejected,
+        'совсем незнакомый текст ошибки',
+      ),
+      c('some totally unfamiliar error text', SparkJoyErrorCode.unknown),
     ];
 
     for (final testCase in cases) {
@@ -177,8 +215,10 @@ void main() {
 
     test('backend rate-limit code maps to SRV-02, not SRV-04', () {
       final readable = sparkJoyReadableError(
-        Exception('Bad response from Storage.RunBatchLegalReview: '
-            'too_many_requests'),
+        Exception(
+          'Bad response from Storage.RunBatchLegalReview: '
+          'too_many_requests',
+        ),
       );
       expect(readable.code, SparkJoyErrorCode.serverRateLimited);
       expect(readable.supportText, contains('Код сервера: too_many_requests'));
@@ -189,7 +229,8 @@ void main() {
     test('assembles full support block for the upload banner copy button', () {
       final text = sparkJoyUploadSupportText(
         code: SparkJoyErrorCode.netTimeout,
-        message: 'Сервер не ответил вовремя. Проверьте подключение и '
+        message:
+            'Сервер не ответил вовремя. Проверьте подключение и '
             'повторите.',
         technical:
             'ClientException with SocketException: HTTP connection timed out '
