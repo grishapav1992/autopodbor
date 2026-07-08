@@ -218,31 +218,57 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     return result;
   }
 
-  /// Фоновая канонизация марки/модели по каталогу (GetBrand/GetModelCar) после
-  /// конвертера. Вызывается через `unawaited`, поэтому НЕ держит спиннер
-  /// конвертера (`_vinConverterBusy`): сырой результат уже показан, а медленный
-  /// каталог на перегруженном бэке больше не «крутит» заявку (регресс fd4ce65).
-  /// Каноничные имена + brandId/modelCarId применяем ТОЛЬКО если пользователь
-  /// ещё не тронул идентичность (поля по-прежнему равны сырому результату) —
-  /// иначе не затираем ручную правку / другой выбор из автокомплита.
-  Future<void> _canonicalizeCarFromCatalog(String rawBrand, String rawModel) async {
-    final catalogCar = await _resolveCarFromCatalog(rawBrand, rawModel);
-    if (!mounted || catalogCar == null) return;
-    if (_brandController.text.trim() != rawBrand.trim() ||
-        _modelController.text.trim() != rawModel.trim()) {
+  /// Строгая привязка результата конвертера/скана к каталогу: в поля
+  /// марка/модель попадают ТОЛЬКО каноничные значения с ID (сырой текст
+  /// конвертера в строгом режиме не пишется — он виден в панели результата
+  /// `_vinLookupInfo`). Вызывается через `unawaited` и НЕ держит спиннер
+  /// конвертера (`_vinConverterBusy`): с тёплым кэшем каталога резолв
+  /// мгновенный, а медленный холодный (сеть) не «крутит» заявку (регресс
+  /// fd4ce65). Применяем ТОЛЬКО пока пользователь не выбрал авто сам.
+  Future<void> _bindConverterCarToCatalog(
+    String rawBrand,
+    String rawModel,
+  ) async {
+    if (rawBrand.trim().isEmpty && rawModel.trim().isEmpty) return;
+    final match = await CarCatalogRepository.instance.resolveCar(
+      rawBrand,
+      rawModel,
+    );
+    if (!mounted) return;
+    // Пользователь уже выбрал что-то из каталога, пока мы резолвили.
+    if (_brandController.text.trim().isNotEmpty || _selectedBrandId != null) {
+      return;
+    }
+    if (match == null) {
+      showSparkJoyErrorSnackBar(
+        context,
+        Exception('brand_not_in_catalog'),
+        fallback:
+            'Марка «${rawBrand.trim()}» не найдена в каталоге — '
+            'выберите авто вручную',
+      );
       return;
     }
     _setStateSafely(() {
-      if (catalogCar.brand.trim().isNotEmpty) {
-        _brandController.text = catalogCar.brand;
+      _brandController.text = match.brand.name;
+      _selectedBrandId = match.brand.id;
+      final model = match.model;
+      if (model != null) {
+        _modelController.text = model.model;
+        _selectedModelCarId = model.id;
       }
-      if (catalogCar.model.trim().isNotEmpty) {
-        _modelController.text = catalogCar.model;
-      }
-      _selectedBrandId = catalogCar.brandId;
-      _selectedModelCarId = catalogCar.modelCarId;
     });
     _markDraftDirty();
+    if (!match.full && rawModel.trim().isNotEmpty && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Модель «${rawModel.trim()}» не найдена в каталоге — '
+            'выберите модель вручную',
+          ),
+        ),
+      );
+    }
   }
 
   /// P2 — ApiCloud VIN↔госномер конвертер. [fromVin]=true: по VIN подставить
@@ -308,10 +334,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       final info = <String, String>{};
       var resolvedVin = fromVin ? vin : r.vin;
 
-      // Конвертер нашёл авто → СРАЗУ ставим сырой результат (быстро), а
-      // канонизацию по каталогу делаем В ФОНЕ — иначе медленный
-      // GetBrand/GetModelCar на перегруженном бэке держит спиннер конвертера,
-      // хотя результат уже получен (регресс fd4ce65).
+      // Конвертер нашёл авто → СРАЗУ ставим VIN/госномер/год (быстро), а
+      // строгую привязку марки/модели к каталогу делаем В ФОНЕ
+      // (_bindConverterCarToCatalog): в поля попадают только каноничные
+      // значения с ID, сырой текст конвертера виден в панели результата.
       if (r.found) {
         _setStateSafely(() {
           // Новая идентичность от конвертера → каталожная мета (фото/frameId/
@@ -322,21 +348,19 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           } else {
             if (r.vin.isNotEmpty) _vinController.text = _sanitizeVin(r.vin);
           }
-          if (r.brand.isNotEmpty) _brandController.text = r.brand;
-          if (r.model.isNotEmpty) _modelController.text = r.model;
           _resolvedVinYear = r.year?.toString() ?? '';
-          // Сменили авто по VIN/госномеру → старое поколение относится к
-          // прежней машине. Конвертер поколение не возвращает (его выбирают
-          // вручную / через каталог), поэтому очищаем, иначе оно «зависает».
+          // Сменили авто по VIN/госномеру → прежние марка/модель/поколение
+          // относятся к другой машине; новые значения проставит строгая
+          // привязка ниже (или пользователь выберет из каталога сам).
+          _brandController.clear();
+          _modelController.clear();
           _generationController.clear();
-          // Привязку проставит фоновая канонизация (если каталог ответит).
           _selectedBrandId = null;
           _selectedModelCarId = null;
         });
         _markDraftDirty();
-        // Канонизация имён + brandId/modelCarId по каталогу — в фоне, НЕ держит
-        // спиннер конвертера.
-        unawaited(_canonicalizeCarFromCatalog(r.brand, r.model));
+        // Строгая привязка к каталогу — в фоне, НЕ держит спиннер конвертера.
+        unawaited(_bindConverterCarToCatalog(r.brand, r.model));
         if (r.brand.isNotEmpty) info['Марка'] = r.brand;
         if (r.model.isNotEmpty) info['Модель'] = r.model;
         if (r.year != null) info['Год'] = '${r.year}';
@@ -432,30 +456,15 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   }
 
   /// Сбрасывает каталожные данные авто (фото / рестайлинг / фреймы / frameId).
-  /// Они валидны только когда выбраны АТОМАРНО через каталог-пикер; при ручной
-  /// правке марки/модели/поколения или после VIN-конвертера относились бы к
+  /// Они валидны только когда выбраны АТОМАРНО через каталог-пикер; после
+  /// смены идентичности (конвертер/скан/сброс поколения) относились бы к
   /// другому авто (в отчёт утекли бы чужие фото/frameId). Только присваивания —
-  /// без setState (зовётся как из setState-блока, так и из [_onCarIdentityEdited]).
+  /// без setState (зовётся из setState-блоков вызывающих).
   void _clearCatalogCarMeta() {
     _carPhotoUrl = '';
     _restylingLabel = '';
     _carFrames = '';
     _modelGenerationRestylingFrameId = null;
-  }
-
-  /// onChanged для ручных полей марка/модель/поколение: пользователь отходит от
-  /// каталожного выбора → сбрасываем каталожную мету и перерисовываем карточку.
-  void _onCarIdentityEdited() {
-    _setStateSafely(() {
-      _clearCatalogCarMeta();
-      // Свободный ввод марки/модели → авто больше НЕ привязано к каталогу.
-      // (Программная запись `.text =` из автокомплита/конвертера/пикера не
-      // дёргает TextField.onChanged, поэтому только что выставленную привязку
-      // этот сброс не затрагивает.)
-      _selectedBrandId = null;
-      _selectedModelCarId = null;
-    });
-    _markDraftDirty();
   }
 
   Future<void> _startLegalLoading() async {

@@ -66,9 +66,9 @@ class UserSimplePreferences {
   static const _reportModelsKey = 'reportModels';
   static const _reportInspectorsKey = 'reportInspectors';
   static const _reportSortOrderKey = 'reportSortOrder';
-  static const _brandCacheKey = 'brandCache';
-  static const _brandCacheTsKey = 'brandCacheTs';
-  static const _brandRusCacheKey = 'brandRusCache';
+  // brandCache/brandCacheTs/brandRusCache удалены: каталог авто теперь
+  // персистит CarCatalogRepository (car_catalog_*), см. _legacyKeys ниже —
+  // если появится общий сборщик легаси-ключей. Старые значения безвредны.
   static const _autoRequestsKey = 'autoRequests';
   static const _requestDisplayOverridesKey = 'requestDisplayOverrides';
   static const _inspectorAboutKey = 'inspectorAbout';
@@ -249,51 +249,8 @@ class UserSimplePreferences {
     return (await _prefs()).getString(_reportSortOrderKey);
   }
 
-  static Future setBrandCache(
-    List<String> values,
-    Map<String, String> rusByName,
-  ) async {
-    await (await _prefs()).setStringList(_brandCacheKey, values);
-    final combined = values
-        .map((name) => '$name|${rusByName[name] ?? ''}')
-        .toList();
-    await (await _prefs()).setStringList(_brandRusCacheKey, combined);
-    await (await _prefs()).setInt(
-      _brandCacheTsKey,
-      DateTime.now().millisecondsSinceEpoch,
-    );
-  }
-
-  static Future<List<String>?> getBrandCache() async {
-    // ignore: await_only_futures
-    return (await _prefs()).getStringList(_brandCacheKey);
-  }
-
-  static Future<Map<String, String>> getBrandRusCache() async {
-    // ignore: await_only_futures
-    final list = (await _prefs()).getStringList(_brandRusCacheKey);
-    final map = <String, String>{};
-    if (list == null) return map;
-    for (final entry in list) {
-      final idx = entry.indexOf('|');
-      if (idx <= 0) continue;
-      final name = entry.substring(0, idx);
-      final rus = entry.substring(idx + 1);
-      map[name] = rus;
-    }
-    return map;
-  }
-
-  static Future<int?> getBrandCacheTimestamp() async {
-    // ignore: await_only_futures
-    return (await _prefs()).getInt(_brandCacheTsKey);
-  }
-
-  static Future clearBrandCache() async {
-    await (await _prefs()).remove(_brandCacheKey);
-    await (await _prefs()).remove(_brandCacheTsKey);
-    await (await _prefs()).remove(_brandRusCacheKey);
-  }
+  // setBrandCache/getBrandCache/getBrandRusCache/clearBrandCache удалены
+  // вместе с миграцией фильтра ленты на CarCatalogRepository.
 
   // Status sanitization moved to the top-level _sanitizeAutoRequestStatus
   // function so it can run inside a background isolate via compute(); the

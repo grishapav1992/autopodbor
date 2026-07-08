@@ -12,6 +12,7 @@ import 'dart:ui';
 import 'package:flutter_application_1/core/localization/localization_controller/localization_controller.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart'
     show sessionExpiredTicker;
+import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/state/notification_controller.dart';
 import 'package:flutter_application_1/state/permissions_controller.dart';
 import 'package:flutter_application_1/state/user_controller.dart';
@@ -112,6 +113,10 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _handleSessionExpired() {
+    // Фоновый синк каталога дальше молотил бы RPC с мёртвым токеном —
+    // глушим до навигации (прогресс синка персистится, продолжит после
+    // следующего логина).
+    CarCatalogSyncService.instance.stop();
     // GetX navigator may not be attached yet during very-early boot;
     // guard so the listener doesn't crash on first-ever tick.
     if (!Get.isRegistered<GetMaterialController>()) return;

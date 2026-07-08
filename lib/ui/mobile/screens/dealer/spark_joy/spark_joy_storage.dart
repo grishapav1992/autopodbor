@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/state/permissions_controller.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
@@ -177,6 +178,12 @@ class SparkJoyStorage {
       if (Get.isRegistered<PermissionsController>()) {
         unawaited(Get.find<PermissionsController>().syncFromServer());
       }
+      // Офлайн-каталог авто: фоновая догрузка/дообновление. Запускаем
+      // только здесь, на success-path GetProfile — токен подтверждён
+      // живым И сеть есть (методы каталога auth-only; стартовать синк
+      // на офлайн-ветке ниже бессмысленно — он лишь отсчитает backoff
+      // впустую). Троттлинг/резюмируемость — внутри сервиса.
+      unawaited(CarCatalogSyncService.instance.start());
     } catch (e) {
       // Network/offline — оставляем локальный кэш. Будущие GetProfile
       // (при open profile screen) подтянут роль когда сеть вернётся.
@@ -192,6 +199,12 @@ class SparkJoyStorage {
   }
 
   static Future<void> logout() async {
+    // Гасим фоновый синк каталога: его RPC пойдут с уже мёртвым токеном.
+    // Сам кэш каталога (car_catalog_v1/) намеренно НЕ трётся — это
+    // глобальный справочник (марки/модели/поколения), в нём нет ничего
+    // пользовательского, а следующий залогиненный получает офлайн-каталог
+    // сразу.
+    CarCatalogSyncService.instance.stop();
     final pref = UserSimplePreferences.pref;
     if (pref == null) return;
     // Wipe on-disk inspection media BEFORE clearing prefs keys: photos,

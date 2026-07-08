@@ -147,6 +147,17 @@ class IoCarCatalogStore implements CarCatalogStore {
   ) => _load('generations_$modelCarId.json', GenerationItem.tryFromJson);
 
   @override
+  Future<int?> generationsSavedAtMs(int modelCarId) async {
+    try {
+      final file = await _file('generations_$modelCarId.json');
+      if (!await file.exists()) return null;
+      return (await file.lastModified()).millisecondsSinceEpoch;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Future<bool> saveGenerations(int modelCarId, List<GenerationItem> items) =>
       _save(
         'generations_$modelCarId.json',

@@ -1,17 +1,43 @@
 part of 'spark_joy_create_report_screen.dart';
 
+/// Готовит фото документа к vision-распознаванию: печёт EXIF-ориентацию
+/// (после пере-энкода EXIF теряется — без bake текст лёг бы боком),
+/// поднимает контраст (мелкий текст на защитной сетке СТС/ПТС читается
+/// моделью заметно лучше) и пережимает JPEG компактнее. Best-effort: при
+/// сбое декода возвращает исходные байты — скан важнее предобработки.
+/// Запускать через `compute`: полный декод фото 2560px — десятки МБ
+/// пикселей, на UI-потоке это заметный джанк.
+Uint8List _sparkPrepareDocScanPhoto(Uint8List bytes) {
+  try {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return bytes;
+    final oriented = img.bakeOrientation(decoded);
+    final adjusted = img.adjustColor(oriented, contrast: 1.15);
+    return Uint8List.fromList(img.encodeJpg(adjusted, quality: 82));
+  } catch (_) {
+    return bytes;
+  }
+}
+
 /// Скан СТС/ПТС: фото документа → S3 `temp/` (lifecycle-правило бакета удаляет
 /// через 1 день) → AiQueue vision (`fileUrls`) → строгий JSON → превью →
 /// only-empty автозаполнение «Автомобиля» и «Параметров».
 ///
-/// Экономика ApiCloud заложена в порядок записи полей:
-///   • марка/модель пишутся ДО VIN, поэтому когда дебаунс-конвейер
-///     `_maybeResolveFromVin` доходит до `_maybeAutoResolveIdentityFromVin`,
-///     идентификация уже заполнена → платный конвертер НЕ запускается;
+/// Экономика ApiCloud и взаимодействие с VIN-конвейером:
+///   • когда скан дал марку И модель, дедуп-флаг `_lastVinIdentityResolved`
+///     сидируется распознанным VIN — `_maybeAutoResolveIdentityFromVin`
+///     выходит по нему ДО stale-блока, поэтому платный конвертер не
+///     запускается, а `_resolvedVinYear` (год из документа) не затирается;
 ///   • `_startLegalLoading` дёргает конвертер только при пустом VIN — после
 ///     скана VIN заполнен, конверсия госномер→VIN не оплачивается;
-///   • недостающие КПП/привод дозаполнит существующий бесплатный ИИ-шаг
-///     `_autofillParamsFromVinWithAi`, который триггерится записью VIN.
+///   • значения документа пишутся БЕЗ `_vinAutofilledValues`-трекинга (как
+///     ручной ввод): stale-очистка конвейера их не стирает, а ИИ-шаг
+///     `_autofillParamsFromVinWithAi` уважает их через only-empty и
+///     дозаполняет только недостающие КПП/привод;
+///   • марка/модель маппятся на каталог ДО записи в поля (строгий режим,
+///     `CarCatalogRepository.resolveCar`): пишутся только каноничные
+///     значения с ID (бэк требует brandId/modelCarId); несовпавшее — в
+///     снекбар «выберите вручную».
 ///
 /// Фолбэк без сети/ИИ — существующий офлайн OCR-сканер VIN (ML Kit).
 extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
@@ -113,9 +139,14 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     }
     _setStateSafely(() {
       _docScanBusy = true;
-      _docScanStage = 'Загрузка фото…';
+      _docScanStage = 'Обработка фото…';
     });
     try {
+      // Контраст/ориентация/пережатие в изоляте — текст документа становится
+      // читабельнее для модели, а платим меньшим трафиком.
+      final prepared = await compute(_sparkPrepareDocScanPhoto, bytes);
+      if (!mounted) return;
+      _setStateSafely(() => _docScanStage = 'Загрузка фото…');
       final filename =
           'doc_scan_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final upload = await storage_api.StorageApi.getTemporaryUploadUrl(
@@ -124,7 +155,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       );
       await storage_api.StorageApi.uploadBytesToPresignedUrl(
         url: upload.url,
-        bytes: bytes,
+        bytes: prepared,
         contentType: 'image/jpeg',
       );
       final viewUrl = await storage_api.StorageApi.getTemporaryViewUrl(
@@ -367,33 +398,64 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       ),
     );
     if (apply == true && mounted) {
-      _applyDocScanResult(r, runChecks: runChecks && canOfferChecks);
+      await _applyDocScanResult(r, runChecks: runChecks && canOfferChecks);
     }
   }
 
-  void _applyDocScanResult(DocScanAiResult r, {required bool runChecks}) {
+  Future<void> _applyDocScanResult(
+    DocScanAiResult r, {
+    required bool runChecks,
+  }) async {
+    // Строгий режим: сырой текст с документа в поля марки/модели НЕ пишем —
+    // сперва маппим на каталог (cache-first, офлайн работает от персиста)
+    // и записываем только каноничные значения с ID. Несовпавшее честно
+    // попадает в снекбар «выберите вручную».
+    CatalogCarMatch? carMatch;
+    if (r.brand.isNotEmpty) {
+      carMatch = await CarCatalogRepository.instance.resolveCar(
+        r.brand,
+        r.model,
+      );
+    }
+    if (!mounted) return;
     final filled = <String>[];
+    final unmatched = <String>[];
+    var identityWritten = false;
     _setStateSafely(() {
-      // Идентификация ДО VIN: когда дебаунс-конвейер дойдёт до
-      // _maybeAutoResolveIdentityFromVin, марка/модель уже стоят →
-      // only-empty гейт вернёт true без платного конвертера.
-      var identityWritten = false;
-      if (r.brand.isNotEmpty && _brandController.text.trim().isEmpty) {
-        _brandController.text = r.brand;
-        identityWritten = true;
-        filled.add('марка');
+      final brandWasEmpty = _brandController.text.trim().isEmpty;
+      final modelWasEmpty = _modelController.text.trim().isEmpty;
+      if (carMatch != null) {
+        if (brandWasEmpty) {
+          _brandController.text = carMatch.brand.name;
+          _selectedBrandId = carMatch.brand.id;
+          _selectedModelCarId = null;
+          identityWritten = true;
+          filled.add('марка');
+        }
+        final model = carMatch.model;
+        // Модель пишем только когда марка в поле — та же, что в матче
+        // (иначе получили бы модель чужой марки).
+        if (model != null &&
+            modelWasEmpty &&
+            _selectedBrandId == carMatch.brand.id) {
+          _modelController.text = model.model;
+          _selectedModelCarId = model.id;
+          identityWritten = true;
+          filled.add('модель');
+        }
       }
-      if (r.model.isNotEmpty && _modelController.text.trim().isEmpty) {
-        _modelController.text = r.model;
-        identityWritten = true;
-        filled.add('модель');
+      if (r.brand.isNotEmpty && carMatch == null && brandWasEmpty) {
+        unmatched.add('марка «${r.brand}»');
+      }
+      if (r.model.isNotEmpty &&
+          modelWasEmpty &&
+          (carMatch == null || carMatch.model == null)) {
+        unmatched.add('модель «${r.model}»');
       }
       if (identityWritten) {
-        // Сырой текст с документа ≠ каталожный выбор — сбрасываем привязку
-        // (тот же контракт, что у конвертера в _startLegalLoading).
+        // Каталожная мета (фото/рестайлинг/frameId) прежнего выбора к новой
+        // идентичности не относится; сами ID мы только что проставили.
         _clearCatalogCarMeta();
-        _selectedBrandId = null;
-        _selectedModelCarId = null;
       }
       if (r.year.isNotEmpty && _resolvedVinYear.isEmpty) {
         // UI-поля года нет — год работает грунтовкой ИИ-параметров.
@@ -408,39 +470,52 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         _applyDetectedPlate(r.gosNumber);
         filled.add('госномер');
       }
+      // Объём/топливо/цвет пишем как РУЧНОЙ ввод — НАМЕРЕННО без
+      // _vinAutofilledValues: запись туда пометила бы значения документа
+      // «ИИ-остатками прежней машины», и stale-очистка
+      // _autofillParamsFromVinWithAi стёрла бы их через 600 мс, заменив
+      // догадками модели. Документ авторитетнее ИИ; цена — при смене VIN
+      // эти поля не чистятся автоматически (как и любой ручной ввод).
       final byKey = _vinParamTargetsByKey();
-      final params = <String, String>{
-        'engineVolume': r.engineVolume,
-        'engineType': r.engineType,
-      };
-      params.forEach((key, value) {
-        if (value.isEmpty) return;
-        final controller = byKey[key]!;
-        if (controller.text.trim().isNotEmpty) return;
-        controller.text = value;
-        // Документ — источник того же ранга, что ГОСТ-серт: трекаем запись,
-        // чтобы смена VIN чистила незатронутое (staleVinAutofillKeys), а
-        // ИИ-шаг не перетёр (его only-empty это уважает).
-        _vinAutofilledValues[key] = value;
-        filled.add(key == 'engineVolume' ? 'объём' : 'топливо');
-      });
+      if (r.engineVolume.isNotEmpty &&
+          byKey['engineVolume']!.text.trim().isEmpty) {
+        byKey['engineVolume']!.text = r.engineVolume;
+        filled.add('объём');
+      }
+      if (r.engineType.isNotEmpty &&
+          byKey['engineType']!.text.trim().isEmpty) {
+        byKey['engineType']!.text = r.engineType;
+        filled.add('топливо');
+      }
       if (r.color.isNotEmpty && _colorController.text.trim().isEmpty) {
-        // Цвет вне _vinParamTargetsByKey (VIN-ИИ его не определяет) — пишем
-        // без stale-трекинга.
         _colorController.text = r.color;
         filled.add('цвет');
       }
     });
+    final vinNow = _sanitizeVin(_vinController.text);
+    final brandNow = _brandController.text.trim();
+    final modelNow = _modelController.text.trim();
+    if (vinNow.length == 17 && brandNow.isNotEmpty && modelNow.isNotEmpty) {
+      // Идентификация известна → платному VIN→марка/модель резолву делать
+      // нечего. Блокируем ЯВНО, дедуп-флагом конвейера: первая проверка
+      // _maybeAutoResolveIdentityFromVin выходит по нему ДО stale-блока,
+      // поэтому и _resolvedVinYear (год из документа) уцелеет. Полагаться
+      // на порядок записи полей нельзя — гейт читает состояние контроллеров
+      // через 600 мс дебаунса, а не в момент записи.
+      _lastVinIdentityResolved = vinNow;
+    }
     _markDraftDirty();
     if (mounted) {
+      final parts = <String>[
+        if (filled.isNotEmpty) 'Заполнено с документа: ${filled.join(', ')}',
+        if (filled.isEmpty && unmatched.isEmpty)
+          'Все распознанные поля уже заполнены — ничего не изменено',
+        // Строгий режим: несовпавшее с каталогом в поля не пишется.
+        if (unmatched.isNotEmpty)
+          'Не найдено в каталоге: ${unmatched.join(', ')} — выберите вручную',
+      ];
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            filled.isEmpty
-                ? 'Все распознанные поля уже заполнены — ничего не изменено'
-                : 'Заполнено с документа: ${filled.join(', ')}',
-          ),
-        ),
+        SnackBar(content: Text(parts.join('. '))),
       );
     }
     if (runChecks) _autoStartLegalChecksAfterDocScan();
@@ -455,7 +530,21 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
           .map((t) => t.value)
           .where((v) => v != 'api_cloud_converter_search')
           .toList();
-      if (defaults.isEmpty) return; // каталог не загрузился — запустят вручную
+      if (defaults.isEmpty) {
+        // Каталог типов ещё не доехал (медленная сеть / _ensureLegalReviewMeta
+        // в полёте) — говорим честно, а не молча съедаем данное согласие.
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Не получилось запустить проверки автоматически — '
+                'запустите их в шаге «Материалы проверки»',
+              ),
+            ),
+          );
+        }
+        return;
+      }
       _legalSelectedCheckTypes = defaults;
       _markDraftDirty();
     }

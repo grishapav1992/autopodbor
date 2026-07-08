@@ -2,8 +2,8 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/constants/popular_cars_ru.dart';
-import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/services/car_catalog_repository.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 // Auto-request feature is paused (backend not shipped, UI disabled in nav).
 // Keep the imports so restoring the tab and FAB is a 2-line flip; release
@@ -185,45 +185,26 @@ class _UserNavBarState extends State<UserNavBar> with WidgetsBindingObserver {
     _brandRetryTimer?.cancel();
     setState(() => _brandLoading = true);
     try {
-      const int maxAttempts = 2;
-      Object? lastError;
-      for (int i = 0; i < maxAttempts; i++) {
-        try {
-          final catalog = await StorageApi.fetchBrandCatalog();
-          // Backend already returns brands sorted by popularity — keep its
-          // order, don't re-sort on the frontend (T3).
-          final sortedNames = List<String>.from(catalog.names);
-          if (!mounted) return;
-          setState(() {
-            _brandOptions = sortedNames;
-            _brandRusByName = catalog.rusByName;
-            _brandLoading = false;
-            _brandError = '';
-            _brandRetryCount = 0;
-            _brandFallback = false;
-          });
-          await UserSimplePreferences.setBrandCache(
-            sortedNames,
-            catalog.rusByName,
-          );
-          return;
-        } catch (e) {
-          lastError = e;
-          if (i < maxAttempts - 1) {
-            await Future.delayed(const Duration(seconds: 1));
-          }
-        }
-      }
-      throw lastError ?? Exception('Brand fetch failed');
-    } catch (_) {
-      final cached = await UserSimplePreferences.getBrandCache();
-      final cachedRus = await UserSimplePreferences.getBrandRusCache();
+      // Офлайн-каталог (cache-first): собственный prefs-кэш брендов у
+      // фильтра больше не нужен — репозиторий персистит каталог сам и
+      // офлайн отдаёт его мгновенно. Порядок — прежний алфавитный
+      // (как BrandCatalog.names до перехода).
+      final repo = CarCatalogRepository.instance;
+      await repo.getBrands();
       if (!mounted) return;
       setState(() {
-        if (cached != null && cached.isNotEmpty) {
-          _brandOptions = List<String>.from(cached);
-          _brandRusByName = cachedRus;
-        } else if (_brandOptions.isEmpty) {
+        _brandOptions = List<String>.from(repo.brandNamesSorted);
+        _brandRusByName = Map<String, String>.from(repo.brandRusByName);
+        _brandLoading = false;
+        _brandError = '';
+        _brandRetryCount = 0;
+        _brandFallback = false;
+      });
+    } catch (_) {
+      // Кэша ещё нет и сети нет — единственный случай ошибки репозитория.
+      if (!mounted) return;
+      setState(() {
+        if (_brandOptions.isEmpty) {
           _brandOptions = List<String>.from(kPopularMakesRu);
         }
         _brandLoading = false;

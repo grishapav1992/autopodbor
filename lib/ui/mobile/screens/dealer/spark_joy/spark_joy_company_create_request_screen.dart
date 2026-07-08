@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
+import 'package:flutter_application_1/data/services/car_catalog_repository.dart';
+import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
 import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
@@ -83,6 +85,11 @@ class _SparkJoyCompanyCreateRequestScreenState
     _dueAtController.text = _formatRuDate(defaultDue);
     _addDraftListeners();
     unawaited(_loadDraft());
+    // Страховочный пинок фонового синка каталога (идемпотентный): если
+    // основной старт (после GetProfile) не сработал — например, приложение
+    // поднялось офлайн, а сеть появилась позже — экран выбора авто самое
+    // место наверстать.
+    unawaited(CarCatalogSyncService.instance.start());
   }
 
   @override
@@ -203,20 +210,28 @@ class _SparkJoyCompanyCreateRequestScreenState
 
     final List<BrandItem> brands;
     try {
-      final catalog = await storage_api.StorageApi.fetchBrandCatalog().timeout(
+      // Cache-first: после первого онлайн-захода (или фонового синка)
+      // открывается и офлайн. Timeout — страховка холодного сетевого пути.
+      final items = await CarCatalogRepository.instance.getBrands().timeout(
         catalogLoadTimeout,
       );
-      brands = List<BrandItem>.from(catalog.items)
+      brands = List<BrandItem>.from(items)
         ..sort(
           (a, b) => _brandLabel(
             a,
           ).toLowerCase().compareTo(_brandLabel(b).toLowerCase()),
         );
     } catch (e) {
+      // Репозиторий бросает только когда кэша ещё нет И сети нет.
+      // Пинаем фоновый синк — при появлении сети каталог доедет сам.
+      unawaited(CarCatalogSyncService.instance.start());
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Не удалось загрузить каталог авто: $e'),
+        const SnackBar(
+          content: Text(
+            'Каталог авто ещё не загружен. Подключите интернет — '
+            'каталог сохранится и дальше будет работать офлайн.',
+          ),
           backgroundColor: kRedColor,
         ),
       );
@@ -234,12 +249,12 @@ class _SparkJoyCompanyCreateRequestScreenState
           initialModel: _model,
           initialGeneration: _generation,
           initialRestyling: _restyling,
-          loadModels: (brand) => storage_api.StorageApi.fetchModels(
-            brandId: brand.id,
-          ).timeout(catalogLoadTimeout),
-          loadGenerations: (model) => storage_api.StorageApi.fetchGenerations(
-            modelCarId: model.id,
-          ).timeout(catalogLoadTimeout),
+          loadModels: (brand) => CarCatalogRepository.instance
+              .getModels(brand.id)
+              .timeout(catalogLoadTimeout),
+          loadGenerations: (model) => CarCatalogRepository.instance
+              .getGenerations(model.id)
+              .timeout(catalogLoadTimeout),
         );
       },
     );
@@ -1232,7 +1247,7 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
     }
     if (_modelsFailed && models.isEmpty) {
       return _pickerError(
-        'Не удалось загрузить модели',
+        'Модели этой марки ещё не в офлайн-каталоге.\nПроверьте интернет и повторите',
         () => _ensureModels(brand),
       );
     }
@@ -1280,7 +1295,7 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
     }
     if (_generationsFailed && generations.isEmpty) {
       return _pickerError(
-        'Не удалось загрузить поколения',
+        'Поколения этой модели ещё не в офлайн-каталоге.\nПроверьте интернет и повторите',
         () => _ensureGenerations(model),
       );
     }
@@ -1439,155 +1454,30 @@ String _restylingCountLabel(int count) {
   return '$count рестайлингов';
 }
 
-Map<String, dynamic>? _brandToDraft(BrandItem? brand) {
-  if (brand == null) return null;
-  return {'id': brand.id, 'name': brand.name, 'nameRus': brand.nameRus};
-}
+// Каталожные объекты в черновике сериализуются штатными toJson/tryFromJson
+// моделей (storage_api_models.dart) — тот же набор ключей, что и раньше
+// (см. голден-тест storage_api_models_json_test.dart), поэтому старые
+// черновики читаются без миграции; формат разделён с файловым кэшем
+// каталога.
+Map<String, dynamic>? _brandToDraft(BrandItem? brand) => brand?.toJson();
 
-BrandItem? _brandFromDraft(dynamic raw) {
-  final map = _draftMap(raw);
-  if (map.isEmpty) return null;
-  final id = _draftInt(map['id']);
-  if (id == null) return null;
-  return BrandItem(
-    id: id,
-    name: _draftString(map['name']),
-    nameRus: _draftString(map['nameRus']),
-  );
-}
+BrandItem? _brandFromDraft(dynamic raw) => BrandItem.tryFromJson(raw);
 
-Map<String, dynamic>? _modelToDraft(ModelItem? model) {
-  if (model == null) return null;
-  return {
-    'id': model.id,
-    'brandId': model.brandId,
-    'model': model.model,
-    'modelRus': model.modelRus,
-  };
-}
+Map<String, dynamic>? _modelToDraft(ModelItem? model) => model?.toJson();
 
-ModelItem? _modelFromDraft(dynamic raw) {
-  final map = _draftMap(raw);
-  if (map.isEmpty) return null;
-  final id = _draftInt(map['id']);
-  final brandId = _draftInt(map['brandId']);
-  if (id == null || brandId == null) return null;
-  return ModelItem(
-    id: id,
-    brandId: brandId,
-    model: _draftString(map['model']),
-    modelRus: _draftString(map['modelRus']),
-  );
-}
+ModelItem? _modelFromDraft(dynamic raw) => ModelItem.tryFromJson(raw);
 
-Map<String, dynamic>? _generationToDraft(GenerationItem? generation) {
-  if (generation == null) return null;
-  return {
-    'id': generation.id,
-    'modelCarId': generation.modelCarId,
-    'generation': generation.generation,
-    'frames': generation.frames.map(_frameToDraft).toList(growable: false),
-    'restylings': generation.restylings
-        .map(_restylingToDraft)
-        .whereType<Map<String, dynamic>>()
-        .toList(growable: false),
-  };
-}
+Map<String, dynamic>? _generationToDraft(GenerationItem? generation) =>
+    generation?.toJson();
 
-GenerationItem? _generationFromDraft(dynamic raw) {
-  final map = _draftMap(raw);
-  if (map.isEmpty) return null;
-  final id = _draftInt(map['id']);
-  final modelCarId = _draftInt(map['modelCarId']);
-  final generation = _draftInt(map['generation']);
-  if (id == null || modelCarId == null || generation == null) return null;
-  return GenerationItem(
-    id: id,
-    modelCarId: modelCarId,
-    generation: generation,
-    frames: _framesFromDraft(map['frames']),
-    restylings: _restylingsFromDraft(map['restylings']),
-  );
-}
+GenerationItem? _generationFromDraft(dynamic raw) =>
+    GenerationItem.tryFromJson(raw);
 
-Map<String, dynamic>? _restylingToDraft(RestylingItem? restyling) {
-  if (restyling == null) return null;
-  return {
-    'id': restyling.id,
-    'restyling': restyling.restyling,
-    'yearStart': restyling.yearStart,
-    'yearEnd': restyling.yearEnd,
-    'frames': restyling.frames.map(_frameToDraft).toList(growable: false),
-    'photos': restyling.photos.map(_photoToDraft).toList(growable: false),
-  };
-}
+Map<String, dynamic>? _restylingToDraft(RestylingItem? restyling) =>
+    restyling?.toJson();
 
-RestylingItem? _restylingFromDraft(dynamic raw) {
-  final map = _draftMap(raw);
-  if (map.isEmpty) return null;
-  final id = _draftInt(map['id']);
-  if (id == null) return null;
-  return RestylingItem(
-    id: id,
-    restyling: _draftString(map['restyling']),
-    yearStart: _draftInt(map['yearStart']),
-    yearEnd: _draftInt(map['yearEnd']),
-    frames: _framesFromDraft(map['frames']),
-    photos: _photosFromDraft(map['photos']),
-  );
-}
-
-Map<String, dynamic> _frameToDraft(FrameItem frame) {
-  return {'id': frame.id, 'frame': frame.frame};
-}
-
-List<FrameItem> _framesFromDraft(dynamic raw) {
-  if (raw is! List) return const [];
-  return raw
-      .map(_draftMap)
-      .map((map) {
-        final id = _draftInt(map['id']);
-        if (id == null) return null;
-        return FrameItem(id: id, frame: _draftString(map['frame']));
-      })
-      .whereType<FrameItem>()
-      .toList(growable: false);
-}
-
-Map<String, dynamic> _photoToDraft(PhotoItem photo) {
-  return {
-    'id': photo.id,
-    'size': photo.size,
-    'urlX1': photo.urlX1,
-    'urlX2': photo.urlX2,
-  };
-}
-
-List<PhotoItem> _photosFromDraft(dynamic raw) {
-  if (raw is! List) return const [];
-  return raw
-      .map(_draftMap)
-      .map((map) {
-        final id = _draftInt(map['id']);
-        if (id == null) return null;
-        return PhotoItem(
-          id: id,
-          size: _draftString(map['size']),
-          urlX1: _draftString(map['urlX1']),
-          urlX2: _draftString(map['urlX2']),
-        );
-      })
-      .whereType<PhotoItem>()
-      .toList(growable: false);
-}
-
-List<RestylingItem> _restylingsFromDraft(dynamic raw) {
-  if (raw is! List) return const [];
-  return raw
-      .map(_restylingFromDraft)
-      .whereType<RestylingItem>()
-      .toList(growable: false);
-}
+RestylingItem? _restylingFromDraft(dynamic raw) =>
+    RestylingItem.tryFromJson(raw);
 
 Map<String, dynamic>? _assigneeToDraft(SelectedAssignee? assignee) {
   if (assignee == null) return null;

@@ -152,181 +152,53 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     return cleaned.length > 17 ? cleaned.substring(0, 17) : cleaned;
   }
 
-  /// Сопоставляет марку/модель (как их вернул конвертер по VIN/госномеру) с
-  /// каталогом — чтобы результат совпадал с ручным выбором. Приоритет —
-  /// онлайн `GetBrand`/`GetModel` (`fetchBrandCatalog`/`fetchModels`); при
-  /// отсутствии сети — фолбэк на локальный `_SparkJoyVehicleRegistry`.
-  /// Возвращает каноничные имена из каталога (`full=true`, если нашлись и
-  /// марка, и модель), либо `null`, если марки в каталоге нет совсем. Поколение
-  /// здесь не трогаем — его пользователь выбирает сам (поле необязательное).
+  /// Сопоставляет марку/модель (как их вернул конвертер/скан/черновик) с
+  /// каталогом — тонкий адаптер над [CarCatalogRepository.resolveCar]
+  /// (cache-first: офлайн работает от персиста; сетевые ошибки внутри →
+  /// null). Возвращает каноничные имена + серверные id (`full=true`, если
+  /// нашлись и марка, и модель), либо `null`, если марки нет в каталоге или
+  /// каталог недоступен (кэш пуст + офлайн). Поколение здесь не трогаем —
+  /// его пользователь выбирает сам (поле необязательное).
   Future<
     ({String brand, String model, int? brandId, int? modelCarId, bool full})?
   >
   _resolveCarFromCatalog(String brand, String model) async {
-    bool eq(String a, String b) =>
-        a.trim().isNotEmpty && a.trim().toLowerCase() == b.trim().toLowerCase();
-    if (brand.trim().isEmpty) return null;
-
-    // 1) Онлайн-каталог (приоритет): GetBrand → GetModel. Возвращаем и
-    // серверные id (brandId/modelCarId) — они привязывают авто к каталогу
-    // (как ручной выбор из списка) и нужны автокомплиту моделей.
-    try {
-      final catalog = await storage_api.StorageApi.fetchBrandCatalog();
-      for (final b in catalog.items) {
-        if (!eq(b.name, brand) && !eq(b.nameRus, brand)) continue;
-        try {
-          final models = await storage_api.StorageApi.fetchModels(
-            brandId: b.id,
-          );
-          for (final m in models) {
-            if (eq(m.model, model) || eq(m.modelRus, model)) {
-              return (
-                brand: b.name,
-                model: m.model,
-                brandId: b.id,
-                modelCarId: m.id,
-                full: true,
-              );
-            }
-          }
-        } catch (_) {}
-        return (
-          brand: b.name,
-          model: model,
-          brandId: b.id,
-          modelCarId: null,
-          full: false,
-        );
-      }
-    } catch (_) {
-      // нет сети / бэк недоступен → локальный фолбэк ниже
-    }
-
-    // 2) Локальный каталог (офлайн-фолбэк) — без серверных id.
-    for (final b in _SparkJoyVehicleRegistry.carCatalog) {
-      if (!eq(b.name, brand)) continue;
-      for (final m in b.models) {
-        if (eq(m.name, model)) {
-          return (
-            brand: b.name,
-            model: m.name,
-            brandId: null,
-            modelCarId: null,
-            full: true,
-          );
-        }
-      }
-      return (
-        brand: b.name,
-        model: model,
-        brandId: null,
-        modelCarId: null,
-        full: false,
-      );
-    }
-    return null;
-  }
-
-  // ──────────────────────────────────────────────────────────────────
-  //  Автокомплит марки/модели из каталога (Storage.GetBrand / GetModelCar)
-  // ──────────────────────────────────────────────────────────────────
-
-  /// Лениво (один раз) грузит весь каталог марок для автокомплита; дальше
-  /// фильтрация локальная. Безопасно звать из onTap/optionsBuilder — guard
-  /// `_brandCatalogLoadStarted` держит единственный сетевой запрос; при ошибке
-  /// guard сбрасывается, чтобы повторный фокус попробовал снова.
-  Future<void> _ensureBrandCatalogLoaded() async {
-    if (_brandCatalogLoadStarted || _brandCatalogCache.isNotEmpty) return;
-    _brandCatalogLoadStarted = true;
-    try {
-      final catalog = await storage_api.StorageApi.fetchBrandCatalog();
-      if (!mounted) return;
-      _setStateSafely(() => _brandCatalogCache = catalog.items);
-    } catch (_) {
-      // Офлайн / бэк недоступен → подсказок нет, но свободный ввод работает.
-      _brandCatalogLoadStarted = false;
-    }
-  }
-
-  /// Догружает модели для выбранной марки (`_selectedBrandId`) в кэш. Зовём при
-  /// фокусе поля модели — покрывает все источники привязки (автокомплит марки,
-  /// конвертер, пикер, восстановленный черновик).
-  Future<void> _ensureModelsForSelectedBrand() async {
-    final brandId = _selectedBrandId;
-    if (brandId == null) return;
-    await _prefetchModels(brandId);
-  }
-
-  /// Грузит модели для марки в кэш `_modelsByBrandId` (один раз на brandId).
-  /// Кэш по id делает поздний ответ при быстрой смене марки безвредным.
-  Future<void> _prefetchModels(int brandId) async {
-    if (_modelsByBrandId.containsKey(brandId)) return;
-    try {
-      final models = await storage_api.StorageApi.fetchModels(brandId: brandId);
-      if (!mounted) return;
-      _setStateSafely(() => _modelsByBrandId[brandId] = models);
-    } catch (_) {
-      // Офлайн → подсказок моделей не будет; свободный ввод работает.
-    }
-  }
-
-  /// Опции автокомплита марки: локальная фильтрация кэша по name/nameRus.
-  Iterable<storage_api.BrandItem> _brandAutocompleteOptions(String query) {
-    if (_brandCatalogCache.isEmpty) return const <storage_api.BrandItem>[];
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return _brandCatalogCache;
-    return _brandCatalogCache.where(
-      (b) =>
-          b.name.toLowerCase().contains(q) ||
-          b.nameRus.toLowerCase().contains(q),
+    final match = await CarCatalogRepository.instance.resolveCar(brand, model);
+    if (match == null) return null;
+    return (
+      brand: match.brand.name,
+      model: match.model?.model ?? model,
+      brandId: match.brand.id,
+      modelCarId: match.model?.id,
+      full: match.full,
     );
   }
 
-  /// Опции автокомплита модели для выбранной марки. Без выбранной марки —
-  /// пусто (поле ведёт себя как обычный TextField).
-  Iterable<storage_api.ModelItem> _modelAutocompleteOptions(String query) {
-    final brandId = _selectedBrandId;
-    if (brandId == null) return const <storage_api.ModelItem>[];
-    final models = _modelsByBrandId[brandId];
-    if (models == null || models.isEmpty) {
-      return const <storage_api.ModelItem>[];
+  /// Ре-байнд легаси-черновика к каталогу: строгий режим всегда пишет ID, но
+  /// старые черновики хранят свободный текст марки/модели. Успех → канон +
+  /// ID (как выбор руками); неуспех (нет в каталоге / кэш пуст офлайн) —
+  /// поля остаются как есть, карточка показывает пометку «не привязано к
+  /// каталогу», а выгрузку в самом конце всё равно гейтит
+  /// [_ensureModelCarIdForUpload] (RPT-01).
+  Future<void> _rebindCarFromCatalogIfNeeded() async {
+    final brand = _brandController.text.trim();
+    if (brand.isEmpty || _selectedBrandId != null) return;
+    final model = _modelController.text.trim();
+    final resolved = await _resolveCarFromCatalog(brand, model);
+    if (!mounted || resolved == null) return;
+    // Пользователь успел поменять поля, пока резолвили — не затираем.
+    if (_brandController.text.trim() != brand ||
+        _modelController.text.trim() != model ||
+        _selectedBrandId != null) {
+      return;
     }
-    final q = query.trim().toLowerCase();
-    if (q.isEmpty) return models;
-    return models.where(
-      (m) =>
-          m.model.toLowerCase().contains(q) ||
-          m.modelRus.toLowerCase().contains(q),
-    );
-  }
-
-  /// Выбор марки из списка: каноничное имя + привязка к каталогу; сброс
-  /// модели/поколения/каталожной меты (как пикер при смене марки) + префетч
-  /// моделей. Пишем `.text` ПРОГРАММНО → `TextField.onChanged` не сработает,
-  /// поэтому `_onCarIdentityEdited` не затрёт только что выставленную привязку.
-  void _onBrandAutocompleteSelected(storage_api.BrandItem brand) {
     _setStateSafely(() {
-      _brandController.text = brand.name;
-      _selectedBrandId = brand.id;
-      _modelController.clear();
-      _generationController.clear();
-      _selectedModelCarId = null;
-      _clearCatalogCarMeta();
-    });
-    _markDraftDirty();
-    unawaited(_prefetchModels(brand.id));
-  }
-
-  /// Выбор модели из списка: каноничное имя + привязка. Поколение/фото на
-  /// уровне модели не определяются (как `buildSelectionForModel` в пикере) —
-  /// для них есть кнопка «Выбрать из каталога».
-  void _onModelAutocompleteSelected(storage_api.ModelItem model) {
-    _setStateSafely(() {
-      _modelController.text = model.model;
-      _selectedModelCarId = model.id;
-      _selectedBrandId ??= model.brandId;
-      _generationController.clear();
-      _clearCatalogCarMeta();
+      _brandController.text = resolved.brand;
+      _selectedBrandId = resolved.brandId;
+      if (resolved.full && resolved.modelCarId != null) {
+        _modelController.text = resolved.model;
+        _selectedModelCarId = resolved.modelCarId;
+      }
     });
     _markDraftDirty();
   }

@@ -38,20 +38,10 @@ class _CarPickerSelection {
   final int? modelCarId;
 }
 
-class _CarCatalogBrand {
-  const _CarCatalogBrand({required this.name, required this.models});
-
-  final String name;
-  final List<_CarCatalogModel> models;
-}
-
-class _CarCatalogModel {
-  const _CarCatalogModel({required this.name, required this.generations});
-
-  final String name;
-  final List<_CarCatalogGeneration> generations;
-}
-
+// _CarCatalogBrand/_CarCatalogModel удалены вместе с хардкодным
+// 6-брендовым фолбэком: марки/модели теперь только из CarCatalogRepository
+// (BrandItem/ModelItem). _CarCatalogGeneration/_CarCatalogRestyling остаются
+// view-моделями каталог-визарда (маппинг из GenerationItem).
 class _CarCatalogGeneration {
   const _CarCatalogGeneration({required this.name, required this.restylings});
 

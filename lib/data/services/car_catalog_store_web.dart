@@ -91,6 +91,9 @@ class WebCarCatalogStore implements CarCatalogStore {
     List<GenerationItem> items,
   ) async => false;
 
+  @override
+  Future<int?> generationsSavedAtMs(int modelCarId) async => null;
+
   Map<String, dynamic> _readModelsMap() {
     final raw = UserSimplePreferences.pref?.getString(modelsKey);
     if (raw == null || raw.isEmpty) return <String, dynamic>{};

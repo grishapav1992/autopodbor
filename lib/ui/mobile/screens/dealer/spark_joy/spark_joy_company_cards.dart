@@ -2,12 +2,18 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
   Widget _carSelectionCard() {
-    // P2 — раздельные поля: марку/модель можно ввести вручную, выбрать из
-    // каталога («Выбрать из каталога») или подставить авто-конвертером по
-    // VIN/госномеру (шаг «Идентификация»). Поколение — необязательное
-    // (валидация требует только марку+модель). Все три пишут в те же
-    // контроллеры (_brand/_model/_generationController), что и каталог-пикер.
+    // Строгий режим: марка/модель/поколение выбираются ТОЛЬКО из каталога.
+    // Бэк принимает авто лишь каталожными ID (modelCarId / frameId) —
+    // свободный текст всё равно ронял выгрузку в самом конце
+    // (reportModelUnresolved), теперь несоответствие невозможно по
+    // построению. Поля readOnly и открывают каталог-визард на своём шаге;
+    // конвертер VIN/госномера и скан СТС пишут сюда уже привязанные к
+    // каталогу значения (см. _bindConverterCarToCatalog).
     final photo = _carPhotoUrl.trim();
+    final brandUnbound =
+        _brandController.text.trim().isNotEmpty && _selectedBrandId == null;
+    final modelUnbound =
+        _modelController.text.trim().isNotEmpty && _selectedModelCarId == null;
 
     return _card(
       child: Column(
@@ -19,34 +25,10 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
             weight: FontWeight.w700,
           ),
           const SizedBox(height: SparkSpace.sm),
-          RawAutocomplete<storage_api.BrandItem>(
-            textEditingController: _brandController,
-            focusNode: _brandFocusNode,
-            displayStringForOption: (b) => b.name,
-            optionsBuilder: (value) {
-              unawaited(_ensureBrandCatalogLoaded());
-              return _brandAutocompleteOptions(value.text);
-            },
-            onSelected: _onBrandAutocompleteSelected,
-            fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-              return TextField(
-                controller: controller,
-                focusNode: focusNode,
-                textCapitalization: TextCapitalization.words,
-                onChanged: (_) => _onCarIdentityEdited(),
-                onTap: () => unawaited(_ensureBrandCatalogLoaded()),
-                decoration: _fieldDecoration('Напр. LADA'),
-              );
-            },
-            optionsViewBuilder: (context, onSelected, options) =>
-                _buildCatalogAutocompleteOptions<storage_api.BrandItem>(
-                  context: context,
-                  onSelected: onSelected,
-                  options: options,
-                  labelOf: (b) => b.nameRus.trim().isNotEmpty
-                      ? '${b.name} · ${b.nameRus}'
-                      : b.name,
-                ),
+          _catalogSelectorField(
+            controller: _brandController,
+            hint: 'Выбрать марку',
+            startAt: _CarPickerStep.brand,
           ),
           const SizedBox(height: SparkSpace.md),
           const MyText(
@@ -55,34 +37,10 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
             weight: FontWeight.w700,
           ),
           const SizedBox(height: SparkSpace.sm),
-          RawAutocomplete<storage_api.ModelItem>(
-            textEditingController: _modelController,
-            focusNode: _modelFocusNode,
-            displayStringForOption: (m) => m.model,
-            optionsBuilder: (value) {
-              unawaited(_ensureModelsForSelectedBrand());
-              return _modelAutocompleteOptions(value.text);
-            },
-            onSelected: _onModelAutocompleteSelected,
-            fieldViewBuilder: (context, controller, focusNode, onSubmit) {
-              return TextField(
-                controller: controller,
-                focusNode: focusNode,
-                textCapitalization: TextCapitalization.words,
-                onChanged: (_) => _onCarIdentityEdited(),
-                onTap: () => unawaited(_ensureModelsForSelectedBrand()),
-                decoration: _fieldDecoration('Напр. VESTA'),
-              );
-            },
-            optionsViewBuilder: (context, onSelected, options) =>
-                _buildCatalogAutocompleteOptions<storage_api.ModelItem>(
-                  context: context,
-                  onSelected: onSelected,
-                  options: options,
-                  labelOf: (m) => m.modelRus.trim().isNotEmpty
-                      ? '${m.model} · ${m.modelRus}'
-                      : m.model,
-                ),
+          _catalogSelectorField(
+            controller: _modelController,
+            hint: 'Выбрать модель',
+            startAt: _CarPickerStep.model,
           ),
           const SizedBox(height: SparkSpace.md),
           const MyText(
@@ -91,16 +49,35 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
             weight: FontWeight.w700,
           ),
           const SizedBox(height: SparkSpace.sm),
-          TextField(
+          _catalogSelectorField(
             controller: _generationController,
-            onChanged: (_) => _onCarIdentityEdited(),
-            decoration: _fieldDecoration('Можно не заполнять'),
+            hint: 'Выбрать поколение',
+            startAt: _CarPickerStep.generation,
+            onClear: () {
+              _setStateSafely(() {
+                _generationController.clear();
+                // Рестайлинг/фреймы/фото/frameId выбирались вместе с
+                // поколением — без него теряют смысл.
+                _clearCatalogCarMeta();
+              });
+              _markDraftDirty();
+            },
           ),
+          if (brandUnbound || modelUnbound) ...[
+            const SizedBox(height: SparkSpace.sm),
+            const MyText(
+              text:
+                  'Авто из старого черновика не привязано к каталогу — '
+                  'нажмите на поле и выберите из списка',
+              size: SparkTextSize.caption,
+              color: kRedColor,
+            ),
+          ],
           const SizedBox(height: SparkSpace.md),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(
-              onPressed: _openCarPickerDialog,
+              onPressed: () => unawaited(_openCarPickerDialog()),
               icon: const Icon(Icons.list_alt_rounded, size: SparkSize.iconSm),
               label: const Text('Выбрать из каталога'),
               style: OutlinedButton.styleFrom(
@@ -139,44 +116,29 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
       ),
     );
   }
-}
 
-/// Общий overlay-список подсказок для RawAutocomplete марки/модели: карточка
-/// с прокручиваемым списком шириной примерно с поле ввода.
-Widget _buildCatalogAutocompleteOptions<T extends Object>({
-  required BuildContext context,
-  required AutocompleteOnSelected<T> onSelected,
-  required Iterable<T> options,
-  required String Function(T) labelOf,
-}) {
-  final items = options.toList(growable: false);
-  final maxWidth = MediaQuery.of(context).size.width - SparkSpace.lg * 2;
-  return Align(
-    alignment: Alignment.topLeft,
-    child: Material(
-      elevation: 3,
-      borderRadius: BorderRadius.circular(SparkRadius.sm),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: 260, maxWidth: maxWidth),
-        child: ListView.builder(
-          padding: EdgeInsets.zero,
-          shrinkWrap: true,
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final option = items[index];
-            return InkWell(
-              onTap: () => onSelected(option),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.md,
-                  vertical: SparkSpace.sm,
-                ),
-                child: MyText(text: labelOf(option), size: SparkTextSize.body),
-              ),
-            );
-          },
-        ),
+  /// readOnly-поле-селектор: тап открывает каталог-визард на [startAt].
+  /// [onClear] — крестик сброса значения (для необязательного поколения).
+  Widget _catalogSelectorField({
+    required TextEditingController controller,
+    required String hint,
+    required _CarPickerStep startAt,
+    VoidCallback? onClear,
+  }) {
+    final hasValue = controller.text.trim().isNotEmpty;
+    return TextField(
+      controller: controller,
+      readOnly: true,
+      onTap: () => unawaited(_openCarPickerDialog(startAt: startAt)),
+      decoration: _fieldDecoration(hint).copyWith(
+        suffixIcon: onClear != null && hasValue
+            ? IconButton(
+                icon: const Icon(Icons.close_rounded, size: SparkSize.iconSm),
+                onPressed: onClear,
+                splashRadius: 18,
+              )
+            : const Icon(Icons.expand_more_rounded, color: kGreyColor),
       ),
-    ),
-  );
+    );
+  }
 }

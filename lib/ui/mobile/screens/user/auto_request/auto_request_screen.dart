@@ -11,6 +11,9 @@ import 'package:flutter_application_1/core/constants/app_images.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
+import 'package:flutter_application_1/data/services/car_catalog_photo_ranking.dart';
+import 'package:flutter_application_1/data/services/car_catalog_repository.dart';
+import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
@@ -169,7 +172,7 @@ Widget _twoColumn(
   );
 }
 
-class _RemoteCarCatalog {
+class RemoteCarCatalog {
   static final ValueNotifier<int> stamp = ValueNotifier<int>(0);
 
   static bool brandsLoading = false;
@@ -191,7 +194,7 @@ class _RemoteCarCatalog {
   static final Map<String, String> restylingPhotoByKey = {};
   static final Map<String, List<String>> restylingPhotoUrlsByKey = {};
 
-  static final Map<String, _RestylingMeta> restylingMetaByKey = {};
+  static final Map<String, RemoteRestylingMeta> restylingMetaByKey = {};
 
   static final Map<String, bool> modelsLoading = {};
 
@@ -223,85 +226,54 @@ class _RemoteCarCatalog {
     return raw;
   }
 
-  static int _photoSizeRank(String size) {
-    final value = size.toLowerCase();
-    if (value == 'xl' ||
-        value.contains('xlarge') ||
-        value.contains('original')) {
-      return 6;
-    }
-    if (value == 'l' || value.contains('large')) return 5;
-    if (value == 'm' || value.contains('medium')) return 4;
-    if (value == 's' || value.contains('small')) return 3;
-    if (value.contains('thumb') || value.contains('preview')) return 1;
-    return 2;
-  }
+  // Ранжирование фото уехало в data-слой (car_catalog_photo_ranking.dart):
+  // тот же скоринг обрезает фото при записи в файловый кэш каталога, так
+  // что «лучшее фото» в пикере и в кэше выбирается одинаково.
+  static List<String> _bestPhotoUrlsForRestyling(RestylingItem rest) =>
+      carCatalogBestPhotoUrlsForRestyling(rest);
 
-  static int _photoUrlQualityScore(String raw) {
-    final value = raw.toLowerCase();
-    var score = 0;
-    if (value.contains('orig') ||
-        value.contains('original') ||
-        value.contains('full') ||
-        value.contains('hd')) {
-      score += 5;
-    }
-    if (value.contains('large') ||
-        value.contains('_l') ||
-        value.contains('-l')) {
-      score += 3;
-    }
-    final match = RegExp(r'(\d{2,4})x(\d{2,4})').firstMatch(value);
-    if (match != null) {
-      final w = int.tryParse(match.group(1) ?? '') ?? 0;
-      final h = int.tryParse(match.group(2) ?? '') ?? 0;
-      score += ((w * h) / 100000).round();
-    }
-    if (value.contains('thumb') ||
-        value.contains('thumbnail') ||
-        value.contains('preview') ||
-        value.contains('small') ||
-        value.contains('_s') ||
-        value.contains('-s')) {
-      score -= 3;
-    }
-    return score;
-  }
+  static bool _revisionHooked = false;
 
-  static String _normalizePhotoUrl(String raw) {
-    final value = raw.trim();
-    if (value.isEmpty) return '';
-    final uri = Uri.tryParse(value);
-    if (uri != null && uri.hasScheme) return value;
-    if (value.startsWith('//')) return 'https:$value';
-    if (value.startsWith('/')) return '';
-    if (value.startsWith('www.')) return 'https://$value';
-    if (RegExp(r'^[A-Za-z0-9.-]+\.[A-Za-z]{2,}').hasMatch(value)) {
-      return 'https://$value';
-    }
-    return value;
-  }
-
-  static List<String> _bestPhotoUrlsForRestyling(RestylingItem rest) {
-    final scored = <String, int>{};
-    for (final photo in rest.photos) {
-      final sizeScore = _photoSizeRank(photo.size) * 100;
-      for (final raw in [photo.urlX2, photo.urlX1]) {
-        final url = _normalizePhotoUrl(raw);
-        if (url.isEmpty) continue;
-        final total = sizeScore + _photoUrlQualityScore(url);
-        final prev = scored[url];
-        if (prev == null || total > prev) {
-          scored[url] = total;
-        }
+  /// Фоновый рефреш репозитория (stale-while-revalidate / синк) принёс
+  /// свежие данные → обновляем снапшоты фасада и дёргаем [stamp], чтобы
+  /// открытые формы перерисовали списки.
+  static void _hookRepositoryRevision() {
+    if (_revisionHooked) return;
+    _revisionHooked = true;
+    CarCatalogRepository.instance.revision.addListener(() {
+      final repo = CarCatalogRepository.instance;
+      if (repo.isReady) {
+        brandNames = repo.brandNamesSorted;
+        brandRusByName = repo.brandRusByName;
+        brandIdByName = repo.brandIdByName;
+        brandsFailed = false;
       }
-    }
-    final entries = scored.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return entries.map((e) => e.key).toList();
+      stamp.value++;
+    });
+  }
+
+  /// Тест-шов: полный сброс статического состояния фасада между тестами.
+  @visibleForTesting
+  static void resetForTest() {
+    brandsLoading = false;
+    brandsFailed = false;
+    brandNames = [];
+    brandRusByName = {};
+    brandIdByName = {};
+    modelsByMake.clear();
+    modelIdByKey.clear();
+    restylingsByKey.clear();
+    restylingPhotoByKey.clear();
+    restylingPhotoUrlsByKey.clear();
+    restylingMetaByKey.clear();
+    modelsLoading.clear();
+    restylingsLoading.clear();
+    _revisionHooked = false;
+    stamp.value++;
   }
 
   static Future<void> ensureBrands() async {
+    _hookRepositoryRevision();
     if (brandsLoading || brandNames.isNotEmpty) return;
 
     brandsLoading = true;
@@ -310,24 +282,17 @@ class _RemoteCarCatalog {
 
     stamp.value++;
 
-    for (int i = 0; i < 2; i++) {
-      try {
-        final catalog = await StorageApi.fetchBrandCatalog();
-
-        if (catalog.names.isNotEmpty) {
-          brandNames = catalog.names;
-
-          brandRusByName = catalog.rusByName;
-
-          brandIdByName = catalog.idByName;
-
-          break;
-        }
-      } catch (_) {
-        if (i == 0) {
-          await Future.delayed(const Duration(milliseconds: 600));
-        }
-      }
+    try {
+      // Cache-first: офлайн отдаёт персист; ошибка возможна только когда
+      // кэша ещё нет И сети нет (тогда пинаем фоновый синк — при
+      // появлении сети каталог доедет сам, revision-хук обновит формы).
+      await CarCatalogRepository.instance.getBrands();
+      final repo = CarCatalogRepository.instance;
+      brandNames = repo.brandNamesSorted;
+      brandRusByName = repo.brandRusByName;
+      brandIdByName = repo.brandIdByName;
+    } catch (_) {
+      unawaited(CarCatalogSyncService.instance.start());
     }
 
     if (brandNames.isEmpty) {
@@ -355,7 +320,7 @@ class _RemoteCarCatalog {
     stamp.value++;
 
     try {
-      final items = await StorageApi.fetchModels(brandId: brandId);
+      final items = await CarCatalogRepository.instance.getModels(brandId);
 
       final models = items.map((e) => e.model).toList();
 
@@ -393,8 +358,8 @@ class _RemoteCarCatalog {
     stamp.value++;
 
     try {
-      final generations = await StorageApi.fetchGenerations(
-        modelCarId: modelId,
+      final generations = await CarCatalogRepository.instance.getGenerations(
+        modelId,
       );
 
       final restylings = <String>{};
@@ -409,7 +374,7 @@ class _RemoteCarCatalog {
           restylingMetaByKey.putIfAbsent(
             _restylingKey(brandId, model, value),
 
-            () => _RestylingMeta(
+            () => RemoteRestylingMeta(
               generation: gen.generation,
               restylingId: rest.id,
 
@@ -447,18 +412,18 @@ class _RemoteCarCatalog {
     stamp.value++;
   }
 
+  // Хардкодный 3-марочный `_carCatalog`-фолбэк удалён: он давал опции БЕЗ
+  // restylingId, и офлайн-заявка уходила с пустым requestCars[].restylings
+  // (битая заявка — авто не идентифицировано). Теперь источник один —
+  // офлайн-кэш каталога; пока его нет, формы показывают честный баннер
+  // «нужен интернет один раз».
   static List<String> makes() {
     // Backend brand list is already popularity-sorted — keep its order, no
     // frontend re-sort (T3).
     if (brandNames.isNotEmpty) {
       return List<String>.from(brandNames);
     }
-
-    if (brandsLoading && !brandsFailed) {
-      return [];
-    }
-
-    return _carCatalog.keys.toList();
+    return const <String>[];
   }
 
   static List<String> modelsFor(String make) {
@@ -468,13 +433,7 @@ class _RemoteCarCatalog {
       return sortModelsByPopularity(make, remote);
     }
 
-    final local = _carCatalog[make];
-
-    if (local != null) {
-      return sortModelsByPopularity(make, local.keys.toList());
-    }
-
-    return [];
+    return const <String>[];
   }
 
   static List<String> restylingsFor(String make, String model) {
@@ -490,7 +449,7 @@ class _RemoteCarCatalog {
       }
     }
 
-    return _carCatalog[make]?[model] ?? <String>[];
+    return const <String>[];
   }
 
   static String restylingPhotoFor(String make, String model, String restyling) {
@@ -518,7 +477,7 @@ class _RemoteCarCatalog {
     return [single];
   }
 
-  static _RestylingMeta? restylingMetaFor(
+  static RemoteRestylingMeta? restylingMetaFor(
     String make,
 
     String model,
@@ -545,11 +504,11 @@ class _RemoteCarCatalog {
     return int.tryParse(match.group(1) ?? '');
   }
 
-  static int _restylingEndYearForSort(_RestylingMeta? meta) {
+  static int _restylingEndYearForSort(RemoteRestylingMeta? meta) {
     return meta?.yearEnd ?? meta?.yearStart ?? -1;
   }
 
-  static int _restylingStartYearForSort(_RestylingMeta? meta) {
+  static int _restylingStartYearForSort(RemoteRestylingMeta? meta) {
     return meta?.yearStart ?? meta?.yearEnd ?? -1;
   }
 
@@ -586,6 +545,56 @@ class _RemoteCarCatalog {
     if (brandId == null) return false;
 
     return restylingsLoading[_modelKey(brandId, model)] == true;
+  }
+}
+
+/// Баннер «каталог авто ещё не загружен» для форм заявки. Показывается
+/// только в состоянии «кэша нет + сеть недоступна» (после снятия
+/// хардкодного фолбэка это единственный случай пустого списка марок).
+/// Сам решает, видим ли он, — вызывающим достаточно вставить его в column;
+/// перерисовка приходит через RemoteCarCatalog.stamp, который формы уже
+/// слушают.
+class _CatalogUnavailableBanner extends StatelessWidget {
+  const _CatalogUnavailableBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    if (!RemoteCarCatalog.brandsFailed ||
+        RemoteCarCatalog.brandNames.isNotEmpty ||
+        RemoteCarCatalog.brandsLoading) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      margin: const EdgeInsets.only(top: 10, bottom: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: kRedColor.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kRedColor.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text:
+                'Каталог авто ещё не загружен — нет соединения с интернетом. '
+                'Подключите интернет один раз: каталог сохранится и дальше '
+                'будет работать офлайн.',
+            size: 12,
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () {
+                unawaited(CarCatalogSyncService.instance.start());
+                unawaited(RemoteCarCatalog.ensureBrands());
+              },
+              child: const Text('Повторить'),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -731,14 +740,14 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
       text: _cars.first.sourceUrl,
     );
 
-    _RemoteCarCatalog.stamp.addListener(_handleRemoteUpdate);
+    RemoteCarCatalog.stamp.addListener(_handleRemoteUpdate);
 
-    _RemoteCarCatalog.ensureBrands();
+    RemoteCarCatalog.ensureBrands();
   }
 
   @override
   void dispose() {
-    _RemoteCarCatalog.stamp.removeListener(_handleRemoteUpdate);
+    RemoteCarCatalog.stamp.removeListener(_handleRemoteUpdate);
     for (final timer in _sourceParseDebounce.values) {
       timer.cancel();
     }
@@ -1022,7 +1031,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
       final optionNormalized = _normalizeLookup(option);
       if (optionNormalized.isEmpty) continue;
       final rusNormalized = _normalizeLookup(
-        _RemoteCarCatalog.brandRusByName[option] ?? '',
+        RemoteCarCatalog.brandRusByName[option] ?? '',
       );
       final matches =
           slugNormalized.startsWith(optionNormalized) ||
@@ -1052,7 +1061,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     var remainder = slugNormalized;
     final aliases = <String>[
       _normalizeLookup(make),
-      _normalizeLookup(_RemoteCarCatalog.brandRusByName[make] ?? ''),
+      _normalizeLookup(RemoteCarCatalog.brandRusByName[make] ?? ''),
     ].where((e) => e.isNotEmpty).toList();
     for (final alias in aliases) {
       if (remainder.startsWith(alias)) {
@@ -1107,14 +1116,14 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
         }
       }
     }
-    final options = _RemoteCarCatalog.makes();
+    final options = RemoteCarCatalog.makes();
     final matched = _matchFromOptions(candidates, options);
     if (matched.isNotEmpty) return matched;
 
     for (final candidate in candidates) {
       final normalized = _normalizeLookup(candidate);
       for (final option in options) {
-        final rus = _RemoteCarCatalog.brandRusByName[option] ?? '';
+        final rus = RemoteCarCatalog.brandRusByName[option] ?? '';
         if (rus.isEmpty) continue;
         if (_normalizeLookup(rus) == normalized) return option;
       }
@@ -1216,7 +1225,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
         }
       }
     }
-    final options = _RemoteCarCatalog.modelsFor(make);
+    final options = RemoteCarCatalog.modelsFor(make);
     if (options.isEmpty) return '';
 
     final direct = _matchFromOptions(candidates, options);
@@ -1224,7 +1233,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
     final expanded = _expandModelCandidates(candidates, [
       make,
-      _RemoteCarCatalog.brandRusByName[make] ?? '',
+      RemoteCarCatalog.brandRusByName[make] ?? '',
     ]);
     final fromExpanded = _matchFromOptions(expanded, options);
     if (fromExpanded.isNotEmpty) return fromExpanded;
@@ -1405,7 +1414,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     final currentUrl = _normalizeSourceUrlForParse(current.sourceUrl);
     if (currentUrl != url) return;
 
-    await _RemoteCarCatalog.ensureBrands();
+    await RemoteCarCatalog.ensureBrands();
     if (!mounted || _sourceParseSeq[carId] != seq) return;
     final afterBrands = _findCarById(carId);
     if (afterBrands == null) return;
@@ -1421,7 +1430,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     }
 
     if (make.isNotEmpty) {
-      await _RemoteCarCatalog.ensureModels(make);
+      await RemoteCarCatalog.ensureModels(make);
     }
 
     if (!mounted || _sourceParseSeq[carId] != seq) return;
@@ -1441,7 +1450,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     }
 
     if (make.isNotEmpty && model.isNotEmpty) {
-      await _RemoteCarCatalog.ensureRestylings(make, model);
+      await RemoteCarCatalog.ensureRestylings(make, model);
     }
 
     if (!mounted || _sourceParseSeq[carId] != seq) return;
@@ -1531,7 +1540,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     if (grouped != null && grouped.restylingIds.isNotEmpty) {
       return grouped.restylingIds;
     }
-    final id = _RemoteCarCatalog.restylingIdFor(
+    final id = RemoteCarCatalog.restylingIdFor(
       car.make,
       car.model,
       car.restyling,
@@ -1575,7 +1584,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     final cached = _collapsedRestylingOptionsCache[cacheKey];
     if (cached != null) return cached;
 
-    final rawOptions = _RemoteCarCatalog.restylingsFor(make, model);
+    final rawOptions = RemoteCarCatalog.restylingsFor(make, model);
     if (rawOptions.isEmpty) {
       const empty = <_CollapsedRestylingOption>[];
       _collapsedRestylingOptionsCache[cacheKey] = empty;
@@ -1588,7 +1597,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     for (final rawValue in rawOptions) {
       final value = rawValue.trim();
       if (value.isEmpty) continue;
-      final meta = _RemoteCarCatalog.restylingMetaFor(make, model, value);
+      final meta = RemoteCarCatalog.restylingMetaFor(make, model, value);
       final generation = meta?.generation ?? 0;
       final range = _PickerYearRange(
         start: meta?.yearStart,
@@ -1600,8 +1609,8 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList();
-      final imageUrl = _RemoteCarCatalog.restylingPhotoFor(make, model, value);
-      final restylingId = _RemoteCarCatalog.restylingIdFor(make, model, value);
+      final imageUrl = RemoteCarCatalog.restylingPhotoFor(make, model, value);
+      final restylingId = RemoteCarCatalog.restylingIdFor(make, model, value);
 
       _CollapsedRestylingGroup? target;
       for (final group in groups) {
@@ -1719,8 +1728,8 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
     for (final rawValue in values) {
       final value = rawValue.trim();
       if (value.isEmpty || !seen.add(value)) continue;
-      final meta = _RemoteCarCatalog.restylingMetaFor(make, model, value);
-      final photoUrls = _RemoteCarCatalog.restylingPhotoUrlsFor(
+      final meta = RemoteCarCatalog.restylingMetaFor(make, model, value);
+      final photoUrls = RemoteCarCatalog.restylingPhotoUrlsFor(
         make,
         model,
         value,
@@ -1842,7 +1851,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
           final make = patch.make ?? '';
 
           if (make.isNotEmpty) {
-            _RemoteCarCatalog.ensureModels(make);
+            RemoteCarCatalog.ensureModels(make);
           }
 
           return;
@@ -1856,7 +1865,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
           final model = patch.model ?? '';
 
           if (make.isNotEmpty && model.isNotEmpty) {
-            _RemoteCarCatalog.ensureRestylings(make, model);
+            RemoteCarCatalog.ensureRestylings(make, model);
           }
 
           return;
@@ -1938,6 +1947,17 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
           ce['model'] =
               '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043C\u043E\u0434\u0435\u043B\u044C (\u0435\u0441\u043B\u0438 \u043D\u0435\u0442 \u0441\u0441\u044B\u043B\u043A\u0438)';
         }
+
+        // \u0411\u044D\u043A \u0438\u0434\u0435\u043D\u0442\u0438\u0444\u0438\u0446\u0438\u0440\u0443\u0435\u0442 \u043C\u0430\u0448\u0438\u043D\u0443 \u0422\u041E\u041B\u042C\u041A\u041E \u043F\u043E restyling-ID (RequestCarDTO):
+        // \u0431\u0435\u0437 \u043D\u0435\u0433\u043E \u0432 \u0437\u0430\u044F\u0432\u043A\u0435 \u043D\u0435\u0442 \u0430\u0432\u0442\u043E. \u0420\u0430\u043D\u044C\u0448\u0435 \u044D\u0442\u043E \u043C\u043E\u043B\u0447\u0430 \u0443\u0445\u043E\u0434\u0438\u043B\u043E \u043F\u0443\u0441\u0442\u044B\u043C
+        // restylings:[] (\u043E\u0441\u043E\u0431\u0435\u043D\u043D\u043E \u043E\u0444\u043B\u0430\u0439\u043D \u0447\u0435\u0440\u0435\u0437 \u0445\u0430\u0440\u0434\u043A\u043E\u0434\u043D\u044B\u0439 \u0444\u043E\u043B\u0431\u044D\u043A) \u2014 \u0442\u0435\u043F\u0435\u0440\u044C
+        // \u0431\u043B\u043E\u043A\u0438\u0440\u0443\u0435\u043C \u0434\u043E \u0432\u044B\u0431\u043E\u0440\u0430 \u043F\u043E\u043A\u043E\u043B\u0435\u043D\u0438\u044F/\u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433\u0430 \u0438\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430.
+        if (c.make.trim().isNotEmpty &&
+            c.model.trim().isNotEmpty &&
+            _restylingIdsForCar(c).isEmpty) {
+          ce['restyling'] =
+              '\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043F\u043E\u043A\u043E\u043B\u0435\u043D\u0438\u0435 \u0438 \u0440\u0435\u0441\u0442\u0430\u0439\u043B\u0438\u043D\u0433 \u0438\u0437 \u043A\u0430\u0442\u0430\u043B\u043E\u0433\u0430';
+        }
       }
 
       if (ce.isNotEmpty) _carErrors[c.id] = ce;
@@ -1984,6 +2004,22 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
         if (dueAt != null) 'dueAt': dueAt,
       };
     }).toList();
+
+    // Страховка поверх _validateCars: машина без ссылки и без единого
+    // restyling-ID не имеет идентичности для бэка — такую заявку не шлём
+    // (раньше уходило restylings:[] и авто терялось).
+    for (var i = 0; i < activeCars.length; i++) {
+      final noUrl = activeCars[i].sourceUrl.trim().isEmpty;
+      final ids = requestCars[i]['restylings'];
+      if (noUrl && ids is List && ids.isEmpty) {
+        setState(() {
+          _isSubmittingByCar = false;
+          _formError =
+              'Не удалось определить авто по каталогу — переоткройте выбор поколения/рестайлинга';
+        });
+        return;
+      }
+    }
     final displayCars = activeCars.map((c) {
       final restDisplay = _restylingDisplayFor(c.make, c.model, c.restyling);
       final phone = c.sellerPhone.trim();
@@ -1994,7 +2030,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
         c.model,
         c.restyling,
       );
-      final photoUrls = _RemoteCarCatalog.restylingPhotoUrlsFor(
+      final photoUrls = RemoteCarCatalog.restylingPhotoUrlsFor(
         c.make,
         c.model,
         c.restyling,
@@ -2114,7 +2150,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
       return;
     }
 
-    _RemoteCarCatalog.ensureRestylings(car.make, car.model);
+    RemoteCarCatalog.ensureRestylings(car.make, car.model);
 
     String query = '';
 
@@ -2212,10 +2248,10 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
                         Expanded(
                           child: ValueListenableBuilder<int>(
-                            valueListenable: _RemoteCarCatalog.stamp,
+                            valueListenable: RemoteCarCatalog.stamp,
 
                             builder: (ctx, _, _) {
-                              final options = _RemoteCarCatalog.restylingsFor(
+                              final options = RemoteCarCatalog.restylingsFor(
                                 car.make,
 
                                 car.model,
@@ -2236,7 +2272,7 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
                                         .toList();
 
                               final loading =
-                                  _RemoteCarCatalog.isRestylingsLoading(
+                                  RemoteCarCatalog.isRestylingsLoading(
                                     car.make,
 
                                     car.model,
@@ -2370,9 +2406,9 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
     String rest,
   ) {
-    final meta = _RemoteCarCatalog.restylingMetaFor(make, model, rest);
+    final meta = RemoteCarCatalog.restylingMetaFor(make, model, rest);
 
-    final imageUrl = _RemoteCarCatalog.restylingPhotoFor(make, model, rest);
+    final imageUrl = RemoteCarCatalog.restylingPhotoFor(make, model, rest);
 
     final years = _formatYears(meta?.yearStart, meta?.yearEnd);
 
@@ -2455,9 +2491,9 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
   @override
   Widget build(BuildContext context) {
-    final makeOptions = _RemoteCarCatalog.makes();
-    final makeAltNames = _RemoteCarCatalog.brandRusByName;
-    final makeLoading = _RemoteCarCatalog.brandsLoading;
+    final makeOptions = RemoteCarCatalog.makes();
+    final makeAltNames = RemoteCarCatalog.brandRusByName;
+    final makeLoading = RemoteCarCatalog.brandsLoading;
 
     return ListView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -2513,6 +2549,8 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
             child: MyText(text: _formError, size: 12, color: kRedColor),
           ),
 
+        const _CatalogUnavailableBanner(),
+
         const SizedBox(height: 12),
         MyTextField(
           labelText:
@@ -2543,9 +2581,9 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
             makeOptions: makeOptions,
 
-            modelOptions: _RemoteCarCatalog.modelsFor(_cars[i].make),
+            modelOptions: RemoteCarCatalog.modelsFor(_cars[i].make),
 
-            restylingOptions: _RemoteCarCatalog.restylingsFor(
+            restylingOptions: RemoteCarCatalog.restylingsFor(
               _cars[i].make,
 
               _cars[i].model,
@@ -2563,9 +2601,9 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
             makeLoading: makeLoading,
 
-            modelLoading: _RemoteCarCatalog.isModelsLoading(_cars[i].make),
+            modelLoading: RemoteCarCatalog.isModelsLoading(_cars[i].make),
 
-            restylingLoading: _RemoteCarCatalog.isRestylingsLoading(
+            restylingLoading: RemoteCarCatalog.isRestylingsLoading(
               _cars[i].make,
 
               _cars[i].model,
@@ -3241,32 +3279,6 @@ String _shortListingLabel(String url) {
 
 const List<String> _allowedListingDomains = ['avito.ru', 'drom.ru', 'auto.ru'];
 
-const Map<String, Map<String, List<String>>> _carCatalog = {
-  'Toyota': {
-    'Camry': ['XV40', 'XV50', 'XV70'],
-
-    'Corolla': ['E150', 'E170', 'E210'],
-
-    'RAV4': ['XA30', 'XA40', 'XA50'],
-  },
-
-  'Ford': {
-    'Focus': ['Mk1', 'Mk2', 'Mk3', 'Mk4'],
-
-    'Mondeo': ['Mk3', 'Mk4', 'Mk5'],
-
-    'Kuga': ['I', 'II', 'III'],
-  },
-
-  'Volkswagen': {
-    'Golf': ['Mk5', 'Mk6', 'Mk7', 'Mk8'],
-
-    'Passat': ['B6', 'B7', 'B8'],
-
-    'Tiguan': ['I', 'II'],
-  },
-};
-
 class _TurnkeyForm extends StatefulWidget {
   @override
   State<_TurnkeyForm> createState() => _TurnkeyFormState();
@@ -3309,9 +3321,9 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
   void initState() {
     super.initState();
 
-    _RemoteCarCatalog.stamp.addListener(_handleRemoteUpdate);
+    RemoteCarCatalog.stamp.addListener(_handleRemoteUpdate);
 
-    _RemoteCarCatalog.ensureBrands();
+    RemoteCarCatalog.ensureBrands();
 
     // Eagerly preload the city dataset so the first picker open is
     // instant. Pre-fills `_isCityValid` if the form was reopened with
@@ -3359,7 +3371,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
   @override
   void dispose() {
-    _RemoteCarCatalog.stamp.removeListener(_handleRemoteUpdate);
+    RemoteCarCatalog.stamp.removeListener(_handleRemoteUpdate);
     _scrollController.dispose();
     _cityController.dispose();
     _budgetFromController.dispose();
@@ -3442,27 +3454,18 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     return true;
   }
 
-  List<String> _allMakes() => _RemoteCarCatalog.makes();
+  List<String> _allMakes() => RemoteCarCatalog.makes();
 
   List<String> _allModelsForMakes(List<String> makes) {
     final set = <String>{};
 
-    if (makes.isEmpty) {
-      for (final mk in _carCatalog.keys) {
-        set.addAll(_carCatalog[mk]!.keys);
-      }
+    // Без выбранных марок собираем модели по всем известным маркам каталога
+    // (наполняются лениво ensureModels). Хардкодный фолбэк удалён — см.
+    // комментарий у RemoteCarCatalog.makes().
+    final targetMakes = makes.isEmpty ? RemoteCarCatalog.makes() : makes;
 
-      return sortModelsByPopularityForMakes(makes, set.toList());
-    }
-
-    for (final mk in makes) {
-      final remote = _RemoteCarCatalog.modelsFor(mk);
-
-      if (remote.isNotEmpty) {
-        set.addAll(remote);
-      } else {
-        set.addAll(_carCatalog[mk]?.keys ?? const Iterable.empty());
-      }
+    for (final mk in targetMakes) {
+      set.addAll(RemoteCarCatalog.modelsFor(mk));
     }
 
     return sortModelsByPopularityForMakes(makes, set.toList());
@@ -3481,7 +3484,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
         final bModel = bParts[1].trim();
         final bRest = bParts.sublist(2).join('|').trim();
         if (aMake == bMake && aModel == bModel) {
-          final byYear = _RemoteCarCatalog.compareRestylingsByYearDesc(
+          final byYear = RemoteCarCatalog.compareRestylingsByYearDesc(
             aMake,
             aModel,
             aRest,
@@ -3506,29 +3509,17 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
   ) {
     final set = <String>{};
 
-    final targetMakes = makes.isEmpty ? _carCatalog.keys : makes;
+    final targetMakes = makes.isEmpty ? RemoteCarCatalog.makes() : makes;
 
     for (final mk in targetMakes) {
-      final byModel = _carCatalog[mk] ?? {};
-
-      final knownModels = _RemoteCarCatalog.modelsFor(mk);
-
-      final availableModels = knownModels.isNotEmpty
-          ? knownModels
-          : byModel.keys.toList();
+      final availableModels = RemoteCarCatalog.modelsFor(mk);
 
       final targetModels = models.isEmpty
           ? availableModels
           : models.where((m) => availableModels.contains(m));
 
       for (final md in targetModels) {
-        final remote = _RemoteCarCatalog.restylingsFor(mk, md);
-
-        final restList = remote.isNotEmpty
-            ? remote
-            : (byModel[md] ?? const <String>[]);
-
-        for (final rest in restList) {
+        for (final rest in RemoteCarCatalog.restylingsFor(mk, md)) {
           set.add('$mk|$md|$rest');
         }
       }
@@ -3563,7 +3554,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     });
 
     for (final mk in v) {
-      _RemoteCarCatalog.ensureModels(mk);
+      RemoteCarCatalog.ensureModels(mk);
     }
   }
 
@@ -3586,7 +3577,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
     for (final mk in _tkMakes) {
       for (final md in v) {
-        _RemoteCarCatalog.ensureRestylings(mk, md);
+        RemoteCarCatalog.ensureRestylings(mk, md);
       }
     }
   }
@@ -3944,7 +3935,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
                         Expanded(
                           child: ValueListenableBuilder<int>(
-                            valueListenable: _RemoteCarCatalog.stamp,
+                            valueListenable: RemoteCarCatalog.stamp,
 
                             builder: (ctx, _, _) {
                               final options = _allRestylingsForSelection(
@@ -4103,29 +4094,29 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
       }
     }
 
-    _RestylingMeta? meta;
+    RemoteRestylingMeta? meta;
 
     String imageUrl = '';
 
     if (make.isNotEmpty && model.isNotEmpty) {
-      meta = _RemoteCarCatalog.restylingMetaFor(make, model, restName);
+      meta = RemoteCarCatalog.restylingMetaFor(make, model, restName);
 
-      imageUrl = _RemoteCarCatalog.restylingPhotoFor(make, model, restName);
+      imageUrl = RemoteCarCatalog.restylingPhotoFor(make, model, restName);
     } else {
-      final makes = _tkMakes.isNotEmpty ? _tkMakes : _carCatalog.keys.toList();
+      final makes = _tkMakes.isNotEmpty ? _tkMakes : RemoteCarCatalog.makes();
 
       final models = _tkModels;
 
       for (final mk in makes) {
         final modelList = models.isNotEmpty
             ? models
-            : (_carCatalog[mk]?.keys.toList() ?? const <String>[]);
+            : RemoteCarCatalog.modelsFor(mk);
 
         for (final md in modelList) {
-          meta ??= _RemoteCarCatalog.restylingMetaFor(mk, md, restName);
+          meta ??= RemoteCarCatalog.restylingMetaFor(mk, md, restName);
 
           if (imageUrl.isEmpty) {
-            imageUrl = _RemoteCarCatalog.restylingPhotoFor(mk, md, restName);
+            imageUrl = RemoteCarCatalog.restylingPhotoFor(mk, md, restName);
           }
 
           if (meta != null && imageUrl.isNotEmpty) break;
@@ -4230,21 +4221,21 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
       final make = parts[0].trim();
       final model = parts[1].trim();
       final restName = parts.sublist(2).join('|').trim();
-      final id = _RemoteCarCatalog.restylingIdFor(make, model, restName);
+      final id = RemoteCarCatalog.restylingIdFor(make, model, restName);
       if (id != null && id > 0) return id;
     }
 
-    final directId = _RemoteCarCatalog.restylingIdFor('', '', trimmed);
+    final directId = RemoteCarCatalog.restylingIdFor('', '', trimmed);
     if (directId != null && directId > 0) return directId;
 
-    final makes = _tkMakes.isNotEmpty ? _tkMakes : _carCatalog.keys.toList();
+    final makes = _tkMakes.isNotEmpty ? _tkMakes : RemoteCarCatalog.makes();
     final selectedModels = _tkModels;
     for (final make in makes) {
       final models = selectedModels.isNotEmpty
           ? selectedModels
-          : _RemoteCarCatalog.modelsFor(make);
+          : RemoteCarCatalog.modelsFor(make);
       for (final model in models) {
-        final id = _RemoteCarCatalog.restylingIdFor(make, model, trimmed);
+        final id = RemoteCarCatalog.restylingIdFor(make, model, trimmed);
         if (id != null && id > 0) return id;
       }
     }
@@ -4283,6 +4274,20 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
           .whereType<int>()
           .toSet()
           .toList();
+      // Пустой выбор рестайлингов — легитимная заявка «любое авто». Но если
+      // пользователь ВЫБРАЛ рестайлинги, а какие-то из них не резолвятся в
+      // ID (протухшее состояние каталога), молча урезать его выбор нельзя.
+      final unresolved = _tkRestylings
+          .where((raw) => _turnkeyRestylingIdFor(raw) == null)
+          .length;
+      if (unresolved > 0) {
+        setState(() {
+          _isSubmittingTurnkey = false;
+          _formError =
+              'Не удалось определить выбранные рестайлинги по каталогу — переоткройте выбор';
+        });
+        return;
+      }
       final dueAt = _dueDate == null ? null : _formatDateIso(_dueDate!);
       final city = _cityController.text.trim();
       final note = _noteController.text.trim();
@@ -4304,10 +4309,10 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
               }
             }
             final meta = make.isNotEmpty && model.isNotEmpty
-                ? _RemoteCarCatalog.restylingMetaFor(make, model, restName)
+                ? RemoteCarCatalog.restylingMetaFor(make, model, restName)
                 : null;
             final photoUrls = make.isNotEmpty && model.isNotEmpty
-                ? _RemoteCarCatalog.restylingPhotoUrlsFor(make, model, restName)
+                ? RemoteCarCatalog.restylingPhotoUrlsFor(make, model, restName)
                 : const <String>[];
             final photoUrl = photoUrls.isNotEmpty ? photoUrls.first : '';
             final restEntry = <String, dynamic>{};
@@ -4464,6 +4469,8 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
             color: kRedColor,
             paddingBottom: 12,
           ),
+
+        const _CatalogUnavailableBanner(),
 
         Container(
           key: _cityFieldKey,
@@ -4880,8 +4887,8 @@ class _SelectField extends StatelessWidget {
   }
 }
 
-class _RestylingMeta {
-  const _RestylingMeta({
+class RemoteRestylingMeta {
+  const RemoteRestylingMeta({
     required this.generation,
     required this.restylingId,
 

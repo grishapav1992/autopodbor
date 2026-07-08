@@ -15,7 +15,8 @@
 
 import '../api/storage_api_models.dart';
 import 'car_catalog_store_io.dart'
-    if (dart.library.html) 'car_catalog_store_web.dart' as impl;
+    if (dart.library.html) 'car_catalog_store_web.dart'
+    as impl;
 
 /// Результат чтения из store: элементы + момент записи (для TTL-решений
 /// в репозитории/синке).
@@ -44,6 +45,12 @@ abstract class CarCatalogStore {
   Future<CarCatalogStoreEntry<GenerationItem>?> loadGenerations(int modelCarId);
 
   Future<bool> saveGenerations(int modelCarId, List<GenerationItem> items);
+
+  /// Дешёвый штамп записи поколений модели (без парсинга содержимого):
+  /// mtime файла на IO, null на web/при отсутствии. Нужен фоновому синку,
+  /// чтобы засчитывать оппортунистические загрузки из пикеров и не
+  /// перечитывать тысячи файлов при планировании фазы «поколения».
+  Future<int?> generationsSavedAtMs(int modelCarId);
 }
 
 CarCatalogStore createCarCatalogStore() => impl.createPlatformCarCatalogStore();

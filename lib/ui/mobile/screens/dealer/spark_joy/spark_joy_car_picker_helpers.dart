@@ -1,17 +1,47 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
-  Future<void> _openCarPickerDialog() async {
+  /// [startAt] — с какого шага открыть визард: тапы по полям «Марка» /
+  /// «Модель» / «Поколение» шага «Автомобиль» ведут на соответствующий
+  /// шаг; null (кнопка «Выбрать из каталога») — «умное» продолжение с
+  /// места текущей привязки.
+  Future<void> _openCarPickerDialog({_CarPickerStep? startAt}) async {
     if (_carPickerOpening) return;
     _carPickerOpening = true;
     try {
-      await _openCarPickerDialogBody();
+      await _openCarPickerDialogBody(startAt: startAt);
     } finally {
       _carPickerOpening = false;
     }
   }
 
-  Future<void> _openCarPickerDialogBody() async {
+  Future<void> _openCarPickerDialogBody({_CarPickerStep? startAt}) async {
+    final catalog = CarCatalogRepository.instance;
+
+    // Строгий режим: каталог — единственный источник авто (бэк принимает
+    // только ID). Кэша ещё нет И сети нет → пикер не открываем: объясняем,
+    // пинаем фоновый синк — при появлении сети каталог доедет сам.
+    List<storage_api.BrandItem> brands;
+    try {
+      brands = await catalog.getBrands();
+    } catch (_) {
+      unawaited(CarCatalogSyncService.instance.start());
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'Каталог авто ещё не загружен. Подключите интернет — '
+            'каталог сохранится и дальше будет работать офлайн.',
+          ),
+          action: SnackBarAction(
+            label: 'Повторить',
+            onPressed: () => unawaited(_openCarPickerDialog(startAt: startAt)),
+          ),
+        ),
+      );
+      return;
+    }
+
     bool same(String left, String right) {
       return left.trim().toLowerCase() == right.trim().toLowerCase();
     }
@@ -30,20 +60,15 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       return model.modelRus.trim();
     }
 
-    _CarCatalogBrand? selectedBrand;
-    _CarCatalogModel? selectedModel;
+    storage_api.BrandItem? selectedBrand;
+    storage_api.ModelItem? selectedModel;
     _CarCatalogGeneration? selectedGeneration;
-    storage_api.BrandItem? selectedRemoteBrand;
-    storage_api.ModelItem? selectedRemoteModel;
-    List<storage_api.BrandItem> remoteBrands = const [];
-    final remoteModelsByBrandId = <int, List<storage_api.ModelItem>>{};
-    final remoteGenerationsByModelId = <int, List<_CarCatalogGeneration>>{};
-    var remoteModelsLoading = false;
-    var remoteModelsFailed = false;
-    var remoteGenerationsLoading = false;
-    var remoteGenerationsFailed = false;
-    var useRemoteCatalog = false;
-    const remoteCatalogLoadTimeout = Duration(seconds: 12);
+    final generationsByModelId = <int, List<_CarCatalogGeneration>>{};
+    var modelsLoading = false;
+    var modelsFailed = false;
+    var generationsLoading = false;
+    var generationsFailed = false;
+    const catalogLoadTimeout = Duration(seconds: 12);
     _CarPickerStep step = _CarPickerStep.brand;
     var search = '';
 
@@ -52,57 +77,12 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     final savedGeneration = _generationController.text.trim();
     final savedRestyling = _restylingLabel.trim();
 
-    for (final brand in _SparkJoyVehicleRegistry.carCatalog) {
-      if (!same(brand.name, savedBrand)) continue;
-      selectedBrand = brand;
-      for (final model in brand.models) {
-        if (!same(model.name, savedModel)) continue;
-        selectedModel = model;
-        for (final generation in model.generations) {
-          if (!same(generation.name, savedGeneration)) continue;
-          selectedGeneration = generation;
-          break;
-        }
-        break;
-      }
-      break;
-    }
-
-    _CarCatalogBrand? findLocalBrandForRemote(
-      storage_api.BrandItem remoteBrand,
-    ) {
-      for (final item in _SparkJoyVehicleRegistry.carCatalog) {
-        if (same(item.name, remoteBrand.name) ||
-            same(item.name, remoteBrand.nameRus)) {
-          return item;
-        }
-      }
-      return null;
-    }
-
-    _CarCatalogModel? findLocalModelForRemote(
-      _CarCatalogBrand localBrand,
-      storage_api.ModelItem remoteModel,
-    ) {
-      for (final item in localBrand.models) {
-        if (same(item.name, remoteModel.model) ||
-            same(item.name, remoteModel.modelRus)) {
-          return item;
-        }
-      }
-      return null;
-    }
-
-    Future<List<storage_api.ModelItem>> loadRemoteModels(
+    // Репозиторий мемоизирует и офлайн отдаёт персист — диалогу свой кэш
+    // моделей не нужен.
+    Future<List<storage_api.ModelItem>> loadModels(
       storage_api.BrandItem brand,
-    ) async {
-      final cached = remoteModelsByBrandId[brand.id];
-      if (cached != null) return cached;
-      final models = await storage_api.StorageApi.fetchModels(
-        brandId: brand.id,
-      );
-      remoteModelsByBrandId[brand.id] = models;
-      return models;
+    ) {
+      return catalog.getModels(brand.id);
     }
 
     _CarCatalogGeneration mapRemoteGeneration(
@@ -161,104 +141,110 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       );
     }
 
-    Future<List<_CarCatalogGeneration>> loadRemoteGenerations(
+    Future<List<_CarCatalogGeneration>> loadGenerations(
       storage_api.ModelItem model,
     ) async {
-      final cached = remoteGenerationsByModelId[model.id];
+      final cached = generationsByModelId[model.id];
       if (cached != null) return cached;
-      final generations = await storage_api.StorageApi.fetchGenerations(
-        modelCarId: model.id,
-      );
+      final generations = await catalog.getGenerations(model.id);
       final mapped = generations.map(mapRemoteGeneration).toList();
-      remoteGenerationsByModelId[model.id] = mapped;
+      generationsByModelId[model.id] = mapped;
       return mapped;
     }
 
-    bool matchesRemoteBrand(storage_api.BrandItem brand, String savedValue) {
-      return same(brand.name, savedValue) || same(brand.nameRus, savedValue);
-    }
-
-    bool matchesRemoteModel(storage_api.ModelItem model, String savedValue) {
-      return same(model.model, savedValue) || same(model.modelRus, savedValue);
-    }
-
-    try {
-      final catalog = await storage_api.StorageApi.fetchBrandCatalog();
-      if (catalog.items.isNotEmpty) {
-        // Keep the backend order — it already returns brands sorted by
-        // popularity. The previous alphabetical re-sort overrode that (T3).
-        remoteBrands = List<storage_api.BrandItem>.from(catalog.items);
-        useRemoteCatalog = true;
+    // ── Пре-резолв текущей привязки: сперва по сохранённым ID (строгий
+    // режим их всегда пишет), затем по имени (легаси-черновики со
+    // свободным текстом).
+    final savedBrandId = _selectedBrandId;
+    if (savedBrandId != null) {
+      for (final brand in brands) {
+        if (brand.id == savedBrandId) {
+          selectedBrand = brand;
+          break;
+        }
       }
-    } catch (_) {
-      useRemoteCatalog = false;
+    }
+    if (selectedBrand == null && savedBrand.isNotEmpty) {
+      for (final brand in brands) {
+        if (same(brand.name, savedBrand) || same(brand.nameRus, savedBrand)) {
+          selectedBrand = brand;
+          break;
+        }
+      }
     }
 
-    if (useRemoteCatalog) {
-      for (final brand in remoteBrands) {
-        if (!matchesRemoteBrand(brand, savedBrand)) continue;
-        selectedRemoteBrand = brand;
-        selectedBrand ??= findLocalBrandForRemote(brand);
-        break;
-      }
-
-      if (selectedRemoteBrand != null && savedModel.isNotEmpty) {
-        try {
-          final models = await loadRemoteModels(selectedRemoteBrand);
+    final preBrand = selectedBrand;
+    if (preBrand != null) {
+      try {
+        final models = await loadModels(preBrand);
+        final savedModelId = _selectedModelCarId;
+        if (savedModelId != null) {
           for (final model in models) {
-            if (!matchesRemoteModel(model, savedModel)) continue;
-            selectedRemoteModel = model;
-            if (selectedBrand != null) {
-              selectedModel = findLocalModelForRemote(selectedBrand, model);
+            if (model.id == savedModelId) {
+              selectedModel = model;
+              break;
             }
-            break;
           }
-        } catch (_) {}
+        }
+        if (selectedModel == null && savedModel.isNotEmpty) {
+          for (final model in models) {
+            if (same(model.model, savedModel) ||
+                same(model.modelRus, savedModel)) {
+              selectedModel = model;
+              break;
+            }
+          }
+        }
+      } catch (_) {
+        // Офлайн и моделей этой марки ещё нет в кэше — шаг модели покажет
+        // офлайн-состояние с «Повторить».
+        modelsFailed = true;
       }
+    }
 
-      if (selectedRemoteModel != null &&
-          !remoteGenerationsByModelId.containsKey(selectedRemoteModel.id)) {
-        try {
-          await loadRemoteGenerations(selectedRemoteModel);
-        } catch (_) {}
-      }
-
-      if (selectedRemoteModel != null && savedGeneration.isNotEmpty) {
-        try {
-          final generations = await loadRemoteGenerations(selectedRemoteModel);
+    final preModel = selectedModel;
+    if (preModel != null) {
+      try {
+        final generations = await loadGenerations(preModel);
+        if (savedGeneration.isNotEmpty) {
           for (final generation in generations) {
             final label = 'Поколение ${generation.name}';
-            if (!same(generation.name, savedGeneration) &&
-                !same(label, savedGeneration)) {
-              continue;
+            if (same(generation.name, savedGeneration) ||
+                same(label, savedGeneration)) {
+              selectedGeneration = generation;
+              break;
             }
-            selectedGeneration = generation;
-            break;
           }
-        } catch (_) {}
+        }
+      } catch (_) {
+        generationsFailed = true;
       }
     }
 
-    if (selectedBrand != null &&
-        (selectedRemoteBrand == null || !useRemoteCatalog)) {
-      step = _CarPickerStep.model;
-    }
-    if (selectedModel != null) {
-      step = _CarPickerStep.generation;
-    }
+    if (selectedBrand != null) step = _CarPickerStep.model;
+    if (selectedModel != null) step = _CarPickerStep.generation;
     if (selectedGeneration != null && savedRestyling.isNotEmpty) {
       step = _CarPickerStep.restyling;
     }
-    if (useRemoteCatalog &&
-        selectedRemoteModel != null &&
-        selectedGeneration == null) {
-      step = _CarPickerStep.generation;
-    }
-    if (useRemoteCatalog &&
-        selectedRemoteBrand != null &&
-        selectedRemoteModel == null &&
-        selectedModel == null) {
-      step = _CarPickerStep.model;
+
+    // Явная точка входа с конкретного поля шага «Автомобиль».
+    if (startAt != null) {
+      switch (startAt) {
+        case _CarPickerStep.brand:
+          step = _CarPickerStep.brand;
+        case _CarPickerStep.model:
+          step = selectedBrand != null
+              ? _CarPickerStep.model
+              : _CarPickerStep.brand;
+        case _CarPickerStep.generation:
+          step = selectedModel != null
+              ? _CarPickerStep.generation
+              : (selectedBrand != null
+                    ? _CarPickerStep.model
+                    : _CarPickerStep.brand);
+        case _CarPickerStep.restyling:
+          break; // естественный step уже максимально глубокий
+      }
     }
 
     String titleForStep(_CarPickerStep value) {
@@ -275,15 +261,11 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     }
 
     String breadcrumb() {
+      final brand = selectedBrand;
+      final model = selectedModel;
       final parts = <String>[
-        if (selectedBrand != null)
-          selectedBrand!.name
-        else if (selectedRemoteBrand != null)
-          brandLabel(selectedRemoteBrand!),
-        if (selectedModel != null)
-          selectedModel!.name
-        else if (selectedRemoteModel != null)
-          modelLabel(selectedRemoteModel!),
+        if (brand != null) brandLabel(brand),
+        if (model != null) modelLabel(model),
         if (selectedGeneration != null && step == _CarPickerStep.restyling)
           'Пок. ${selectedGeneration!.name}',
       ];
@@ -291,41 +273,42 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     }
 
     _CarPickerSelection? buildSelection(_CarCatalogRestyling restyling) {
-      final brand = selectedBrand?.name ?? selectedRemoteBrand?.name ?? '';
-      final model = selectedModel?.name ?? selectedRemoteModel?.model ?? '';
-      if (brand.trim().isEmpty ||
-          model.trim().isEmpty ||
-          selectedGeneration == null) {
+      final brand = selectedBrand;
+      final model = selectedModel;
+      final generation = selectedGeneration;
+      if (brand == null || model == null || generation == null) {
         return null;
       }
       return _CarPickerSelection(
-        brand: brand,
-        model: model,
-        generation: selectedGeneration!.name,
+        brand: brand.name,
+        model: model.model,
+        generation: generation.name,
         restyling: restyling.label,
         frames: restyling.frames,
         photoUrl: restyling.photoUrl,
         frameId: restyling.frameIds.isNotEmpty
             ? restyling.frameIds.first
             : null,
-        brandId: selectedRemoteBrand?.id,
-        modelCarId: selectedRemoteModel?.id,
+        brandId: brand.id,
+        modelCarId: model.id,
       );
     }
 
-    _CarPickerSelection buildSelectionForModel({
-      required String brand,
-      required String model,
-    }) {
+    // Финализация на уровне модели («Без модификации» / у модели нет
+    // поколений в каталоге): brandId+modelCarId достаточно для выгрузки.
+    _CarPickerSelection? buildSelectionForModel() {
+      final brand = selectedBrand;
+      final model = selectedModel;
+      if (brand == null || model == null) return null;
       return _CarPickerSelection(
-        brand: brand,
-        model: model,
+        brand: brand.name,
+        model: model.model,
         generation: '',
         restyling: '',
         frames: '',
         photoUrl: '',
-        brandId: selectedRemoteBrand?.id,
-        modelCarId: selectedRemoteModel?.id,
+        brandId: brand.id,
+        modelCarId: model.id,
       );
     }
 
@@ -353,12 +336,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   selectedBrand = null;
                   selectedModel = null;
                   selectedGeneration = null;
-                  selectedRemoteBrand = null;
-                  selectedRemoteModel = null;
-                  remoteModelsLoading = false;
-                  remoteModelsFailed = false;
-                  remoteGenerationsLoading = false;
-                  remoteGenerationsFailed = false;
+                  modelsLoading = false;
+                  modelsFailed = false;
+                  generationsLoading = false;
+                  generationsFailed = false;
                   search = '';
                   return;
                 }
@@ -366,9 +347,8 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   step = _CarPickerStep.model;
                   selectedModel = null;
                   selectedGeneration = null;
-                  selectedRemoteModel = null;
-                  remoteGenerationsLoading = false;
-                  remoteGenerationsFailed = false;
+                  generationsLoading = false;
+                  generationsFailed = false;
                   search = '';
                   return;
                 }
@@ -383,90 +363,93 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: SparkSpace.xxxl),
                 child: Center(
-                  child: SparkEmptyState(icon: icon, title: title, topPadding: 0),
+                  child: SparkEmptyState(
+                    icon: icon,
+                    title: title,
+                    topPadding: 0,
+                  ),
                 ),
               );
             }
 
+            // Офлайн-состояние шага: этой части каталога ещё нет в кэше.
+            Widget pickerRetry(String title, Future<void> Function() onRetry) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: SparkSpace.xxxl),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SparkEmptyState(
+                        icon: Icons.wifi_off_rounded,
+                        title: title,
+                        topPadding: 0,
+                      ),
+                      const SizedBox(height: SparkSpace.sm),
+                      TextButton(
+                        onPressed: () => unawaited(onRetry()),
+                        child: const Text('Повторить'),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+
+            Future<void> reloadModels(storage_api.BrandItem brand) async {
+              setLocalState(() {
+                modelsLoading = true;
+                modelsFailed = false;
+              });
+              var failed = false;
+              try {
+                await loadModels(brand).timeout(catalogLoadTimeout);
+              } catch (_) {
+                failed = true;
+              } finally {
+                if (mounted) {
+                  setLocalState(() {
+                    modelsLoading = false;
+                    modelsFailed = failed;
+                  });
+                }
+              }
+            }
+
+            Future<void> reloadGenerations(storage_api.ModelItem model) async {
+              setLocalState(() {
+                generationsLoading = true;
+                generationsFailed = false;
+              });
+              var failed = false;
+              try {
+                await loadGenerations(model).timeout(catalogLoadTimeout);
+              } catch (_) {
+                failed = true;
+              } finally {
+                if (mounted) {
+                  setLocalState(() {
+                    generationsLoading = false;
+                    generationsFailed = failed;
+                  });
+                }
+              }
+            }
+
             Widget listContent() {
               if (step == _CarPickerStep.brand) {
-                if (useRemoteCatalog) {
-                  final brands = remoteBrands
-                      .where(
-                        (brand) => search.trim().isEmpty
-                            ? true
-                            : [
-                                brand.name.trim().toLowerCase(),
-                                brand.nameRus.trim().toLowerCase(),
-                              ].any(
-                                (value) =>
-                                    value.contains(search.trim().toLowerCase()),
-                              ),
-                      )
-                      .toList();
-                  if (brands.isEmpty) {
-                    return pickerEmpty(
-                      Icons.search_off_rounded,
-                      'Ничего не найдено',
-                    );
-                  }
-                  return ListView.separated(
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    itemCount: brands.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final brand = brands[index];
-                      final title = brandLabel(brand);
-                      return ListTile(
-                        title: Text(title),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () async {
-                          setLocalState(() {
-                            selectedRemoteBrand = brand;
-                            selectedRemoteModel = null;
-                            selectedBrand = findLocalBrandForRemote(brand);
-                            selectedModel = null;
-                            selectedGeneration = null;
-                            step = _CarPickerStep.model;
-                            search = '';
-                            remoteModelsLoading = true;
-                            remoteModelsFailed = false;
-                            remoteGenerationsLoading = false;
-                            remoteGenerationsFailed = false;
-                          });
-                          var failed = false;
-                          try {
-                            await loadRemoteModels(
-                              brand,
-                            ).timeout(remoteCatalogLoadTimeout);
-                          } catch (_) {
-                            failed = true;
-                          } finally {
-                            if (mounted) {
-                              setLocalState(() {
-                                remoteModelsLoading = false;
-                                remoteModelsFailed = failed;
-                              });
-                            }
-                          }
-                        },
-                      );
-                    },
-                  );
-                }
-
-                final brands = _SparkJoyVehicleRegistry.carCatalog
+                final query = search.trim().toLowerCase();
+                final filtered = brands
                     .where(
-                      (brand) => search.trim().isEmpty
+                      (brand) => query.isEmpty
                           ? true
-                          : brand.name.toLowerCase().contains(
-                              search.trim().toLowerCase(),
-                            ),
+                          : [
+                              brand.name.trim().toLowerCase(),
+                              brand.nameRus.trim().toLowerCase(),
+                            ].any((value) => value.contains(query)),
                     )
                     .toList();
-                if (brands.isEmpty) {
+                if (filtered.isEmpty) {
                   return pickerEmpty(
                     Icons.search_off_rounded,
                     'Ничего не найдено',
@@ -475,22 +458,25 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                 return ListView.separated(
                   keyboardDismissBehavior:
                       ScrollViewKeyboardDismissBehavior.onDrag,
-                  itemCount: brands.length,
+                  itemCount: filtered.length,
                   separatorBuilder: (context, index) =>
                       const Divider(height: 1),
                   itemBuilder: (context, index) {
-                    final brand = brands[index];
+                    final brand = filtered[index];
                     return ListTile(
-                      title: Text(brand.name),
+                      title: Text(brandLabel(brand)),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () {
+                      onTap: () async {
                         setLocalState(() {
                           selectedBrand = brand;
                           selectedModel = null;
                           selectedGeneration = null;
                           step = _CarPickerStep.model;
                           search = '';
+                          generationsLoading = false;
+                          generationsFailed = false;
                         });
+                        await reloadModels(brand);
                       },
                     );
                   },
@@ -498,163 +484,24 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               }
 
               if (step == _CarPickerStep.model) {
-                if (useRemoteCatalog) {
-                  final remoteBrand = selectedRemoteBrand;
-                  if (remoteBrand == null) {
-                    return pickerEmpty(
-                      Icons.arrow_upward_rounded,
-                      'Сначала выберите марку',
-                    );
-                  }
-
-                  final remoteModels =
-                      remoteModelsByBrandId[remoteBrand.id] ??
-                      const <storage_api.ModelItem>[];
-
-                  if (remoteModelsLoading && remoteModels.isEmpty) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-
-                  if (remoteModels.isNotEmpty) {
-                    final models = remoteModels
-                        .where(
-                          (model) => search.trim().isEmpty
-                              ? true
-                              : [
-                                  model.model.trim().toLowerCase(),
-                                  model.modelRus.trim().toLowerCase(),
-                                ].any(
-                                  (value) => value.contains(
-                                    search.trim().toLowerCase(),
-                                  ),
-                                ),
-                        )
-                        .toList();
-                    if (models.isEmpty) {
-                      return pickerEmpty(
-                        Icons.directions_car_outlined,
-                        'Нет моделей',
-                      );
-                    }
-                    return ListView.separated(
-                      keyboardDismissBehavior:
-                          ScrollViewKeyboardDismissBehavior.onDrag,
-                      itemCount: models.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final model = models[index];
-                        final title = modelLabel(model);
-                        return ListTile(
-                          title: Text(title),
-                          trailing: const Icon(Icons.chevron_right_rounded),
-                          onTap: () async {
-                            final dialogNavigator = Navigator.of(context);
-                            final localBrand = selectedBrand;
-                            final localModel = localBrand == null
-                                ? null
-                                : findLocalModelForRemote(localBrand, model);
-                            setLocalState(() {
-                              selectedRemoteModel = model;
-                              selectedModel = localModel;
-                              selectedGeneration = null;
-                              step = _CarPickerStep.generation;
-                              search = '';
-                              remoteGenerationsLoading = true;
-                              remoteGenerationsFailed = false;
-                            });
-                            var failed = false;
-                            try {
-                              await loadRemoteGenerations(
-                                model,
-                              ).timeout(remoteCatalogLoadTimeout);
-                            } catch (_) {
-                              failed = true;
-                            } finally {
-                              if (mounted) {
-                                final remoteGenerations =
-                                    remoteGenerationsByModelId[model.id] ??
-                                    const <_CarCatalogGeneration>[];
-                                final localGenerations =
-                                    localModel?.generations ??
-                                    const <_CarCatalogGeneration>[];
-                                if (remoteGenerations.isEmpty &&
-                                    localGenerations.isEmpty) {
-                                  dialogNavigator.pop(
-                                    buildSelectionForModel(
-                                      brand: remoteBrand.name,
-                                      model: model.model,
-                                    ),
-                                  );
-                                } else {
-                                  setLocalState(() {
-                                    remoteGenerationsLoading = false;
-                                    remoteGenerationsFailed = failed;
-                                  });
-                                }
-                              }
-                            }
-                          },
-                        );
-                      },
-                    );
-                  }
-
-                  if (remoteModelsFailed && selectedBrand != null) {
-                    final fallbackModels = selectedBrand!.models
-                        .where(
-                          (model) => search.trim().isEmpty
-                              ? true
-                              : model.name.toLowerCase().contains(
-                                  search.trim().toLowerCase(),
-                                ),
-                        )
-                        .toList();
-                    if (fallbackModels.isNotEmpty) {
-                      return ListView.separated(
-                        keyboardDismissBehavior:
-                            ScrollViewKeyboardDismissBehavior.onDrag,
-                        itemCount: fallbackModels.length,
-                        separatorBuilder: (context, index) =>
-                            const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final model = fallbackModels[index];
-                          return ListTile(
-                            title: Text(model.name),
-                            trailing: const Icon(Icons.chevron_right_rounded),
-                            onTap: () {
-                              setLocalState(() {
-                                selectedRemoteModel = null;
-                                selectedModel = model;
-                                selectedGeneration = null;
-                                step = _CarPickerStep.generation;
-                                search = '';
-                                remoteGenerationsLoading = false;
-                                remoteGenerationsFailed = false;
-                              });
-                            },
-                          );
-                        },
-                      );
-                    }
-                  }
-
+                final brand = selectedBrand;
+                if (brand == null) {
                   return pickerEmpty(
-                    Icons.directions_car_outlined,
-                    'Нет моделей',
+                    Icons.arrow_upward_rounded,
+                    'Сначала выберите марку',
                   );
                 }
 
-                final models =
-                    (selectedBrand?.models ?? const <_CarCatalogModel>[])
-                        .where(
-                          (model) => search.trim().isEmpty
-                              ? true
-                              : model.name.toLowerCase().contains(
-                                  search.trim().toLowerCase(),
-                                ),
-                        )
-                        .toList();
+                final models = catalog.searchModels(brand.id, search);
+                if (modelsLoading && models.isEmpty) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (modelsFailed && models.isEmpty) {
+                  return pickerRetry(
+                    'Модели этой марки ещё не в офлайн-каталоге.\nПроверьте интернет и повторите',
+                    () => reloadModels(brand),
+                  );
+                }
                 if (models.isEmpty) {
                   return pickerEmpty(
                     Icons.directions_car_outlined,
@@ -670,18 +517,48 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   itemBuilder: (context, index) {
                     final model = models[index];
                     return ListTile(
-                      title: Text(model.name),
+                      title: Text(modelLabel(model)),
                       trailing: const Icon(Icons.chevron_right_rounded),
-                      onTap: () {
+                      onTap: () async {
+                        final dialogNavigator = Navigator.of(context);
                         setLocalState(() {
-                          selectedRemoteModel = null;
                           selectedModel = model;
                           selectedGeneration = null;
                           step = _CarPickerStep.generation;
                           search = '';
-                          remoteGenerationsLoading = false;
-                          remoteGenerationsFailed = false;
+                          generationsLoading = true;
+                          generationsFailed = false;
                         });
+                        var failed = false;
+                        try {
+                          await loadGenerations(
+                            model,
+                          ).timeout(catalogLoadTimeout);
+                        } catch (_) {
+                          failed = true;
+                        } finally {
+                          if (mounted) {
+                            final generations =
+                                generationsByModelId[model.id] ??
+                                const <_CarCatalogGeneration>[];
+                            var finalized = false;
+                            if (!failed && generations.isEmpty) {
+                              // У модели нет поколений в каталоге — честно
+                              // финализируемся на уровне модели (ID есть).
+                              final selection = buildSelectionForModel();
+                              if (selection != null) {
+                                dialogNavigator.pop(selection);
+                                finalized = true;
+                              }
+                            }
+                            if (!finalized) {
+                              setLocalState(() {
+                                generationsLoading = false;
+                                generationsFailed = failed;
+                              });
+                            }
+                          }
+                        }
                       },
                     );
                   },
@@ -689,29 +566,54 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               }
 
               if (step == _CarPickerStep.generation) {
-                List<_CarCatalogGeneration> generations =
-                    selectedModel?.generations ??
+                final model = selectedModel;
+                if (model == null) {
+                  return pickerEmpty(
+                    Icons.arrow_upward_rounded,
+                    'Сначала выберите модель',
+                  );
+                }
+                final generations =
+                    generationsByModelId[model.id] ??
                     const <_CarCatalogGeneration>[];
-                if (useRemoteCatalog && selectedRemoteModel != null) {
-                  final remoteGenerations =
-                      remoteGenerationsByModelId[selectedRemoteModel!.id] ??
-                      const <_CarCatalogGeneration>[];
-                  if (remoteGenerationsLoading && remoteGenerations.isEmpty) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (remoteGenerations.isNotEmpty) {
-                    generations = remoteGenerations;
-                  } else if (remoteGenerationsFailed && generations.isEmpty) {
-                    return pickerEmpty(
-                      Icons.layers_outlined,
-                      'Нет поколений',
-                    );
-                  }
+                if (generationsLoading && generations.isEmpty) {
+                  return const Center(child: CircularProgressIndicator());
                 }
                 if (generations.isEmpty) {
-                  return pickerEmpty(
-                    Icons.layers_outlined,
-                    'Нет поколений',
+                  // Пусто из-за офлайна (поколения ещё не в кэше) или их нет
+                  // в каталоге вовсе. В обоих случаях выбор можно честно
+                  // завершить на уровне модели — для выгрузки достаточно
+                  // modelCarId; поколение/рестайлинг/фото уточнятся позже,
+                  // когда каталог доедет. Иначе офлайн-пользователь застрял
+                  // бы на «Повторить» с уже выбранными маркой и моделью.
+                  return Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(
+                          Icons.check_circle_outline_rounded,
+                          color: kSecondaryColor,
+                        ),
+                        title: const Text('Без модификации'),
+                        subtitle: const Text('Остановиться на модели'),
+                        onTap: () {
+                          final selection = buildSelectionForModel();
+                          if (selection == null) return;
+                          Navigator.of(context).pop(selection);
+                        },
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: generationsFailed
+                            ? pickerRetry(
+                                'Поколения этой модели ещё не в офлайн-каталоге.\nПроверьте интернет и повторите',
+                                () => reloadGenerations(model),
+                              )
+                            : pickerEmpty(
+                                Icons.layers_outlined,
+                                'Нет поколений',
+                              ),
+                      ),
+                    ],
                   );
                 }
                 return ListView.separated(
@@ -733,17 +635,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                         title: const Text('Без модификации'),
                         subtitle: const Text('Остановиться на модели'),
                         onTap: () {
-                          final brand =
-                              selectedBrand?.name ??
-                              selectedRemoteBrand?.name ??
-                              '';
-                          final model =
-                              selectedModel?.name ??
-                              selectedRemoteModel?.model ??
-                              '';
-                          Navigator.of(context).pop(
-                            buildSelectionForModel(brand: brand, model: model),
-                          );
+                          final selection = buildSelectionForModel();
+                          if (selection == null) return;
+                          Navigator.of(context).pop(selection);
                         },
                       );
                     }
@@ -767,10 +661,7 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                   selectedGeneration?.restylings ??
                   const <_CarCatalogRestyling>[];
               if (restylings.isEmpty) {
-                return pickerEmpty(
-                  Icons.tune_rounded,
-                  'Нет рестайлингов',
-                );
+                return pickerEmpty(Icons.tune_rounded, 'Нет рестайлингов');
               }
               return ListView.separated(
                 keyboardDismissBehavior:
@@ -929,11 +820,12 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       _carFrames = selection.frames;
       _carPhotoUrl = selection.photoUrl;
       _modelGenerationRestylingFrameId = selection.frameId;
-      // Каталожная привязка из пикера → автокомплит марки/модели сразу
-      // консистентен (модели подтянутся для этого brandId).
+      // Каталожная привязка из пикера → селекторы марки/модели сразу
+      // консистентны (модели подтянутся для этого brandId).
       _selectedBrandId = selection.brandId;
       _selectedModelCarId = selection.modelCarId;
     });
+    _markDraftDirty();
     // Persist a frame-id → metadata entry so the completed-report
     // hydrator can restore brand/model/generation/restyling/photoUrl
     // when the user (or another device owned by them) opens the same

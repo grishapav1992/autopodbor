@@ -1,0 +1,198 @@
+import 'dart:convert';
+
+import 'package:flutter_application_1/data/api/storage_api_models.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+// toJson/tryFromJson каталожных классов — wire-контракт файлового кэша
+// каталога И черновика заявки компании (они делят один набор ключей).
+// Голден-тесты ниже фиксируют имена ключей: их смена ломает старые
+// черновики и уже записанные файлы кэша.
+
+PhotoItem _photo({int id = 1}) => PhotoItem(
+  id: id,
+  size: 'l',
+  urlX1: 'https://x/1.jpg',
+  urlX2: 'https://x/2.jpg',
+);
+
+FrameItem _frame({int id = 7}) => FrameItem(id: id, frame: 'XV70');
+
+RestylingItem _restyling({int id = 3}) => RestylingItem(
+  id: id,
+  restyling: 'Рестайлинг 1',
+  yearStart: 2017,
+  yearEnd: 2020,
+  frames: [_frame()],
+  photos: [_photo()],
+);
+
+GenerationItem _generation({int id = 9}) => GenerationItem(
+  id: id,
+  modelCarId: 55,
+  generation: 8,
+  frames: [_frame(id: 8)],
+  restylings: [_restyling()],
+);
+
+void main() {
+  group('round-trip через jsonEncode/jsonDecode', () {
+    test('BrandItem', () {
+      final source = BrandItem(id: 1, name: 'Toyota', nameRus: 'Тойота');
+      final parsed = BrandItem.tryFromJson(
+        jsonDecode(jsonEncode(source.toJson())),
+      );
+      expect(parsed, isNotNull);
+      expect(parsed!.id, 1);
+      expect(parsed.name, 'Toyota');
+      expect(parsed.nameRus, 'Тойота');
+    });
+
+    test('ModelItem', () {
+      final source = ModelItem(
+        id: 2,
+        brandId: 1,
+        model: 'Camry',
+        modelRus: 'Камри',
+      );
+      final parsed = ModelItem.tryFromJson(
+        jsonDecode(jsonEncode(source.toJson())),
+      );
+      expect(parsed, isNotNull);
+      expect(parsed!.id, 2);
+      expect(parsed.brandId, 1);
+      expect(parsed.model, 'Camry');
+      expect(parsed.modelRus, 'Камри');
+    });
+
+    test('GenerationItem с вложенными рестайлингами/кузовами/фото', () {
+      final parsed = GenerationItem.tryFromJson(
+        jsonDecode(jsonEncode(_generation().toJson())),
+      );
+      expect(parsed, isNotNull);
+      expect(parsed!.id, 9);
+      expect(parsed.modelCarId, 55);
+      expect(parsed.generation, 8);
+      expect(parsed.frames.single.frame, 'XV70');
+      final rest = parsed.restylings.single;
+      expect(rest.id, 3);
+      expect(rest.restyling, 'Рестайлинг 1');
+      expect(rest.yearStart, 2017);
+      expect(rest.yearEnd, 2020);
+      expect(rest.frames.single.id, 7);
+      expect(rest.photos.single.urlX2, 'https://x/2.jpg');
+    });
+
+    test('RestylingItem: nullable годы переживают null', () {
+      final source = RestylingItem(
+        id: 4,
+        restyling: '',
+        yearStart: null,
+        yearEnd: null,
+        frames: const [],
+        photos: const [],
+      );
+      final parsed = RestylingItem.tryFromJson(
+        jsonDecode(jsonEncode(source.toJson())),
+      );
+      expect(parsed, isNotNull);
+      expect(parsed!.yearStart, isNull);
+      expect(parsed.yearEnd, isNull);
+      expect(parsed.frames, isEmpty);
+      expect(parsed.photos, isEmpty);
+    });
+  });
+
+  group('голден: ключи совпадают с легаси-черновиком заявки компании', () {
+    // Ключи из _brandToDraft/_modelToDraft/… (spark_joy_company_create_
+    // request_screen.dart) — исторический формат персиста.
+    test('наборы ключей', () {
+      expect(
+        BrandItem(id: 1, name: 'a', nameRus: 'б').toJson().keys,
+        unorderedEquals(['id', 'name', 'nameRus']),
+      );
+      expect(
+        ModelItem(id: 1, brandId: 2, model: 'a', modelRus: 'б').toJson().keys,
+        unorderedEquals(['id', 'brandId', 'model', 'modelRus']),
+      );
+      expect(
+        _generation().toJson().keys,
+        unorderedEquals([
+          'id',
+          'modelCarId',
+          'generation',
+          'frames',
+          'restylings',
+        ]),
+      );
+      expect(
+        _restyling().toJson().keys,
+        unorderedEquals([
+          'id',
+          'restyling',
+          'yearStart',
+          'yearEnd',
+          'frames',
+          'photos',
+        ]),
+      );
+      expect(_frame().toJson().keys, unorderedEquals(['id', 'frame']));
+      expect(
+        _photo().toJson().keys,
+        unorderedEquals(['id', 'size', 'urlX1', 'urlX2']),
+      );
+    });
+
+    test('легаси-мапа черновика парсится', () {
+      final legacy = {
+        'id': 10,
+        'modelCarId': 20,
+        'generation': 3,
+        'frames': [
+          {'id': 1, 'frame': 'E210'},
+        ],
+        'restylings': [
+          {
+            'id': 2,
+            'restyling': 'Дорестайлинг',
+            'yearStart': 2019,
+            'yearEnd': null,
+            'frames': [],
+            'photos': [
+              {'id': 5, 'size': 'm', 'urlX1': 'u1', 'urlX2': 'u2'},
+            ],
+          },
+        ],
+      };
+      final parsed = GenerationItem.tryFromJson(legacy);
+      expect(parsed, isNotNull);
+      expect(parsed!.restylings.single.photos.single.id, 5);
+    });
+  });
+
+  group('терпимость к мусору', () {
+    test('строковый id парсится, отсутствующий — null', () {
+      expect(BrandItem.tryFromJson({'id': '5', 'name': 'X'})?.id, 5);
+      expect(BrandItem.tryFromJson({'name': 'X'}), isNull);
+      expect(BrandItem.tryFromJson('мусор'), isNull);
+      expect(BrandItem.tryFromJson(null), isNull);
+      expect(ModelItem.tryFromJson({'id': 1}), isNull); // без brandId
+    });
+
+    test('битые элементы вложенных списков выбрасываются молча', () {
+      final parsed = GenerationItem.tryFromJson({
+        'id': 1,
+        'modelCarId': 2,
+        'generation': 1,
+        'frames': [
+          {'id': 1, 'frame': 'ok'},
+          {'frame': 'без id'},
+          'строка',
+        ],
+        'restylings': 'не список',
+      });
+      expect(parsed, isNotNull);
+      expect(parsed!.frames.single.frame, 'ok');
+      expect(parsed.restylings, isEmpty);
+    });
+  });
+}

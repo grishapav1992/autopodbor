@@ -149,6 +149,32 @@ Widget _buildSparkJoyStepVehicle(
                 ],
               ),
             ),
+            // Скан СТС/ПТС через ИИ — компактной строкой внутри карточки
+            // (отдельная кнопка-полоса между карточками перегружала шаг).
+            // Заполняет VIN/госномер/марку/модель здесь и объём/топливо/цвет
+            // в «Параметрах»; офлайн-фолбэк — OCR-сканер VIN.
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: (s._docScanBusy || s.widget.readOnly)
+                    ? null
+                    : () => unawaited(s._openDocScanSourceModal()),
+                icon: s._docScanBusy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.badge_outlined, size: 18),
+                label: Text(
+                  s._docScanBusy
+                      ? (s._docScanStage.isEmpty
+                            ? 'Распознавание…'
+                            : s._docScanStage)
+                      : 'Заполнить по фото СТС / ПТС',
+                ),
+              ),
+            ),
             if (vinError != null)
               MyText(
                 text: vinError,
@@ -156,38 +182,6 @@ Widget _buildSparkJoyStepVehicle(
                 color: kRedColor,
               ),
           ],
-        ),
-      ),
-      const SizedBox(height: SparkSpace.md),
-      // Скан СТС/ПТС через ИИ: заполняет VIN/госномер/марку/модель здесь и
-      // объём/топливо/цвет в «Параметрах». Офлайн-фолбэк — OCR-сканер VIN.
-      SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: (s._docScanBusy || s.widget.readOnly)
-              ? null
-              : () => unawaited(s._openDocScanSourceModal()),
-          icon: s._docScanBusy
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.badge_outlined),
-          label: Text(
-            s._docScanBusy
-                ? (s._docScanStage.isEmpty
-                      ? 'Распознавание…'
-                      : s._docScanStage)
-                : 'Сканировать СТС / ПТС (ИИ)',
-          ),
-          style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: SparkSpace.lg),
-            side: const BorderSide(color: kBorderColor),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(SparkRadius.lg),
-            ),
-          ),
         ),
       ),
       const SizedBox(height: SparkSpace.lg),

@@ -1,5 +1,5 @@
 // Ранжирование фото рестайлингов каталога. Логика жила приватно в
-// _RemoteCarCatalog (auto_request_screen.dart) и понадобилась в data-слое:
+// RemoteCarCatalog (auto_request_screen.dart) и понадобилась в data-слое:
 // файловый кэш каталога хранит не больше [kCarCatalogMaxPhotosPerRestyling]
 // лучших фото на рестайлинг (полный список с бэка раздувает файл в разы,
 // а UI всё равно показывает одно-два). Клиентская форма делегирует сюда же,
@@ -115,14 +115,15 @@ RestylingItem carCatalogTrimRestylingPhotos(
       )) {
     return rest;
   }
-  final withUrl = rest.photos
-      .where(
-        (p) =>
-            carCatalogNormalizePhotoUrl(p.urlX1).isNotEmpty ||
-            carCatalogNormalizePhotoUrl(p.urlX2).isNotEmpty,
-      )
-      .toList()
-    ..sort((a, b) => _photoScore(b).compareTo(_photoScore(a)));
+  final withUrl =
+      rest.photos
+          .where(
+            (p) =>
+                carCatalogNormalizePhotoUrl(p.urlX1).isNotEmpty ||
+                carCatalogNormalizePhotoUrl(p.urlX2).isNotEmpty,
+          )
+          .toList()
+        ..sort((a, b) => _photoScore(b).compareTo(_photoScore(a)));
   return RestylingItem(
     id: rest.id,
     restyling: rest.restyling,

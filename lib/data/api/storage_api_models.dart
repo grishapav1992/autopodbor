@@ -207,7 +207,10 @@ class GenerationItem {
       modelCarId: _catalogJsonInt(map['modelCarId']) ?? 0,
       generation: _catalogJsonInt(map['generation']) ?? 0,
       frames: _catalogJsonList(map['frames'], FrameItem.tryFromJson),
-      restylings: _catalogJsonList(map['restylings'], RestylingItem.tryFromJson),
+      restylings: _catalogJsonList(
+        map['restylings'],
+        RestylingItem.tryFromJson,
+      ),
     );
   }
 }

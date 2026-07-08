@@ -20,6 +20,8 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
+import 'package:flutter_application_1/data/services/car_catalog_repository.dart';
+import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
@@ -171,11 +173,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // или локальный фолбэк), не привязан к каталогу.
   int? _selectedBrandId;
   int? _selectedModelCarId;
-  // Рантайм-кэши автокомплита (НЕ персистятся): каталог марок грузится один
-  // раз (GetBrand) и фильтруется локально; модели — по brandId.
-  List<storage_api.BrandItem> _brandCatalogCache = const [];
-  final Map<int, List<storage_api.ModelItem>> _modelsByBrandId = {};
-  bool _brandCatalogLoadStarted = false;
+  // Кэши автокомплита марок/моделей удалены: строгий режим выбирает авто
+  // только через каталог-визард, данные держит CarCatalogRepository.
 
   late final TextEditingController _mileageController;
   late final TextEditingController _engineVolumeController;
@@ -393,11 +392,6 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   final FocusNode _adLinkFocusNode = FocusNode();
   final FocusNode _mileageFocusNode = FocusNode();
   final FocusNode _inspectionCityFocusNode = FocusNode();
-  // Внешние FocusNode для RawAutocomplete марки/модели (виджет требует
-  // передавать textEditingController + focusNode вместе). Контроллеры —
-  // `_brandController`/`_modelController` остаются источником истины.
-  final FocusNode _brandFocusNode = FocusNode();
-  final FocusNode _modelFocusNode = FocusNode();
 
   // ┌─ Phase 4.1 · Chunk 4: car-step non-controller flags → SparkJoyReportController ┐
   // │ 34 references across 12 files use the old `_mileageMismatch` / `_vinUnreadable` │

@@ -14,6 +14,10 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     // делают повторное открытие заполненного черновика no-op'ом. Пост-фрейм —
     // нужен живой context для снэкбара.
     if (!widget.readOnly) {
+      // Легаси-черновик со свободным текстом марки/модели (до строгого
+      // режима) → фоновая привязка к каталогу; новые черновики всегда
+      // несут ID и выходят из ре-байнда сразу.
+      unawaited(_rebindCarFromCatalogIfNeeded());
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _maybeResolveFromVin();
       });
@@ -30,8 +34,6 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     _adLinkFocusNode.dispose();
     _mileageFocusNode.dispose();
     _inspectionCityFocusNode.dispose();
-    _brandFocusNode.dispose();
-    _modelFocusNode.dispose();
     _reportNameController.dispose();
     _vinController.dispose();
     _plateController.dispose();
