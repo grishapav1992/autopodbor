@@ -2,17 +2,27 @@ part of 'spark_joy_create_report_screen.dart';
 
 /// Готовит фото документа к vision-распознаванию: печёт EXIF-ориентацию
 /// (после пере-энкода EXIF теряется — без bake текст лёг бы боком),
-/// поднимает контраст (мелкий текст на защитной сетке СТС/ПТС читается
-/// моделью заметно лучше) и пережимает JPEG компактнее. Best-effort: при
-/// сбое декода возвращает исходные байты — скан важнее предобработки.
-/// Запускать через `compute`: полный декод фото 2560px — десятки МБ
-/// пикселей, на UI-потоке это заметный джанк.
+/// даунскейлит длинную сторону до [_kDocScanMaxSide] и поднимает контраст
+/// (мелкий текст на защитной сетке СТС/ПТС читается моделью лучше), затем
+/// пережимает JPEG. **Сжатие ОБЯЗАТЕЛЬНО** (требование бэка): токены vision
+/// считаются по РАЗРЕШЕНИЮ, не по размеру файла — без даунскейла больше
+/// токенов и дольше ответ. 2000px по длинной стороне сохраняет читаемость
+/// VIN (17 символов ≈ сотни px). Best-effort: при сбое декода — исходные
+/// байты (скан важнее предобработки). Тяжёлая (полный декод пикселей) —
+/// на нативе через `compute` (изолят), на web синхронно (там изолятов нет).
+const int _kDocScanMaxSide = 2000;
+
 Uint8List _sparkPrepareDocScanPhoto(Uint8List bytes) {
   try {
     final decoded = img.decodeImage(bytes);
     if (decoded == null) return bytes;
-    final oriented = img.bakeOrientation(decoded);
-    final adjusted = img.adjustColor(oriented, contrast: 1.15);
+    var im = img.bakeOrientation(decoded);
+    if (im.width > _kDocScanMaxSide || im.height > _kDocScanMaxSide) {
+      im = im.width >= im.height
+          ? img.copyResize(im, width: _kDocScanMaxSide)
+          : img.copyResize(im, height: _kDocScanMaxSide);
+    }
+    final adjusted = img.adjustColor(im, contrast: 1.15);
     return Uint8List.fromList(img.encodeJpg(adjusted, quality: 82));
   } catch (_) {
     return bytes;
@@ -144,13 +154,13 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       _docScanStage = 'Обработка фото…';
     });
     try {
-      // Контраст/ориентация/пережатие — текст документа становится читабельнее
-      // для модели, платим меньшим трафиком. compute() на web = синхронный
-      // no-op в главном потоке (декод+контраст+пережатие ~5 Мп заморозили бы
-      // PWA — основной канал iOS), поэтому на web шлём как есть: ImagePicker
-      // уже ужал до 2560px/q88, предобработка — только на нативе в изоляте.
+      // Даунскейл+контраст+пережатие ОБЯЗАТЕЛЬНЫ (требование бэка: без сжатия
+      // больше токенов vision и дольше ответ) — поэтому гоняем на ВСЕХ
+      // платформах, web включительно. На нативе — в изоляте (compute), на web
+      // compute = синхронный no-op в главном потоке: короткая пауза под
+      // спиннером «Обработка фото…» приемлемее жирного аплоада несжатого фото.
       final prepared = kIsWeb
-          ? bytes
+          ? _sparkPrepareDocScanPhoto(bytes)
           : await compute(_sparkPrepareDocScanPhoto, bytes);
       if (!mounted) return;
       _setStateSafely(() => _docScanStage = 'Загрузка фото…');
@@ -201,11 +211,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       // Best-effort: сбой очистки не должен ронять успешный скан.
       unawaited(AiQueueApi.clearChatHistory(chatId: chatId).catchError((_) {}));
       if (!mounted) return;
-      final parsed = parseDocScanAiResult(
-        result.text,
-        allowedEngineTypes: _SparkJoyVehicleRegistry.engineTypes,
-        allowedEngineVolumes: _SparkJoyVehicleRegistry.engineVolumeOptions,
-      );
+      final parsed = parseDocScanAiResult(result.text);
       if (!hasAnyDocScanData(parsed)) {
         // Модель ответила, но не разобрала ни одного поля — проблема в фото,
         // а не в транспорте. Подсказываем, как переснять.
@@ -272,8 +278,6 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       if (r.model.isNotEmpty) ('Модель', r.model),
       if (r.year.isNotEmpty) ('Год', r.year),
       if (r.color.isNotEmpty) ('Цвет', r.color),
-      if (r.engineVolume.isNotEmpty) ('Объём двигателя', '${r.engineVolume} л'),
-      if (r.engineType.isNotEmpty) ('Тип топлива', r.engineType),
     ];
 
     final apply = await showDialog<bool>(
@@ -466,23 +470,10 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         _applyDetectedPlate(r.gosNumber);
         filled.add('госномер');
       }
-      // Объём/топливо/цвет пишем как РУЧНОЙ ввод — НАМЕРЕННО без
-      // _vinAutofilledValues: запись туда пометила бы значения документа
-      // «ИИ-остатками прежней машины», и stale-очистка
-      // _autofillParamsFromVinWithAi стёрла бы их через 600 мс, заменив
-      // догадками модели. Документ авторитетнее ИИ; цена — при смене VIN
-      // эти поля не чистятся автоматически (как и любой ручной ввод).
-      final byKey = _vinParamTargetsByKey();
-      if (r.engineVolume.isNotEmpty &&
-          byKey['engineVolume']!.text.trim().isEmpty) {
-        byKey['engineVolume']!.text = r.engineVolume;
-        filled.add('объём');
-      }
-      if (r.engineType.isNotEmpty &&
-          byKey['engineType']!.text.trim().isEmpty) {
-        byKey['engineType']!.text = r.engineType;
-        filled.add('топливо');
-      }
+      // Цвет пишем как РУЧНОЙ ввод (документ авторитетен; при смене VIN не
+      // чистится автоматически — как любой ручной ввод). Движковые параметры
+      // (объём/тип/КПП/привод) из СТС НЕ берём — их дозаполнит VIN-шаг
+      // _autofillParamsFromVinWithAi после установки VIN выше.
       if (r.color.isNotEmpty && _colorController.text.trim().isEmpty) {
         _colorController.text = r.color;
         filled.add('цвет');

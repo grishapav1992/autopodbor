@@ -122,7 +122,12 @@ class AiQueueApi {
   }) async {
     final params = <String, dynamic>{'text': text, 'cliche': cliche};
     if (fileUrls != null && fileUrls.isNotEmpty) {
-      params['fileUrls'] = fileUrls;
+      // Ключ на проводе — `files` (так назван параметр в живом AiQueue.Doc:
+      // «Presigned URLs файлов (изображений) от клиента»). Прежний `fileUrls`
+      // сервер молча игнорировал → картинка НЕ доходила до модели (vision не
+      // работал вообще: скан СТС/ПТС + фото per-element заметок). Проверено
+      // live 2026-07-08: с `files` promptTokens растёт и модель читает фото.
+      params['files'] = fileUrls;
     }
     final resolvedModel = model ?? await resolveDefaultModel();
     if (resolvedModel.isNotEmpty) {

@@ -124,10 +124,16 @@ Content-Type: text/plain;charset=UTF-8
 Где `{element}`, `{section}`, `{tags}` — клиент подставляет до отправки.
 `{text}` — оставляет, сервер сам подставит из `params.text`.
 
-### fileUrls
+### files (на проводе; в Dart-API параметр зовётся `fileUrls`)
 
 Массив **presigned S3 URL** уже загруженных файлов (фото / аудио). Сервер
 передаёт их в multimodal AI-запрос как `image_url` parts.
+
+> ⚠️ **Имя параметра на проводе — `files`, НЕ `fileUrls`** (сверено с живым
+> `AiQueue.Doc` 2026-07-08). Клиент до 2026-07-08 слал `fileUrls`, сервер его
+> молча игнорировал → изображение НЕ доходило до модели (vision не работал:
+> скан СТС/ПТС и фото per-element заметок). Исправлено в `ai_queue_api.dart`
+> (Dart-имя параметра `fileUrls` оставлено, на проводе → `files`).
 
 **Pre-condition**: файл должен быть успешно загружен в S3 *до* вызова
 AiQueue. Текущий пайплайн загрузки (`storage_api.dart` →
