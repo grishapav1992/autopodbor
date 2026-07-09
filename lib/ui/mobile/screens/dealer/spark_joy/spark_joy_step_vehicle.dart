@@ -226,15 +226,6 @@ Widget _buildSparkJoyStepVehicle(
                 autocorrect: false,
                 enableSuggestions: false,
                 textAlign: TextAlign.center,
-                // Моноширинный, крупнее и жирнее — поле стилизовано под
-                // «номерной знак» (серая заливка ниже).
-                style: TextStyle(
-                  fontFamily: AppFonts.MONOSPACE,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 2,
-                  color: kTertiaryColor,
-                ),
                 decoration: s
                     ._fieldDecoration(_plateInputHint(s))
                     .copyWith(
