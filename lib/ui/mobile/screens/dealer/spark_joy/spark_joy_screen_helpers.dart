@@ -113,7 +113,9 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
     if (!_isVehicleReadyForContinue()) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Укажите VIN-номер или отметьте как нечитаемый'),
+          content: Text(
+            'Укажите VIN-номер или госномер, либо отметьте VIN как нечитаемый',
+          ),
         ),
       );
       return;

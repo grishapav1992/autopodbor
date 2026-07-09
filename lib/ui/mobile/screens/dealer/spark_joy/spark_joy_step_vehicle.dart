@@ -75,10 +75,10 @@ Widget _buildSparkJoyStepVehicle(
                   width: 52,
                   height: 52,
                   child: OutlinedButton(
-                    onPressed:
-                        (s._docScanBusy ||
-                            s._vinUnreadable ||
-                            s.widget.readOnly)
+                    // Не гейтим по _vinUnreadable: объединённое автозаполнение
+                    // читает и госномер/марку/модель — оно полезно даже когда
+                    // сам VIN нечитаем. Условие совпадает с кнопкой «Заполнить».
+                    onPressed: (s._docScanBusy || s.widget.readOnly)
                         ? null
                         : () => unawaited(s._openAutofillScan()),
                     style: OutlinedButton.styleFrom(

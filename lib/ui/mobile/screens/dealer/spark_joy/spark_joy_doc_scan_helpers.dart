@@ -167,11 +167,17 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     // Barrier-диалог прогресса. Не await'им — закрываем программно ниже.
     // `dialogOpen` + PopScope(canPop:false) страхуют от закрытия системной
     // «назад»: иначе pop в finally увёл бы со всего шага, а не с диалога.
+    // Навигатор захватываем ЗАРАНЕЕ (root): если State размонтируется за время
+    // длинного await ИИ, `Navigator.of(context)` в finally бросил бы на
+    // defunct-контексте, а диалог (canPop:false, non-dismissible) остался бы
+    // неубиваемым. Root-навигатор живёт над экраном и валиден после unmount.
+    final progressNavigator = Navigator.of(context, rootNavigator: true);
     var dialogOpen = true;
     unawaited(
       showDialog<void>(
         context: context,
         barrierDismissible: false,
+        useRootNavigator: true,
         builder: (_) => PopScope(
           canPop: false,
           child: _DocScanProgressDialog(stage: stage, offline: offline),
@@ -255,11 +261,14 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       }
       stage.value = 3;
     } finally {
-      // Закрываем barrier-диалог прогресса (он всегда наверху — между показом
-      // и этим местом мы ничего не пушим). dialogOpen страхует от двойного pop.
-      if (mounted && dialogOpen) {
+      // Закрываем barrier-диалог прогресса захваченным root-навигатором (он
+      // всегда наверху — между показом и этим местом мы ничего не пушим). Не
+      // гейтим на `mounted`: иначе при unmount за время await диалог остался бы
+      // неубиваемым. dialogOpen страхует от двойного pop (whenComplete снимет
+      // его, если диалог уже закрыт снятием маршрута).
+      if (dialogOpen) {
         dialogOpen = false;
-        Navigator.of(context).pop();
+        progressNavigator.pop();
       }
       _setStateSafely(() {
         _docScanBusy = false;
@@ -311,9 +320,25 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         color: '',
       );
     }
-    final vin = _isStrictVin(ai.vin)
-        ? ai.vin
-        : (validOcrVin.isNotEmpty ? validOcrVin : ai.vin);
+    // Выбор VIN между ИИ и OCR:
+    //  • ИИ невалиден по формату → берём OCR (если есть), иначе сырой ИИ;
+    //  • оба валидны и РАСХОДЯТСЯ → тай-брейк по контрольной сумме ISO 3779:
+    //    берём OCR, только если он проходит сумму, а ИИ — нет (частый кейс —
+    //    ИИ «додумал» правдоподобный VIN, а OCR прочитал реальный). Саму сумму
+    //    гейтом НЕ делаем: у многих валидных РФ-VIN контрольная цифра не по ISO,
+    //    поэтому по умолчанию доверяем ИИ (видит весь документ);
+    //  • совпадают → без разницы.
+    final String vin;
+    if (!_isStrictVin(ai.vin)) {
+      vin = validOcrVin.isNotEmpty ? validOcrVin : ai.vin;
+    } else if (validOcrVin.isNotEmpty &&
+        validOcrVin != ai.vin &&
+        _isValidVinChecksum(validOcrVin) &&
+        !_isValidVinChecksum(ai.vin)) {
+      vin = validOcrVin;
+    } else {
+      vin = ai.vin;
+    }
     return (
       docType: ai.docType,
       vin: vin,

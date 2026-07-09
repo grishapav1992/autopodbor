@@ -2,7 +2,12 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyVehicleRulesMethods on _SparkJoyCreateReportScreenState {
   bool _isVehicleReadyForContinue() {
-    return _vinUnreadable || _vinController.text.trim().isNotEmpty;
+    // «или» в карточке идентификаторов: VIN и госномер взаимозаменяемы как ключ
+    // авто, поэтому валидный госномер тоже разблокирует переход (иначе надпись
+    // «или» обманывает — заполнил только госномер, а «Продолжить» требует VIN).
+    if (_vinUnreadable || _vinController.text.trim().isNotEmpty) return true;
+    final plate = _plateController.text.trim();
+    return plate.isNotEmpty && plateError(plate, _plateFormat) == null;
   }
 
   Future<Map<String, dynamic>?> _findDuplicateVinDraft() async {
