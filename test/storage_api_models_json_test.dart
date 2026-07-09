@@ -254,6 +254,32 @@ void main() {
     });
   });
 
+  group('RestylingItem.yearRange — период одного рестайлинга', () {
+    RestylingItem r({int? s, int? e}) => RestylingItem(
+      id: 1,
+      restyling: '0',
+      yearStart: s,
+      yearEnd: e,
+      frames: const [],
+      photos: const [],
+    );
+    test('начало и конец → «2020–2022»', () {
+      expect(r(s: 2020, e: 2022).yearRange, '2020–2022');
+    });
+    test('только начало → «с 2020»', () {
+      expect(r(s: 2020).yearRange, 'с 2020');
+    });
+    test('только конец → «по 2022»', () {
+      expect(r(e: 2022).yearRange, 'по 2022');
+    });
+    test('равные годы → один год', () {
+      expect(r(s: 2020, e: 2020).yearRange, '2020');
+    });
+    test('нет годов → null', () {
+      expect(r().yearRange, isNull);
+    });
+  });
+
   group('GenerationItem.yearRangeFromRestylingsJson — из «сырого» списка', () {
     test('список карт с годами → диапазон', () {
       final raw = [

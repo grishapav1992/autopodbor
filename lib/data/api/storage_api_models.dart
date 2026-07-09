@@ -149,6 +149,17 @@ class RestylingItem {
     required this.photos,
   });
 
+  /// Годовой диапазон рестайлинга в том же формате, что и у поколения
+  /// («2020–2022» / «с 2020» / «по 2022»). `null`, если годов нет.
+  String? get yearRange {
+    final s = yearStart;
+    final e = yearEnd;
+    if (s != null && e != null) return e > s ? '$s–$e' : '$s';
+    if (s != null) return 'с $s';
+    if (e != null) return 'по $e';
+    return null;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'restyling': restyling,

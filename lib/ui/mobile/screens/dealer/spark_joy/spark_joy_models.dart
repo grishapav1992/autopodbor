@@ -73,10 +73,16 @@ class _CarCatalogRestyling {
     required this.label,
     required this.frames,
     required this.photoUrl,
+    this.years = '',
     this.frameIds = const <int>[],
   });
 
   final String label;
+
+  /// Чистый годовой диапазон выбранного рестайлинга («2020–2022» / «с 2020»),
+  /// пустая строка — если годов нет. После выбора рестайлинга это значение
+  /// уходит в поле «Поколение», чтобы там был тот же период, что выбрал юзер.
+  final String years;
   final String frames;
   final String photoUrl;
   /// Server ids for every frame under this restyling (at least one when

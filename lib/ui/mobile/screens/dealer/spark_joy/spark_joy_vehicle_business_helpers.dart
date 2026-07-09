@@ -134,7 +134,9 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     final segments = <String>[
       if (core.isNotEmpty) core,
       if (genPart.isNotEmpty) genPart,
-      if (restyling.isNotEmpty) restyling,
+      // Поле «Поколение» теперь несёт период выбранного рестайлинга, поэтому
+      // подпись рестайлинга часто совпадает с ним — не дублируем.
+      if (restyling.isNotEmpty && restyling != generation) restyling,
       if (yearPart.isNotEmpty) yearPart,
       if (engineParts.isNotEmpty) engineParts,
       if (gearbox.isNotEmpty) gearbox,

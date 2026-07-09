@@ -91,10 +91,7 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       storage_api.GenerationItem source,
     ) {
       final restylings = source.restylings.map((restyling) {
-        final years = [
-          if (restyling.yearStart != null) restyling.yearStart.toString(),
-          if (restyling.yearEnd != null) restyling.yearEnd.toString(),
-        ].join('-');
+        final years = restyling.yearRange ?? '';
         final frames = restyling.frames.map((item) => item.frame).join(', ');
         final frameIds = restyling.frames
             .map((item) => item.id)
@@ -109,12 +106,21 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
         final photoUrl = photo.urlX2.trim().isNotEmpty
             ? photo.urlX2.trim()
             : photo.urlX1.trim();
+        // «0», «1»… — внутренний индекс рестайлинга, не имя. Показываем его
+        // ТОЛЬКО когда годов нет (иначе мусорит подпись); осмысленные
+        // (нечисловые) имена оставляем префиксом к годам.
+        final rawName = restyling.restyling.trim();
+        final isJustIndex = RegExp(r'^\d+$').hasMatch(rawName);
         final labelParts = <String>[
-          if (restyling.restyling.trim().isNotEmpty) restyling.restyling.trim(),
+          if (rawName.isNotEmpty && !isJustIndex) rawName,
           if (years.isNotEmpty) years,
         ];
+        final label = labelParts.isNotEmpty
+            ? labelParts.join(' · ')
+            : (isJustIndex ? 'Рестайлинг $rawName' : 'Рестайлинг');
         return _CarCatalogRestyling(
-          label: labelParts.isEmpty ? 'Рестайлинг' : labelParts.join(' · '),
+          label: label,
+          years: years,
           frames: frames,
           photoUrl: photoUrl,
           frameIds: frameIds,
@@ -300,7 +306,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       return _CarPickerSelection(
         brand: brand.name,
         model: model.model,
-        generation: generation.name,
+        // После выбора рестайлинга в поле «Поколение» показываем ТОТ ЖЕ период,
+        // что выбрал юзер (напр. «2020–2022»), а не широкий диапазон поколения;
+        // без годов рестайлинга — фолбэк на диапазон/номер поколения.
+        generation: restyling.years.isNotEmpty ? restyling.years : generation.name,
         restyling: restyling.label,
         frames: restyling.frames,
         photoUrl: restyling.photoUrl,
