@@ -53,7 +53,10 @@ Uint8List _sparkPrepareDocScanPhoto(Uint8List bytes) {
 /// нет (решение Григория 2026-07-08); при сбое — штатный снэкбар ошибок с
 /// кодом и этапом. Отдельный OCR-сканер VIN у поля VIN не тронут.
 extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
-  Future<void> _openDocScanSourceModal() async {
+  /// Единая точка автозаполнения (иконка у поля VIN + кнопка «Заполнить» в
+  /// карточке «Автозаполнение»). Показывает выбор источника фото и запускает
+  /// объединённый OCR-first + ИИ поток (см. [_runAutofillScan]).
+  Future<void> _openAutofillScan() async {
     final source = await showDialog<ImageSource>(
       context: context,
       builder: (dialogContext) {
@@ -86,8 +89,8 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
                   const SizedBox(height: SparkSpace.xs),
                   const MyText(
                     text:
-                        'ИИ прочитает документ и заполнит VIN, госномер, '
-                        'марку и параметры. Фото хранится в облаке 1 день.',
+                        'Прочитаем документ и заполним VIN, госномер, '
+                        'марку и параметры.',
                     size: SparkTextSize.caption,
                     color: kGreyColor,
                   ),
@@ -118,10 +121,14 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       },
     );
     if (source == null || !mounted) return;
-    await _runDocScan(source);
+    await _runAutofillScan(source);
   }
 
-  Future<void> _runDocScan(ImageSource source) async {
+  /// Объединённый поток: одно фото → сначала локальный OCR (офлайн, ML Kit) для
+  /// VIN, затем, если сеть доступна — ещё и ИИ (AiQueue vision) для полного
+  /// набора полей. Прогресс — модал-чеклист [_DocScanProgressDialog]. При сбое
+  /// сети/ИИ уходим в OCR-only (VIN), без красной ошибки, если VIN распознан.
+  Future<void> _runAutofillScan(ImageSource source) async {
     if (_docScanBusy || widget.readOnly) return;
     final XFile? picked;
     try {
@@ -149,110 +156,183 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       );
       return;
     }
+
+    // 0=обработка, 1=загрузка, 2=распознавание, 3=готово.
+    final stage = ValueNotifier<int>(0);
+    final offline = ValueNotifier<bool>(false);
     _setStateSafely(() {
       _docScanBusy = true;
       _docScanStage = 'Обработка фото…';
     });
+    // Barrier-диалог прогресса. Не await'им — закрываем программно ниже.
+    // `dialogOpen` + PopScope(canPop:false) страхуют от закрытия системной
+    // «назад»: иначе pop в finally увёл бы со всего шага, а не с диалога.
+    var dialogOpen = true;
+    unawaited(
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => PopScope(
+          canPop: false,
+          child: _DocScanProgressDialog(stage: stage, offline: offline),
+        ),
+      ).whenComplete(() => dialogOpen = false),
+    );
+
+    DocScanAiResult? aiResult;
+    var ocrVin = '';
+    Object? aiError;
     try {
+      // Шаг 0: OCR-первым (натив; на web OCR нет — vinOcrSupported == false).
+      // Best-effort: сбой OCR не должен ломать поток — ИИ ещё впереди.
+      if (vinOcrSupported) {
+        try {
+          final ocr = await scanVinFromImageBytes(bytes);
+          ocrVin = _extractVinFromOcrResult(ocr);
+        } catch (_) {}
+      }
       // Даунскейл+контраст+пережатие ОБЯЗАТЕЛЬНЫ (требование бэка: без сжатия
-      // больше токенов vision и дольше ответ) — поэтому гоняем на ВСЕХ
-      // платформах, web включительно. На нативе — в изоляте (compute), на web
-      // compute = синхронный no-op в главном потоке: короткая пауза под
-      // спиннером «Обработка фото…» приемлемее жирного аплоада несжатого фото.
+      // больше токенов vision и дольше ответ). На нативе — в изоляте (compute).
       final prepared = kIsWeb
           ? _sparkPrepareDocScanPhoto(bytes)
           : await compute(_sparkPrepareDocScanPhoto, bytes);
-      if (!mounted) return;
-      _setStateSafely(() => _docScanStage = 'Загрузка фото…');
-      // Случайный суффикс к имени: файл кладётся в ОБЩУЮ папку temp/, а сервер
-      // подписывает view-URL по любому запрошенному имени без проверки
-      // владельца. Предсказуемый ключ (только время в мс) дал бы другому
-      // авторизованному юзеру перебором вытащить чужое фото документа с ПДн.
-      final nonce = math.Random.secure().nextInt(1 << 32).toRadixString(16);
-      final filename =
-          'doc_scan_${DateTime.now().millisecondsSinceEpoch}_$nonce.jpg';
-      final upload = await storage_api.StorageApi.getTemporaryUploadUrl(
-        reportNumber: 'temp',
-        filename: filename,
-      );
-      await storage_api.StorageApi.uploadBytesToPresignedUrl(
-        url: upload.url,
-        bytes: prepared,
-        contentType: 'image/jpeg',
-      );
-      final viewUrl = await storage_api.StorageApi.getTemporaryViewUrl(
-        reportNumber: 'temp',
-        filename: filename,
-        // Дефолтные 10с не переживают холодный бэк (7-47с на первом хите
-        // после простоя) — а сам метод глотает таймаут и возвращает ''.
-        timeout: const Duration(seconds: 30),
-        // URL нужен на один vision-вызов (≤75с) — не держим сутки живую ссылку
-        // на документ с ПДн (дефолт сервера 86400с).
-        expiresInSeconds: 120,
-      );
-      if (viewUrl.isEmpty) {
-        throw Exception(
-          'Не удалось получить ссылку на загруженное фото '
-          '(сервер не ответил вовремя)',
+
+      // Шаги 1–2: ИИ, если сеть доступна. Любой сбой транспорта/ИИ → OCR-only.
+      try {
+        stage.value = 1;
+        _docScanStage = 'Загрузка фото…';
+        // Случайный суффикс к имени: файл кладётся в ОБЩУЮ папку temp/, сервер
+        // подписывает view-URL по любому имени без проверки владельца —
+        // предсказуемый ключ дал бы перебор чужого фото документа с ПДн.
+        final nonce = math.Random.secure().nextInt(1 << 32).toRadixString(16);
+        final filename =
+            'doc_scan_${DateTime.now().millisecondsSinceEpoch}_$nonce.jpg';
+        final upload = await storage_api.StorageApi.getTemporaryUploadUrl(
+          reportNumber: 'temp',
+          filename: filename,
         );
+        await storage_api.StorageApi.uploadBytesToPresignedUrl(
+          url: upload.url,
+          bytes: prepared,
+          contentType: 'image/jpeg',
+        );
+        final viewUrl = await storage_api.StorageApi.getTemporaryViewUrl(
+          reportNumber: 'temp',
+          filename: filename,
+          // Дефолтные 10с не переживают холодный бэк (7-47с на первом хите).
+          timeout: const Duration(seconds: 30),
+          // URL на один vision-вызов (≤75с) — не держим сутки живую ссылку на
+          // документ с ПДн (дефолт сервера 86400с).
+          expiresInSeconds: 120,
+        );
+        if (viewUrl.isEmpty) {
+          throw Exception(
+            'Не удалось получить ссылку на загруженное фото '
+            '(сервер не ответил вовремя)',
+          );
+        }
+        stage.value = 2;
+        _docScanStage = 'Распознавание…';
+        final chatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+        final result = await AiQueueApi.chatCompletions(
+          chatId: chatId,
+          text: 'Распознай документ на фото.',
+          cliche: AiQueueClicheBuilder.buildDocScanCliche(),
+          fileUrls: [viewUrl],
+          timeout: const Duration(seconds: 75),
+        );
+        // Документ (с ПДн владельца) виден модели — чистим историю чата
+        // AiQueue (KV бэка ~6ч). Best-effort: сбой очистки не роняет скан.
+        unawaited(
+          AiQueueApi.clearChatHistory(chatId: chatId).catchError((_) {}),
+        );
+        aiResult = parseDocScanAiResult(result.text);
+      } catch (e) {
+        // Сеть/ИИ недоступны → остаёмся на OCR-only (VIN).
+        aiError = e;
+        offline.value = true;
+        debugPrint('Autofill AI stage failed at "$_docScanStage": $e');
       }
-      if (!mounted) return;
-      _setStateSafely(() => _docScanStage = 'Распознавание…');
-      final chatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
-      final result = await AiQueueApi.chatCompletions(
-        chatId: chatId,
-        text: 'Распознай документ на фото.',
-        cliche: AiQueueClicheBuilder.buildDocScanCliche(),
-        fileUrls: [viewUrl],
-        timeout: const Duration(seconds: 75),
-      );
-      // Документ (с ПДн владельца, которые фича намеренно НЕ извлекает) виден
-      // модели — не оставляем его в истории чата AiQueue (KV бэка живёт ~6ч).
-      // Best-effort: сбой очистки не должен ронять успешный скан.
-      unawaited(AiQueueApi.clearChatHistory(chatId: chatId).catchError((_) {}));
-      if (!mounted) return;
-      final parsed = parseDocScanAiResult(result.text);
-      if (!hasAnyDocScanData(parsed)) {
-        // Модель ответила, но не разобрала ни одного поля — проблема в фото,
-        // а не в транспорте. Подсказываем, как переснять.
+      stage.value = 3;
+    } finally {
+      // Закрываем barrier-диалог прогресса (он всегда наверху — между показом
+      // и этим местом мы ничего не пушим). dialogOpen страхует от двойного pop.
+      if (mounted && dialogOpen) {
+        dialogOpen = false;
+        Navigator.of(context).pop();
+      }
+      _setStateSafely(() {
+        _docScanBusy = false;
+        _docScanStage = '';
+      });
+    }
+
+    if (!mounted) return;
+    final merged = _mergeAutofillResults(aiResult, ocrVin);
+    if (merged == null || !hasAnyDocScanData(merged)) {
+      if (aiError != null && ocrVin.isEmpty) {
+        // Ни OCR, ни ИИ — и ИИ упал: показываем код/этап ошибки.
+        showSparkJoyErrorSnackBar(
+          context,
+          aiError,
+          fallback: 'Не удалось распознать документ',
+        );
+      } else {
+        // ИИ ответил, но не разобрал полей (или офлайн без VIN) — проблема в
+        // фото. Подсказываем, как переснять.
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'ИИ не смог прочитать документ на этом фото. Снимите документ '
+              'Не удалось прочитать документ на этом фото. Снимите документ '
               'целиком, без бликов, и попробуйте ещё раз.',
             ),
           ),
         );
-        return;
       }
-      await _showDocScanPreviewDialog(parsed);
-    } catch (e) {
-      debugPrint('Doc scan failed at "$_docScanStage": $e');
-      if (!mounted) return;
-      // Штатный снэкбар ошибок: код (NET-xx/SRV-xx/…) + «Скопировать» —
-      // по нему видно, на каком этапе и почему упало распознавание.
-      showSparkJoyErrorSnackBar(
-        context,
-        e,
-        fallback:
-            'Не удалось распознать документ (этап: '
-            '${_docScanStage.isEmpty ? 'распознавание' : _docScanStage})',
-      );
-    } finally {
-      if (mounted) {
-        _setStateSafely(() {
-          _docScanBusy = false;
-          _docScanStage = '';
-        });
-      }
+      return;
     }
+    await _showDocScanPreviewDialog(merged, ocrOnly: aiResult == null);
+  }
+
+  /// Сливает OCR-VIN и результат ИИ. VIN от ИИ приоритетен, когда валиден;
+  /// иначе берём OCR-VIN. Если ИИ не отработал — возвращаем результат только с
+  /// VIN (офлайн-ветка) либо `null`, если и VIN нет.
+  DocScanAiResult? _mergeAutofillResults(DocScanAiResult? ai, String ocrVin) {
+    final validOcrVin = _isStrictVin(ocrVin) ? ocrVin : '';
+    if (ai == null) {
+      if (validOcrVin.isEmpty) return null;
+      return (
+        docType: 'unknown',
+        vin: validOcrVin,
+        gosNumber: '',
+        brand: '',
+        model: '',
+        year: '',
+        color: '',
+      );
+    }
+    final vin = _isStrictVin(ai.vin)
+        ? ai.vin
+        : (validOcrVin.isNotEmpty ? validOcrVin : ai.vin);
+    return (
+      docType: ai.docType,
+      vin: vin,
+      gosNumber: ai.gosNumber,
+      brand: ai.brand,
+      model: ai.model,
+      year: ai.year,
+      color: ai.color,
+    );
   }
 
   /// Превью распознанного перед применением: юзер видит, что именно легло бы
   /// в отчёт, и решает. Заполняются ТОЛЬКО пустые поля (ручной ввод
   /// неприкосновенен). Чекбокс «сразу запустить проверки» показывается,
   /// когда проверки ещё не запускались и право есть.
-  Future<void> _showDocScanPreviewDialog(DocScanAiResult r) async {
+  Future<void> _showDocScanPreviewDialog(
+    DocScanAiResult r, {
+    bool ocrOnly = false,
+  }) async {
     final currentVin = _sanitizeVin(_vinController.text);
     final vinConflict =
         currentVin.length == 17 && r.vin.isNotEmpty && r.vin != currentVin;
@@ -342,6 +422,24 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
                     size: SparkTextSize.caption,
                     color: kGreyColor,
                   ),
+                  const SizedBox(height: SparkSpace.xxs),
+                  const MyText(
+                    text:
+                        'Объём двигателя и тип топлива определятся '
+                        'автоматически по VIN.',
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                  if (ocrOnly) ...[
+                    const SizedBox(height: SparkSpace.xs),
+                    const MyText(
+                      text:
+                          'Нет сети — распознан только VIN. Остальное можно '
+                          'добавить позже или переснять онлайн.',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                  ],
                   if (vinConflict) ...[
                     const SizedBox(height: SparkSpace.xs),
                     const MyText(
@@ -539,5 +637,128 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       _markDraftDirty();
     }
     unawaited(_startLegalLoading());
+  }
+}
+
+/// Модал-чеклист прогресса объединённого автозаполнения (см.
+/// [_SparkJoyDocScanHelpers._runAutofillScan]). Три стадии: обработка фото,
+/// загрузка, распознавание. [stage] — текущий индекс (0..3, 3 = готово);
+/// [offline] помечает шаги загрузки/распознавания «пропущено», когда сеть
+/// недоступна и поток ушёл в OCR-only.
+class _DocScanProgressDialog extends StatelessWidget {
+  const _DocScanProgressDialog({required this.stage, required this.offline});
+
+  final ValueListenable<int> stage;
+  final ValueListenable<bool> offline;
+
+  static const List<String> _labels = [
+    'Обработка фото',
+    'Загрузка фото',
+    'Распознавание документа',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xxxl,
+        vertical: SparkSpace.xxl,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SparkRadius.xl),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: SparkSize.modalNarrow),
+        child: Padding(
+          padding: const EdgeInsets.all(SparkSpace.xxl),
+          child: AnimatedBuilder(
+            animation: Listenable.merge([stage, offline]),
+            builder: (context, _) {
+              final current = stage.value;
+              final isOffline = offline.value;
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Center(
+                    child: SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                  ),
+                  const SizedBox(height: SparkSpace.lg),
+                  const Center(
+                    child: MyText(
+                      text: 'Распознавание…',
+                      size: SparkTextSize.titleLg,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: SparkSpace.lg),
+                  for (var i = 0; i < _labels.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: SparkSpace.sm),
+                      child: _row(i, current, isOffline),
+                    ),
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(int index, int current, bool isOffline) {
+    // Шаги загрузки/распознавания пропущены, когда сеть недоступна.
+    final skipped = isOffline && index >= 1;
+    final done = current > index && !skipped;
+    final active = current == index && !skipped;
+
+    final Widget leading;
+    if (done) {
+      leading = const Icon(
+        Icons.check_circle_rounded,
+        color: kGreenColor,
+        size: 20,
+      );
+    } else if (active) {
+      leading = const SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    } else if (skipped) {
+      leading = const Icon(
+        Icons.remove_circle_outline_rounded,
+        color: kGreyColor,
+        size: 20,
+      );
+    } else {
+      leading = Container(
+        width: 20,
+        height: 20,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: kBorderColor, width: 2),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        leading,
+        const SizedBox(width: SparkSpace.md),
+        Expanded(
+          child: MyText(
+            text: skipped ? '${_labels[index]} — пропущено' : _labels[index],
+            size: SparkTextSize.body,
+            weight: active ? FontWeight.w700 : FontWeight.w500,
+            color: (done || active) ? kTertiaryColor : kGreyColor,
+          ),
+        ),
+      ],
+    );
   }
 }

@@ -74,6 +74,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     final savedBrand = _brandController.text.trim();
     final savedModel = _modelController.text.trim();
     final savedGeneration = _generationController.text.trim();
+    // Стабильный ключ пере-выбора: подпись поколения в поле — это диапазон
+    // годов, который может «съехать» при обновлении каталога; номер же нет.
+    final savedGenerationNumber = _selectedGenerationNumber;
     final savedRestyling = _restylingLabel.trim();
 
     // Репозиторий мемоизирует и офлайн отдаёт персист — диалогу свой кэш
@@ -135,7 +138,10 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       }
 
       return _CarCatalogGeneration(
-        name: source.generation.toString(),
+        // Показываем диапазон годов вместо номера поколения (если каталог
+        // отдал годы у рестайлингов); иначе — прежний номер как фолбэк.
+        name: source.yearRangeOrNumber,
+        number: source.generation,
         restylings: restylings,
       );
     }
@@ -205,11 +211,24 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     if (preModel != null) {
       try {
         final generations = await loadGenerations(preModel);
-        if (savedGeneration.isNotEmpty) {
+        // 1) По стабильному номеру (новые черновики пишут его отдельно) —
+        // не зависит от того, как каталог сейчас форматирует диапазон годов.
+        if (savedGenerationNumber != null && savedGenerationNumber > 0) {
           for (final generation in generations) {
-            final label = 'Поколение ${generation.name}';
+            if (generation.number == savedGenerationNumber) {
+              selectedGeneration = generation;
+              break;
+            }
+          }
+        }
+        // 2) Фолбэк по подписи: новая (диапазон годов) и старые форматы
+        // черновиков — голый номер поколения и «Поколение N».
+        if (selectedGeneration == null && savedGeneration.isNotEmpty) {
+          for (final generation in generations) {
             if (same(generation.name, savedGeneration) ||
-                same(label, savedGeneration)) {
+                same('Поколение ${generation.name}', savedGeneration) ||
+                same('${generation.number}', savedGeneration) ||
+                same('Поколение ${generation.number}', savedGeneration)) {
               selectedGeneration = generation;
               break;
             }
@@ -290,6 +309,7 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
             : null,
         brandId: brand.id,
         modelCarId: model.id,
+        generationNumber: generation.number,
       );
     }
 
@@ -823,6 +843,7 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
       // консистентны (модели подтянутся для этого brandId).
       _selectedBrandId = selection.brandId;
       _selectedModelCarId = selection.modelCarId;
+      _selectedGenerationNumber = selection.generationNumber;
     });
     _markDraftDirty();
     // Persist a frame-id → metadata entry so the completed-report

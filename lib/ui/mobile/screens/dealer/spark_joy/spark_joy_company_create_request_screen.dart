@@ -288,7 +288,7 @@ class _SparkJoyCompanyCreateRequestScreenState
 
   String get _carMetaLabel {
     final parts = <String>[
-      if (_generation != null) 'Поколение ${_generation!.generation}',
+      if (_generation != null) 'Поколение ${_generation!.yearRangeOrNumber}',
       if (_restyling != null) _restylingLabel(_restyling!),
       if (_restyling != null && _restyling!.frames.isNotEmpty)
         _restyling!.frames.map((item) => item.frame).join(', '),
@@ -1190,7 +1190,7 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
       if (_selectedModel != null) _modelLabel(_selectedModel!),
       if (_selectedGeneration != null &&
           _step == _RequestCarPickerStep.restyling)
-        'Пок. ${_selectedGeneration!.generation}',
+        'Пок. ${_selectedGeneration!.yearRangeOrNumber}',
     ];
     return parts.join(' -> ');
   }
@@ -1312,7 +1312,7 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
         final generation = generations[index];
         final restCount = generation.restylings.length;
         return ListTile(
-          title: Text('Поколение ${generation.generation}'),
+          title: Text('Поколение ${generation.yearRangeOrNumber}'),
           subtitle: Text(_restylingCountLabel(restCount)),
           trailing: const Icon(Icons.chevron_right_rounded),
           onTap: () => _selectGeneration(generation),

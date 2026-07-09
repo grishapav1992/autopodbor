@@ -14,12 +14,11 @@ Widget _buildSparkJoyStepVehicle(
   return Column(
     children: [
       s._requiredLegend('— обязательное поле'),
-      s._sectionHeading(
-        'Идентификация',
-        icon: Icons.fact_check_outlined,
-        subtitle: 'VIN, марка/модель и госномер',
+      s._lightSectionHeading(
+        'Идентификаторы',
+        'по ним подтянутся данные авто',
       ),
-      const SizedBox(height: SparkSpace.md),
+      // Единая карточка идентификаторов: VIN + «или» + госномер.
       s._card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -76,9 +75,12 @@ Widget _buildSparkJoyStepVehicle(
                   width: 52,
                   height: 52,
                   child: OutlinedButton(
-                    onPressed: s._vinUnreadable
+                    onPressed:
+                        (s._docScanBusy ||
+                            s._vinUnreadable ||
+                            s.widget.readOnly)
                         ? null
-                        : s._openVinScannerSourceModal,
+                        : () => unawaited(s._openAutofillScan()),
                     style: OutlinedButton.styleFrom(
                       padding: EdgeInsets.zero,
                       side: const BorderSide(color: kBorderColor),
@@ -86,40 +88,15 @@ Widget _buildSparkJoyStepVehicle(
                         borderRadius: BorderRadius.circular(SparkRadius.lg),
                       ),
                     ),
-                    child: const Icon(Icons.document_scanner_outlined),
+                    child: s._docScanBusy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.document_scanner_outlined),
                   ),
                 ),
-                if (s._legalCanRunReview) ...[
-                  const SizedBox(width: SparkSpace.md),
-                  SizedBox(
-                    width: 52,
-                    height: 52,
-                    child: Tooltip(
-                      message: 'Определить по VIN (ApiCloud)',
-                      child: OutlinedButton(
-                        onPressed: (s._vinUnreadable || s._vinConverterBusy)
-                            ? null
-                            : () => unawaited(
-                                s._runVinPlateConverter(fromVin: true),
-                              ),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.zero,
-                          side: const BorderSide(color: kBorderColor),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(SparkRadius.lg),
-                          ),
-                        ),
-                        child: s._vinConverterBusy
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.travel_explore),
-                      ),
-                    ),
-                  ),
-                ],
               ],
             ),
             InkWell(
@@ -157,50 +134,31 @@ Widget _buildSparkJoyStepVehicle(
                 ],
               ),
             ),
-            // Скан СТС/ПТС через ИИ — компактной строкой внутри карточки
-            // (отдельная кнопка-полоса между карточками перегружала шаг).
-            // Заполняет VIN/госномер/марку/модель здесь и объём/топливо/цвет
-            // в «Параметрах»; офлайн-фолбэк — OCR-сканер VIN.
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: (s._docScanBusy || s.widget.readOnly)
-                    ? null
-                    : () => unawaited(s._openDocScanSourceModal()),
-                icon: s._docScanBusy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.badge_outlined, size: 18),
-                label: Text(
-                  s._docScanBusy
-                      ? (s._docScanStage.isEmpty
-                            ? 'Распознавание…'
-                            : s._docScanStage)
-                      : 'Заполнить по фото СТС / ПТС',
-                ),
-              ),
-            ),
             if (vinError != null)
               MyText(
                 text: vinError,
                 size: SparkTextSize.caption,
                 color: kRedColor,
               ),
-          ],
-        ),
-      ),
-      const SizedBox(height: SparkSpace.lg),
-      // Brand/model picker — moved from the «Параметры» step so all
-      // identification data lives together with VIN and госномер.
-      s._carSelectionCard(),
-      const SizedBox(height: SparkSpace.lg),
-      s._card(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+            const SizedBox(height: SparkSpace.lg),
+            // Разделитель «или» — VIN и госномер взаимозаменяемы как ключ авто.
+            Row(
+              children: [
+                const Expanded(child: Divider(color: kBorderColor)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                  ),
+                  child: const MyText(
+                    text: 'или',
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ),
+                const Expanded(child: Divider(color: kBorderColor)),
+              ],
+            ),
+            const SizedBox(height: SparkSpace.lg),
             const MyText(
               text: 'Госномер',
               size: SparkTextSize.body,
@@ -268,18 +226,20 @@ Widget _buildSparkJoyStepVehicle(
                 autocorrect: false,
                 enableSuggestions: false,
                 textAlign: TextAlign.center,
-                // Моноширинный — как и VIN: цифры и буквы госномера одной
-                // высоты, ровный набор без «прыгающих» цифр.
+                // Моноширинный, крупнее и жирнее — поле стилизовано под
+                // «номерной знак» (серая заливка ниже).
                 style: TextStyle(
                   fontFamily: AppFonts.MONOSPACE,
-                  fontSize: 16,
-                  letterSpacing: 1,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 2,
                   color: kTertiaryColor,
                 ),
                 decoration: s
                     ._fieldDecoration(_plateInputHint(s))
                     .copyWith(
                       counterText: '',
+                      fillColor: kLightGreyColor,
                       // Префикс-pill с флагом и кодом страны слева внутри
                       // инпута. Тап → bottom sheet со списком всех стран
                       // плюс пунктом «Авто». В auto-mode когда детектор
@@ -304,36 +264,6 @@ Widget _buildSparkJoyStepVehicle(
                 text: plateError,
                 size: SparkTextSize.caption,
                 color: kRedColor,
-              ),
-            ],
-            if (s._legalCanRunReview) ...[
-              const SizedBox(height: SparkSpace.md),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: s._vinConverterBusy
-                      ? null
-                      : () => unawaited(
-                          s._runVinPlateConverter(fromVin: false),
-                        ),
-                  icon: s._vinConverterBusy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(
-                          Icons.travel_explore,
-                          size: SparkSize.iconSm,
-                        ),
-                  label: const Text('Определить по госномеру'),
-                  style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: kBorderColor),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SparkRadius.lg),
-                    ),
-                  ),
-                ),
               ),
             ],
             if (s._vinLookupInfo.isNotEmpty) ...[
@@ -386,6 +316,69 @@ Widget _buildSparkJoyStepVehicle(
           ],
         ),
       ),
+      const SizedBox(height: SparkSpace.lg),
+      // Автозаполнение — единая точка: одно фото → OCR-first + ИИ по СТС/ПТС.
+      s._card(
+        backgroundColor: kLightGreyColor,
+        child: Row(
+          children: [
+            Container(
+              width: SparkSize.navStepBadge,
+              height: SparkSize.navStepBadge,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(SparkRadius.sm),
+                color: kSecondaryColor.withValues(alpha: 0.08),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.auto_awesome,
+                size: SparkSize.iconSm,
+                color: kSecondaryColor,
+              ),
+            ),
+            const SizedBox(width: SparkSpace.md),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MyText(
+                    text: 'Автозаполнение',
+                    size: SparkTextSize.body,
+                    weight: FontWeight.w700,
+                  ),
+                  SizedBox(height: 2),
+                  MyText(
+                    text: 'по VIN, госномеру или фото СТС/ПТС',
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: SparkSpace.md),
+            FilledButton(
+              onPressed: (s._docScanBusy || s.widget.readOnly)
+                  ? null
+                  : () => unawaited(s._openAutofillScan()),
+              child: s._docScanBusy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(kWhiteColor),
+                      ),
+                    )
+                  : const Text('Заполнить'),
+            ),
+          ],
+        ),
+      ),
+      const SizedBox(height: SparkSpace.lg),
+      // Brand/model picker — перенесён сюда со шага «Параметры», чтобы вся
+      // идентификация была рядом с VIN и госномером.
+      s._lightSectionHeading('Модель', 'марка, модель, поколение'),
+      s._carSelectionCard(),
       const SizedBox(height: SparkSpace.xl),
       // Состояние — пробег + соответствие. Раньше блок жил в шаге
       // «Осмотр» рядом с медиа-группами; перенесён сюда чтобы базовые

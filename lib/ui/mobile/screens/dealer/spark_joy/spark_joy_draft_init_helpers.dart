@@ -153,6 +153,16 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _selectedModelCarId = (parsedModelCarId != null && parsedModelCarId > 0)
         ? parsedModelCarId
         : null;
+    final rawGenerationNumber = draft['generationNumber'];
+    final parsedGenerationNumber = rawGenerationNumber is int
+        ? rawGenerationNumber
+        : (rawGenerationNumber is num
+              ? rawGenerationNumber.toInt()
+              : int.tryParse('${rawGenerationNumber ?? ''}'));
+    _selectedGenerationNumber =
+        (parsedGenerationNumber != null && parsedGenerationNumber > 0)
+        ? parsedGenerationNumber
+        : null;
     _adLinkController = TextEditingController(
       text: _read(draft, 'adLink', fallback: _read(assignment, 'listingUrl')),
     );

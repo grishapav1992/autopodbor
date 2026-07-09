@@ -2769,6 +2769,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         'brandId': _selectedBrandId,
       if (_selectedModelCarId != null && _selectedModelCarId! > 0)
         'modelCarId': _selectedModelCarId,
+      // Стабильный ключ пере-выбора поколения (поле показывает диапазон годов,
+      // а он мутабелен — см. _selectedGenerationNumber).
+      if (_selectedGenerationNumber != null && _selectedGenerationNumber! > 0)
+        'generationNumber': _selectedGenerationNumber,
       'vin': _vinController.text.trim(),
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),

@@ -13,6 +13,7 @@ class _CarPickerSelection {
     this.frameId,
     this.brandId,
     this.modelCarId,
+    this.generationNumber,
   });
 
   final String brand;
@@ -36,6 +37,13 @@ class _CarPickerSelection {
   /// Catalog model id (`Storage.GetModelCar`) when picked remotely — null for
   /// local fallback. Feeds `_selectedModelCarId`.
   final int? modelCarId;
+
+  /// Порядковый номер поколения (`GenerationItem.generation`) — стабильный
+  /// ключ пере-выбора черновика. Поле «Поколение» показывает диапазон годов,
+  /// который выводится из мутабельных годов рестайлингов и может «съехать»
+  /// при обновлении каталога; номер же не меняется. Feeds
+  /// `_selectedGenerationNumber`. null — если поколение не выбрано.
+  final int? generationNumber;
 }
 
 // _CarCatalogBrand/_CarCatalogModel удалены вместе с хардкодным
@@ -43,9 +51,20 @@ class _CarPickerSelection {
 // (BrandItem/ModelItem). _CarCatalogGeneration/_CarCatalogRestyling остаются
 // view-моделями каталог-визарда (маппинг из GenerationItem).
 class _CarCatalogGeneration {
-  const _CarCatalogGeneration({required this.name, required this.restylings});
+  const _CarCatalogGeneration({
+    required this.name,
+    required this.number,
+    required this.restylings,
+  });
 
+  /// Подпись для UI: диапазон годов («2016–2020» / «с 2016»), если он известен,
+  /// иначе — номер поколения. Именно это значение пишется в поле «Поколение».
   final String name;
+
+  /// Порядковый номер поколения (`GenerationItem.generation`) — стабильный
+  /// ключ пере-выбора черновика и совместимость со старыми черновиками, где
+  /// сохранялся именно номер, а не диапазон годов.
+  final int number;
   final List<_CarCatalogRestyling> restylings;
 }
 

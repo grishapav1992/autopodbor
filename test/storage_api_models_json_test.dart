@@ -195,4 +195,95 @@ void main() {
       expect(parsed.restylings, isEmpty);
     });
   });
+
+  group('GenerationItem.yearRange — диапазон годов из рестайлингов', () {
+    RestylingItem rest({int? start, int? end}) => RestylingItem(
+      id: 1,
+      restyling: 'r',
+      yearStart: start,
+      yearEnd: end,
+      frames: const [],
+      photos: const [],
+    );
+
+    GenerationItem gen(List<RestylingItem> rs, {int number = 5}) =>
+        GenerationItem(
+          id: 1,
+          modelCarId: 1,
+          generation: number,
+          frames: const [],
+          restylings: rs,
+        );
+
+    test('один рестайлинг с началом и концом', () {
+      expect(gen([rest(start: 2016, end: 2020)]).yearRange, '2016–2020');
+    });
+
+    test('несколько рестайлингов — минимальный старт и максимальный конец', () {
+      final g = gen([
+        rest(start: 2018, end: 2021),
+        rest(start: 2015, end: 2019),
+      ]);
+      expect(g.yearRange, '2015–2021');
+    });
+
+    test('открытый конец (модель ещё выпускается) → «с YYYY»', () {
+      expect(gen([rest(start: 2019, end: null)]).yearRange, 'с 2019');
+    });
+
+    test('любой рестайлинг без конца делает диапазон открытым', () {
+      final g = gen([
+        rest(start: 2010, end: 2014),
+        rest(start: 2014, end: null),
+      ]);
+      expect(g.yearRange, 'с 2010');
+    });
+
+    test('старт == конец → один год без тире', () {
+      expect(gen([rest(start: 2020, end: 2020)]).yearRange, '2020');
+    });
+
+    test('нет годов ни у одного рестайлинга → null', () {
+      expect(gen([rest(), rest()]).yearRange, isNull);
+      expect(gen(const []).yearRange, isNull);
+    });
+
+    test('yearRangeOrNumber падает на номер поколения без годов', () {
+      expect(gen(const [], number: 7).yearRangeOrNumber, '7');
+      expect(gen([rest(start: 2016, end: 2020)]).yearRangeOrNumber, '2016–2020');
+    });
+  });
+
+  group('GenerationItem.yearRangeFromRestylingsJson — из «сырого» списка', () {
+    test('список карт с годами → диапазон', () {
+      final raw = [
+        {'id': 1, 'yearStart': 2015, 'yearEnd': 2019},
+        {'id': 2, 'yearStart': 2018, 'yearEnd': 2021},
+      ];
+      expect(GenerationItem.yearRangeFromRestylingsJson(raw), '2015–2021');
+    });
+
+    test('открытый конец → «с YYYY»', () {
+      final raw = [
+        {'id': 1, 'yearStart': 2019, 'yearEnd': null},
+      ];
+      expect(GenerationItem.yearRangeFromRestylingsJson(raw), 'с 2019');
+    });
+
+    test('без годов → null (вызывающий покажет номер)', () {
+      expect(
+        GenerationItem.yearRangeFromRestylingsJson([
+          {'id': 1},
+        ]),
+        isNull,
+      );
+    });
+
+    test('незнакомая форма молча даёт null, не бросает', () {
+      expect(GenerationItem.yearRangeFromRestylingsJson(null), isNull);
+      expect(GenerationItem.yearRangeFromRestylingsJson('мусор'), isNull);
+      expect(GenerationItem.yearRangeFromRestylingsJson(const []), isNull);
+      expect(GenerationItem.yearRangeFromRestylingsJson(42), isNull);
+    });
+  });
 }

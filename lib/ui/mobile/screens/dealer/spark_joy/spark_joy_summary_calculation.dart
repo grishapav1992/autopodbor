@@ -274,6 +274,11 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// P2 — ApiCloud VIN↔госномер конвертер. [fromVin]=true: по VIN подставить
   /// госномер+марку+модель; false: по госномеру подставить VIN+марку+модель.
   /// Платно, требует `run_legal_review` (гейт + 403 → snackbar из B1).
+  ///
+  /// Кнопки «Определить по VIN/госномеру» убраны из шага «Автомобиль» при
+  /// редизайне — данные по VIN подтягивает фоновый `_maybeAutoResolveIdentityFromVin`.
+  /// Метод оставлен в кодовой базе для возможного переиспользования.
+  // ignore: unused_element
   Future<void> _runVinPlateConverter({required bool fromVin}) async {
     if (_vinConverterBusy) return;
     if (!_legalCanRunReview) {
@@ -465,6 +470,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     _restylingLabel = '';
     _carFrames = '';
     _modelGenerationRestylingFrameId = null;
+    _selectedGenerationNumber = null;
   }
 
   Future<void> _startLegalLoading() async {

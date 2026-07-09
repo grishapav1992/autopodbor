@@ -190,6 +190,54 @@ class GenerationItem {
 
   String get label => 'Поколение $generation';
 
+  /// Диапазон годов выпуска поколения, посчитанный из годов его рестайлингов
+  /// (`RestylingItem.yearStart`/`yearEnd`). У самого поколения в каталоге
+  /// годов нет — они висят на рестайлингах, поэтому берём минимальный старт и
+  /// максимальный конец по всем рестайлингам. Если хотя бы у одного рестайлинга
+  /// год окончания не задан (модель ещё выпускается) — диапазон открытый.
+  /// Возвращает `null`, когда год не известен ни у одного рестайлинга — тогда
+  /// вызывающий код показывает номер поколения как раньше.
+  String? get yearRange {
+    int? start;
+    int? end;
+    var openEnded = false;
+    for (final restyling in restylings) {
+      final s = restyling.yearStart;
+      final e = restyling.yearEnd;
+      if (s != null) {
+        if (start == null || s < start) start = s;
+        if (e == null) openEnded = true;
+      }
+      if (e != null && (end == null || e > end)) end = e;
+    }
+    if (start == null) return null;
+    if (openEnded || end == null) return 'с $start';
+    if (end <= start) return '$start';
+    return '$start–$end';
+  }
+
+  /// Человекочитаемая подпись поколения для UI: диапазон годов, если он
+  /// известен, иначе — номер поколения.
+  String get yearRangeOrNumber => yearRange ?? '$generation';
+
+  /// Диапазон годов, посчитанный напрямую из «сырого» списка рестайлингов
+  /// (list of maps в контракте [RestylingItem.toJson]) — для экранов, где под
+  /// рукой нет собранного [GenerationItem], а только сохранённый/пришедший с
+  /// бэка `restylings`. Возвращает `null`, если список не распознан или годов
+  /// в нём нет — тогда вызывающий код показывает номер поколения. Никогда не
+  /// бросает: незнакомая форма молча даёт `null`.
+  static String? yearRangeFromRestylingsJson(dynamic rawRestylings) {
+    final list = _catalogJsonList(rawRestylings, RestylingItem.tryFromJson);
+    if (list.isEmpty) return null;
+    return GenerationItem(
+      id: 0,
+      modelCarId: 0,
+      generation: 0,
+      frames: const [],
+      restylings: list,
+    ).yearRange;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'modelCarId': modelCarId,

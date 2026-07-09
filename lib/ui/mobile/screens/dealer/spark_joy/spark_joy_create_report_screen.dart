@@ -174,6 +174,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // или локальный фолбэк), не привязан к каталогу.
   int? _selectedBrandId;
   int? _selectedModelCarId;
+  // Стабильный номер выбранного поколения. Поле «Поколение» показывает
+  // диапазон годов (выводится из годов рестайлингов и может «съехать» при
+  // обновлении каталога); номер держим отдельно как ключ пере-выбора черновика.
+  int? _selectedGenerationNumber;
   // Кэши автокомплита марок/моделей удалены: строгий режим выбирает авто
   // только через каталог-визард, данные держит CarCatalogRepository.
 

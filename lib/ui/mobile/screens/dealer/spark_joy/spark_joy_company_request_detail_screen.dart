@@ -835,6 +835,12 @@ class _CarDetailBlock extends StatelessWidget {
   }
 
   String? get _generationLabel {
+    // Диапазон годов, если рестайлинги под рукой (тот же контракт toJson);
+    // иначе — номер поколения как раньше.
+    final range = storage_api.GenerationItem.yearRangeFromRestylingsJson(
+      car['restylings'],
+    );
+    if (range != null) return 'Поколение $range';
     final g = car['generation'];
     if (g is num) return 'Поколение $g';
     if (g is String && g.isNotEmpty) return 'Поколение $g';

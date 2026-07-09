@@ -19,28 +19,48 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const MyText(
-            text: 'Марка',
-            size: SparkTextSize.body,
-            weight: FontWeight.w700,
-          ),
-          const SizedBox(height: SparkSpace.sm),
-          _catalogSelectorField(
-            controller: _brandController,
-            hint: 'Выбрать марку',
-            startAt: _CarPickerStep.brand,
-          ),
-          const SizedBox(height: SparkSpace.md),
-          const MyText(
-            text: 'Модель',
-            size: SparkTextSize.body,
-            weight: FontWeight.w700,
-          ),
-          const SizedBox(height: SparkSpace.sm),
-          _catalogSelectorField(
-            controller: _modelController,
-            hint: 'Выбрать модель',
-            startAt: _CarPickerStep.model,
+          // Марка и модель — в один ряд (как в макете).
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MyText(
+                      text: 'Марка',
+                      size: SparkTextSize.body,
+                      weight: FontWeight.w700,
+                    ),
+                    const SizedBox(height: SparkSpace.sm),
+                    _catalogSelectorField(
+                      controller: _brandController,
+                      hint: 'Выбрать марку',
+                      startAt: _CarPickerStep.brand,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const MyText(
+                      text: 'Модель',
+                      size: SparkTextSize.body,
+                      weight: FontWeight.w700,
+                    ),
+                    const SizedBox(height: SparkSpace.sm),
+                    _catalogSelectorField(
+                      controller: _modelController,
+                      hint: 'Выбрать модель',
+                      startAt: _CarPickerStep.model,
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: SparkSpace.md),
           const MyText(

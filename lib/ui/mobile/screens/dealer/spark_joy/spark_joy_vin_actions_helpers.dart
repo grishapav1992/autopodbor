@@ -4,6 +4,11 @@ extension _SparkJoyVinActionsHelpers on _SparkJoyCreateReportScreenState {
   Uint8List _cropVinGuideArea(Uint8List bytes) =>
       _sparkCropVinGuideArea(this, bytes);
 
+  // Точка входа отдельного OCR-сканера VIN. Со шага «Автомобиль» больше не
+  // вызывается — скан VIN слит с автозаполнением в единую кнопку (см.
+  // _openAutofillScan). Оставлено в кодовой базе для возможного переиспользования;
+  // полное удаление подсистемы сканера — отдельная зачистка.
+  // ignore: unused_element
   Future<void> _openVinScannerSourceModal() async {
     if (mounted) {
       await SparkJoyOnboarding.showOnce(
