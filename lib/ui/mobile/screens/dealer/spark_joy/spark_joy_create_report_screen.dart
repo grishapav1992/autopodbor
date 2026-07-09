@@ -222,7 +222,14 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // кэша прав, который B1 сидит на старте) + однократный ленивый load
   // каталога типов проверок.
   bool _legalCanRunReview = false;
+  // Латчится ТОЛЬКО после успешной загрузки каталога типов — иначе одна
+  // неудачная попытка (холодный бэк 7-47с, транзиентная сеть, CORS на web)
+  // навсегда заблокировала бы повтор и «Материалы проверки» висели бы в
+  // «Загрузка списка проверок…». _legalReviewMetaInFlight не даёт параллельных
+  // вызовов, _legalReviewMetaLastTry — кулдаун против шторма ре-билдов.
   bool _legalReviewMetaLoadStarted = false;
+  bool _legalReviewMetaInFlight = false;
+  DateTime? _legalReviewMetaLastTry;
   // P2 — VIN↔госномер конвертер (api_cloud_converter_search) в шаге «Авто».
   bool _vinConverterBusy = false;
   // Дедуп/кэш конвертера (платный RunBatchLegalReview): один и тот же

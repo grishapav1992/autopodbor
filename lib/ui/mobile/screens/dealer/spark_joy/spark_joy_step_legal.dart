@@ -455,11 +455,39 @@ Widget _buildSparkJoyStepLegal(
               )
             else ...[
               if (s._legalAvailableCheckTypes.isEmpty)
-                const MyText(
-                  text: 'Загрузка списка проверок…',
-                  size: SparkTextSize.caption,
-                  color: kGreyColor,
-                )
+                // Пока запрос в полёте — спиннер-текст; если попытка провалилась
+                // (нет сети/холодный бэк/CORS на web) и повтор не идёт — даём
+                // явную кнопку «Повторить», чтобы не висеть вечно.
+                if (s._legalReviewMetaInFlight)
+                  const MyText(
+                    text: 'Загрузка списка проверок…',
+                    size: SparkTextSize.caption,
+                    color: kGreyColor,
+                  )
+                else
+                  Row(
+                    children: [
+                      const Expanded(
+                        child: MyText(
+                          text:
+                              'Не удалось загрузить список проверок — '
+                              'проверьте соединение',
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                        ),
+                      ),
+                      const SizedBox(width: SparkSpace.sm),
+                      TextButton.icon(
+                        onPressed: () {
+                          // Сброс кулдауна → немедленный повтор.
+                          s._legalReviewMetaLastTry = null;
+                          unawaited(s._ensureLegalReviewMeta());
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('Повторить'),
+                      ),
+                    ],
+                  )
               else
                 ...s._legalAvailableCheckTypes.map(
                   (t) => CheckboxListTile(

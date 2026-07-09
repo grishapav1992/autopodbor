@@ -96,9 +96,24 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         }
       } catch (_) {}
     }
-    // Каталог типов проверок — сетевой запрос, тянем один раз.
-    if (_legalReviewMetaLoadStarted) return;
-    _legalReviewMetaLoadStarted = true;
+    // Каталог типов проверок — сетевой запрос. Тянем до ПЕРВОГО успеха, затем
+    // латчим. Раньше guard ставился ДО await → неудачная первая попытка
+    // (холодный бэк/транзиент/CORS на web) блокировала повтор навсегда и
+    // «Материалы проверки» висели в «Загрузка списка проверок…». Теперь:
+    //  • латчим ТОЛЬКО при успехе;
+    //  • in-flight-флаг не даёт параллельных вызовов;
+    //  • кулдаун 3с гасит шторм ре-билдов при быстром фейле (web «Failed to
+    //    fetch» возвращается мгновенно).
+    if (_legalReviewMetaLoadStarted || _legalReviewMetaInFlight) return;
+    if (_legalAvailableCheckTypes.isNotEmpty) {
+      _legalReviewMetaLoadStarted = true;
+      return;
+    }
+    final now = DateTime.now();
+    final lastTry = _legalReviewMetaLastTry;
+    if (lastTry != null && now.difference(lastTry).inSeconds < 3) return;
+    _legalReviewMetaLastTry = now;
+    _legalReviewMetaInFlight = true;
     try {
       final types =
           await storage_api.StorageApi.getAvailableLegalReviewCheckTypes();
@@ -110,8 +125,13 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           .toList();
       if (mounted && filtered.isNotEmpty) {
         _setStateSafely(() => _legalAvailableCheckTypes = filtered);
+        _legalReviewMetaLoadStarted = true; // латчим ТОЛЬКО при успехе
       }
-    } catch (_) {}
+    } catch (_) {
+      // Не латчим — следующий build (или тап «Повторить») рет.
+    } finally {
+      _legalReviewMetaInFlight = false;
+    }
   }
 
   // ── Дедуп/кэш конвертера ───────────────────────────────────────────────
