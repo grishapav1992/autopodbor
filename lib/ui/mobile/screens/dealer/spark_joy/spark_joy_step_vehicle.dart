@@ -39,6 +39,14 @@ Widget _buildSparkJoyStepVehicle(
                     focusNode: s._vinFocusNode,
                     enabled: !s._vinUnreadable,
                     maxLength: 17,
+                    // Моноширинный: в КАПС-VIN цифры и буквы становятся одной
+                    // высоты (у системного SF цифры ниже заглавных букв).
+                    style: TextStyle(
+                      fontFamily: AppFonts.MONOSPACE,
+                      fontSize: 16,
+                      letterSpacing: 0.5,
+                      color: kTertiaryColor,
+                    ),
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) {
                       FocusScope.of(s.context).requestFocus(s._plateFocusNode);
@@ -260,6 +268,14 @@ Widget _buildSparkJoyStepVehicle(
                 autocorrect: false,
                 enableSuggestions: false,
                 textAlign: TextAlign.center,
+                // Моноширинный — как и VIN: цифры и буквы госномера одной
+                // высоты, ровный набор без «прыгающих» цифр.
+                style: TextStyle(
+                  fontFamily: AppFonts.MONOSPACE,
+                  fontSize: 16,
+                  letterSpacing: 1,
+                  color: kTertiaryColor,
+                ),
                 decoration: s
                     ._fieldDecoration(_plateInputHint(s))
                     .copyWith(

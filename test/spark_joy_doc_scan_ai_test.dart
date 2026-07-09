@@ -1,10 +1,52 @@
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_doc_scan_ai.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_plate_formats.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   DocScanAiResult parse(String text) => parseDocScanAiResult(text);
 
   group('parseDocScanAiResult', () {
+    test('латинский госномер от vision → кириллица РФ и опознаётся детектором', () {
+      // Vision транслитерирует «К254ТМ797» в латиницу — без обратного маппинга
+      // РФ-детектор вырезал бы латинские буквы, страна стала бы «Другая», а
+      // номер не совпал бы с базами ApiCloud.
+      final r = parse('{"gosNumber": "K254TM797"}');
+      expect(r.gosNumber, 'К254ТМ797'); // кириллица
+      expect(detectPlateCountry(r.gosNumber), PlateCountry.ru);
+    });
+
+    test('кириллический госномер проходит без изменений', () {
+      final r = parse('{"gosNumber": "К254ТМ797"}');
+      expect(r.gosNumber, 'К254ТМ797');
+      expect(detectPlateCountry(r.gosNumber), PlateCountry.ru);
+    });
+
+    test('О/0 путаница: буква О прочитана как 0 (В01600123 → В016ОО123)', () {
+      // Реальный кейс: буквы О в позициях 4-5 распознались как нули.
+      final r = parse('{"gosNumber": "В01600123"}');
+      expect(r.gosNumber, 'В016ОО123');
+      expect(detectPlateCountry(r.gosNumber), PlateCountry.ru);
+    });
+
+    test('О/0 путаница: 0 в цифровой позиции прочитан как О (ВО16ОО123)', () {
+      final r = parse('{"gosNumber": "ВО16ОО123"}');
+      expect(r.gosNumber, 'В016ОО123');
+      expect(detectPlateCountry(r.gosNumber), PlateCountry.ru);
+    });
+
+    test('латиница + О/0 вместе (BO16OO123 → В016ОО123)', () {
+      // Латинские B/O + путаница 0: обе канонизации в цепочке.
+      final r = parse('{"gosNumber": "BO16OO123"}');
+      expect(r.gosNumber, 'В016ОО123');
+      expect(detectPlateCountry(r.gosNumber), PlateCountry.ru);
+    });
+
+    test('иностранный/непохожий номер не коверкается позиционным фиксом', () {
+      // Не РФ-форма → coerce возвращает как есть (после latin→cyr).
+      final r = parse('{"gosNumber": "123ABC02"}');
+      expect(detectPlateCountry(r.gosNumber), isNot(PlateCountry.ru));
+    });
+
     test('parses full СТС JSON — 6 полей отчёта', () {
       final r = parse(
         '{"docType": "sts", "vin": "XW7BF4FK10S012345", '

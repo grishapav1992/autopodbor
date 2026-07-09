@@ -1,4 +1,5 @@
 import 'spark_joy_vin_params_ai.dart' show extractJsonObject;
+import 'spark_joy_plate_formats.dart' show detectPlateCountry, PlateCountry;
 
 /// Результат ИИ-распознавания фото СТС (AiQueue vision). Ровно 6 полей отчёта,
 /// которые извлекаем из документа (решение дева 2026-07-08): госномер, VIN,
@@ -60,6 +61,55 @@ String canonDocScanVin(dynamic raw) {
   return _strictVinRe.hasMatch(v) ? v : '';
 }
 
+// Латинские двойники → кириллица для РОССИЙСКОГО госномера (обратна _cyrToLat).
+// Vision часто транслитерирует «К254ТМ797» в латиницу «K254TM797», а
+// RU-детектор (spark_joy_plate_formats) требует кириллицу: иначе латинские
+// буквы вырезаются как «не из алфавита», номер не опознаётся как РФ (страна →
+// «Другая»), а латинский номер не матчится в ApiCloud (конвертер/проверки).
+// СТС — российский документ, номер всегда РФ-кириллица, поэтому маппинг
+// безопасен (буквы вне набора РФ-плат тут не встречаются).
+const Map<String, String> _latToPlateCyr = {
+  'A': 'А', 'B': 'В', 'E': 'Е', 'K': 'К', 'M': 'М', 'H': 'Н',
+  'O': 'О', 'P': 'Р', 'C': 'С', 'T': 'Т', 'Y': 'У', 'X': 'Х',
+};
+
+/// Канонизирует госномер из ответа модели: upper, без пробелов/дефисов,
+/// латинские двойники → кириллица (см. [_latToPlateCyr]) + позиционный фикс
+/// О↔0 (см. [_coerceRuPlateOhZero]) — чтобы РФ-детектор опознал номер и он
+/// совпал с базами ApiCloud. Кап 16 символов.
+String canonDocScanPlate(dynamic raw) {
+  var v = (raw ?? '')
+      .toString()
+      .toUpperCase()
+      .replaceAll(RegExp(r'[\s\-]'), '');
+  if (v.isEmpty) return '';
+  _latToPlateCyr.forEach((lat, cyr) => v = v.replaceAll(lat, cyr));
+  v = _coerceRuPlateOhZero(v);
+  return v.length > 16 ? v.substring(0, 16) : v;
+}
+
+/// Чинит путаницу буквы «О» и цифры «0» в РФ-номере (визуально идентичны —
+/// vision их мешает: реальный кейс «В016ОО123» распозналось как «В01600123»,
+/// буквы О стали нулями). РФ-форма фиксирована — буква,3 цифры,2 буквы,2-3
+/// цифры региона (буквенные позиции 0/4/5). В буквенных позициях `0`→`О`, в
+/// цифровых `О`→`0`. Применяем ТОЛЬКО если после правки строка — валидный
+/// РФ-номер (через существующий [detectPlateCountry]); иначе иностранный
+/// номер/мусор возвращаем нетронутым.
+String _coerceRuPlateOhZero(String s) {
+  if (s.length != 8 && s.length != 9) return s;
+  const letterPos = {0, 4, 5};
+  final chars = s.split('');
+  for (var i = 0; i < chars.length; i++) {
+    if (letterPos.contains(i) && chars[i] == '0') {
+      chars[i] = 'О'; // цифра 0 в буквенной позиции → буква О
+    } else if (!letterPos.contains(i) && chars[i] == 'О') {
+      chars[i] = '0'; // буква О в цифровой позиции → цифра 0
+    }
+  }
+  final coerced = chars.join();
+  return detectPlateCountry(coerced) == PlateCountry.ru ? coerced : s;
+}
+
 /// Парсит + нормализует ответ модели по фото СТС в [DocScanAiResult].
 /// Извлекает 6 полей отчёта: docType (тех.), vin, gosNumber, brand, model,
 /// year, color. Никогда не бросает.
@@ -86,7 +136,7 @@ DocScanAiResult parseDocScanAiResult(String modelText) {
   return (
     docType: docType(),
     vin: canonDocScanVin(obj['vin']),
-    gosNumber: capped(obj['gosNumber'], 16),
+    gosNumber: canonDocScanPlate(obj['gosNumber']),
     brand: capped(obj['brand'], 40),
     model: capped(obj['model'], 60),
     year: year(),
