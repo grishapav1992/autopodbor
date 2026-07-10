@@ -128,9 +128,9 @@ void main() {
   });
 
   group('formatPlate раскладка', () {
-    test('РФ: А 123 ВЕ 77', () {
+    test('РФ: слитно А123ВЕ77 (без пробелов между группами)', () {
       expect(formatPlate('А123ВЕ77', plateFormatFor(PlateCountry.ru)),
-          'А 123 ВЕ 77');
+          'А123ВЕ77');
     });
     test('Беларусь: 1234 АА-7', () {
       expect(formatPlate('1234АА7', plateFormatFor(PlateCountry.by)),

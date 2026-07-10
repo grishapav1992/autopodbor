@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/core/constants/app_fonts.dart';
+import 'package:flutter_application_1/core/constants/app_responsive.dart';
 import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_i18n.dart';
@@ -1062,7 +1064,10 @@ class SparkPageHeader extends StatelessWidget {
 
 class SparkReportEditorAppBar extends StatelessWidget
     implements PreferredSizeWidget {
-  static const double _toolbarHeight = 96;
+  // Одна строка заголовка (+ мета + пилюля автосейва) укладывается в ~60px;
+  // 78 даёт компактный бар без вертикальной пустоты, которую давал прежний
+  // фикс 96 под 2-строчный заголовок (короткое имя висело в центре бара).
+  static const double _toolbarHeight = 78;
 
   const SparkReportEditorAppBar({
     super.key,
@@ -1114,14 +1119,7 @@ class SparkReportEditorAppBar extends StatelessWidget
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          MyText(
-            text: title,
-            size: SparkTextSize.title,
-            weight: FontWeight.w700,
-            lineHeight: 1.15,
-            maxLines: 2,
-            textOverflow: TextOverflow.ellipsis,
-          ),
+          _SparkReportTitle(title: title),
           const SizedBox(height: SparkSpace.xxs),
           MyText(
             text: meta,
@@ -1161,6 +1159,95 @@ class SparkReportEditorAppBar extends StatelessWidget
       ],
     );
   }
+}
+
+/// Заголовок отчёта в шапке редактора — всегда одна строка с «…».
+///
+/// Прежний вариант держал 2 строки и фиксированную высоту 96px под худший
+/// случай; при обычном коротком имени заголовок висел по центру высокого
+/// бара и снизу/сверху зияла пустота. Теперь имя всегда в одну строку
+/// (бар компактный), а если оно не влезло по ширине — тап открывает диалог
+/// с полным названием. Факт обрезки меряем [TextPainter]'ом по реальной
+/// ширине слота, повторяя эффективный стиль [MyText], чтобы тап включался
+/// ТОЛЬКО когда текст действительно усечён (короткое имя не ловит зря
+/// нажатия и не открывает бессмысленный диалог).
+class _SparkReportTitle extends StatelessWidget {
+  const _SparkReportTitle({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final measureStyle = TextStyle(
+      fontSize: AppResponsive.sp(context, SparkTextSize.title),
+      fontWeight: FontWeight.w700,
+      height: 1.15,
+      fontFamily: AppFonts.URBANIST,
+      fontFamilyFallback: const [
+        'SF Pro Text',
+        'Helvetica',
+        'Roboto',
+        'Arial',
+        'Noto Sans',
+        'sans-serif',
+      ],
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: title, style: measureStyle),
+          maxLines: 1,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout(maxWidth: constraints.maxWidth);
+        final truncated = painter.didExceedMaxLines;
+        return MyText(
+          text: title,
+          size: SparkTextSize.title,
+          weight: FontWeight.w700,
+          lineHeight: 1.15,
+          maxLines: 1,
+          textOverflow: TextOverflow.ellipsis,
+          onTap: truncated ? () => _showFullReportTitle(context, title) : null,
+        );
+      },
+    );
+  }
+}
+
+/// Диалог с полным названием отчёта — открывается тапом по усечённому
+/// заголовку в шапке (см. [_SparkReportTitle]).
+void _showFullReportTitle(BuildContext context, String title) {
+  showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      backgroundColor: kWhiteColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SparkRadius.lg),
+      ),
+      title: const MyText(
+        text: 'Название отчёта',
+        size: SparkTextSize.sectionTitle,
+        weight: FontWeight.w700,
+      ),
+      content: MyText(
+        text: title,
+        size: SparkTextSize.bodyLg,
+        maxLines: 8,
+        lineHeight: 1.3,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const MyText(
+            text: 'Закрыть',
+            size: SparkTextSize.label,
+            weight: FontWeight.w700,
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Compact pill rendered under the report title in the editor AppBar.

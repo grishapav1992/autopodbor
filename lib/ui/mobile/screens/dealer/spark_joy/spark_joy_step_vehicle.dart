@@ -13,12 +13,9 @@ Widget _buildSparkJoyStepVehicle(
 
   return Column(
     children: [
-      s._requiredLegend('— обязательное поле'),
-      s._lightSectionHeading(
-        'Идентификаторы',
-        'по ним подтянутся данные авто',
-      ),
       // Единая карточка идентификаторов: VIN + «или» + госномер.
+      // Заголовок секции и легенда обязательности убраны (2026-07-10) —
+      // шаг начинается сразу с карточки, смысл полей ясен из лейблов.
       s._card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -140,31 +137,9 @@ Widget _buildSparkJoyStepVehicle(
                 size: SparkTextSize.caption,
                 color: kRedColor,
               ),
+            // Поле госномера идёт сразу за VIN — без разделителя «или» и
+            // без лейбла (2026-07-10): смысл ясен из hint'а и пилюли страны.
             const SizedBox(height: SparkSpace.lg),
-            // Разделитель «или» — VIN и госномер взаимозаменяемы как ключ авто.
-            Row(
-              children: [
-                const Expanded(child: Divider(color: kBorderColor)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                  ),
-                  child: const MyText(
-                    text: 'или',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                  ),
-                ),
-                const Expanded(child: Divider(color: kBorderColor)),
-              ],
-            ),
-            const SizedBox(height: SparkSpace.lg),
-            const MyText(
-              text: 'Госномер',
-              size: SparkTextSize.body,
-              weight: FontWeight.w700,
-            ),
-            const SizedBox(height: SparkSpace.md),
             Focus(
               onFocusChange: (hasFocus) {
                 // Помечаем blur — после первого ухода с поля включается
@@ -177,7 +152,8 @@ Widget _buildSparkJoyStepVehicle(
                 controller: s._plateController,
                 focusNode: s._plateFocusNode,
                 // 14 = max formatted length across all formats
-                // (РФ "А 123 БВ 777" = 12 / KZ "123 ABC 02" = 10 etc).
+                // (UA "АА 1234 АА" = 10 / BY "1234АА-7" = 8; РФ теперь
+                // слитно, максимум 9).
                 maxLength: 14,
                 textInputAction: TextInputAction.next,
                 onSubmitted: (_) {
@@ -189,7 +165,7 @@ Widget _buildSparkJoyStepVehicle(
                   // → детект страны → если матч, переключаемся на формат
                   // и применяем его раскладку. Если не определилось —
                   // остаёмся в `other` (без раскладки), prefix покажет
-                  // «Не определено».
+                  // «Авто».
                   // Locked-mode: sanitize/format строго под выбранную
                   // страну (RU→KZ выкидывает кириллицу и т.п.).
                   String formatted;
@@ -231,6 +207,13 @@ Widget _buildSparkJoyStepVehicle(
                     .copyWith(
                       counterText: '',
                       fillColor: kLightGreyColor,
+                      // Компактный hint: дефолтные 16px рядом с пилюлей
+                      // страны не влезали и обрезались в «…».
+                      hintStyle: const TextStyle(
+                        fontSize: SparkTextSize.bodyLg,
+                        color: kGreyColor,
+                        fontWeight: FontWeight.w400,
+                      ),
                       // Префикс-pill с флагом и кодом страны слева внутри
                       // инпута. Тап → bottom sheet со списком всех стран
                       // плюс пунктом «Авто». В auto-mode когда детектор
@@ -307,87 +290,23 @@ Widget _buildSparkJoyStepVehicle(
           ],
         ),
       ),
-      const SizedBox(height: SparkSpace.lg),
-      // Автозаполнение — единая точка: одно фото → OCR-first + ИИ по СТС/ПТС.
-      s._card(
-        backgroundColor: kLightGreyColor,
-        child: Row(
-          children: [
-            Container(
-              width: SparkSize.navStepBadge,
-              height: SparkSize.navStepBadge,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(SparkRadius.sm),
-                color: kSecondaryColor.withValues(alpha: 0.08),
-              ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.auto_awesome,
-                size: SparkSize.iconSm,
-                color: kSecondaryColor,
-              ),
-            ),
-            const SizedBox(width: SparkSpace.md),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  MyText(
-                    text: 'Автозаполнение',
-                    size: SparkTextSize.body,
-                    weight: FontWeight.w700,
-                  ),
-                  SizedBox(height: 2),
-                  MyText(
-                    text: 'по VIN, госномеру или фото СТС/ПТС',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: SparkSpace.md),
-            FilledButton(
-              onPressed: (s._docScanBusy || s.widget.readOnly)
-                  ? null
-                  : () => unawaited(s._openAutofillScan()),
-              child: s._docScanBusy
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(kWhiteColor),
-                      ),
-                    )
-                  : const Text('Заполнить'),
-            ),
-          ],
-        ),
-      ),
-      const SizedBox(height: SparkSpace.lg),
+      // Единый секционный ритм шага: между всеми крупными блоками xl.
+      const SizedBox(height: SparkSpace.xl),
       // Brand/model picker — перенесён сюда со шага «Параметры», чтобы вся
       // идентификация была рядом с VIN и госномером.
-      s._lightSectionHeading('Модель', 'марка, модель, поколение'),
+      s._lightSectionHeading('Модель'),
       s._carSelectionCard(),
       const SizedBox(height: SparkSpace.xl),
       // Состояние — пробег + соответствие. Раньше блок жил в шаге
       // «Осмотр» рядом с медиа-группами; перенесён сюда чтобы базовые
-      // данные о машине были собраны на одном экране.
-      s._sectionHeading(
-        'Состояние',
-        icon: Icons.speed_outlined,
-        subtitle: 'Пробег и его соответствие состоянию автомобиля',
-      ),
-      const SizedBox(height: SparkSpace.lg),
+      // данные о машине были собраны на одном экране. Лёгкий заголовок
+      // без иконки/подписи — в один стиль с «Модель» (2026-07-10).
+      s._lightSectionHeading('Состояние'),
       s._mediaMileageBlock(),
       const SizedBox(height: SparkSpace.xl),
-      s._sectionHeading(
-        'Дополнительно',
-        icon: Icons.more_horiz_rounded,
-        subtitle: 'Ссылка на объявление, владельцы и город осмотра',
-      ),
-      const SizedBox(height: SparkSpace.lg),
+      // Заголовок «Дополнительно» убран (2026-07-10) — карточки «Ссылка на
+      // объявление» / «Количество владельцев» / «Город осмотра» идут подряд,
+      // их лейблы самодостаточны.
       s._card(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -506,7 +425,7 @@ Widget _buildSparkJoyStepVehicle(
 // Описывают что именно показать в prefix-pill инпута госномера:
 // - locked → флаг и label выбранной страны
 // - auto + детектор сработал → флаг и label определённой страны
-// - auto + детектор НЕ сработал (PlateCountry.other) → «?» «Не определено»
+// - auto + детектор НЕ сработал (PlateCountry.other) → «?» «Авто»
 
 String _plateInputFlag(_SparkJoyCreateReportScreenState s) {
   if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
@@ -517,7 +436,9 @@ String _plateInputFlag(_SparkJoyCreateReportScreenState s) {
 
 String _plateInputLabel(_SparkJoyCreateReportScreenState s) {
   if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
-    return 'Не определено';
+    // Короткий лейбл: «Не определено» раздувал пилюлю на пол-инпута и
+    // толкал hint в «…». «Авто» = режим автоопределения страны.
+    return 'Авто';
   }
   return s._plateFormat.label;
 }

@@ -46,10 +46,10 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  /// Лёгкий подзаголовок блока внутри шага: жирный [title] + серым « · [hint]».
-  /// Используется в шаге «Автомобиль» вместо иконочного [_sectionHeading] для
-  /// компактных секций «Идентификаторы» / «Модель».
-  Widget _lightSectionHeading(String title, String hint) {
+  /// Лёгкий подзаголовок блока внутри шага: жирный [title], опционально
+  /// серым « · [hint]». Используется в шаге «Автомобиль» вместо иконочного
+  /// [_sectionHeading] для компактных секций («Модель», «Состояние»).
+  Widget _lightSectionHeading(String title, [String hint = '']) {
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.md),
       child: Row(
@@ -61,15 +61,16 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
             size: SparkTextSize.sectionTitle,
             weight: FontWeight.w700,
           ),
-          Flexible(
-            child: MyText(
-              text: '  ·  $hint',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-              maxLines: 1,
-              textOverflow: TextOverflow.ellipsis,
+          if (hint.trim().isNotEmpty)
+            Flexible(
+              child: MyText(
+                text: '  ·  $hint',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
         ],
       ),
     );

@@ -586,7 +586,7 @@ String formatPlate(String sanitized, PlateFormat fmt) {
     case PlateCountry.uz:
       return _formatUz(sanitized);
     case PlateCountry.ab:
-      // Та же раскладка что у РФ — «А 123 БВ 80».
+      // Та же раскладка что у РФ — слитно «А123БВ80».
       return _formatRu(sanitized);
     case PlateCountry.ua:
       return _formatUa(sanitized);
@@ -672,18 +672,10 @@ String? plateError(String input, PlateFormat fmt) {
 // ── Per-country display formatters ────────────────────────────────────
 
 String _formatRu(String s) {
-  // А 123 БВ 77
-  var out = s[0];
-  final rest = s.substring(1);
-  final digits = rest.substring(0, rest.length < 3 ? rest.length : 3);
-  if (digits.isNotEmpty) out += ' $digits';
-  final letters = rest.length > 3
-      ? rest.substring(3, rest.length < 5 ? rest.length : 5)
-      : '';
-  if (letters.isNotEmpty) out += ' $letters';
-  final region = rest.length > 5 ? rest.substring(5) : '';
-  if (region.isNotEmpty) out += ' $region';
-  return out;
+  // Слитно «А123ВЕ77» — как пишут в документах и как показывает
+  // placeholder. Прежняя раскладка с пробелами («А 123 ВЕ 77») читалась
+  // в поле ввода как «огромные дыры» между группами (фидбек 2026-07-10).
+  return s;
 }
 
 String _formatBy(String s) {
