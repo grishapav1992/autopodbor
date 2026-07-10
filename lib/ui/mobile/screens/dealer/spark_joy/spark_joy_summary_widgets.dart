@@ -355,14 +355,6 @@ Widget _buildSparkSummaryRequiredMissingActionsCard(
 Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
   final reportName = s._reportTitle().trim();
   final reportMeta = sjFormatReportMeta(s._currentReportCode(), s._createdAt);
-  if (!s.widget.readOnly &&
-      !s._reportNameFocusNode.hasFocus &&
-      s._inlineReportNameController.text != reportName) {
-    s._inlineReportNameController.value = TextEditingValue(
-      text: reportName,
-      selection: TextSelection.collapsed(offset: reportName.length),
-    );
-  }
 
   return s._card(
     padding: const EdgeInsets.fromLTRB(
@@ -374,51 +366,22 @@ Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // В завершённом отчёте название остаётся обычным текстом. В черновике
-        // то же место редактируется напрямую, без иконки и модального окна.
-        if (s.widget.readOnly)
-          SparkCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.xl,
-              vertical: SparkSpace.xl,
-            ),
-            backgroundColor: kInputBgColor,
-            child: MyText(
-              text: reportName.isEmpty ? 'Без названия' : reportName,
-              size: SparkTextSize.titleLg,
-              weight: FontWeight.w800,
-              lineHeight: 1.30,
-              tracking: true,
-              maxLines: 2,
-              textOverflow: TextOverflow.ellipsis,
-            ),
-          )
-        else
-          SparkCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.xl,
-              vertical: SparkSpace.xl,
-            ),
-            backgroundColor: kInputBgColor,
-            child: TextField(
-              controller: s._inlineReportNameController,
-              focusNode: s._reportNameFocusNode,
-              textInputAction: TextInputAction.done,
-              maxLines: 1,
-              onSubmitted: (_) => s._reportNameFocusNode.unfocus(),
-              onTapOutside: (_) => s._reportNameFocusNode.unfocus(),
-              style: TextStyle(
-                fontFamily: AppFonts.URBANIST,
-                fontSize: SparkTextSize.titleLg,
-                fontWeight: FontWeight.w800,
-                height: 1.30,
-                letterSpacing: -0.4,
-              ),
-              decoration: const InputDecoration.collapsed(
-                hintText: 'Без названия',
-              ),
-            ),
+        SparkCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xl,
+            vertical: SparkSpace.xl,
           ),
+          backgroundColor: kInputBgColor,
+          child: MyText(
+            text: reportName.isEmpty ? 'Без названия' : reportName,
+            size: SparkTextSize.titleLg,
+            weight: FontWeight.w800,
+            lineHeight: 1.30,
+            tracking: true,
+            maxLines: 2,
+            textOverflow: TextOverflow.ellipsis,
+          ),
+        ),
         const SizedBox(height: SparkSpace.lg),
         Row(
           children: [

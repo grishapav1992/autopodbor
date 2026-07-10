@@ -6,6 +6,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/notification_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_invite_by_phone_dialog.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_tokens.dart';
@@ -1220,11 +1221,9 @@ Future<SparkJoyAssigneeSelection?> showSparkJoyAssigneePickerSheet(
   SparkJoyAssigneeSelection initialSelection =
       const SparkJoyAssigneeSelection(),
 }) {
-  return showModalBottomSheet<SparkJoyAssigneeSelection>(
+  return showAppAdaptiveBottomSheet<SparkJoyAssigneeSelection>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    useSafeArea: true,
+    extent: AppBottomSheetExtent.expanded,
     builder: (_) => _AssigneePickerSheet(
       companyId: companyId,
       initialSelection: initialSelection,
@@ -1249,60 +1248,51 @@ class _AssigneePickerSheetState extends State<_AssigneePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final viewInsets = MediaQuery.of(context).viewInsets;
-    // 0.85 leaves room for the drag handle + backdrop peek; scrollable
-    // so the phone keyboard doesn't squash the invite-link field.
-    return FractionallySizedBox(
-      heightFactor: 0.85,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: viewInsets.bottom),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
-              child: Row(
-                children: [
-                  const Expanded(
-                    child: MyText(
-                      text: 'Назначить исполнителя',
-                      size: SparkTextSize.title,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(null),
-                    child: const Text('Отмена'),
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(SparkSpace.xl),
-                child: SparkJoyAssigneePicker(
-                  companyId: widget.companyId,
-                  initialSelection: widget.initialSelection,
-                  onChanged: (sel) => _draft = sel,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
+          child: Row(
+            children: [
+              const Expanded(
+                child: MyText(
+                  text: 'Назначить исполнителя',
+                  size: SparkTextSize.title,
+                  weight: FontWeight.w700,
                 ),
               ),
-            ),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(SparkSpace.xl),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop(_draft),
-                    child: const Text('Готово'),
-                  ),
-                ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(null),
+                child: const Text('Отмена'),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+        const Divider(height: 1),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(SparkSpace.xl),
+            child: SparkJoyAssigneePicker(
+              companyId: widget.companyId,
+              initialSelection: widget.initialSelection,
+              onChanged: (sel) => _draft = sel,
+            ),
+          ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(SparkSpace.xl),
+            child: SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(_draft),
+                child: const Text('Готово'),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

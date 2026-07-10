@@ -461,59 +461,88 @@ class _PlateCountryPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: const EdgeInsets.all(SparkSpace.md),
-        // Высота — не больше 75% экрана, чтобы инспектор всегда видел
-        // и заголовок, и часть списка. Ниже список скроллится.
-        constraints: BoxConstraints(maxHeight: mq.size.height * 0.75),
-        decoration: BoxDecoration(
-          color: kWhiteColor,
-          borderRadius: BorderRadius.circular(SparkRadius.xl),
-        ),
-        padding: const EdgeInsets.symmetric(
-          horizontal: SparkSpace.lg,
-          vertical: SparkSpace.lg,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: kBorderColor,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: SparkSpace.md),
-            const MyText(
-              text: 'Страна регистрации',
-              size: SparkTextSize.title,
-              weight: FontWeight.w700,
-            ),
-            const SizedBox(height: SparkSpace.md),
-            Flexible(
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Авто-режим первым пунктом — детектор пытается
-                    // определить страну по номеру; работает для
-                    // РФ / Беларусь / Украина / Казахстан / Армения /
-                    // Киргизия / Узбекистан / Абхазия. Если не
-                    // определилось — prefix покажет «Не определено»,
-                    // инспектор может вручную выбрать страну ниже.
-                    InkWell(
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.lg,
+        0,
+        SparkSpace.lg,
+        SparkSpace.lg,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const MyText(
+            text: 'Страна регистрации',
+            size: SparkTextSize.title,
+            weight: FontWeight.w700,
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Авто-режим первым пунктом — детектор пытается
+                  // определить страну по номеру; работает для
+                  // РФ / Беларусь / Украина / Казахстан / Армения /
+                  // Киргизия / Узбекистан / Абхазия. Если не
+                  // определилось — prefix покажет «Не определено»,
+                  // инспектор может вручную выбрать страну ниже.
+                  InkWell(
+                    onTap: () => Navigator.of(
+                      context,
+                    ).pop<_PlatePicked>((auto: true, country: null)),
+                    borderRadius: BorderRadius.circular(SparkRadius.md),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: SparkSpace.sm,
+                        vertical: SparkSpace.md,
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 22,
+                            color: kSecondaryColor,
+                          ),
+                          const SizedBox(width: SparkSpace.md),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                MyText(
+                                  text: 'Автоматически',
+                                  size: SparkTextSize.body,
+                                  weight: FontWeight.w600,
+                                  color: kTertiaryColor,
+                                ),
+                                SizedBox(height: 2),
+                                MyText(
+                                  text: 'Определить страну по номеру',
+                                  size: SparkTextSize.caption,
+                                  color: kBorderColor,
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (!locked)
+                            const Icon(
+                              Icons.check_rounded,
+                              color: kSecondaryColor,
+                              size: 22,
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(color: kBorderColor, height: SparkSpace.md),
+                  ...kPlateFormats.map((fmt) {
+                    final selected = locked && fmt.country == current;
+                    return InkWell(
                       onTap: () => Navigator.of(
                         context,
-                      ).pop<_PlatePicked>((auto: true, country: null)),
+                      ).pop<_PlatePicked>((auto: false, country: fmt.country)),
                       borderRadius: BorderRadius.circular(SparkRadius.md),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(
@@ -522,32 +551,31 @@ class _PlateCountryPickerSheet extends StatelessWidget {
                         ),
                         child: Row(
                           children: [
-                            const Icon(
-                              Icons.auto_awesome_rounded,
-                              size: 22,
-                              color: kSecondaryColor,
+                            Text(
+                              fmt.flag,
+                              style: const TextStyle(fontSize: 22),
                             ),
                             const SizedBox(width: SparkSpace.md),
-                            const Expanded(
+                            Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   MyText(
-                                    text: 'Автоматически',
+                                    text: fmt.name,
                                     size: SparkTextSize.body,
                                     weight: FontWeight.w600,
                                     color: kTertiaryColor,
                                   ),
-                                  SizedBox(height: 2),
+                                  const SizedBox(height: 2),
                                   MyText(
-                                    text: 'Определить страну по номеру',
+                                    text: fmt.placeholder,
                                     size: SparkTextSize.caption,
                                     color: kBorderColor,
                                   ),
                                 ],
                               ),
                             ),
-                            if (!locked)
+                            if (selected)
                               const Icon(
                                 Icons.check_rounded,
                                 color: kSecondaryColor,
@@ -556,64 +584,13 @@ class _PlateCountryPickerSheet extends StatelessWidget {
                           ],
                         ),
                       ),
-                    ),
-                    const Divider(color: kBorderColor, height: SparkSpace.md),
-                    ...kPlateFormats.map((fmt) {
-                      final selected = locked && fmt.country == current;
-                      return InkWell(
-                        onTap: () => Navigator.of(context).pop<_PlatePicked>((
-                          auto: false,
-                          country: fmt.country,
-                        )),
-                        borderRadius: BorderRadius.circular(SparkRadius.md),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: SparkSpace.sm,
-                            vertical: SparkSpace.md,
-                          ),
-                          child: Row(
-                            children: [
-                              Text(
-                                fmt.flag,
-                                style: const TextStyle(fontSize: 22),
-                              ),
-                              const SizedBox(width: SparkSpace.md),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    MyText(
-                                      text: fmt.name,
-                                      size: SparkTextSize.body,
-                                      weight: FontWeight.w600,
-                                      color: kTertiaryColor,
-                                    ),
-                                    const SizedBox(height: 2),
-                                    MyText(
-                                      text: fmt.placeholder,
-                                      size: SparkTextSize.caption,
-                                      color: kBorderColor,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              if (selected)
-                                const Icon(
-                                  Icons.check_rounded,
-                                  color: kSecondaryColor,
-                                  size: 22,
-                                ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
+                    );
+                  }),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

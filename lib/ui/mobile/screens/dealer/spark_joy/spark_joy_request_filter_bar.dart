@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
@@ -27,59 +28,52 @@ class SparkJoyRequestFilterBar extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: OutlinedButton.icon(
         onPressed: () async {
-          final selected = await showModalBottomSheet<RequestStatusFilter>(
-            context: context,
-            backgroundColor: kWhiteColor,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(SparkRadius.lg),
-              ),
-            ),
-            builder: (ctx) {
-              return SafeArea(
-                top: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: SparkSpace.md),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.fromLTRB(
-                          SparkSpace.xl,
-                          SparkSpace.md,
-                          SparkSpace.xl,
-                          SparkSpace.sm,
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            'Фильтр заявок',
-                            style: TextStyle(
-                              fontSize: SparkTextSize.title,
-                              fontWeight: FontWeight.w800,
-                              color: kTertiaryColor,
+          final selected =
+              await showAppAdaptiveBottomSheet<RequestStatusFilter>(
+                context: context,
+                extent: AppBottomSheetExtent.content,
+                builder: (ctx) {
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: SparkSpace.md),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            SparkSpace.xl,
+                            SparkSpace.md,
+                            SparkSpace.xl,
+                            SparkSpace.sm,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Фильтр заявок',
+                              style: TextStyle(
+                                fontSize: SparkTextSize.title,
+                                fontWeight: FontWeight.w800,
+                                color: kTertiaryColor,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      for (final filter in available)
-                        ListTile(
-                          onTap: () => Navigator.of(ctx).pop(filter),
-                          title: Text(filter.label),
-                          trailing: value == filter
-                              ? const Icon(
-                                  Icons.check_rounded,
-                                  color: kSecondaryColor,
-                                )
-                              : null,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                    ],
-                  ),
-                ),
+                        for (final filter in available)
+                          ListTile(
+                            onTap: () => Navigator.of(ctx).pop(filter),
+                            title: Text(filter.label),
+                            trailing: value == filter
+                                ? const Icon(
+                                    Icons.check_rounded,
+                                    color: kSecondaryColor,
+                                  )
+                                : null,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                      ],
+                    ),
+                  );
+                },
               );
-            },
-          );
           if (selected != null && selected != value) {
             onChanged(selected);
           }

@@ -31,6 +31,7 @@ abstract final class SparkRadius {
   static const double lg = 16;
   static const double xxl = 14;
   static const double xl = 16;
+  static const double sheet = 24;
   static const double pill = 999;
 }
 

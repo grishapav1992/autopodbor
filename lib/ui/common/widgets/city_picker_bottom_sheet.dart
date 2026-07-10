@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 /// Modal bottom sheet for picking a city from the bundled RU+CIS list.
 ///
@@ -16,14 +17,9 @@ Future<City?> showCityPickerBottomSheet(
   BuildContext context, {
   String? currentValue,
 }) {
-  return showModalBottomSheet<City>(
+  return showAppAdaptiveBottomSheet<City>(
     context: context,
-    isScrollControlled: true,
-    useSafeArea: true,
-    backgroundColor: kPrimaryColor,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-    ),
+    extent: AppBottomSheetExtent.expanded,
     builder: (sheetContext) => _CityPickerSheet(currentValue: currentValue),
   );
 }
@@ -93,40 +89,14 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final viewInsets = media.viewInsets.bottom;
-    final maxHeight = media.size.height * 0.85;
-
-    return AnimatedPadding(
-      duration: const Duration(milliseconds: 150),
-      curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: viewInsets),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxHeight: maxHeight),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDragHandle(),
-            _buildHeader(),
-            if (_shouldShowOutOfListBanner) _buildOutOfListBanner(),
-            _buildSearchField(),
-            const Divider(height: 1, color: kBorderColor),
-            Expanded(child: _buildResults()),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDragHandle() {
-    return Container(
-      margin: const EdgeInsets.only(top: 8, bottom: 8),
-      width: 40,
-      height: 4,
-      decoration: BoxDecoration(
-        color: kBorderColor,
-        borderRadius: BorderRadius.circular(2),
-      ),
+    return Column(
+      children: [
+        _buildHeader(),
+        if (_shouldShowOutOfListBanner) _buildOutOfListBanner(),
+        _buildSearchField(),
+        const Divider(height: 1, color: kBorderColor),
+        Expanded(child: _buildResults()),
+      ],
     );
   }
 
@@ -161,8 +131,11 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded,
-              color: Color(0xFFB37700), size: 20),
+          const Icon(
+            Icons.warning_amber_rounded,
+            color: Color(0xFFB37700),
+            size: 20,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -208,8 +181,10 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
               : null,
           filled: true,
           fillColor: Colors.white,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 10,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: const BorderSide(color: kBorderColor),
@@ -309,4 +284,3 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
     );
   }
 }
-

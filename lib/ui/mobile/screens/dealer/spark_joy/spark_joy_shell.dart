@@ -10,6 +10,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:get/get.dart';
 
 import 'spark_joy_company_requests_screen.dart';
@@ -383,14 +384,9 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   void _showRoleInfoSheet(BuildContext context) {
     final isCompany = _role == SparkJoyRole.company;
     final label = _roleBadgeLabel();
-    showModalBottomSheet<void>(
+    showAppAdaptiveBottomSheet<void>(
       context: context,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
         return SafeArea(
           top: false,

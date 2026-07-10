@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'spark_joy_company_specialist_picker.dart';
@@ -192,68 +193,62 @@ class _SparkJoyCompanyRequestDetailScreenState
   }
 
   Future<void> _showShareLinkSheet(String url) async {
-    await showModalBottomSheet<void>(
+    await showAppAdaptiveBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
         return SafeArea(
           top: false,
-          child: Container(
-            margin: const EdgeInsets.all(SparkSpace.xl),
-            decoration: BoxDecoration(
-              color: kWhiteColor,
-              borderRadius: BorderRadius.circular(SparkRadius.xl),
-              border: Border.all(color: kBorderColor),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xxxl,
+              0,
+              SparkSpace.xxxl,
+              SparkSpace.xxxl,
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(SparkSpace.xxxl),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const MyText(
-                    text: 'Ссылка на отчёт',
-                    size: SparkTextSize.title,
-                    weight: FontWeight.w700,
-                  ),
-                  const SizedBox(height: SparkSpace.md),
-                  SparkHintCard(text: url, icon: Icons.link_rounded),
-                  const SizedBox(height: SparkSpace.xl),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () async {
-                            await Clipboard.setData(ClipboardData(text: url));
-                            if (!ctx.mounted) return;
-                            Navigator.of(ctx).pop();
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Ссылка скопирована'),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.copy_rounded),
-                          label: const Text('Копировать'),
-                        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const MyText(
+                  text: 'Ссылка на отчёт',
+                  size: SparkTextSize.title,
+                  weight: FontWeight.w700,
+                ),
+                const SizedBox(height: SparkSpace.md),
+                SparkHintCard(text: url, icon: Icons.link_rounded),
+                const SizedBox(height: SparkSpace.xl),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: url));
+                          if (!ctx.mounted) return;
+                          Navigator.of(ctx).pop();
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Ссылка скопирована')),
+                          );
+                        },
+                        icon: const Icon(Icons.copy_rounded),
+                        label: const Text('Копировать'),
                       ),
-                      const SizedBox(width: SparkSpace.md),
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () async {
-                            Navigator.of(ctx).pop();
-                            await _openShareUrl(url);
-                          },
-                          icon: const Icon(Icons.open_in_new_rounded),
-                          label: const Text('Открыть'),
-                        ),
+                    ),
+                    const SizedBox(width: SparkSpace.md),
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: () async {
+                          Navigator.of(ctx).pop();
+                          await _openShareUrl(url);
+                        },
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: const Text('Открыть'),
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         );
@@ -377,14 +372,9 @@ class _SparkJoyCompanyRequestDetailScreenState
   }
 
   Future<String?> _showCancelReasonSheet() {
-    return showModalBottomSheet<String>(
+    return showAppAdaptiveBottomSheet<String>(
       context: context,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
         return SafeArea(
           top: false,

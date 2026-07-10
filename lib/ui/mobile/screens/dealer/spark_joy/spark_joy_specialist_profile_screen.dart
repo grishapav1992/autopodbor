@@ -9,6 +9,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/personal_data_consent.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
@@ -1804,14 +1805,9 @@ class _SparkJoySpecialistProfileScreenState
   /// его поменять (через сброс статуса). Юзер тапает по ИНН — это
   /// очевидное действие; вместо deadeлок'а даём явный hint.
   Future<void> _showInnReadonlySheet() async {
-    await showModalBottomSheet<void>(
+    await showAppAdaptiveBottomSheet<void>(
       context: context,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
         return SafeArea(
           top: false,
@@ -2080,15 +2076,9 @@ class _SparkJoySpecialistProfileScreenState
   Future<void> _openAvatarPickerSheet() async {
     final hasAvatar =
         (_urlAvatar ?? '').isNotEmpty || (_avatarBase64 ?? '').isNotEmpty;
-    final action = await showModalBottomSheet<String>(
+    final action = await showAppAdaptiveBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
         return SafeArea(
           top: false,
@@ -2552,15 +2542,9 @@ class _SparkJoySpecialistProfileScreenState
     final middleCtrl = TextEditingController(text: _middleNameController.text);
     Map<String, String>? lastErrors;
 
-    final saved = await showModalBottomSheet<Map<String, String>>(
+    final saved = await showAppAdaptiveBottomSheet<Map<String, String>>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
@@ -2676,15 +2660,9 @@ class _SparkJoySpecialistProfileScreenState
   Future<void> _editDescriptionSheet() async {
     final ctrl = TextEditingController(text: _specializationController.text);
     String? error;
-    final saved = await showModalBottomSheet<String>(
+    final saved = await showAppAdaptiveBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (sheetCtx) {
         void append(String suggestion) {
           final current = ctrl.text.trimRight();
@@ -2795,15 +2773,9 @@ class _SparkJoySpecialistProfileScreenState
   }) async {
     final ctrl = TextEditingController(text: initial);
     String? error;
-    final result = await showModalBottomSheet<String>(
+    final result = await showAppAdaptiveBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (sheetCtx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
@@ -3341,8 +3313,7 @@ class _SheetScaffold extends StatelessWidget {
         padding: EdgeInsets.only(
           left: SparkSpace.xxxl,
           right: SparkSpace.xxxl,
-          top: SparkSpace.xxxl,
-          bottom: MediaQuery.viewInsetsOf(context).bottom + SparkSpace.xxxl,
+          bottom: SparkSpace.xxxl,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

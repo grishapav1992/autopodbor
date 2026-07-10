@@ -6,6 +6,7 @@ import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 
@@ -228,10 +229,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
     final statusLabel = _assignedStatusLabel(draft);
 
-    await showModalBottomSheet<void>(
+    await showAppAdaptiveBottomSheet<void>(
       context: context,
-      showDragHandle: true,
-      isScrollControlled: true,
+      extent: AppBottomSheetExtent.content,
       builder: (sheetCtx) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(
@@ -1399,11 +1399,8 @@ class _SparkJoyReportsListController extends ChangeNotifier {
     _completedSyncFailed = false;
     _safeNotify();
     try {
-      final remoteCompleted = await storage_api.StorageApi
-          .getAllSpecialistReports(
-        limit: 100,
-        isDraft: false,
-      );
+      final remoteCompleted = await storage_api
+          .StorageApi.getAllSpecialistReports(limit: 100, isDraft: false);
       if (_disposed || effectiveToken != _loadToken) return;
       _completed = _sortCompleted(remoteCompleted);
       _completedLoading = false;

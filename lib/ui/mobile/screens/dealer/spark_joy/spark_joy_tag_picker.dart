@@ -25,14 +25,11 @@ Future<List<String>?> _showSparkJoyTagPicker(
   List<String> initialOrder = const <String>[],
   required Future<bool> Function(String name, String severity) onCreateCustom,
   required Future<bool> Function(String name) onDeleteCustom,
-  required Future<List<String>?> Function(List<String> selected)
-  onRefreshOrder,
+  required Future<List<String>?> Function(List<String> selected) onRefreshOrder,
 }) {
-  return showModalBottomSheet<List<String>>(
+  return showAppAdaptiveBottomSheet<List<String>>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    useSafeArea: true,
+    extent: AppBottomSheetExtent.expanded,
     builder: (_) => _SparkJoyTagPickerSheet(
       title: title,
       options: options,
@@ -149,9 +146,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     _refetchDebounce?.cancel();
     final mySeq = ++_refetchSeq;
     _refetchDebounce = Timer(const Duration(milliseconds: 200), () async {
-      final next = await widget.onRefreshOrder(
-        List<String>.from(_selected),
-      );
+      final next = await widget.onRefreshOrder(List<String>.from(_selected));
       if (!mounted || mySeq != _refetchSeq || next == null) return;
       setState(() => _order = next);
     });
@@ -207,11 +202,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     setState(() {
       _options = [
         ..._options,
-        _MediaTagOption(
-          label: raw,
-          severity: _severityFilter,
-          isCustom: true,
-        ),
+        _MediaTagOption(label: raw, severity: _severityFilter, isCustom: true),
       ];
       if (!_isSelected(raw)) _selected.add(raw);
       _addController.clear();
@@ -282,8 +273,9 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
   /// the natural options order. With a query we filter by
   /// case-insensitive substring against label.
   List<_MediaTagOption> _filtered() {
-    Iterable<_MediaTagOption> pool =
-        _options.where((o) => o.severity == _severityFilter);
+    Iterable<_MediaTagOption> pool = _options.where(
+      (o) => o.severity == _severityFilter,
+    );
     if (_query.isNotEmpty) {
       return pool
           .where((o) => o.label.toLowerCase().contains(_query))
@@ -323,7 +315,8 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     final serious = <({String label, _MediaTagOption opt})>[];
     final minor = <({String label, _MediaTagOption opt})>[];
     for (final label in _selected) {
-      final opt = byLower[label.toLowerCase()] ??
+      final opt =
+          byLower[label.toLowerCase()] ??
           _MediaTagOption(label: label, severity: 'minor');
       if (opt.severity == 'serious') {
         serious.add((label: label, opt: opt));
@@ -336,7 +329,6 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final viewInsets = MediaQuery.of(context).viewInsets;
     final filtered = _filtered();
     // Create-row inherits the active severity from the segmented
     // control: with "Серьёзные" active, the no-match query offers
@@ -344,180 +336,166 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
     // not a choice — the severity is already explicit above.
     final showCreateRow = _query.isNotEmpty && !_hasExactMatch();
 
-    return FractionallySizedBox(
-      heightFactor: 0.9,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: viewInsets.bottom),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                SparkSpace.xl,
-                SparkSpace.xs,
-                SparkSpace.xs,
-                SparkSpace.sm,
-              ),
-              // В шапке оставлены только заголовок sheet'а и
-              // шестерёнка. «Готово» переехало в фиксированный
-              // bottom action bar — иначе пользователь, создавая
-              // новый тег, мог тапнуть «Готово» вместо «Добавить»
-              // (которые сидели рядом) и потерять введённый текст.
-              child: Row(
-                children: [
-                  Expanded(
-                    child: MyText(
-                      text: widget.title,
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w800,
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      _settingsMode
-                          ? Icons.check_rounded
-                          : Icons.tune_rounded,
-                      color: _settingsMode
-                          ? kSecondaryColor
-                          : kGreyColor,
-                    ),
-                    tooltip: _settingsMode
-                        ? 'Завершить настройку'
-                        : 'Настройки',
-                    onPressed: _busy
-                        ? null
-                        : () {
-                            setState(() {
-                              _settingsMode = !_settingsMode;
-                              if (!_settingsMode) {
-                                _addInputOpen = false;
-                                _addController.clear();
-                              }
-                            });
-                          },
-                  ),
-                ],
-              ),
-            ),
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                SparkSpace.xxxl,
-                SparkSpace.md,
-                SparkSpace.xxxl,
-                SparkSpace.sm,
-              ),
-              child: TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                decoration: sparkInputDecoration('Поиск повреждений…').copyWith(
-                  prefixIcon: const Icon(Icons.search_rounded),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          icon: const Icon(Icons.close_rounded),
-                          onPressed: _searchController.clear,
-                          tooltip: 'Очистить',
-                        ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xl,
+            SparkSpace.xs,
+            SparkSpace.xs,
+            SparkSpace.sm,
+          ),
+          // В шапке оставлены только заголовок sheet'а и
+          // шестерёнка. «Готово» переехало в фиксированный
+          // bottom action bar — иначе пользователь, создавая
+          // новый тег, мог тапнуть «Готово» вместо «Добавить»
+          // (которые сидели рядом) и потерять введённый текст.
+          child: Row(
+            children: [
+              Expanded(
+                child: MyText(
+                  text: widget.title,
+                  size: SparkTextSize.titleLg,
+                  weight: FontWeight.w800,
                 ),
               ),
-            ),
-            if (_selected.isNotEmpty) _buildSelectedRow(),
-            _buildSeverityFilter(),
-            const Divider(height: 1),
-            Expanded(
-              child: Column(
-                children: [
-                  // Settings-mode add CTA. AnimatedSize keeps the
-                  // appearance/disappearance smooth — no jarring
-                  // jump when toggling the gear.
-                  AnimatedSize(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
-                    alignment: Alignment.topCenter,
-                    child: _settingsMode
-                        ? _buildAddCta()
-                        : const SizedBox(width: double.infinity),
-                  ),
-                  if (_settingsMode)
-                    const Divider(height: 1, indent: SparkSpace.xxxl),
-                  Expanded(
-                    child: filtered.isEmpty && !showCreateRow
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(SparkSpace.xxxl),
-                              child: MyText(
-                                text:
-                                    'Ничего не найдено. Введите запрос, чтобы создать новое повреждение.',
-                                size: SparkTextSize.body,
-                                color: kGreyColor,
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            itemCount: filtered.length + (showCreateRow ? 1 : 0),
-                            separatorBuilder: (_, _) => const Divider(
-                              height: 1,
-                              indent: SparkSpace.xxxl,
-                            ),
-                            itemBuilder: (_, index) {
-                              if (index < filtered.length) {
-                                return _buildRow(filtered[index]);
-                              }
-                              return _buildCreateRow(_severityFilter);
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-            // Bottom action bar — фиксированный footer с «Готово».
-            // Если у пользователя в `_addController` остался не
-            // закоммиченный новый тег, мы сначала молча сохраняем
-            // его (auto-commit), и только потом закрываем sheet —
-            // меньше трения, никакой потери введённого текста.
-            const Divider(height: 1),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                SparkSpace.xxxl,
-                SparkSpace.md,
-                SparkSpace.xxxl,
-                SparkSpace.md,
-              ),
-              child: SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(SparkSize.actionHeight),
-                    backgroundColor: kSecondaryColor,
-                    foregroundColor: kWhiteColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SparkRadius.lg),
-                    ),
-                  ),
-                  onPressed: _busy
-                      ? null
-                      : () async {
-                          final pending = _addController.text.trim();
-                          final navigator = Navigator.of(context);
-                          if (pending.isNotEmpty) {
-                            await _submitAdd();
-                            if (!mounted) return;
+              IconButton(
+                icon: Icon(
+                  _settingsMode ? Icons.check_rounded : Icons.tune_rounded,
+                  color: _settingsMode ? kSecondaryColor : kGreyColor,
+                ),
+                tooltip: _settingsMode ? 'Завершить настройку' : 'Настройки',
+                onPressed: _busy
+                    ? null
+                    : () {
+                        setState(() {
+                          _settingsMode = !_settingsMode;
+                          if (!_settingsMode) {
+                            _addInputOpen = false;
+                            _addController.clear();
                           }
-                          navigator.pop(_selected);
-                        },
-                  child: const Text(
-                    'Готово',
-                    style: TextStyle(
-                      fontSize: SparkTextSize.label,
-                      fontWeight: FontWeight.w700,
+                        });
+                      },
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xxxl,
+            SparkSpace.md,
+            SparkSpace.xxxl,
+            SparkSpace.sm,
+          ),
+          child: TextField(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            decoration: sparkInputDecoration('Поиск повреждений…').copyWith(
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: _searchController.clear,
+                      tooltip: 'Очистить',
                     ),
-                  ),
+            ),
+          ),
+        ),
+        if (_selected.isNotEmpty) _buildSelectedRow(),
+        _buildSeverityFilter(),
+        const Divider(height: 1),
+        Expanded(
+          child: Column(
+            children: [
+              // Settings-mode add CTA. AnimatedSize keeps the
+              // appearance/disappearance smooth — no jarring
+              // jump when toggling the gear.
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: _settingsMode
+                    ? _buildAddCta()
+                    : const SizedBox(width: double.infinity),
+              ),
+              if (_settingsMode)
+                const Divider(height: 1, indent: SparkSpace.xxxl),
+              Expanded(
+                child: filtered.isEmpty && !showCreateRow
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(SparkSpace.xxxl),
+                          child: MyText(
+                            text:
+                                'Ничего не найдено. Введите запрос, чтобы создать новое повреждение.',
+                            size: SparkTextSize.body,
+                            color: kGreyColor,
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: filtered.length + (showCreateRow ? 1 : 0),
+                        separatorBuilder: (_, _) =>
+                            const Divider(height: 1, indent: SparkSpace.xxxl),
+                        itemBuilder: (_, index) {
+                          if (index < filtered.length) {
+                            return _buildRow(filtered[index]);
+                          }
+                          return _buildCreateRow(_severityFilter);
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+        // Bottom action bar — фиксированный footer с «Готово».
+        // Если у пользователя в `_addController` остался не
+        // закоммиченный новый тег, мы сначала молча сохраняем
+        // его (auto-commit), и только потом закрываем sheet —
+        // меньше трения, никакой потери введённого текста.
+        const Divider(height: 1),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xxxl,
+            SparkSpace.md,
+            SparkSpace.xxxl,
+            SparkSpace.md,
+          ),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size.fromHeight(SparkSize.actionHeight),
+                backgroundColor: kSecondaryColor,
+                foregroundColor: kWhiteColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                ),
+              ),
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      final pending = _addController.text.trim();
+                      final navigator = Navigator.of(context);
+                      if (pending.isNotEmpty) {
+                        await _submitAdd();
+                        if (!mounted) return;
+                      }
+                      navigator.pop(_selected);
+                    },
+              child: const Text(
+                'Готово',
+                style: TextStyle(
+                  fontSize: SparkTextSize.label,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 
@@ -600,10 +578,7 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
         width: double.infinity,
         child: SegmentedButton<String>(
           segments: const [
-            ButtonSegment<String>(
-              value: 'serious',
-              label: Text('Серьёзные'),
-            ),
+            ButtonSegment<String>(value: 'serious', label: Text('Серьёзные')),
             ButtonSegment<String>(
               value: 'minor',
               label: Text('Незначительные'),
@@ -756,18 +731,19 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
               textInputAction: TextInputAction.done,
               autofocus: true,
               maxLength: 255,
-              decoration: sparkInputDecoration(
-                _severityFilter == 'serious'
-                    ? 'Серьёзное повреждение'
-                    : 'Незначительное повреждение',
-              ).copyWith(
-                isDense: true,
-                counterText: '',
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.md,
-                  vertical: SparkSpace.md,
-                ),
-              ),
+              decoration:
+                  sparkInputDecoration(
+                    _severityFilter == 'serious'
+                        ? 'Серьёзное повреждение'
+                        : 'Незначительное повреждение',
+                  ).copyWith(
+                    isDense: true,
+                    counterText: '',
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.md,
+                      vertical: SparkSpace.md,
+                    ),
+                  ),
               style: const TextStyle(fontSize: SparkTextSize.label),
               onSubmitted: (_) => unawaited(_submitAdd()),
             ),

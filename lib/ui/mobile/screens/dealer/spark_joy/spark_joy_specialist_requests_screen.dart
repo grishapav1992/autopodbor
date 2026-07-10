@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_error_snackbar.dart';
@@ -1365,25 +1366,17 @@ Future<String?> _showNoteSheet(
 }) async {
   final controller = TextEditingController();
   try {
-    return await showModalBottomSheet<String>(
+    return await showAppAdaptiveBottomSheet<String>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SparkRadius.lg),
-        ),
-      ),
+      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
-        final media = MediaQuery.of(ctx);
         return SafeArea(
           top: false,
           child: Padding(
-            padding: EdgeInsets.only(
+            padding: const EdgeInsets.only(
               left: SparkSpace.xxxl,
               right: SparkSpace.xxxl,
-              top: SparkSpace.xxxl,
-              bottom: media.viewInsets.bottom + SparkSpace.xxxl,
+              bottom: SparkSpace.xxxl,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

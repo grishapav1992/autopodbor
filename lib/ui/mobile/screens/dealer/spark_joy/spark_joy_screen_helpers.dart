@@ -29,7 +29,7 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
   Future<void> _commitInlineReportName() async {
     if (widget.readOnly) return;
 
-    final previousName = _reportNameController.text.trim();
+    final previousName = _reportTitle().trim();
     final nextName = _inlineReportNameController.text.trim();
     if (nextName.isEmpty) {
       _inlineReportNameController.text = previousName;

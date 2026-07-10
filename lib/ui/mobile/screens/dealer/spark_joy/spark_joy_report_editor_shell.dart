@@ -3,6 +3,15 @@ part of 'spark_joy_create_report_screen.dart';
 extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
   Widget _buildReportEditorShell(BuildContext context) {
     final isReadOnly = widget.readOnly;
+    final reportTitle = _reportTitle();
+    if (!isReadOnly &&
+        !_reportNameFocusNode.hasFocus &&
+        _inlineReportNameController.text != reportTitle) {
+      _inlineReportNameController.value = TextEditingValue(
+        text: reportTitle,
+        selection: TextSelection.collapsed(offset: reportTitle.length),
+      );
+    }
     return PopScope(
       canPop: isReadOnly ? true : !_editingSection,
       onPopInvokedWithResult: (didPop, _) async {
@@ -13,7 +22,9 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
       },
       child: SparkPageScaffold(
         appBar: SparkReportEditorAppBar(
-          title: _reportTitle(),
+          title: reportTitle,
+          titleController: isReadOnly ? null : _inlineReportNameController,
+          titleFocusNode: isReadOnly ? null : _reportNameFocusNode,
           meta: sjFormatReportMeta(_currentReportCode(), _createdAt),
           // In read-only mode the save-status pill is meaningless (nothing
           // to save), so we swap it for a neutral "Завершённый отчёт"
@@ -27,7 +38,6 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
               : _draftSaveStatusIcon(),
           draftSaving: isReadOnly ? false : _draftSaveInProgress,
           onBack: () => _handleEditorBack(context),
-          showEditAction: false,
           onShare: isReadOnly ? () => _shareCompletedReport(context) : null,
           sharing: _shareInProgress,
         ),

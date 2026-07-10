@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -12,6 +11,7 @@ import 'package:flutter_application_1/data/services/car_catalog_sync_service.dar
 import 'package:flutter_application_1/data/services/city_repository.dart';
 import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_specialist_picker.dart';
@@ -244,24 +244,26 @@ class _SparkJoyCompanyCreateRequestScreenState
 
     if (!mounted) return;
 
-    final selection = await showDialog<_RequestCarPickerSelection>(
-      context: context,
-      builder: (context) {
-        return _RequestCarPickerDialog(
-          brands: brands,
-          initialBrand: _brand,
-          initialModel: _model,
-          initialGeneration: _generation,
-          initialRestyling: _restyling,
-          loadModels: (brand) => CarCatalogRepository.instance
-              .getModels(brand.id)
-              .timeout(catalogLoadTimeout),
-          loadGenerations: (model) => CarCatalogRepository.instance
-              .getGenerations(model.id)
-              .timeout(catalogLoadTimeout),
+    final selection =
+        await showAppAdaptiveBottomSheet<_RequestCarPickerSelection>(
+          context: context,
+          extent: AppBottomSheetExtent.expanded,
+          builder: (context) {
+            return _RequestCarPickerDialog(
+              brands: brands,
+              initialBrand: _brand,
+              initialModel: _model,
+              initialGeneration: _generation,
+              initialRestyling: _restyling,
+              loadModels: (brand) => CarCatalogRepository.instance
+                  .getModels(brand.id)
+                  .timeout(catalogLoadTimeout),
+              loadGenerations: (model) => CarCatalogRepository.instance
+                  .getGenerations(model.id)
+                  .timeout(catalogLoadTimeout),
+            );
+          },
         );
-      },
-    );
     if (selection == null || !mounted) return;
     setState(() {
       _brand = selection.brand;
@@ -1078,95 +1080,74 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
     final showSearch =
         _step == _RequestCarPickerStep.brand ||
         _step == _RequestCarPickerStep.model;
-    final dialogHeight = math.min(
-      MediaQuery.sizeOf(context).height * 0.82,
-      SparkSize.modalTall + 180,
-    );
-
-    return Dialog(
-      insetPadding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.xl,
-        vertical: SparkSize.iconXl,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xl,
+        0,
+        SparkSpace.xl,
+        SparkSpace.md,
       ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(SparkRadius.xl),
-      ),
-      child: SizedBox(
-        width: SparkSize.modalWide,
-        height: dialogHeight,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            SparkSpace.xl,
-            SparkSpace.xl,
-            SparkSpace.xl,
-            SparkSpace.md,
-          ),
-          child: Column(
+      child: Column(
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  IconButton(
-                    onPressed: _goBack,
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    splashRadius: 20,
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        MyText(
-                          text: _titleForStep,
-                          size: SparkTextSize.title,
-                          weight: FontWeight.w700,
-                        ),
-                        if (_breadcrumb.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: SparkSpace.xxs),
-                            child: MyText(
-                              text: _breadcrumb,
-                              size: SparkTextSize.body,
-                              color: kGreyColor,
-                              maxLines: 1,
-                              textOverflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+              IconButton(
+                onPressed: _goBack,
+                icon: const Icon(Icons.arrow_back_rounded),
+                splashRadius: 20,
               ),
-              const SizedBox(height: SparkSpace.md),
-              if (showSearch) ...[
-                TextField(
-                  key: ValueKey(_step),
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  onChanged: (value) => setState(() => _search = value),
-                  decoration: sparkInputDecoration(
-                    _step == _RequestCarPickerStep.brand
-                        ? 'Поиск марки...'
-                        : 'Поиск модели...',
-                    prefixIcon: const Icon(
-                      Icons.search_rounded,
-                      color: kGreyColor,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    MyText(
+                      text: _titleForStep,
+                      size: SparkTextSize.title,
+                      weight: FontWeight.w700,
                     ),
-                    dense: true,
-                  ),
-                ),
-                const SizedBox(height: SparkSpace.md),
-              ],
-              Expanded(child: _listContent()),
-              const SizedBox(height: SparkSpace.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Отмена'),
+                    if (_breadcrumb.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: SparkSpace.xxs),
+                        child: MyText(
+                          text: _breadcrumb,
+                          size: SparkTextSize.body,
+                          color: kGreyColor,
+                          maxLines: 1,
+                          textOverflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: SparkSpace.md),
+          if (showSearch) ...[
+            TextField(
+              key: ValueKey(_step),
+              onTapOutside: (_) =>
+                  FocusManager.instance.primaryFocus?.unfocus(),
+              onChanged: (value) => setState(() => _search = value),
+              decoration: sparkInputDecoration(
+                _step == _RequestCarPickerStep.brand
+                    ? 'Поиск марки...'
+                    : 'Поиск модели...',
+                prefixIcon: const Icon(Icons.search_rounded, color: kGreyColor),
+                dense: true,
+              ),
+            ),
+            const SizedBox(height: SparkSpace.md),
+          ],
+          Expanded(child: _listContent()),
+          const SizedBox(height: SparkSpace.sm),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Отмена'),
+            ),
+          ),
+        ],
       ),
     );
   }

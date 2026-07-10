@@ -7,6 +7,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/api/storage_api_models.dart';
 import 'package:flutter_application_1/ui/common/formatters/ru_phone_formatter.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -45,13 +46,9 @@ Future<SelectedAssignee?> showSpecialistPicker(
   BuildContext context, {
   int? currentSpecialistId,
 }) async {
-  return await showModalBottomSheet<SelectedAssignee>(
+  return await showAppAdaptiveBottomSheet<SelectedAssignee>(
     context: context,
-    isScrollControlled: true,
-    backgroundColor: kWhiteColor,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(SparkRadius.lg)),
-    ),
+    extent: AppBottomSheetExtent.expanded,
     builder: (_) =>
         _SpecialistPickerSheet(currentSpecialistId: currentSpecialistId),
   );
@@ -84,68 +81,61 @@ class _SpecialistPickerSheetState extends State<_SpecialistPickerSheet>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    return SafeArea(
-      top: false,
-      child: SizedBox(
-        height: media.size.height * 0.75,
-        child: Padding(
-          padding: EdgeInsets.only(
-            left: SparkSpace.xxxl,
-            right: SparkSpace.xxxl,
-            top: SparkSpace.xxxl,
-            bottom: media.viewInsets.bottom + SparkSpace.xxxl,
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xxxl,
+        0,
+        SparkSpace.xxxl,
+        SparkSpace.xxxl,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: MyText(
-                      text: 'Выбрать специалиста',
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w800,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                  ),
-                ],
+              const Expanded(
+                child: MyText(
+                  text: 'Выбрать специалиста',
+                  size: SparkTextSize.titleLg,
+                  weight: FontWeight.w800,
+                ),
               ),
-              const SizedBox(height: SparkSpace.md),
-              TabBar(
-                controller: _tabController,
-                labelColor: kSecondaryColor,
-                unselectedLabelColor: kGreyColor,
-                indicatorColor: kSecondaryColor,
-                labelStyle: const TextStyle(
-                  fontSize: SparkTextSize.body,
-                  fontWeight: FontWeight.w700,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: SparkTextSize.body,
-                  fontWeight: FontWeight.w500,
-                ),
-                tabs: const [
-                  Tab(text: 'Из штата'),
-                  Tab(text: 'По телефону'),
-                ],
-              ),
-              const SizedBox(height: SparkSpace.md),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _StaffTab(currentSpecialistId: widget.currentSpecialistId),
-                    _PhoneTab(currentSpecialistId: widget.currentSpecialistId),
-                  ],
-                ),
+              IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.close_rounded),
               ),
             ],
           ),
-        ),
+          const SizedBox(height: SparkSpace.md),
+          TabBar(
+            controller: _tabController,
+            labelColor: kSecondaryColor,
+            unselectedLabelColor: kGreyColor,
+            indicatorColor: kSecondaryColor,
+            labelStyle: const TextStyle(
+              fontSize: SparkTextSize.body,
+              fontWeight: FontWeight.w700,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: SparkTextSize.body,
+              fontWeight: FontWeight.w500,
+            ),
+            tabs: const [
+              Tab(text: 'Из штата'),
+              Tab(text: 'По телефону'),
+            ],
+          ),
+          const SizedBox(height: SparkSpace.md),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _StaffTab(currentSpecialistId: widget.currentSpecialistId),
+                _PhoneTab(currentSpecialistId: widget.currentSpecialistId),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

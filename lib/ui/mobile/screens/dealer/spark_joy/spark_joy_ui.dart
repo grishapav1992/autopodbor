@@ -1078,8 +1078,8 @@ class SparkReportEditorAppBar extends StatelessWidget
     required this.draftStatusIcon,
     required this.draftSaving,
     required this.onBack,
-    required this.showEditAction,
-    this.onEdit,
+    this.titleController,
+    this.titleFocusNode,
     this.onShare,
     this.sharing = false,
   });
@@ -1091,8 +1091,8 @@ class SparkReportEditorAppBar extends StatelessWidget
   final IconData draftStatusIcon;
   final bool draftSaving;
   final VoidCallback onBack;
-  final bool showEditAction;
-  final VoidCallback? onEdit;
+  final TextEditingController? titleController;
+  final FocusNode? titleFocusNode;
 
   /// When non-null the AppBar renders a share icon in the actions row. Used
   /// by the read-only completed-report view to surface the "Поделиться"
@@ -1119,7 +1119,34 @@ class SparkReportEditorAppBar extends StatelessWidget
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SparkReportTitle(title: title),
+          if (titleController != null && titleFocusNode != null)
+            TextField(
+              controller: titleController,
+              focusNode: titleFocusNode,
+              textInputAction: TextInputAction.done,
+              maxLines: 1,
+              onSubmitted: (_) => titleFocusNode!.unfocus(),
+              onTapOutside: (_) => titleFocusNode!.unfocus(),
+              style: TextStyle(
+                fontSize: AppResponsive.sp(context, SparkTextSize.title),
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+                fontFamily: AppFonts.URBANIST,
+                fontFamilyFallback: const [
+                  'SF Pro Text',
+                  'Helvetica',
+                  'Roboto',
+                  'Arial',
+                  'Noto Sans',
+                  'sans-serif',
+                ],
+              ),
+              decoration: const InputDecoration.collapsed(
+                hintText: 'Новый отчёт',
+              ),
+            )
+          else
+            _SparkReportTitle(title: title),
           const SizedBox(height: SparkSpace.xxs),
           MyText(
             text: meta,
@@ -1153,12 +1180,6 @@ class SparkReportEditorAppBar extends StatelessWidget
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 : const Icon(Icons.ios_share_rounded),
-          ),
-        if (showEditAction)
-          IconButton(
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Переименовать',
           ),
       ],
     );
@@ -2221,9 +2242,9 @@ class SparkErrorState extends StatelessWidget {
     void copyErrorText() {
       if (effectiveCopyText.isEmpty) return;
       Clipboard.setData(ClipboardData(text: effectiveCopyText));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ошибка скопирована')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ошибка скопирована')));
     }
 
     return Padding(
@@ -2281,9 +2302,7 @@ class SparkErrorState extends StatelessWidget {
                           foregroundColor: kSecondaryColor,
                           side: const BorderSide(color: kBorderColor),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(
-                              SparkRadius.lg,
-                            ),
+                            borderRadius: BorderRadius.circular(SparkRadius.lg),
                           ),
                         ),
                       ),

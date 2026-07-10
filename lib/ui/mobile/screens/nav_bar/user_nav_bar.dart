@@ -4,6 +4,7 @@ import 'package:flutter_application_1/core/constants/app_sizes.dart';
 import 'package:flutter_application_1/core/constants/popular_cars_ru.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/car_catalog_repository.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 // Auto-request feature is paused (backend not shipped, UI disabled in nav).
 // Keep the imports so restoring the tab and FAB is a 2-line flip; release
@@ -717,13 +718,9 @@ class _UserNavBarState extends State<UserNavBar> with WidgetsBindingObserver {
     final tempStatuses = List<String>.from(_selectedStatuses);
     final tempInspectors = List<String>.from(_selectedInspectors);
 
-    showModalBottomSheet(
+    showAppAdaptiveBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: kWhiteColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      extent: AppBottomSheetExtent.expanded,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setSheet) {

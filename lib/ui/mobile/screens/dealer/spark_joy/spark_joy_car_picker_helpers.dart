@@ -309,7 +309,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
         // После выбора рестайлинга в поле «Поколение» показываем ТОТ ЖЕ период,
         // что выбрал юзер (напр. «2020–2022»), а не широкий диапазон поколения;
         // без годов рестайлинга — фолбэк на диапазон/номер поколения.
-        generation: restyling.years.isNotEmpty ? restyling.years : generation.name,
+        generation: restyling.years.isNotEmpty
+            ? restyling.years
+            : generation.name,
         restyling: restyling.label,
         frames: restyling.frames,
         photoUrl: restyling.photoUrl,
@@ -341,8 +343,9 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     }
 
     if (!mounted) return;
-    final selection = await showDialog<_CarPickerSelection>(
+    final selection = await showAppAdaptiveBottomSheet<_CarPickerSelection>(
       context: context,
+      extent: AppBottomSheetExtent.expanded,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setLocalState) {
@@ -749,89 +752,72 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               );
             }
 
-            final dialogHeight = math.min(
-              MediaQuery.sizeOf(context).height * 0.82,
-              SparkSize.modalTall + 180,
-            );
-            return Dialog(
-              insetPadding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.xl,
-                vertical: SparkSize.iconXl,
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(
+                SparkSpace.xl,
+                0,
+                SparkSpace.xl,
+                SparkSpace.md,
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SparkRadius.xl),
-              ),
-              child: SizedBox(
-                width: SparkSize.modalWide,
-                height: dialogHeight,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    SparkSpace.xl,
-                    SparkSpace.xl,
-                    SparkSpace.xl,
-                    SparkSpace.md,
-                  ),
-                  child: Column(
+              child: Column(
+                children: [
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: goBack,
-                            icon: const Icon(Icons.arrow_back_rounded),
-                            splashRadius: 20,
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                MyText(
-                                  text: titleForStep(step),
-                                  size: SparkTextSize.title,
-                                  weight: FontWeight.w700,
-                                ),
-                                if (currentBreadcrumb.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      top: SparkSpace.xxs,
-                                    ),
-                                    child: MyText(
-                                      text: currentBreadcrumb,
-                                      size: SparkTextSize.body,
-                                      color: kGreyColor,
-                                      maxLines: 1,
-                                      textOverflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
+                      IconButton(
+                        onPressed: goBack,
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        splashRadius: 20,
                       ),
-                      const SizedBox(height: SparkSpace.md),
-                      if (showSearch) ...[
-                        TextField(
-                          onTapOutside: (_) => _dismissKeyboard(),
-                          onChanged: (value) {
-                            setLocalState(() {
-                              search = value;
-                            });
-                          },
-                          decoration: _fieldDecoration(searchHint),
-                        ),
-                        const SizedBox(height: SparkSpace.md),
-                      ],
-                      Expanded(child: listContent()),
-                      const SizedBox(height: SparkSpace.sm),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Отмена'),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            MyText(
+                              text: titleForStep(step),
+                              size: SparkTextSize.title,
+                              weight: FontWeight.w700,
+                            ),
+                            if (currentBreadcrumb.isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(
+                                  top: SparkSpace.xxs,
+                                ),
+                                child: MyText(
+                                  text: currentBreadcrumb,
+                                  size: SparkTextSize.body,
+                                  color: kGreyColor,
+                                  maxLines: 1,
+                                  textOverflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
+                  const SizedBox(height: SparkSpace.md),
+                  if (showSearch) ...[
+                    TextField(
+                      onTapOutside: (_) => _dismissKeyboard(),
+                      onChanged: (value) {
+                        setLocalState(() {
+                          search = value;
+                        });
+                      },
+                      decoration: _fieldDecoration(searchHint),
+                    ),
+                    const SizedBox(height: SparkSpace.md),
+                  ],
+                  Expanded(child: listContent()),
+                  const SizedBox(height: SparkSpace.sm),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Отмена'),
+                    ),
+                  ),
+                ],
               ),
             );
           },

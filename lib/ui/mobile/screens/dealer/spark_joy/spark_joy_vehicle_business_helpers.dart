@@ -373,10 +373,9 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     BuildContext context,
     void Function(VoidCallback fn) setStateFn,
   ) async {
-    final picked = await showModalBottomSheet<_PlatePicked>(
+    final picked = await showAppAdaptiveBottomSheet<_PlatePicked>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
+      extent: AppBottomSheetExtent.expanded,
       builder: (ctx) => _PlateCountryPickerSheet(
         current: _plateCountry,
         locked: _plateCountryLocked,

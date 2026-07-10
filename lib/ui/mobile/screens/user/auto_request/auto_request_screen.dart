@@ -17,6 +17,7 @@ import 'package:flutter_application_1/data/services/car_catalog_sync_service.dar
 import 'package:flutter_application_1/data/services/city_repository.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
+import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 
@@ -2154,16 +2155,9 @@ class _ByCarFormBodyState extends State<_ByCarFormBody> {
 
     String query = '';
 
-    await showModalBottomSheet(
+    await showAppAdaptiveBottomSheet<void>(
       context: context,
-
-      isScrollControlled: true,
-
-      backgroundColor: kWhiteColor,
-
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      extent: AppBottomSheetExtent.expanded,
 
       builder: (ctx) {
         return StatefulBuilder(
@@ -3633,16 +3627,9 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
     String query = '';
 
-    await showModalBottomSheet(
+    await showAppAdaptiveBottomSheet<void>(
       context: context,
-
-      isScrollControlled: true,
-
-      backgroundColor: kWhiteColor,
-
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      extent: AppBottomSheetExtent.expanded,
 
       builder: (ctx) {
         return StatefulBuilder(
@@ -3839,16 +3826,9 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
 
     String query = '';
 
-    await showModalBottomSheet(
+    await showAppAdaptiveBottomSheet<void>(
       context: context,
-
-      isScrollControlled: true,
-
-      backgroundColor: kWhiteColor,
-
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      extent: AppBottomSheetExtent.expanded,
 
       builder: (ctx) {
         return StatefulBuilder(
