@@ -718,26 +718,13 @@ class _DocScanProgressDialog extends StatelessWidget {
             builder: (context, _) {
               final current = stage.value;
               final isOffline = offline.value;
+              // Без большого спиннера и заголовка «Распознавание…»
+              // (фидбек 2026-07-10) — компактный чек-лист стадий сам
+              // показывает прогресс мини-индикатором активной строки.
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: CircularProgressIndicator(strokeWidth: 3),
-                    ),
-                  ),
-                  const SizedBox(height: SparkSpace.lg),
-                  const Center(
-                    child: MyText(
-                      text: 'Распознавание…',
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: SparkSpace.lg),
                   for (var i = 0; i < _labels.length; i++)
                     Padding(
                       padding: const EdgeInsets.only(bottom: SparkSpace.sm),

@@ -60,6 +60,9 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
             widget.initialReportName?.trim() ?? _read(assignment, 'title'),
       ),
     );
+    _inlineReportNameController = TextEditingController(
+      text: _reportNameController.text,
+    );
     _vinController = TextEditingController(
       text: _read(draft, 'vin', fallback: _read(assignment, 'vin')),
     );

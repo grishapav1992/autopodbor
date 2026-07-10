@@ -154,6 +154,7 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
 class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     with WidgetsBindingObserver {
   late final TextEditingController _reportNameController;
+  late final TextEditingController _inlineReportNameController;
   late final TextEditingController _vinController;
   late final TextEditingController _plateController;
   late final TextEditingController _brandController;
@@ -404,6 +405,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   final FocusNode _adLinkFocusNode = FocusNode();
   final FocusNode _mileageFocusNode = FocusNode();
   final FocusNode _inspectionCityFocusNode = FocusNode();
+  final FocusNode _reportNameFocusNode = FocusNode();
 
   // ┌─ Phase 4.1 · Chunk 4: car-step non-controller flags → SparkJoyReportController ┐
   // │ 34 references across 12 files use the old `_mileageMismatch` / `_vinUnreadable` │

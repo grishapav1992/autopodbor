@@ -2,17 +2,15 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyVehicleRulesMethods on _SparkJoyCreateReportScreenState {
   bool _isVehicleReadyForContinue() {
-    // «или» в карточке идентификаторов: VIN и госномер взаимозаменяемы как ключ
-    // авто, поэтому валидный госномер тоже разблокирует переход (иначе надпись
-    // «или» обманывает — заполнил только госномер, а «Продолжить» требует VIN).
-    if (_vinUnreadable || _vinController.text.trim().isNotEmpty) return true;
-    final plate = _plateController.text.trim();
-    return plate.isNotEmpty && plateError(plate, _plateFormat) == null;
+    // VIN всегда обязателен (решение Григория 2026-07-10, вместе с удалением
+    // галочки «Нечитабельный VIN»): госномер и legacy-флаг нечитаемости
+    // переход больше не разблокируют.
+    return _vinController.text.trim().isNotEmpty;
   }
 
   Future<Map<String, dynamic>?> _findDuplicateVinDraft() async {
     final normalizedVin = _sanitizeVin(_vinController.text.trim());
-    if (normalizedVin.isEmpty || _vinUnreadable) return null;
+    if (normalizedVin.isEmpty) return null;
 
     final drafts = await SparkJoyStorage.loadDrafts();
     for (final draft in drafts) {

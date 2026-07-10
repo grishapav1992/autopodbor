@@ -16,14 +16,8 @@ Widget _buildSparkJoyStepTestDrive(
 
   return Column(
     children: [
-      s._requiredLegend('— обязательное поле'),
-      if (tdConducted == null) ...[
-        const SparkHintCard(
-          text: 'Сначала выберите режим тест-драйва.',
-          icon: Icons.info_outline_rounded,
-        ),
-        const SizedBox(height: SparkSpace.lg),
-      ],
+      // Легенда обязательности и хинт «Сначала выберите режим…» убраны
+      // (2026-07-10) — шаг начинается сразу с селектора режима.
       s._testDriveConductedSelector(),
       if (showSubsystemCards) ...[
         const SizedBox(height: SparkSpace.lg),

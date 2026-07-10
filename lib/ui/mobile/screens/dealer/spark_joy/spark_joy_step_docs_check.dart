@@ -7,7 +7,6 @@ Widget _buildSparkJoyStepDocsCheck(
 }) {
   return Column(
     children: [
-      s._requiredLegend('— обязательное поле'),
       s._yesNoSelector(
         title: 'Данные владельца',
         value: s._docsOwnerMatch,

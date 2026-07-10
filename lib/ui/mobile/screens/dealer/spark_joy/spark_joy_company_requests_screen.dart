@@ -399,15 +399,7 @@ class _RequestsToolbar extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        const Expanded(
-          child: MyText(
-            text: 'МОИ ЗАЯВКИ',
-            size: SparkTextSize.caption,
-            color: kGreyColor,
-            weight: FontWeight.w700,
-            letterSpacing: 0.6,
-          ),
-        ),
+        const Expanded(child: SparkSectionTitle('Мои заявки')),
         SparkJoyRequestFilterBar(
           value: filter,
           filters: RequestStatusFilter.values,

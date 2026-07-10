@@ -140,7 +140,7 @@ class _SparkJoyStepActionController {
       if (!state.canSummaryFinish) {
         _showValidationSnack(
           s.context,
-          'Заполните обязательные поля в блоке «Что заполнить».',
+          'Заполните данные в блоке «Что заполнить».',
         );
         _scrollToSummaryRequiredActions(s);
         return;
@@ -157,7 +157,7 @@ class _SparkJoyStepActionController {
       if (!state.canMediaContinue) {
         _showValidationSnack(
           s.context,
-          'Добавьте фото в обязательные группы: ${state.missingMediaGroups.join(', ')}',
+          'Добавьте фото в группы: ${state.missingMediaGroups.join(', ')}',
         );
         return;
       }

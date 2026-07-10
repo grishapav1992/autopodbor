@@ -308,8 +308,8 @@ String? _mappedBackendError(String? code, {int? activeAssignedRequests}) {
     'too_many_requests' => 'Слишком много запросов. Повторите позже.',
     'rate_limit_exceeded' => 'Слишком много запросов. Повторите позже.',
     'report_incomplete' => 'Отчёт заполнен не полностью',
-    'required_fields_missing' => 'Заполните обязательные поля',
-    'missing_required_fields' => 'Заполните обязательные поля',
+    'required_fields_missing' => 'Заполните необходимые поля',
+    'missing_required_fields' => 'Заполните необходимые поля',
     'specialist_required' => 'Назначьте специалиста',
     'city_required' => 'Укажите город',
     'vin_required' => 'Укажите VIN или отметьте, что он нечитаемый',
@@ -342,8 +342,8 @@ String _genericBackendCodeMessage(String code) {
   }
   if (words.contains('required') || words.contains('missing')) {
     return entity == null
-        ? 'Заполните обязательные данные'
-        : 'Заполните обязательное поле: $entity';
+        ? 'Заполните необходимые данные'
+        : 'Заполните поле: $entity';
   }
   if (words.contains('invalid')) {
     return entity == null ? 'Проверьте данные' : 'Проверьте поле: $entity';
@@ -425,7 +425,7 @@ String _humanizeUnknownCode(String code) {
     'link': 'ссылка',
     'status': 'статус',
     'invalid': 'некорректный',
-    'required': 'обязательное поле',
+    'required': 'не заполнено',
     'missing': 'не заполнено',
     'not': 'не',
     'found': 'найдено',

@@ -1,6 +1,60 @@
 {
   "version": 1,
   "skills": {
+    "adversarial-reviewer": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/adversarial-reviewer/SKILL.md",
+      "computedHash": "7313fc8800c2273a7c40166f216ef4e967f22f3981cdbd10a74b618fa52aa48b"
+    },
+    "ai-security": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/ai-security/SKILL.md",
+      "computedHash": "a0ce4e81a63adf1bd60f42ab71d85e063f2d12bb9d7b6d89d610e4e52bdfdcb1"
+    },
+    "aws-solution-architect": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/aws-solution-architect/SKILL.md",
+      "computedHash": "5247446ee32f120d6857fae9c80f5be2eef59e13338d4e13c4921321ab6f0dd1"
+    },
+    "azure-cloud-architect": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/azure-cloud-architect/SKILL.md",
+      "computedHash": "3dac60447a78794cffdde23ba366c1f63c525b47e9906dc0ce6c2f762c9b5473"
+    },
+    "cloud-security": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/cloud-security/SKILL.md",
+      "computedHash": "dfb28312c8825eccce08ebbc8031498abd72257ab7c30d8b75d1a618057d6642"
+    },
+    "code-reviewer": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/code-reviewer/SKILL.md",
+      "computedHash": "4e042165e93ee8322521a98524f87803600987827a359d1431bc563f08234e3f"
+    },
+    "email-template-builder": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/email-template-builder/SKILL.md",
+      "computedHash": "d7e1a8f1de40401bfd5e50ab5a78276eb2164ae40a069b345bcca5df102dfdc1"
+    },
+    "engineering-skills": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/engineering-skills/SKILL.md",
+      "computedHash": "16ff6e1ea5914ae7deb3631d2e8a6b7386fe8e79aba98ee82d28ef369f431133"
+    },
+    "epic-design": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/epic-design/SKILL.md",
+      "computedHash": "80750bbdb02254d64066cb8cab8fa1c8253a8cb770dd5fd7b799b393f0fc6952"
+    },
     "flutter-architecting-apps": {
       "source": "flutter/skills",
       "sourceType": "github",
@@ -45,6 +99,150 @@
       "source": "flutter/skills",
       "sourceType": "github",
       "computedHash": "37ca76b0ec9e681b9b1d58f788f3ff1338a924ed1247983f6adf6c302d44887b"
+    },
+    "gcp-cloud-architect": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/gcp-cloud-architect/SKILL.md",
+      "computedHash": "34fd081c05e05b6df038e73e999024aaa291b89a0a0a3d19fcfa431a39a4cf5b"
+    },
+    "incident-commander": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/incident-commander/SKILL.md",
+      "computedHash": "a5165532af1bf951f799b658e7027229dd6003e47faf58695d2b3c4d54a13da3"
+    },
+    "incident-response": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/incident-response/SKILL.md",
+      "computedHash": "1d067db7def58ba280b417b79be733833b1bada84308a272ec63b4c1579e9569"
+    },
+    "ms365-tenant-manager": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/ms365-tenant-manager/SKILL.md",
+      "computedHash": "b6ebdc96f5b4af4139ecc11da85903de3ad4e1aaed27dc80bd7d90d95a3784f6"
+    },
+    "named-persona-adversarial-review": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/named-persona-adversarial-review/SKILL.md",
+      "computedHash": "bb0ac2379efa00e9ce211889c493213e5215346f77b7c0540df66a0398acd8f9"
+    },
+    "red-team": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/red-team/SKILL.md",
+      "computedHash": "53d023c2e6ef077ca186e9fc5adf3528eeb1850c246eb35afd48dae4fbcef67a"
+    },
+    "security-pen-testing": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/security-pen-testing/SKILL.md",
+      "computedHash": "86a05a8e8aae500c7c6719f7fb59a970e56eea5f5f7bebd9fddf919fe77d479e"
+    },
+    "senior-architect": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-architect/SKILL.md",
+      "computedHash": "0152c1cb90512177153d936557a11bf760d5cbd21470a1305cc727d0a3af1df9"
+    },
+    "senior-backend": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-backend/SKILL.md",
+      "computedHash": "e4f6ded80cd956df679067046bfc2eb706e48841261e8e5033bfa4ae2a677cd1"
+    },
+    "senior-computer-vision": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-computer-vision/SKILL.md",
+      "computedHash": "c954ac42858565c5b2e79f25d52c63e6f14844c0f04c8126c70dd6da2a7df305"
+    },
+    "senior-data-engineer": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-data-engineer/SKILL.md",
+      "computedHash": "f5f6d4ffc53d96c6ebe871b71518743e2a4284a0ead3a7473c341bd88ca3fa54"
+    },
+    "senior-data-scientist": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-data-scientist/SKILL.md",
+      "computedHash": "15d0dbc110f7eac9d712d1062341300d02679cf8aa3dbd03017cbd6e37d798c9"
+    },
+    "senior-devops": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-devops/SKILL.md",
+      "computedHash": "5f398b270bfaa61a807a269d64f649302a14f2fc8683a881b8a443e009618ae0"
+    },
+    "senior-frontend": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-frontend/SKILL.md",
+      "computedHash": "366048e25c8a305995fde3ab786ea71d1982d893dfa15939b37a7a1d33334f92"
+    },
+    "senior-fullstack": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-fullstack/SKILL.md",
+      "computedHash": "67f1a48a6cd5928baccc73a6fe62e7b86b8cd6bea1c6a84a21206d309cabdf73"
+    },
+    "senior-ml-engineer": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-ml-engineer/SKILL.md",
+      "computedHash": "1f234da1d069064faf4243658fca777c734f52b1bedf73e4e4111284a77b1fba"
+    },
+    "senior-prompt-engineer": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-prompt-engineer/SKILL.md",
+      "computedHash": "0f0d43e7c3f58aa0cec5b53adf4c3f42caf094f7c42654aa5e183b6426ba2543"
+    },
+    "senior-qa": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-qa/SKILL.md",
+      "computedHash": "23d6644202afddcd8ee372cb383022e38960eb76c4391ab817b84d3f814207e0"
+    },
+    "senior-secops": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-secops/SKILL.md",
+      "computedHash": "ae0a60777ec6a1106495eee40e1a814ed55bfdc2767b440ecd5614e42e6c46c9"
+    },
+    "senior-security": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/senior-security/SKILL.md",
+      "computedHash": "cd29418065d152af78327fa67c624322ecbd6ccdb3b5b12be96c287d1e7175df"
+    },
+    "stripe-integration-expert": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/stripe-integration-expert/SKILL.md",
+      "computedHash": "ecfa147801697aa790acd7a13c595b71a240165b703badc3e41f84343f06b3b9"
+    },
+    "tdd-guide": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/tdd-guide/SKILL.md",
+      "computedHash": "3f0637f5127bc27a9919cfc2dfb648745669507a89ac57878a44ace5fe6e4627"
+    },
+    "tech-stack-evaluator": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/tech-stack-evaluator/SKILL.md",
+      "computedHash": "68446dfdaa97064943ecc0d7a5f62da82680d887705a91857bcf8ae19df8a350"
+    },
+    "threat-detection": {
+      "source": "alirezarezvani/claude-skills",
+      "sourceType": "github",
+      "skillPath": "engineering-team/skills/threat-detection/SKILL.md",
+      "computedHash": "ba3e6b6320a840eefdb8ad9ac9a205c7908b742301ec6cf398e564fad4ee29f9"
     }
   }
 }

@@ -423,18 +423,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: MyText(
-                      text: title.toUpperCase(),
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
+              SparkSectionTitle(title),
               const SizedBox(height: SparkSpace.xs),
               Row(
                 children: [
@@ -683,16 +672,10 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                               // источник MediaGroupConfig.required.
                               requiredMark: state.config.required,
                             ),
-                            if (state.config.description.trim().isNotEmpty) ...[
-                              const SizedBox(height: SparkSpace.xxs),
-                              MyText(
-                                text: state.config.description,
-                                size: SparkTextSize.caption,
-                                color: kGreyColor,
-                                maxLines: 1,
-                                textOverflow: TextOverflow.ellipsis,
-                              ),
-                            ],
+                            // Серые подписи-описания групп («ЛКП, вмятины…»
+                            // и т.п.) убраны (фидбек 2026-07-10) — названия
+                            // самодостаточны. description остаётся в реестре
+                            // групп как справочная мета.
                             const SizedBox(height: SparkSpace.md),
                             Wrap(
                               spacing: SparkSpace.sm,
@@ -1195,9 +1178,7 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                       try {
                         await _pickMediaFiles(groupKey);
                       } catch (error) {
-                        _showErrorSnack(
-                          'Не удалось открыть галерею: $error',
-                        );
+                        _showErrorSnack('Не удалось открыть галерею: $error');
                       }
                     },
                   );

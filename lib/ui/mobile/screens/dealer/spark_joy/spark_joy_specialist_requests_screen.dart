@@ -218,15 +218,19 @@ class _SparkJoySpecialistRequestsScreenState
       bottomInset: 24,
       onRefresh: _load,
       children: [
-        const SparkSectionTitle('Назначенные заявки'),
-        const SizedBox(height: SparkSpace.md),
-        SparkJoyRequestFilterBar(
-          value: _statusFilter,
-          onChanged: (filter) {
-            if (filter == _statusFilter) return;
-            setState(() => _statusFilter = filter);
-            _load();
-          },
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Expanded(child: SparkSectionTitle('Назначенные заявки')),
+            SparkJoyRequestFilterBar(
+              value: _statusFilter,
+              onChanged: (filter) {
+                if (filter == _statusFilter) return;
+                setState(() => _statusFilter = filter);
+                _load();
+              },
+            ),
+          ],
         ),
         const SizedBox(height: SparkSpace.lg),
         if (requests.isEmpty)

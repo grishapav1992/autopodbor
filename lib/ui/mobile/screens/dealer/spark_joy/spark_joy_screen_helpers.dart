@@ -21,70 +21,26 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
     return 'Новый отчет';
   }
 
-  Future<void> _editReportTitle() async {
-    // Read-only views of completed reports must never mutate the
-    // reportName — swallow the tap silently so the editor-shell code
-    // paths that always wire this callback don't accidentally pop a
-    // rename dialog on top of the recap.
-    if (widget.readOnly) return;
-    final controller = TextEditingController(text: _reportNameController.text);
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(SparkRadius.xl),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              SparkSpace.xxxl,
-              SparkSpace.xxxl,
-              SparkSpace.xxxl,
-              SparkSpace.xl,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const MyText(
-                  text: 'Название отчета',
-                  size: SparkTextSize.titleLg,
-                  weight: FontWeight.w800,
-                  lineHeight: 1.30,
-                  tracking: true,
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                TextField(
-                  controller: controller,
-                  autofocus: true,
-                  onTapOutside: (_) => _dismissKeyboard(),
-                  decoration: _fieldDecoration('Например: Тойота для Михаила'),
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('Отмена'),
-                    ),
-                    const SizedBox(width: SparkSpace.sm),
-                    FilledButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('Готово'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
+  void _handleInlineReportNameFocusChanged() {
+    if (_reportNameFocusNode.hasFocus) return;
+    unawaited(_commitInlineReportName());
+  }
 
-    if (saved != true || !mounted) return;
+  Future<void> _commitInlineReportName() async {
+    if (widget.readOnly) return;
+
+    final previousName = _reportNameController.text.trim();
+    final nextName = _inlineReportNameController.text.trim();
+    if (nextName.isEmpty) {
+      _inlineReportNameController.text = previousName;
+      return;
+    }
+
+    _inlineReportNameController.text = nextName;
+    if (nextName == previousName) return;
+
     _setStateSafely(() {
-      _reportNameController.text = controller.text.trim();
+      _reportNameController.text = nextName;
     });
     await _saveDraft(showToast: false);
   }
@@ -111,13 +67,9 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
 
   Future<void> _handleVehicleContinue() async {
     if (!_isVehicleReadyForContinue()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Укажите VIN-номер или госномер, либо отметьте VIN как нечитаемый',
-          ),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Укажите VIN-номер')));
       return;
     }
 

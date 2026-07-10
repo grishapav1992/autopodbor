@@ -2,6 +2,7 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
   void _finalizeInitializationAfterDraftLoad() {
+    _reportNameFocusNode.addListener(_handleInlineReportNameFocusChanged);
     if (_SparkJoyStepRegistry.isSummaryStepId(
       _SparkJoyStepRegistry.idAt(_stepIndex),
     )) {
@@ -34,6 +35,10 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     _adLinkFocusNode.dispose();
     _mileageFocusNode.dispose();
     _inspectionCityFocusNode.dispose();
+    _reportNameFocusNode
+      ..removeListener(_handleInlineReportNameFocusChanged)
+      ..dispose();
+    _inlineReportNameController.dispose();
     _reportNameController.dispose();
     _vinController.dispose();
     _plateController.dispose();

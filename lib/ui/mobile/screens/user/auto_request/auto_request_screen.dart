@@ -3337,8 +3337,8 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     }
     if (!mounted) return;
     final v = _cityController.text.trim();
-    final valid = v.isNotEmpty &&
-        CityRepository.instance.findByExactRu(v) != null;
+    final valid =
+        v.isNotEmpty && CityRepository.instance.findByExactRu(v) != null;
     if (valid != _isCityValid) {
       setState(() => _isCityValid = valid);
     }
@@ -3616,9 +3616,7 @@ class _TurnkeyFormState extends State<_TurnkeyForm> {
     if (noteCheck.isBlock) {
       _fieldErrors['note'] = noteCheck.userMessage!;
     }
-    _formError = _fieldErrors.isEmpty
-        ? ''
-        : 'Заполните обязательные поля формы';
+    _formError = _fieldErrors.isEmpty ? '' : 'Заполните поля формы';
     return _fieldErrors.isEmpty;
   }
 

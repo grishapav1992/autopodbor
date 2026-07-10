@@ -13,7 +13,7 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.mediaStep.b1',
             fallback:
-                'Группы делятся на обязательные и дополнительные — обязательные нужны для завершения отчёта.',
+                'Сначала заполните основные группы осмотра, затем при необходимости добавьте дополнительные.',
             icon: Icons.checklist_rounded,
           ),
           SparkJoyOnboardingBullet(
@@ -68,7 +68,7 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
       if (hasRequiredGroups && requiredRemaining > 0) ...[
         SparkHintCard(
           text:
-              'Для завершения осмотра заполните ещё $requiredRemaining обязательн${requiredRemaining == 1 ? 'ую' : 'ых'} групп${requiredRemaining == 1 ? 'у' : 'ы'}.',
+              'Для завершения осмотра заполните ещё $requiredRemaining групп${requiredRemaining == 1 ? 'у' : 'ы'}.',
           icon: Icons.error_outline_rounded,
           textColor: kTertiaryColor,
         ),
@@ -90,7 +90,7 @@ Widget _buildSparkJoyStepMedia(_SparkJoyCreateReportScreenState s) {
           children: [
             if (hasRequiredGroups) ...[
               s._sectionHeading(
-                'Обязательные · $requiredFilled/${requiredGroups.length}',
+                'Основные · $requiredFilled/${requiredGroups.length}',
                 icon: Icons.checklist_rounded,
                 subtitle: 'Минимальный набор для завершения осмотра',
               ),

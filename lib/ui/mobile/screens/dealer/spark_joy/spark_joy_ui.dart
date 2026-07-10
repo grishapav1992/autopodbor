@@ -1129,11 +1129,15 @@ class SparkReportEditorAppBar extends StatelessWidget
             textOverflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: SparkSpace.xs),
-          _SparkDraftSaveBadge(
-            text: draftStatus,
-            color: draftStatusColor,
-            icon: draftStatusIcon,
-            saving: draftSaving,
+          // Пилюля статуса прижата к правому краю шапки (фидбек 2026-07-10).
+          Align(
+            alignment: Alignment.centerRight,
+            child: _SparkDraftSaveBadge(
+              text: draftStatus,
+              color: draftStatusColor,
+              icon: draftStatusIcon,
+              saving: draftSaving,
+            ),
           ),
         ],
       ),

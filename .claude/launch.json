@@ -1,0 +1,29 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "autopodbor-web-prototype",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-p", "5199", "/Users/grigory_pavlenko/Library/Application Support/Claude/local-agent-mode-sessions/skills-plugin/6bb6d6aa-9dff-4538-9ba5-d4ff788f6d50/1fc9a30e-3744-4f86-8957-bd9e02fb85ae/skills/web-artifacts-builder/autopodbor-web-prototype"],
+      "port": 5199
+    },
+    {
+      "name": "autopodbor-web-flutter",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-p", "5200", "-s", "/Users/grigory_pavlenko/Documents/autopodbor_web/build/web"],
+      "port": 5200
+    },
+    {
+      "name": "live-flutter-8085",
+      "runtimeExecutable": "sleep",
+      "runtimeArgs": ["86400"],
+      "port": 8085
+    },
+    {
+      "name": "autopodbor-web-current",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["-y", "serve", "-p", "5201", "-s", "/Users/grigory_pavlenko/Documents/autopodbor/build/web"],
+      "port": 5201
+    }
+  ]
+}

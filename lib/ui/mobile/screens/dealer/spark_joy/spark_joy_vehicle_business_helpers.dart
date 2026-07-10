@@ -337,7 +337,6 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   }
 
   String? _vinError() {
-    if (_vinUnreadable) return null;
     final vin = _vinController.text.trim().toUpperCase();
     if (vin.isEmpty) return null;
     if (vin.length < 17) return 'Введено ${vin.length} из 17 символов';

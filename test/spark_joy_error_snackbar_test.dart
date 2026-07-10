@@ -21,7 +21,7 @@ void main() {
       );
       expect(
         sparkJoyReadableErrorText(Exception('profile_city_required')),
-        'Заполните обязательное поле: Город',
+        'Заполните поле: Город',
       );
     });
 

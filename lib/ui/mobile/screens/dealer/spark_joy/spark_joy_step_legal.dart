@@ -30,13 +30,6 @@ Widget _buildSparkJoyLegalFilesCard(
           icon: const Icon(Icons.upload_file_rounded),
           label: const Text('Добавить документ'),
         ),
-        if (s._legalFiles.isEmpty) ...[
-          const SizedBox(height: SparkSpace.md),
-          const SparkHintCard(
-            text: 'Документы не добавлены. Прикрепите при необходимости.',
-            icon: Icons.folder_open_outlined,
-          ),
-        ],
         if (s._legalFiles.isNotEmpty) ...[
           const SizedBox(height: SparkSpace.md),
           // Hint above the file list — files live locally in the draft
@@ -555,11 +548,9 @@ Widget _buildSparkJoyStepLegal(
       s._sectionHeading('Файлы специалиста', icon: Icons.folder_open_outlined),
       const SizedBox(height: SparkSpace.lg),
       _buildSparkJoyLegalFilesCard(s, setStateFn: setStateFn),
-      s._sectionHeading(
-        'Комментарий специалиста',
-        icon: Icons.comment_bank_outlined,
-      ),
-      const SizedBox(height: SparkSpace.lg),
+      // Заголовок «Комментарий специалиста» убран (2026-07-10) — панель
+      // комментария самодостаточна, идёт сразу за файлами.
+      const SizedBox(height: SparkSpace.xl),
       // Без обёрточной `_card` — _commentInputPanel сам по себе уже
       // декорирован, дополнительная карточка дублировала рамку.
       s._commentInputPanel(

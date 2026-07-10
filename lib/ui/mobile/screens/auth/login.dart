@@ -300,7 +300,9 @@ class _LoginState extends State<Login> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: ''),
+      // Стрелка «назад» на авторизации убрана (2026-07-10): это первый
+      // экран после сплеша, вести ей некуда.
+      appBar: simpleAppBar(title: '', haveLeading: false),
       body: ListView(
         shrinkWrap: true,
         physics: const BouncingScrollPhysics(),

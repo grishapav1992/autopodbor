@@ -355,6 +355,14 @@ Widget _buildSparkSummaryRequiredMissingActionsCard(
 Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
   final reportName = s._reportTitle().trim();
   final reportMeta = sjFormatReportMeta(s._currentReportCode(), s._createdAt);
+  if (!s.widget.readOnly &&
+      !s._reportNameFocusNode.hasFocus &&
+      s._inlineReportNameController.text != reportName) {
+    s._inlineReportNameController.value = TextEditingValue(
+      text: reportName,
+      selection: TextSelection.collapsed(offset: reportName.length),
+    );
+  }
 
   return s._card(
     padding: const EdgeInsets.fromLTRB(
@@ -366,21 +374,8 @@ Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // В режиме редактирования у названия нет отдельного лейбла — есть
-        // только крупное значение. Добавляем компактный лейбл с «*», чтобы
-        // обязательность названия читалась так же, как у прочих полей.
-        if (!s.widget.readOnly) ...[
-          const MyText(
-            text: 'Название отчёта',
-            size: SparkTextSize.body,
-            weight: FontWeight.w700,
-            requiredMark: true,
-          ),
-          const SizedBox(height: SparkSpace.md),
-        ],
-        // Read-only mode: the name isn't interactive — skip the InkWell
-        // wrapper and the trailing edit pencil so the card doesn't
-        // promise an affordance that doesn't exist.
+        // В завершённом отчёте название остаётся обычным текстом. В черновике
+        // то же место редактируется напрямую, без иконки и модального окна.
         if (s.widget.readOnly)
           SparkCard(
             padding: const EdgeInsets.symmetric(
@@ -399,35 +394,28 @@ Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
             ),
           )
         else
-          InkWell(
-            onTap: () => unawaited(s._editReportTitle()),
-            borderRadius: BorderRadius.circular(SparkRadius.lg),
-            child: SparkCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.xl,
-                vertical: SparkSpace.xl,
+          SparkCard(
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.xl,
+              vertical: SparkSpace.xl,
+            ),
+            backgroundColor: kInputBgColor,
+            child: TextField(
+              controller: s._inlineReportNameController,
+              focusNode: s._reportNameFocusNode,
+              textInputAction: TextInputAction.done,
+              maxLines: 1,
+              onSubmitted: (_) => s._reportNameFocusNode.unfocus(),
+              onTapOutside: (_) => s._reportNameFocusNode.unfocus(),
+              style: TextStyle(
+                fontFamily: AppFonts.URBANIST,
+                fontSize: SparkTextSize.titleLg,
+                fontWeight: FontWeight.w800,
+                height: 1.30,
+                letterSpacing: -0.4,
               ),
-              backgroundColor: kInputBgColor,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: MyText(
-                      text: reportName.isEmpty ? 'Без названия' : reportName,
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w800,
-                      lineHeight: 1.30,
-                      tracking: true,
-                      maxLines: 2,
-                      textOverflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: SparkSpace.md),
-                  const Icon(
-                    Icons.edit_outlined,
-                    size: SparkSize.iconMd,
-                    color: kGreyColor,
-                  ),
-                ],
+              decoration: const InputDecoration.collapsed(
+                hintText: 'Без названия',
               ),
             ),
           ),
@@ -624,6 +612,17 @@ Widget _buildSparkSummarySectionCard(
         );
       }
     }
+  }
+
+  // Чип раздела уже показывает статус («Не заполнено»/«Заполнено»), поэтому
+  // детальная строка «Статус» рядом с ним — дубль (фидбек 2026-07-10:
+  // «Материалы проверки» показывали «Не заполнено» дважды). Прячем её везде,
+  // где чип виден; в clientPreview чип скрыт — там строка «Статус» остаётся
+  // единственным индикатором и нужна.
+  if (status.isNotEmpty && !clientPreview) {
+    detailMaps.removeWhere(
+      (detail) => (detail['label'] ?? '').toString().trim() == 'Статус',
+    );
   }
 
   final detailLimit = compactDetails ? (needsAttention ? 3 : 2) : null;

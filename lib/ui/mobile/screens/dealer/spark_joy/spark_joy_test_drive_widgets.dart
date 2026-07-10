@@ -16,7 +16,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
     final statusLabel = ok
         ? 'Без замечаний'
         : sectionInvalid
-        ? 'Обязательное поле'
+        ? 'Не заполнено'
         : 'Замечания: $selectedTagsCount';
     final statusColor = ok
         ? kGreenColor
@@ -49,8 +49,10 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
     // Picker takes the full catalog (system + custom + previously-
     // disabled defaults) and renders its own filter / search; no need
     // to pre-trim by visibility here.
-    final tagGroups =
-        _testDriveTagGroups(tagScopeKey, includeDisabledDefaults: true);
+    final tagGroups = _testDriveTagGroups(
+      tagScopeKey,
+      includeDisabledDefaults: true,
+    );
 
     return _card(
       backgroundColor: cardBg,
@@ -168,9 +170,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                           final next = [
                             ...?_mediaCustomTagsByScope[tagScopeKey],
                           ];
-                          if (!next.any(
-                            (s) => s.toLowerCase() == lower,
-                          )) {
+                          if (!next.any((s) => s.toLowerCase() == lower)) {
                             next.add(name);
                           }
                           _mediaCustomTagsByScope[tagScopeKey] = next;
@@ -178,20 +178,15 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                             final ns = [
                               ...?_mediaCustomSeriousTagsByScope[tagScopeKey],
                             ];
-                            if (!ns.any(
-                              (s) => s.toLowerCase() == lower,
-                            )) {
+                            if (!ns.any((s) => s.toLowerCase() == lower)) {
                               ns.add(name);
                             }
-                            _mediaCustomSeriousTagsByScope[tagScopeKey] =
-                                ns;
+                            _mediaCustomSeriousTagsByScope[tagScopeKey] = ns;
                           }
                           final order = [
                             ...?_mediaTagOrderByScope[tagScopeKey],
                           ];
-                          if (!order.any(
-                            (s) => s.toLowerCase() == lower,
-                          )) {
+                          if (!order.any((s) => s.toLowerCase() == lower)) {
                             order.add(name);
                           }
                           _mediaTagOrderByScope[tagScopeKey] = order;
@@ -206,9 +201,7 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                           final pruned =
                               (_mediaCustomTagsByScope[tagScopeKey] ??
                                       const <String>[])
-                                  .where(
-                                    (s) => s.toLowerCase() != lower,
-                                  )
+                                  .where((s) => s.toLowerCase() != lower)
                                   .toList();
                           if (pruned.isEmpty) {
                             _mediaCustomTagsByScope.remove(tagScopeKey);
@@ -218,14 +211,10 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                           final prunedSerious =
                               (_mediaCustomSeriousTagsByScope[tagScopeKey] ??
                                       const <String>[])
-                                  .where(
-                                    (s) => s.toLowerCase() != lower,
-                                  )
+                                  .where((s) => s.toLowerCase() != lower)
                                   .toList();
                           if (prunedSerious.isEmpty) {
-                            _mediaCustomSeriousTagsByScope.remove(
-                              tagScopeKey,
-                            );
+                            _mediaCustomSeriousTagsByScope.remove(tagScopeKey);
                           } else {
                             _mediaCustomSeriousTagsByScope[tagScopeKey] =
                                 prunedSerious;
@@ -233,15 +222,12 @@ extension _SparkJoyTestDriveWidgetsMethods on _SparkJoyCreateReportScreenState {
                           final prunedOrder =
                               (_mediaTagOrderByScope[tagScopeKey] ??
                                       const <String>[])
-                                  .where(
-                                    (s) => s.toLowerCase() != lower,
-                                  )
+                                  .where((s) => s.toLowerCase() != lower)
                                   .toList();
                           if (prunedOrder.isEmpty) {
                             _mediaTagOrderByScope.remove(tagScopeKey);
                           } else {
-                            _mediaTagOrderByScope[tagScopeKey] =
-                                prunedOrder;
+                            _mediaTagOrderByScope[tagScopeKey] = prunedOrder;
                           }
                           return true;
                         },

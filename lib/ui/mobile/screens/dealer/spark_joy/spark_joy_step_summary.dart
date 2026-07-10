@@ -19,7 +19,7 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
           SparkJoyOnboardingBullet(
             i18nKey: 'spark.onboarding.summaryStep.b2',
             fallback:
-                'Проверьте, что все обязательные поля заполнены — нехватка показана в чек-листе ниже.',
+                'Проверьте, что все данные заполнены — нехватка показана в чек-листе ниже.',
             icon: Icons.checklist_rounded,
           ),
           SparkJoyOnboardingBullet(
@@ -64,7 +64,6 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
 
   return Column(
     children: [
-      if (!isReadOnly) s._requiredLegend('— обязательное поле'),
       s._summaryHeaderCard(),
       const SizedBox(height: SparkSpace.lg),
       s._summaryNoDamageMediaCard(),

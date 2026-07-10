@@ -18,7 +18,8 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     //       Edit-note is hidden (a flat list has no single group to
     //       return to).
     final isFlatMode = filesOverride != null;
-    final initialFiles = filesOverride ??
+    final initialFiles =
+        filesOverride ??
         (_mediaState[groupKey]?.files ?? const <UploadedItem>[]);
     if (initialFiles.isEmpty) return;
     String groupKeyFor(int index) {
@@ -233,182 +234,19 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                         ),
                     ],
                   ),
-                  body: PageView.builder(
-                    controller: controller,
-                    itemCount: files.length,
-                    onPageChanged: (index) {
-                      unawaited(prepareVideo(files[index], setLocalState));
-                      setLocalState(() {
-                        currentIndex = index;
-                      });
-                    },
-                    itemBuilder: (context, index) {
-                      final file = files[index];
-                      if (file.isImage) {
-                        if (index == currentIndex && videoController != null) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            if (!dialogActive) return;
-                            unawaited(disposeVideoController());
-                          });
-                        }
-                        return InteractiveViewer(
-                          minScale: 1,
-                          maxScale: 4,
+                  body: Column(
+                    children: [
+                      // Плашка листания живёт наверху: внизу под видео —
+                      // полоса перемотки, на одном месте они конфликтуют.
+                      if (files.length > 1)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(
+                            SparkSpace.xxl,
+                            SparkSpace.sm,
+                            SparkSpace.xxl,
+                            SparkSpace.lg,
+                          ),
                           child: Center(
-                            child: _uploadedImageWidget(
-                              file,
-                              fit: BoxFit.contain,
-                              errorColor: kWhiteColor,
-                              errorSize: 44,
-                            ),
-                          ),
-                        );
-                      }
-                      if (index != currentIndex) {
-                        return const Center(
-                          child: Icon(
-                            Icons.videocam_outlined,
-                            color: kWhiteColor,
-                            size: SparkSize.icon5xl,
-                          ),
-                        );
-                      }
-                      if ((videoController == null ||
-                              videoSourceUrl != file.dataUrl ||
-                              !videoController!.value.isInitialized) &&
-                          !videoInitializing) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (!dialogActive) return;
-                          unawaited(prepareVideo(file, setLocalState));
-                        });
-                      }
-                      if (videoInitializing &&
-                          videoSourceUrl == file.dataUrl &&
-                          (videoController == null ||
-                              !videoController!.value.isInitialized)) {
-                        return const _SparkJoyLightboxVideoLoading();
-                      }
-                      if (videoErrorMessage != null &&
-                          videoSourceUrl == file.dataUrl) {
-                        return Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(
-                                Icons.error_outline_rounded,
-                                color: kWhiteColor,
-                                size: SparkSize.icon4xl,
-                              ),
-                              const SizedBox(height: SparkSpace.md),
-                              Text(
-                                videoErrorMessage!,
-                                style: const TextStyle(color: kWhiteColor),
-                              ),
-                              const SizedBox(height: SparkSpace.lg),
-                              OutlinedButton(
-                                onPressed: () =>
-                                    prepareVideo(file, setLocalState),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: kWhiteColor,
-                                  side: BorderSide(
-                                    color: kWhiteColor.withValues(alpha: 0.35),
-                                  ),
-                                ),
-                                child: const Text('Повторить'),
-                              ),
-                            ],
-                          ),
-                        );
-                      }
-                      final activeVideo = videoController;
-                      if (activeVideo == null ||
-                          !activeVideo.value.isInitialized ||
-                          videoSourceUrl != file.dataUrl) {
-                        return const _SparkJoyLightboxVideoLoading();
-                      }
-                      final ratio = activeVideo.value.aspectRatio;
-                      return GestureDetector(
-                        onTap: () async {
-                          if (activeVideo.value.isPlaying) {
-                            await activeVideo.pause();
-                          } else {
-                            await activeVideo.play();
-                          }
-                          if (!dialogActive) return;
-                          setLocalState(() {});
-                        },
-                        child: Center(
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              AspectRatio(
-                                aspectRatio: ratio <= 0 ? 16 / 9 : ratio,
-                                child: VideoPlayer(activeVideo),
-                              ),
-                              AnimatedOpacity(
-                                opacity: activeVideo.value.isPlaying ? 0 : 1,
-                                duration: const Duration(milliseconds: 140),
-                                child: Container(
-                                  width: SparkSize.mediaLightboxFab,
-                                  height: SparkSize.mediaLightboxFab,
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.45),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Icon(
-                                    Icons.play_arrow_rounded,
-                                    color: kWhiteColor,
-                                    size: SparkSize.icon3xl,
-                                  ),
-                                ),
-                              ),
-                              // Большое сетевое видео может встать на
-                              // догрузку уже после старта — без оверлея
-                              // буферизация выглядит как зависший кадр.
-                              ValueListenableBuilder<VideoPlayerValue>(
-                                valueListenable: activeVideo,
-                                builder: (_, value, _) {
-                                  final buffering =
-                                      value.isInitialized &&
-                                      value.isPlaying &&
-                                      value.isBuffering;
-                                  if (!buffering) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return const CircularProgressIndicator(
-                                    color: kWhiteColor,
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  bottomNavigationBar: Container(
-                    padding: const EdgeInsets.fromLTRB(
-                      SparkSpace.xxl,
-                      SparkSpace.lg,
-                      SparkSpace.xxl,
-                      SparkSpace.chipX,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.82),
-                      border: Border(
-                        top: BorderSide(
-                          color: kWhiteColor.withValues(alpha: 0.16),
-                          width: 0.8,
-                        ),
-                      ),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (files.length > 1) ...[
-                          Center(
                             child: Wrap(
                               spacing: 6,
                               runSpacing: 6,
@@ -447,6 +285,207 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                                 );
                               }),
                             ),
+                          ),
+                        ),
+                      Expanded(
+                        child: PageView.builder(
+                          controller: controller,
+                          itemCount: files.length,
+                          onPageChanged: (index) {
+                            unawaited(
+                              prepareVideo(files[index], setLocalState),
+                            );
+                            setLocalState(() {
+                              currentIndex = index;
+                            });
+                          },
+                          itemBuilder: (context, index) {
+                            final file = files[index];
+                            if (file.isImage) {
+                              if (index == currentIndex &&
+                                  videoController != null) {
+                                WidgetsBinding.instance.addPostFrameCallback((
+                                  _,
+                                ) {
+                                  if (!dialogActive) return;
+                                  unawaited(disposeVideoController());
+                                });
+                              }
+                              return InteractiveViewer(
+                                minScale: 1,
+                                maxScale: 4,
+                                child: Center(
+                                  child: _uploadedImageWidget(
+                                    file,
+                                    fit: BoxFit.contain,
+                                    errorColor: kWhiteColor,
+                                    errorSize: 44,
+                                  ),
+                                ),
+                              );
+                            }
+                            if (index != currentIndex) {
+                              return const Center(
+                                child: Icon(
+                                  Icons.videocam_outlined,
+                                  color: kWhiteColor,
+                                  size: SparkSize.icon5xl,
+                                ),
+                              );
+                            }
+                            if ((videoController == null ||
+                                    videoSourceUrl != file.dataUrl ||
+                                    !videoController!.value.isInitialized) &&
+                                !videoInitializing) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!dialogActive) return;
+                                unawaited(prepareVideo(file, setLocalState));
+                              });
+                            }
+                            if (videoInitializing &&
+                                videoSourceUrl == file.dataUrl &&
+                                (videoController == null ||
+                                    !videoController!.value.isInitialized)) {
+                              return const _SparkJoyLightboxVideoLoading();
+                            }
+                            if (videoErrorMessage != null &&
+                                videoSourceUrl == file.dataUrl) {
+                              return Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.error_outline_rounded,
+                                      color: kWhiteColor,
+                                      size: SparkSize.icon4xl,
+                                    ),
+                                    const SizedBox(height: SparkSpace.md),
+                                    Text(
+                                      videoErrorMessage!,
+                                      style: const TextStyle(
+                                        color: kWhiteColor,
+                                      ),
+                                    ),
+                                    const SizedBox(height: SparkSpace.lg),
+                                    OutlinedButton(
+                                      onPressed: () =>
+                                          prepareVideo(file, setLocalState),
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: kWhiteColor,
+                                        side: BorderSide(
+                                          color: kWhiteColor.withValues(
+                                            alpha: 0.35,
+                                          ),
+                                        ),
+                                      ),
+                                      child: const Text('Повторить'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            }
+                            final activeVideo = videoController;
+                            if (activeVideo == null ||
+                                !activeVideo.value.isInitialized ||
+                                videoSourceUrl != file.dataUrl) {
+                              return const _SparkJoyLightboxVideoLoading();
+                            }
+                            final ratio = activeVideo.value.aspectRatio;
+                            return GestureDetector(
+                              onTap: () async {
+                                if (activeVideo.value.isPlaying) {
+                                  await activeVideo.pause();
+                                } else {
+                                  await activeVideo.play();
+                                }
+                                if (!dialogActive) return;
+                                setLocalState(() {});
+                              },
+                              child: Center(
+                                child: Stack(
+                                  alignment: Alignment.center,
+                                  children: [
+                                    AspectRatio(
+                                      aspectRatio: ratio <= 0 ? 16 / 9 : ratio,
+                                      child: VideoPlayer(activeVideo),
+                                    ),
+                                    AnimatedOpacity(
+                                      opacity: activeVideo.value.isPlaying
+                                          ? 0
+                                          : 1,
+                                      duration: const Duration(
+                                        milliseconds: 140,
+                                      ),
+                                      child: Container(
+                                        width: SparkSize.mediaLightboxFab,
+                                        height: SparkSize.mediaLightboxFab,
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withValues(
+                                            alpha: 0.45,
+                                          ),
+                                          shape: BoxShape.circle,
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: const Icon(
+                                          Icons.play_arrow_rounded,
+                                          color: kWhiteColor,
+                                          size: SparkSize.icon3xl,
+                                        ),
+                                      ),
+                                    ),
+                                    // Большое сетевое видео может встать на
+                                    // догрузку уже после старта — без оверлея
+                                    // буферизация выглядит как зависший кадр.
+                                    ValueListenableBuilder<VideoPlayerValue>(
+                                      valueListenable: activeVideo,
+                                      builder: (_, value, _) {
+                                        final buffering =
+                                            value.isInitialized &&
+                                            value.isPlaying &&
+                                            value.isBuffering;
+                                        if (!buffering) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return const CircularProgressIndicator(
+                                          color: kWhiteColor,
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  bottomNavigationBar: Container(
+                    padding: const EdgeInsets.fromLTRB(
+                      SparkSpace.xxl,
+                      SparkSpace.lg,
+                      SparkSpace.xxl,
+                      SparkSpace.chipX,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.82),
+                      border: Border(
+                        top: BorderSide(
+                          color: kWhiteColor.withValues(alpha: 0.16),
+                          width: 0.8,
+                        ),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (item.isVideo &&
+                            videoController != null &&
+                            videoController!.value.isInitialized &&
+                            videoSourceUrl == item.dataUrl) ...[
+                          _SparkJoyLightboxVideoScrubber(
+                            controller: videoController!,
                           ),
                           const SizedBox(height: SparkSpace.md),
                         ],
@@ -575,6 +614,60 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     // ever non-null in group mode — safe to route back to the editor.
     if (editIndex == null || isFlatMode || !mounted) return;
     await _openMediaInspectionEditor(groupKey: groupKey, index: editIndex);
+  }
+}
+
+/// Полоса перемотки видео в лайтбоксе: тайминги + перетаскиваемый прогресс.
+class _SparkJoyLightboxVideoScrubber extends StatelessWidget {
+  const _SparkJoyLightboxVideoScrubber({required this.controller});
+
+  final VideoPlayerController controller;
+
+  static String _formatDuration(Duration duration) {
+    final totalSeconds = duration.inSeconds < 0 ? 0 : duration.inSeconds;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds % 3600) ~/ 60;
+    final seconds = totalSeconds % 60;
+    String two(int value) => value.toString().padLeft(2, '0');
+    return hours > 0
+        ? '$hours:${two(minutes)}:${two(seconds)}'
+        : '$minutes:${two(seconds)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final timeStyle = TextStyle(
+      color: kWhiteColor.withValues(alpha: 0.8),
+      fontSize: SparkTextSize.caption,
+      fontFeatures: const [FontFeature.tabularFigures()],
+    );
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (_, value, _) {
+        return Row(
+          children: [
+            Text(_formatDuration(value.position), style: timeStyle),
+            const SizedBox(width: SparkSpace.lg),
+            Expanded(
+              child: VideoProgressIndicator(
+                controller,
+                allowScrubbing: true,
+                // Вертикальный паддинг расширяет зону захвата пальцем —
+                // сама полоса тоньше комфортной цели касания.
+                padding: const EdgeInsets.symmetric(vertical: SparkSpace.lg),
+                colors: VideoProgressColors(
+                  playedColor: kWhiteColor,
+                  bufferedColor: kWhiteColor.withValues(alpha: 0.35),
+                  backgroundColor: kWhiteColor.withValues(alpha: 0.18),
+                ),
+              ),
+            ),
+            const SizedBox(width: SparkSpace.lg),
+            Text(_formatDuration(value.duration), style: timeStyle),
+          ],
+        );
+      },
+    );
   }
 }
 
