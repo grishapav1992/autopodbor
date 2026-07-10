@@ -146,15 +146,32 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       return;
     }
     if (picked == null || !mounted) return; // отмена выбора
-    final bytes = await picked.readAsBytes();
+    final raw = await picked.readAsBytes();
     if (!mounted) return;
-    if (bytes.isEmpty) {
+    if (raw.isEmpty) {
       showSparkJoyErrorSnackBar(
         context,
         Exception('Пустой файл фото'),
         fallback: 'Не удалось прочитать фото',
       );
       return;
+    }
+
+    // Ручная обрезка (натив): пользователь сам кадрирует документ/VIN как нужно
+    // — это заметно поднимает точность и OCR, и vision (меньше лишнего текста и
+    // фона в кадре). Отмена в кроппере (null) → прекращаем скан. Ошибка кроппера
+    // → полное фото (fallbackBytes). На web нативного кроппера нет — полное фото.
+    final Uint8List bytes;
+    if (kIsWeb) {
+      bytes = raw;
+    } else {
+      final cropped = await _cropVinWithNativeCropper(
+        sourcePath: picked.path,
+        fallbackBytes: raw,
+        title: 'Обрежьте документ',
+      );
+      if (cropped == null || !mounted) return; // отмена обрезки
+      bytes = cropped;
     }
 
     // 0=обработка, 1=загрузка, 2=распознавание, 3=готово.

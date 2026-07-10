@@ -223,12 +223,17 @@ class AiQueueApi {
           accessToken.isNotEmpty &&
           _isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
         _rpcLog('refresh-before-send', seq: seq, method: method);
-        final refreshed = await StorageApi.tryRefreshTokens();
-        if (refreshed) {
+        final refresh = await StorageApi.refreshTokensDetailed();
+        if (refresh.isSuccess) {
           accessToken = await UserSimplePreferences.getAccessToken();
-        } else {
-          _rpcLog('refresh-failed-clearing', seq: seq, method: method);
+        } else if (refresh.isRejected) {
+          _rpcLog('refresh-rejected', seq: seq, method: method);
           throw const SessionExpiredException();
+        } else {
+          // Transient сбой refresh'а ≠ смерть сессии — пробрасываем
+          // сетевую ошибку, не выкидывая пользователя на логин.
+          _rpcLog('refresh-transient', seq: seq, method: method);
+          throw refresh.asException();
         }
       }
       if (accessToken == null || accessToken.isEmpty) {
@@ -283,8 +288,8 @@ class AiQueueApi {
 
     if (response.statusCode == 401 && requiresAuth && allowRefresh) {
       _rpcLog('http-401-retry', seq: seq, method: method);
-      final refreshed = await StorageApi.tryRefreshTokens();
-      if (refreshed) {
+      final refresh = await StorageApi.refreshTokensDetailed();
+      if (refresh.isSuccess) {
         return _postRpc(
           method: method,
           id: id,
@@ -294,7 +299,10 @@ class AiQueueApi {
           allowRefresh: false,
         );
       }
-      throw const SessionExpiredException();
+      if (refresh.isRejected) {
+        throw const SessionExpiredException();
+      }
+      throw refresh.asException();
     }
 
     if (response.statusCode != 200) {
@@ -336,8 +344,8 @@ class AiQueueApi {
           allowRefresh &&
           (responseFlagLc.contains('unauth') ||
               _extractErrorsText(data).toLowerCase().contains('unauth'))) {
-        final refreshed = await StorageApi.tryRefreshTokens();
-        if (refreshed) {
+        final refresh = await StorageApi.refreshTokensDetailed();
+        if (refresh.isSuccess) {
           return _postRpc(
             method: method,
             id: id,
@@ -347,7 +355,10 @@ class AiQueueApi {
             allowRefresh: false,
           );
         }
-        throw const SessionExpiredException();
+        if (refresh.isRejected) {
+          throw const SessionExpiredException();
+        }
+        throw refresh.asException();
       }
       final errors = _extractErrorsText(data);
       _rpcLog(

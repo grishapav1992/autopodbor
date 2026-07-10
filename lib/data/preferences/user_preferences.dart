@@ -439,8 +439,10 @@ class UserSimplePreferences {
     await prefs.remove(_avatarPresetIndexKey);
     // Profile snapshot (cache-as-seed для Spark Joy profile screen) —
     // содержит email/имя/телефон/companyName предыдущего юзера.
-    // clearAuthTokens вызывается из storage_api.dart на 5 путях
-    // session-expiry / refresh-fail; SparkJoyStorage.logout() при этом
+    // clearAuthTokens вызывается из storage_api.dart на путях
+    // session-expiry (только при ЯВНОМ отказе сервера по refresh-токену;
+    // транзиентные сетевые сбои токены не трогают); SparkJoyStorage
+    // .logout() при этом
     // НЕ дёргается (только при ручном logout-кнопке в shell). Без
     // явной очистки тут новый юзер на том же девайсе увидел бы кеш
     // предыдущего до прихода первого GetProfile. Ключ держим в sync

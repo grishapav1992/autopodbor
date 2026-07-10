@@ -3,7 +3,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:dio/dio.dart' as dio;
-import 'package:flutter/foundation.dart' show ValueNotifier, kIsWeb;
+import 'package:flutter/foundation.dart'
+    show ValueNotifier, kIsWeb, visibleForTesting;
 import 'package:http/http.dart' as http;
 import 'package:flutter_application_1/core/config/app_endpoints.dart';
 import 'package:flutter_application_1/data/api/pinned_http_client.dart';
@@ -106,6 +107,78 @@ class PermissionDeniedException implements Exception {
   String toString() => serverMessage.isEmpty
       ? 'Недостаточно прав для $method'
       : 'Недостаточно прав для $method: $serverMessage';
+}
+
+/// Thrown by [StorageApi._postRpc] when the HTTP status is not 200 (after
+/// the 401 refresh-retry path is exhausted). Typed — instead of a bare
+/// `Exception('HTTP …')` — so the RefreshToken flow can tell an explicit
+/// auth verdict (401) from infrastructure noise (429/5xx) without
+/// string-sniffing. `toString()` keeps the old message text so the
+/// support-code classifier (`http 401` / `http 5xx` substrings) still works.
+class RpcHttpStatusException implements Exception {
+  const RpcHttpStatusException(this.method, this.statusCode, [this.body = '']);
+  final String method;
+  final int statusCode;
+  final String body;
+  @override
+  String toString() => body.isEmpty
+      ? 'HTTP $statusCode from $method'
+      : 'HTTP $statusCode from $method: $body';
+}
+
+/// Thrown by [StorageApi._postRpc] when the server answered HTTP 200 but
+/// with `response != 'ok'`. Carries the parsed verdict ([unauthorized]) so
+/// the RefreshToken flow can distinguish «сервер отверг токен» from прочих
+/// RPC-ошибок. `toString()` keeps the old `Bad response from …` text.
+class RpcBadResponseException implements Exception {
+  const RpcBadResponseException({
+    required this.method,
+    required this.responseFlag,
+    required this.errorsText,
+    required this.unauthorized,
+  });
+  final String method;
+  final String responseFlag;
+  final String errorsText;
+  final bool unauthorized;
+  @override
+  String toString() => errorsText.isEmpty
+      ? 'Bad response from $method (response=$responseFlag)'
+      : 'Bad response from $method (response=$responseFlag): $errorsText';
+}
+
+/// Исход попытки обновления токенов. Ключевое разделение — [rejected]
+/// (сервер ЯВНО отверг refresh-токен → сессия мертва, токены можно
+/// стирать) против [transient] (таймаут/нет сети/429/5xx — вердикта нет,
+/// refresh-токен живёт 60 дней, стирать НЕЛЬЗЯ, повторим позже).
+enum TokenRefreshStatus { success, rejected, transient }
+
+class TokenRefreshResult {
+  const TokenRefreshResult.success()
+      : status = TokenRefreshStatus.success,
+        error = null;
+  const TokenRefreshResult.rejected()
+      : status = TokenRefreshStatus.rejected,
+        error = null;
+  const TokenRefreshResult.transient(this.error)
+      : status = TokenRefreshStatus.transient;
+
+  final TokenRefreshStatus status;
+
+  /// Underlying failure for [TokenRefreshStatus.transient] — rethrown by
+  /// callers so the UI shows the real network error (NET-код в снекбаре)
+  /// instead of a fabricated «сессия истекла».
+  final Object? error;
+
+  bool get isSuccess => status == TokenRefreshStatus.success;
+  bool get isRejected => status == TokenRefreshStatus.rejected;
+
+  /// Транзиентная причина как throwable для проброса наружу.
+  Exception asException() {
+    final cause = error;
+    if (cause is Exception) return cause;
+    return Exception('RefreshToken failed: $cause');
+  }
 }
 
 /// Thrown when `Storage.CreateRequest` times out after the request has been
@@ -535,20 +608,30 @@ class StorageApi {
           accessToken.isNotEmpty &&
           _isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
         _rpcLog('refresh-before-send', seq: seq, method: method);
-        final refreshed = await _tryRefreshTokens();
-        if (refreshed) {
+        final refresh = await _refreshTokens();
+        if (refresh.isSuccess) {
           accessToken = await UserSimplePreferences.getAccessToken();
-        } else {
-          // Refresh failed → the stored access token is permanently
-          // dead. Don't ship a Bearer the backend will log as
-          // unauthenticated; instead wipe, surface a dedicated
-          // exception, and signal the shell to redirect. `allowRefresh`
+        } else if (refresh.isRejected) {
+          // Сервер явно отверг refresh-токен → сессия мертва. Wipe,
+          // dedicated exception, redirect через shell. `allowRefresh`
           // is false inside RefreshToken itself so this branch can't
           // recurse.
-          _rpcLog('refresh-failed-clearing', seq: seq, method: method);
+          _rpcLog('refresh-rejected-clearing', seq: seq, method: method);
           await UserSimplePreferences.clearAuthTokens();
           _notifySessionExpired();
           throw const SessionExpiredException();
+        } else {
+          // Transient (таймаут/нет сети/429/5xx): вердикта по сессии НЕТ,
+          // refresh-токен на сервере жив. Токены не трогаем — наружу
+          // уходит исходная сетевая ошибка как retriable, следующий
+          // вызов повторит refresh.
+          _rpcLog(
+            'refresh-transient',
+            seq: seq,
+            method: method,
+            extra: 'err=${refresh.error}',
+          );
+          throw refresh.asException();
         }
       }
       // Defence-in-depth: if the access token is still expired after
@@ -630,8 +713,8 @@ class StorageApi {
     );
     if (response.statusCode == 401 && includeAuth && allowRefresh) {
       _rpcLog('http-401-retry', seq: seq, method: method);
-      final refreshed = await _tryRefreshTokens();
-      if (refreshed) {
+      final refresh = await _refreshTokens();
+      if (refresh.isSuccess) {
         return _postRpc(
           method: method,
           params: params,
@@ -640,6 +723,23 @@ class StorageApi {
           allowRefresh: false,
         );
       }
+      if (refresh.isRejected) {
+        // Access отвергнут (401) И сервер явно отверг refresh — сессия
+        // мертва целиком, а не «ошибка запроса».
+        _rpcLog('refresh-rejected-clearing', seq: seq, method: method);
+        await UserSimplePreferences.clearAuthTokens();
+        _notifySessionExpired();
+        throw const SessionExpiredException();
+      }
+      // Transient: 401 относился к протухшему access'у, а refresh просто
+      // не доехал — не переклассифицируем сетевой сбой в смерть сессии.
+      _rpcLog(
+        'refresh-transient',
+        seq: seq,
+        method: method,
+        extra: 'err=${refresh.error}',
+      );
+      throw refresh.asException();
     }
     if (response.statusCode != 200) {
       final body = response.body.trim();
@@ -653,10 +753,7 @@ class StorageApi {
       if (response.statusCode == 403) {
         throw PermissionDeniedException(method, shortBody);
       }
-      if (shortBody.isNotEmpty) {
-        throw Exception('HTTP ${response.statusCode} from $method: $shortBody');
-      }
-      throw Exception('HTTP ${response.statusCode} from $method');
+      throw RpcHttpStatusException(method, response.statusCode, shortBody);
     }
     final rawBody = response.body.trim();
     if (rawBody.isEmpty) {
@@ -682,8 +779,8 @@ class StorageApi {
           allowRefresh &&
           _isUnauthorizedResponse(data, responseFlag)) {
         _rpcLog('rpc-401-retry', seq: seq, method: method);
-        final refreshed = await _tryRefreshTokens();
-        if (refreshed) {
+        final refresh = await _refreshTokens();
+        if (refresh.isSuccess) {
           return _postRpc(
             method: method,
             params: params,
@@ -692,6 +789,19 @@ class StorageApi {
             allowRefresh: false,
           );
         }
+        if (refresh.isRejected) {
+          _rpcLog('refresh-rejected-clearing', seq: seq, method: method);
+          await UserSimplePreferences.clearAuthTokens();
+          _notifySessionExpired();
+          throw const SessionExpiredException();
+        }
+        _rpcLog(
+          'refresh-transient',
+          seq: seq,
+          method: method,
+          extra: 'err=${refresh.error}',
+        );
+        throw refresh.asException();
       }
       final errors = _extractErrorsText(data);
       _rpcLog(
@@ -704,12 +814,12 @@ class StorageApi {
       if (_isForbiddenResponse(data, responseFlag)) {
         throw PermissionDeniedException(method, errors);
       }
-      if (errors.isNotEmpty) {
-        throw Exception(
-          'Bad response from $method (response=$responseFlag): $errors',
-        );
-      }
-      throw Exception('Bad response from $method (response=$responseFlag)');
+      throw RpcBadResponseException(
+        method: method,
+        responseFlag: responseFlag,
+        errorsText: errors,
+        unauthorized: _isUnauthorizedResponse(data, responseFlag),
+      );
     }
     _rpcLog(
       'ok',
@@ -784,11 +894,19 @@ class StorageApi {
       return false;
     }
 
-    // Try server-side refresh. If it fails we're truly dead — wipe.
-    final refreshed = await _tryRefreshTokens();
-    if (!refreshed) {
+    // Try server-side refresh. Токены стираем ТОЛЬКО при явном отказе
+    // сервера: сетевой сбой на старте (радио ещё не поднялось, холодный
+    // бэк 7-47с, 429) — не повод убивать живой refresh-токен (TTL 60
+    // дней) и гнать пользователя на повторный вход по звонку.
+    final refresh = await _refreshTokens();
+    if (refresh.isRejected) {
       await UserSimplePreferences.clearAuthTokens();
       return false;
+    }
+    if (!refresh.isSuccess) {
+      // Transient: пускаем в приложение с протухшим access'ом — первый же
+      // RPC повторит refresh через refresh-before-send.
+      return true;
     }
 
     // Defensive: if the refreshed access token is itself expired
@@ -818,11 +936,17 @@ class StorageApi {
     }
   }
 
-  /// Public entry point to the access-token refresh chain. Other clients
-  /// (e.g. [AiQueueApi]) call this to reuse the same single-flight refresh
-  /// path instead of duplicating it. Returns `true` when the cached
-  /// tokens were updated.
-  static Future<bool> tryRefreshTokens() => _tryRefreshTokens();
+  /// Public entry point to the access-token refresh chain для caller'ов,
+  /// которым достаточно «получилось/нет» (retry-only пути). Returns `true`
+  /// when the cached tokens were updated.
+  static Future<bool> tryRefreshTokens() async =>
+      (await _refreshTokens()).isSuccess;
+
+  /// Detailed verdict for callers that must распознать «сессия мертва»
+  /// (rejected → logout-flow) vs «сеть моргнула» (transient → пробросить
+  /// сетевую ошибку и повторить позже, НЕ разлогинивая пользователя).
+  static Future<TokenRefreshResult> refreshTokensDetailed() =>
+      _refreshTokens();
 
   /// Single-flight protection: при одновременных вызовах (pre-send JWT
   /// skew check + 401-retry + manual из других модулей) все caller'ы
@@ -830,9 +954,9 @@ class StorageApi {
   /// Без этого backend получал несколько RefreshToken'ов параллельно,
   /// и последующий мог invalidate refresh-токен предыдущего (зависит
   /// от backend logic; safer избегать гонок).
-  static Future<bool>? _inFlightRefresh;
+  static Future<TokenRefreshResult>? _inFlightRefresh;
 
-  static Future<bool> _tryRefreshTokens() {
+  static Future<TokenRefreshResult> _refreshTokens() {
     final pending = _inFlightRefresh;
     if (pending != null) return pending;
     final future = _doRefreshTokens().whenComplete(() {
@@ -842,14 +966,39 @@ class StorageApi {
     return future;
   }
 
-  static Future<bool> _doRefreshTokens() async {
+  static Future<TokenRefreshResult> _doRefreshTokens() async {
+    final String? refreshToken;
     try {
-      final refreshToken = await UserSimplePreferences.getRefreshToken();
-      if (refreshToken == null || refreshToken.isEmpty) return false;
-      final data = await _callRefreshToken(refreshToken);
-      if (data == null) return false;
+      refreshToken = await UserSimplePreferences.getRefreshToken();
+    } catch (e) {
+      // Keychain/Keystore hiccup — не вердикт по сессии.
+      return TokenRefreshResult.transient(e);
+    }
+    if (refreshToken == null || refreshToken.isEmpty) {
+      // Обновляться нечем — сессия действительно мертва.
+      return const TokenRefreshResult.rejected();
+    }
+    final Map<String, dynamic> data;
+    try {
+      data = await _postRpc(
+        method: 'RefreshToken',
+        params: {'refreshToken': refreshToken},
+        includeAuth: false,
+        allowRefresh: false,
+      );
+    } catch (e) {
+      return isExplicitRefreshRejection(e)
+          ? const TokenRefreshResult.rejected()
+          : TokenRefreshResult.transient(e);
+    }
+    try {
       final tokens = _extractTokens(data);
-      if (tokens == null) return false;
+      if (tokens == null) {
+        // response=ok без пары токенов — аномалия сервера, не вердикт.
+        return TokenRefreshResult.transient(
+          Exception('RefreshToken returned ok without tokens'),
+        );
+      }
       await UserSimplePreferences.setAuthTokens(
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
@@ -861,24 +1010,25 @@ class StorageApi {
       if (notifToken != null && notifToken.isNotEmpty) {
         await UserSimplePreferences.setNotificationToken(notifToken);
       }
-      return true;
-    } catch (_) {
-      return false;
+      return const TokenRefreshResult.success();
+    } catch (e) {
+      return TokenRefreshResult.transient(e);
     }
   }
 
-  static Future<Map<String, dynamic>?> _callRefreshToken(
-    String refreshToken,
-  ) async {
-    try {
-      return await _postRpc(
-        method: 'RefreshToken',
-        params: {'refreshToken': refreshToken},
-        includeAuth: false,
-        allowRefresh: false,
-      );
-    } catch (_) {}
-    return null;
+  /// Только явный вердикт сервера убивает сессию: HTTP 401 на RefreshToken
+  /// или RPC-ответ с unauthorized / `token is bad.` (текст бэка при
+  /// невалидном refresh JWT — сверен живым запросом 2026-07-10). Всё
+  /// остальное (timeout, socket, TLS, 403/429/5xx от инфры, битый JSON) —
+  /// transient: refresh-токен может быть жив, стирать нельзя.
+  @visibleForTesting
+  static bool isExplicitRefreshRejection(Object error) {
+    if (error is RpcHttpStatusException) return error.statusCode == 401;
+    if (error is RpcBadResponseException) {
+      return error.unauthorized ||
+          error.errorsText.toLowerCase().contains('token is bad');
+    }
+    return false;
   }
 
   static _TokenPair? _extractTokens(Map<String, dynamic> data) {
@@ -3752,7 +3902,7 @@ class StorageApi {
       timeout: timeout,
     );
     if (refreshRoleToken) {
-      await _tryRefreshTokens();
+      await _refreshTokens();
     }
     return _asMap(data['result']);
   }

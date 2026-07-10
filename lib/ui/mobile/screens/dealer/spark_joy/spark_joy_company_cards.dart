@@ -6,144 +6,157 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
     // Бэк принимает авто лишь каталожными ID (modelCarId / frameId) —
     // свободный текст всё равно ронял выгрузку в самом конце
     // (reportModelUnresolved), теперь несоответствие невозможно по
-    // построению. Поля readOnly и открывают каталог-визард на своём шаге;
-    // конвертер VIN/госномера и скан СТС пишут сюда уже привязанные к
-    // каталогу значения (см. _bindConverterCarToCatalog).
+    // построению. Единственная точка входа — кнопка ниже: она открывает
+    // каталог-визард с шага «Марка» (раньше это делали три поля-дублёра).
+    // Марка/модель/поколение показываются теми же readOnly-полями, но уже
+    // как отображение — они не открывают пикер. Конвертер VIN/госномера и
+    // скан СТС пишут сюда уже привязанные к каталогу значения (см.
+    // _bindConverterCarToCatalog).
     final photo = _carPhotoUrl.trim();
-    final brandUnbound =
-        _brandController.text.trim().isNotEmpty && _selectedBrandId == null;
-    final modelUnbound =
-        _modelController.text.trim().isNotEmpty && _selectedModelCarId == null;
+    final hasBrand = _brandController.text.trim().isNotEmpty;
+    final hasModel = _modelController.text.trim().isNotEmpty;
+    final hasGeneration = _generationController.text.trim().isNotEmpty;
+    final hasCar = hasBrand || hasModel;
+    final brandUnbound = hasBrand && _selectedBrandId == null;
+    final modelUnbound = hasModel && _selectedModelCarId == null;
 
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Марка и модель — в один ряд (как в макете).
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const MyText(
-                      text: 'Марка',
-                      size: SparkTextSize.body,
-                      weight: FontWeight.w700,
-                    ),
-                    const SizedBox(height: SparkSpace.sm),
-                    _catalogSelectorField(
-                      controller: _brandController,
-                      hint: 'Выбрать марку',
-                      startAt: _CarPickerStep.brand,
-                    ),
-                  ],
+          if (hasCar) ...[
+            // Марка и модель — в один ряд (как в макете), теперь как
+            // отображение (не открывают пикер).
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const MyText(
+                        text: 'Марка',
+                        size: SparkTextSize.body,
+                        weight: FontWeight.w700,
+                      ),
+                      const SizedBox(height: SparkSpace.sm),
+                      _catalogDisplayField(
+                        controller: _brandController,
+                        hint: '—',
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: SparkSpace.md),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const MyText(
+                        text: 'Модель',
+                        size: SparkTextSize.body,
+                        weight: FontWeight.w700,
+                      ),
+                      const SizedBox(height: SparkSpace.sm),
+                      _catalogDisplayField(
+                        controller: _modelController,
+                        hint: '—',
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (hasGeneration) ...[
+              const SizedBox(height: SparkSpace.md),
+              const MyText(
+                text: 'Поколение',
+                size: SparkTextSize.body,
+                weight: FontWeight.w700,
               ),
-              const SizedBox(width: SparkSpace.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const MyText(
-                      text: 'Модель',
-                      size: SparkTextSize.body,
-                      weight: FontWeight.w700,
-                    ),
-                    const SizedBox(height: SparkSpace.sm),
-                    _catalogSelectorField(
-                      controller: _modelController,
-                      hint: 'Выбрать модель',
-                      startAt: _CarPickerStep.model,
-                    ),
-                  ],
+              const SizedBox(height: SparkSpace.sm),
+              _catalogDisplayField(
+                controller: _generationController,
+                hint: '—',
+              ),
+            ],
+            // Фото из каталога (если авто выбрано через каталог-пикер).
+            if (photo.isNotEmpty) ...[
+              const SizedBox(height: SparkSpace.md),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(SparkRadius.sm),
+                child: CachedNetworkImage(
+                  imageUrl: photo,
+                  width: double.infinity,
+                  fit: BoxFit.fitWidth,
+                  errorWidget: (context, url, error) {
+                    return Container(
+                      width: double.infinity,
+                      height: SparkSize.mediaCardThumb,
+                      color: kLightGreyColor,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.directions_car_outlined,
+                        color: kGreyColor,
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: SparkSpace.md),
-          const MyText(
-            text: 'Поколение (необязательно)',
-            size: SparkTextSize.body,
-            weight: FontWeight.w700,
-          ),
-          const SizedBox(height: SparkSpace.sm),
-          _catalogSelectorField(
-            controller: _generationController,
-            hint: 'Выбрать поколение',
-            startAt: _CarPickerStep.generation,
-            onClear: () {
-              _setStateSafely(() {
-                _generationController.clear();
-                // Рестайлинг/фреймы/фото/frameId выбирались вместе с
-                // поколением — без него теряют смысл.
-                _clearCatalogCarMeta();
-              });
-              _markDraftDirty();
-            },
-          ),
-          if (brandUnbound || modelUnbound) ...[
-            const SizedBox(height: SparkSpace.sm),
-            const MyText(
-              text:
-                  'Авто из старого черновика не привязано к каталогу — '
-                  'нажмите на поле и выберите из списка',
-              size: SparkTextSize.caption,
-              color: kRedColor,
-            ),
-          ],
-          // Фото из каталога (если авто выбрано через каталог-пикер).
-          if (photo.isNotEmpty) ...[
+            if (brandUnbound || modelUnbound) ...[
+              const SizedBox(height: SparkSpace.sm),
+              const MyText(
+                text:
+                    'Авто из старого черновика не привязано к каталогу — '
+                    'нажмите «Изменить авто» и выберите из каталога',
+                size: SparkTextSize.caption,
+                color: kRedColor,
+              ),
+            ],
             const SizedBox(height: SparkSpace.md),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(SparkRadius.sm),
-              child: CachedNetworkImage(
-                imageUrl: photo,
-                width: double.infinity,
-                fit: BoxFit.fitWidth,
-                errorWidget: (context, url, error) {
-                  return Container(
-                    width: double.infinity,
-                    height: SparkSize.mediaCardThumb,
-                    color: kLightGreyColor,
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.directions_car_outlined,
-                      color: kGreyColor,
-                    ),
-                  );
-                },
+          ],
+          // Единая кнопка — единственная точка входа в каталог-визард.
+          if (!widget.readOnly)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => unawaited(
+                  _openCarPickerDialog(startAt: _CarPickerStep.brand),
+                ),
+                icon: const Icon(Icons.directions_car_outlined),
+                label: MyText(
+                  text: hasCar ? 'Изменить авто' : 'Выбрать авто из каталога',
+                  size: SparkTextSize.body,
+                  weight: FontWeight.w600,
+                ),
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(52),
+                  side: const BorderSide(color: kBorderColor),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(SparkRadius.lg),
+                  ),
+                ),
               ),
             ),
-          ],
         ],
       ),
     );
   }
 
-  /// readOnly-поле-селектор: тап открывает каталог-визард на [startAt].
-  /// [onClear] — крестик сброса значения (для необязательного поколения).
-  Widget _catalogSelectorField({
+  /// readOnly-поле только для ОТОБРАЖЕНИЯ выбранного каталожного значения —
+  /// не открывает пикер и не редактируется. Единственная точка входа в
+  /// каталог-визард теперь кнопка «Выбрать/Изменить авто».
+  Widget _catalogDisplayField({
     required TextEditingController controller,
     required String hint,
-    required _CarPickerStep startAt,
-    VoidCallback? onClear,
   }) {
-    final hasValue = controller.text.trim().isNotEmpty;
     return TextField(
       controller: controller,
       readOnly: true,
-      onTap: () => unawaited(_openCarPickerDialog(startAt: startAt)),
-      decoration: _fieldDecoration(hint).copyWith(
-        suffixIcon: onClear != null && hasValue
-            ? IconButton(
-                icon: const Icon(Icons.close_rounded, size: SparkSize.iconSm),
-                onPressed: onClear,
-                splashRadius: 18,
-              )
-            : const Icon(Icons.expand_more_rounded, color: kGreyColor),
-      ),
+      enableInteractiveSelection: false,
+      mouseCursor: SystemMouseCursors.basic,
+      decoration: _fieldDecoration(hint),
     );
   }
 }

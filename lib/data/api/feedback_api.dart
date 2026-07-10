@@ -118,8 +118,8 @@ class FeedbackApi {
 
     // 401 → try to refresh once and retry.
     if (response.statusCode == 401 && allowRefresh) {
-      final refreshed = await StorageApi.tryRefreshTokens();
-      if (refreshed) {
+      final refresh = await StorageApi.refreshTokensDetailed();
+      if (refresh.isSuccess) {
         return _postRpc(
           method: method,
           params: params,
@@ -127,7 +127,12 @@ class FeedbackApi {
           allowRefresh: false,
         );
       }
-      throw const SessionExpiredException();
+      if (refresh.isRejected) {
+        throw const SessionExpiredException();
+      }
+      // Transient сбой refresh'а ≠ смерть сессии — пробрасываем сетевую
+      // ошибку, не выкидывая пользователя на логин.
+      throw refresh.asException();
     }
 
     if (response.statusCode != 200) {

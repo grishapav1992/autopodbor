@@ -30,6 +30,7 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
   Future<Uint8List?> _cropVinWithNativeCropper({
     required String sourcePath,
     required Uint8List fallbackBytes,
+    String title = 'Обрежьте VIN',
   }) async {
     try {
       final cropped = await ImageCropper().cropImage(
@@ -38,14 +39,14 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
         compressQuality: 95,
         uiSettings: [
           IOSUiSettings(
-            title: 'Обрежьте VIN',
+            title: title,
             aspectRatioLockEnabled: false,
             resetAspectRatioEnabled: true,
             doneButtonTitle: 'Готово',
             cancelButtonTitle: 'Отмена',
           ),
           AndroidUiSettings(
-            toolbarTitle: 'Обрежьте VIN',
+            toolbarTitle: title,
             lockAspectRatio: false,
             hideBottomControls: false,
           ),

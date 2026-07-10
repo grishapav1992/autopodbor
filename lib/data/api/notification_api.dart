@@ -192,11 +192,15 @@ class NotificationApi {
           accessToken.isNotEmpty &&
           _isJwtExpired(accessToken, skew: const Duration(seconds: 15))) {
         _log('refresh-before-send', seq: seq, method: method);
-        final refreshed = await StorageApi.tryRefreshTokens();
-        if (refreshed) {
+        final refresh = await StorageApi.refreshTokensDetailed();
+        if (refresh.isSuccess) {
           accessToken = await UserSimplePreferences.getAccessToken();
-        } else {
+        } else if (refresh.isRejected) {
           throw const SessionExpiredException();
+        } else {
+          // Transient сбой refresh'а ≠ смерть сессии — пробрасываем
+          // сетевую ошибку, не выкидывая пользователя на логин.
+          throw refresh.asException();
         }
       }
       if (accessToken == null || accessToken.isEmpty) {
@@ -242,8 +246,8 @@ class NotificationApi {
 
     // HTTP-level retry on 401 — same dance as ai_queue_api.
     if (response.statusCode == 401 && requiresAuth && allowRefresh) {
-      final refreshed = await StorageApi.tryRefreshTokens();
-      if (refreshed) {
+      final refresh = await StorageApi.refreshTokensDetailed();
+      if (refresh.isSuccess) {
         return _postRpc(
           method: method,
           params: params,
@@ -252,7 +256,10 @@ class NotificationApi {
           allowRefresh: false,
         );
       }
-      throw const SessionExpiredException();
+      if (refresh.isRejected) {
+        throw const SessionExpiredException();
+      }
+      throw refresh.asException();
     }
 
     if (response.statusCode != 200) {
@@ -280,8 +287,8 @@ class NotificationApi {
       if (requiresAuth &&
           allowRefresh &&
           (responseFlag.contains('unauth') || errorsText.contains('unauth'))) {
-        final refreshed = await StorageApi.tryRefreshTokens();
-        if (refreshed) {
+        final refresh = await StorageApi.refreshTokensDetailed();
+        if (refresh.isSuccess) {
           return _postRpc(
             method: method,
             params: params,
@@ -290,7 +297,10 @@ class NotificationApi {
             allowRefresh: false,
           );
         }
-        throw const SessionExpiredException();
+        if (refresh.isRejected) {
+          throw const SessionExpiredException();
+        }
+        throw refresh.asException();
       }
       final errorMsg = _extractErrorsText(data);
       throw Exception(
