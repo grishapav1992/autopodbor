@@ -390,6 +390,19 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
       draftId: _draftId,
       rawAiQueue: aiQueueMap,
     );
+    // Интейк «Фото автомобиля»: тот же синхронный гидрейт (гонка с
+    // stageFiles закрывается до первого кадра); reconcile с БД задач
+    // транспорта и авто-дозаливка — его асинхронный хвост. Read-only
+    // просмотр завершённого отчёта заливками не управляет.
+    if (!widget.readOnly) {
+      final rawPhotoIntake = draft['photoIntake'];
+      SparkJoyIntakeUploadService.instance.hydrateFromDraft(
+        draftId: _draftId,
+        rawPhotoIntake: rawPhotoIntake is Map
+            ? Map<String, dynamic>.from(rawPhotoIntake)
+            : null,
+      );
+    }
 
     unawaited(_compactInlineDraftMediaIfNeeded());
     unawaited(_loadBusinessStatusFromStorage());

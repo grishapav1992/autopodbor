@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
+import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
@@ -671,6 +672,8 @@ class _SparkJoySpecialistRequestDetailScreenState
         .where((id) => id.isNotEmpty)
         .toList();
     for (final id in ids) {
+      await SparkJoyIntakeUploadService.instance
+          .dropDraft(id, deleteLocalFiles: true);
       await SparkJoyStorage.deleteDraft(id);
     }
   }

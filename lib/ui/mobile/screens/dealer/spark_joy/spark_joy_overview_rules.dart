@@ -106,6 +106,10 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
             ],
           ),
         ),
+        // Интейк «Фото автомобиля» — между прогрессом и списком разделов
+        // (макет «Отчёт - разделы - редизайн», экраны 1a/2b).
+        const SizedBox(height: SparkSpace.lg),
+        _photoIntakeCard(),
         const SparkSectionTitle('Разделы', top: SparkSpace.xxl),
         SparkCard(
           padding: EdgeInsets.zero,

@@ -24,6 +24,7 @@ import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart
 import 'package:flutter_application_1/data/services/car_catalog_repository.dart';
 import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
+import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
@@ -81,6 +82,8 @@ part 'spark_joy_test_drive_rules.dart';
 part 'spark_joy_vehicle_rules.dart';
 part 'spark_joy_navigation_rules.dart';
 part 'spark_joy_overview_rules.dart';
+part 'spark_joy_photo_intake_card.dart';
+part 'spark_joy_photo_intake_screen.dart';
 part 'spark_joy_form_helpers.dart';
 part 'spark_joy_company_cards.dart';
 part 'spark_joy_lkp_widgets.dart';
@@ -399,8 +402,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   int get _stepIndex => _reportFlowController.stepIndex;
   set _stepIndex(int value) => _reportFlowController.stepIndex = value;
   bool get _editingSection => _reportFlowController.editingSection;
+  bool get _editingPhotoIntake => _reportFlowController.editingPhotoIntake;
   bool get _returnToSummaryOnBack =>
       _reportFlowController.returnToSummaryOnBack;
+
+  // ── Интейк «Фото автомобиля» (экран массовой загрузки) ──────────────────
+  /// Мультивыбор на экране интейка; чистится при закрытии экрана.
+  final Set<String> _intakeSelectedIds = <String>{};
+
+  /// Свёрнутый грид фото (первые 7 + тайл «Ещё N») раскрыт до закрытия.
+  bool _intakePhotosExpanded = false;
 
   final ScrollController _pageScrollController = ScrollController();
   final FocusNode _vinFocusNode = FocusNode();

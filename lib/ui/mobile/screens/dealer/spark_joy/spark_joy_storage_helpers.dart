@@ -2855,6 +2855,10 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'mediaDisabledDefaultTags': disabledDefaultsPayload,
       'mediaTagOrder': tagOrderPayload,
       'aiQueue': _buildAiQueueSnapshot(),
+      // upsertDraft заменяет весь map черновика — без этого ключа каждый
+      // автосейв стирал бы интейк, который сервис пишет через applyDraftPatch.
+      'photoIntake':
+          SparkJoyIntakeUploadService.instance.snapshotJsonForDraft(_draftId),
     };
   }
 

@@ -9,6 +9,7 @@ import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
+import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:get/get.dart';
@@ -207,6 +208,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     // on the next launch. Clear both here.
     await SparkJoyStorage.logout();
     await AiQueueOfflineRunner.instance.resetAll();
+    await SparkJoyIntakeUploadService.instance.resetAll();
     AiQueueApi.resetCaches();
     await UserSimplePreferences.clearAuthTokens();
     if (!mounted) return;

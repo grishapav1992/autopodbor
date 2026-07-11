@@ -5,6 +5,18 @@ class _SparkJoyReportFlowController {
   bool editingSection = false;
   bool returnToSummaryOnBack = false;
 
+  /// Экран интейка «Фото автомобиля» — третья ветка шелла наряду с
+  /// обзором разделов и редактором секции.
+  bool editingPhotoIntake = false;
+
+  void openPhotoIntake() {
+    editingPhotoIntake = true;
+  }
+
+  void closePhotoIntake() {
+    editingPhotoIntake = false;
+  }
+
   int sanitizeStepIndex(int index, {required int totalSteps}) {
     if (totalSteps <= 0) return 0;
     if (index < 0) return 0;

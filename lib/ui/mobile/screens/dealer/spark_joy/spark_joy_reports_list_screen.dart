@@ -8,6 +8,7 @@ import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
+import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 
 import 'spark_joy_completed_report_hydrator.dart';
@@ -541,6 +542,10 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       ),
     );
     if (confirmed != true) return;
+    // Сначала гасим фоновую заливку интейка и её локальные копии — после
+    // deleteDraft ссылок на файлы уже не будет и их подобрал бы только GC.
+    await SparkJoyIntakeUploadService.instance
+        .dropDraft(id, deleteLocalFiles: true);
     await SparkJoyStorage.deleteDraft(id);
     if (!mounted) return;
     await _load();

@@ -1115,12 +1115,14 @@ class SparkPageHeader extends StatelessWidget {
 /// системной кнопкой «Назад» и своими actions.
 AppBar sparkAppBar({
   required String title,
+  String subtitle = '',
   List<Widget>? actions,
   Widget? leading,
   bool automaticallyImplyLeading = true,
   double? toolbarHeight,
 }) {
   final hasLeading = leading != null || automaticallyImplyLeading;
+  final hasSubtitle = subtitle.trim().isNotEmpty;
   return AppBar(
     automaticallyImplyLeading: automaticallyImplyLeading,
     centerTitle: false,
@@ -1135,14 +1137,36 @@ AppBar sparkAppBar({
     shape: const Border(
       bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
     ),
-    title: MyText(
-      text: title,
-      size: SparkTextSize.titleLg,
-      weight: FontWeight.w800,
-      color: kSecondaryColor,
-      maxLines: 1,
-      textOverflow: TextOverflow.ellipsis,
-    ),
+    title: hasSubtitle
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MyText(
+                text: title,
+                size: SparkTextSize.title,
+                weight: FontWeight.w800,
+                color: kSecondaryColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+              MyText(
+                text: subtitle,
+                size: SparkTextSize.body,
+                color: kGreyColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+            ],
+          )
+        : MyText(
+            text: title,
+            size: SparkTextSize.titleLg,
+            weight: FontWeight.w800,
+            color: kSecondaryColor,
+            maxLines: 1,
+            textOverflow: TextOverflow.ellipsis,
+          ),
     actions: actions,
   );
 }
@@ -2599,6 +2623,7 @@ class SparkPageScaffold extends StatelessWidget {
     this.scrollController,
     this.padding,
     this.bottomInset = SparkSize.pageBottomInset,
+    this.bottomBar,
   });
 
   final PreferredSizeWidget? appBar;
@@ -2606,6 +2631,10 @@ class SparkPageScaffold extends StatelessWidget {
   final ScrollController? scrollController;
   final EdgeInsets? padding;
   final double bottomInset;
+
+  /// Закреплённая панель под списком (sticky CTA). Оборачивается в SafeArea —
+  /// содержимому не нужно думать про home-индикатор iOS.
+  final Widget? bottomBar;
 
   @override
   Widget build(BuildContext context) {
@@ -2617,6 +2646,8 @@ class SparkPageScaffold extends StatelessWidget {
         bottomInset: bottomInset,
         children: children,
       ),
+      bottomNavigationBar:
+          bottomBar == null ? null : SafeArea(top: false, child: bottomBar!),
     );
   }
 }
