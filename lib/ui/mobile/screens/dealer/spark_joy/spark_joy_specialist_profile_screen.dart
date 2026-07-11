@@ -2899,7 +2899,12 @@ class _SparkJoySpecialistProfileScreenState
     final displayName = mainLine.isNotEmpty ? mainLine : profileName;
     final city = _cityController.text.trim();
     final roleLabel = _heroRoleLabel();
-    final badgeText = city.isEmpty ? roleLabel : '$roleLabel · $city';
+    // Пилюля — единственная точка редактирования города, поэтому при
+    // пустом городе она обязана сама подсказывать действие: «Указать
+    // город» + гео-иконка вместо галочки (иначе поле необнаружимо).
+    final badgeText = city.isEmpty
+        ? '$roleLabel · Указать город'
+        : '$roleLabel · $city';
     final blocked = sjRead(specialist, 'status') != 'active';
     final busy = _isSavingProfile || _isUploadingAvatar;
 
@@ -3030,8 +3035,10 @@ class _SparkJoySpecialistProfileScreenState
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(
-                              Icons.verified_rounded,
+                            Icon(
+                              city.isEmpty
+                                  ? Icons.add_location_alt_outlined
+                                  : Icons.verified_rounded,
                               size: SparkSize.iconXs,
                               color: kWhiteColor,
                             ),
@@ -3685,8 +3692,19 @@ class _ServicesEditorSheet extends StatefulWidget {
 }
 
 class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
+  /// Совокупный лимит сериализованного описания — как у прежнего
+  /// textarea-редактора (maxLength 1500). Пер-строчных формат-лимитов
+  /// нет намеренно: LengthLimitingTextInputFormatter молча резал бы
+  /// легаси-строку длиннее лимита при первом же нажатии клавиши.
+  static const int _maxTotalLength = 1500;
+
   final List<TextEditingController> _controllers = [];
   final List<FocusNode> _nodes = [];
+
+  /// Фактический потолок длины: легаси-описание, уже превышающее
+  /// [_maxTotalLength], не блокируем — пользователь должен иметь
+  /// возможность пересохранить свои данные без принудительной резки.
+  late final int _lengthLimit;
 
   @override
   void initState() {
@@ -3695,6 +3713,7 @@ class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
       _createItem(_controllers.length, item);
     }
     if (_controllers.isEmpty) _createItem(0, '');
+    _lengthLimit = math.max(_maxTotalLength, _serialize().length);
   }
 
   @override
@@ -3778,11 +3797,18 @@ class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
     setState(() {});
   }
 
-  void _submit() {
+  String _serialize() {
     final items = [
       for (final c in _controllers) c.text.trim(),
-    ].where((t) => t.isNotEmpty).toList(growable: false);
-    final text = [for (final t in items) '• $t'].join('\n');
+    ].where((t) => t.isNotEmpty);
+    return [for (final t in items) '• $t'].join('\n');
+  }
+
+  void _submit() {
+    final text = _serialize();
+    // Красное пояснение под рамкой уже видно (build показывает его,
+    // как только лимит превышен) — просто не даём закрыть лист.
+    if (text.length > _lengthLimit) return;
     Navigator.of(context).pop(text);
   }
 
@@ -3809,7 +3835,6 @@ class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
             keyboardType: TextInputType.multiline,
             textInputAction: TextInputAction.newline,
             textCapitalization: TextCapitalization.sentences,
-            inputFormatters: [LengthLimitingTextInputFormatter(200)],
             decoration: const InputDecoration(
               isDense: true,
               border: InputBorder.none,
@@ -3881,6 +3906,10 @@ class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // setState дёргается на каждый ввод, так что индикатор длины
+    // обновляется живьём вместе с чипами и крестиками.
+    final totalLength = _serialize().length;
+    final overLimit = totalLength > _lengthLimit;
     return _SheetScaffold(
       title: 'Услуги',
       subtitle: 'Опишите услуги своими словами или добавляйте готовые пункты.',
@@ -3903,13 +3932,24 @@ class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
             ],
           ),
         ),
-        const MyText(
-          text: 'Каждая строка — отдельный пункт',
-          size: SparkTextSize.caption,
-          color: kGreyColor,
-          textAlign: TextAlign.right,
-          paddingTop: SparkSpace.sm,
-        ),
+        overLimit
+            ? MyText(
+                text:
+                    'Слишком длинное описание: $totalLength из '
+                    '$_lengthLimit символов — сократите пункты',
+                size: SparkTextSize.caption,
+                color: kRedColor,
+                weight: FontWeight.w600,
+                textAlign: TextAlign.right,
+                paddingTop: SparkSpace.sm,
+              )
+            : const MyText(
+                text: 'Каждая строка — отдельный пункт',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+                textAlign: TextAlign.right,
+                paddingTop: SparkSpace.sm,
+              ),
         const SparkSectionTitle('Быстрое добавление', top: SparkSpace.xl),
         Wrap(
           spacing: SparkSpace.md,
