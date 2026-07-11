@@ -615,6 +615,47 @@ class AiQueueClicheBuilder {
         'изображение, hash не искажай и не сокращай. {text}';
   }
 
+  /// Кадры одного видео → один вердикт для hash исходного видео. Кадры
+  /// передаются равномерно по времени и являются лишь доказательствами;
+  /// раскладывается оригинальный видеофайл целиком.
+  static String buildIntakeVideoDistributionCliche({
+    required List<
+      ({String key, String title, List<({String id, String label})> elements})
+    >
+    inspectionGroups,
+  }) {
+    final taxonomy = StringBuffer();
+    for (final group in inspectionGroups) {
+      taxonomy.write('- group "${group.key}" (${group.title}); element: ');
+      taxonomy.write(
+        group.elements.map((e) => '"${e.id}" (${e.label})').join(', '),
+      );
+      taxonomy.write('\n');
+    }
+    return 'Ты сортируешь ОДИН видеофайл для отчёта об осмотре подержанного '
+        'автомобиля. К сообщению приложены равномерно выбранные кадры одного '
+        'видео в хронологическом порядке. В тексте указан hash ОРИГИНАЛЬНОГО '
+        'видео и время каждого кадра. Определи одно главное назначение всего '
+        'видеофайла по совокупности кадров, а не отдельное назначение кадров.\n\n'
+        'Допустимые назначения:\n'
+        '- section="inspection" — видео автомобиля или его части; обязательно '
+        'выбери group и element только из списка ниже. Если видео показывает '
+        'несколько частей, выбери доминирующую по времени и содержанию.\n'
+        '- section="materials", documentKind="vehicle_doc" — видео СТС, ПТС '
+        'или выписки ЭПТС.\n'
+        '- section="materials", documentKind="document" — видео другого '
+        'документа или бумаги.\n'
+        '- section="unknown" — уверенно определить назначение нельзя.\n\n'
+        'Группы и элементы осмотра:\n$taxonomy\n'
+        'Верни СТРОГО один JSON-объект без markdown и пояснений:\n'
+        '{"items":[{"hash":"<hash исходного видео, ДОСЛОВНО>",'
+        '"section":"inspection|materials|unknown",'
+        '"documentKind":"vehicle_doc|document|",'
+        '"group":"<ключ группы или пустая строка>",'
+        '"element":"<ключ элемента или пустая строка>"}]}\n'
+        'В items должен быть РОВНО один объект. {text}';
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   /// Renders the optional car-context block — empty when no context is

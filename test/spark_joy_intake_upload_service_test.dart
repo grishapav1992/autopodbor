@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_transfer.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
+import 'package:flutter_application_1/data/services/spark_joy_intake_video_prep.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -125,6 +126,18 @@ void main() {
       mimeType: 'image/png',
       localPath: original.path,
       compressedPath: compressed.path,
+      sizeBytes: await original.length(),
+    );
+  }
+
+  Future<SparkIntakeFileRecord> makeVideoRecord(String id) async {
+    final original = File('${tempDir.path}/$id.mp4');
+    await original.writeAsBytes(List<int>.generate(1024, (i) => i % 251));
+    return SparkIntakeFileRecord(
+      id: id,
+      name: '$id.mp4',
+      mimeType: 'video/mp4',
+      localPath: original.path,
       sizeBytes: await original.length(),
     );
   }
@@ -415,6 +428,173 @@ void main() {
       expect(classified.aiElement, 'hood');
     },
   );
+
+  test(
+    'видео 13с → 5 скрытых JPEG-кадров в S3 → один вердикт оригиналу',
+    () async {
+      SparkJoyIntakeUploadService.videoFrameExtractorOverride =
+          ({
+            required videoPath,
+            required outputDirectory,
+            required filePrefix,
+          }) async {
+            final frames = <SparkIntakeExtractedVideoFrame>[];
+            final times = sparkIntakeVideoFrameTimesMs(
+              const Duration(seconds: 13),
+            );
+            for (var i = 0; i < times.length; i++) {
+              final file = File('$outputDirectory/${filePrefix}_$i.jpg');
+              await file.writeAsBytes(List<int>.filled(80 + i, i + 1));
+              frames.add(
+                SparkIntakeExtractedVideoFrame(
+                  index: i,
+                  timeMs: times[i],
+                  path: file.path,
+                  sizeBytes: await file.length(),
+                ),
+              );
+            }
+            return SparkIntakeVideoFrameSet(durationMs: 13000, frames: frames);
+          };
+      SparkJoyIntakeUploadService.viewUrlOverride = (filename) async =>
+          'https://s3.example/get/$filename';
+      var aiCalls = 0;
+      SparkJoyIntakeUploadService.aiChatOverride =
+          ({required text, required cliche, required fileUrls}) async {
+            aiCalls += 1;
+            expect(fileUrls, hasLength(5));
+            expect(text, contains('длительность=13000 мс'));
+            final hash = RegExp(
+              r'hash исходного видео=([a-f0-9]{64})',
+            ).firstMatch(text)!.group(1)!;
+            return '{"items":[{"hash":"$hash","section":"inspection",'
+                '"documentKind":"","group":"body","element":"hood"}]}';
+          };
+      service.configureAi(
+        draftId,
+        const SparkIntakeAiConfig(
+          cliche: 'photo {text}',
+          videoCliche: 'video {text}',
+          elementsByGroup: <String, Set<String>>{
+            'body': <String>{'hood'},
+          },
+        ),
+      );
+
+      final video = await makeVideoRecord('walkaround');
+      await service.stageFiles(draftId, [video]);
+      expect(video.sha256, hasLength(64));
+      expect(service.snapshotOf(draftId).total, 1);
+
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 5);
+      expect(service.snapshotOf(draftId).total, 1);
+      expect(
+        transfer.enqueued.every((item) => item.mimeType == 'image/jpeg'),
+        isTrue,
+      );
+      expect(
+        transfer.enqueued.any((item) => item.filePath == video.localPath),
+        isFalse,
+        reason: 'оригинальное видео во временный S3 не отправляется',
+      );
+
+      for (var i = 0; i < 5; i++) {
+        transfer.emitComplete(draftId, 'walkaround_frame_$i');
+      }
+      await _waitFor(() => aiCalls == 1);
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+      );
+
+      final classified = service.snapshotOf(draftId).files.single;
+      expect(classified.id, 'walkaround');
+      expect(classified.videoDurationMs, 13000);
+      expect(classified.videoFrameCount, 5);
+      expect(classified.aiSection, SparkIntakeAiSection.inspection);
+      expect(classified.aiGroup, 'body');
+      expect(classified.aiElement, 'hood');
+
+      final persisted = await persistedIntake();
+      final persistedFiles = persisted!['files'] as List;
+      expect(persistedFiles, hasLength(6));
+      expect(
+        persistedFiles.where(
+          (raw) => (raw as Map)['sourceVideoId'] == 'walkaround',
+        ),
+        hasLength(5),
+      );
+    },
+  );
+
+  test('ИИ ждёт retry упавшего кадра видео и не ставит unknown', () async {
+    SparkJoyIntakeUploadService.videoFrameExtractorOverride =
+        ({
+          required videoPath,
+          required outputDirectory,
+          required filePrefix,
+        }) async {
+          final frames = <SparkIntakeExtractedVideoFrame>[];
+          for (var i = 0; i < 5; i++) {
+            final file = File('$outputDirectory/${filePrefix}_$i.jpg');
+            await file.writeAsBytes(List<int>.filled(32, i));
+            frames.add(
+              SparkIntakeExtractedVideoFrame(
+                index: i,
+                timeMs: 1000 + i * 2000,
+                path: file.path,
+                sizeBytes: 32,
+              ),
+            );
+          }
+          return SparkIntakeVideoFrameSet(durationMs: 13000, frames: frames);
+        };
+    SparkJoyIntakeUploadService.viewUrlOverride = (filename) async =>
+        'https://s3.example/get/$filename';
+    var aiCalls = 0;
+    SparkJoyIntakeUploadService.aiChatOverride =
+        ({required text, required cliche, required fileUrls}) async {
+          aiCalls += 1;
+          final hash = RegExp(
+            r'hash исходного видео=([a-f0-9]{64})',
+          ).firstMatch(text)!.group(1)!;
+          return '{"items":[{"hash":"$hash","section":"inspection",'
+              '"documentKind":"","group":"body","element":"hood"}]}';
+        };
+    service.configureAi(
+      draftId,
+      const SparkIntakeAiConfig(
+        cliche: 'photo {text}',
+        videoCliche: 'video {text}',
+        elementsByGroup: <String, Set<String>>{
+          'body': <String>{'hood'},
+        },
+      ),
+    );
+
+    final video = await makeVideoRecord('retry_video');
+    await service.stageFiles(draftId, [video]);
+    await service.startUpload(draftId);
+    await _waitFor(() => transfer.enqueued.length == 5);
+    for (var i = 0; i < 4; i++) {
+      transfer.emitComplete(draftId, 'retry_video_frame_$i');
+    }
+    transfer.emitFailed(draftId, 'retry_video_frame_4');
+    await _waitFor(
+      () => service.snapshotOf(draftId).phase == SparkIntakePhase.failed,
+    );
+    expect(aiCalls, 0);
+    expect(video.aiSection, isEmpty);
+
+    await service.startUpload(draftId);
+    await _waitFor(() => transfer.enqueued.length == 6);
+    transfer.emitComplete(draftId, 'retry_video_frame_4');
+    await _waitFor(() => aiCalls == 1);
+    await _waitFor(
+      () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+    );
+    expect(video.aiSection, SparkIntakeAiSection.inspection);
+  });
 
   test(
     'СТС остаётся classifying до извлечения полей и затем идёт в materials',

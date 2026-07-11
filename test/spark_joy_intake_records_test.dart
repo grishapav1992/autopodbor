@@ -45,6 +45,29 @@ void main() {
       expect(restored.aiDocJson, contains('XTA210990Y2765432'));
     });
 
+    test('round-trip сохраняет связь скрытого кадра с видео', () {
+      final record = SparkIntakeFileRecord(
+        id: 'video_1_frame_3',
+        name: 'walkaround.mov · кадр 4',
+        mimeType: 'image/jpeg',
+        localPath: 'file:///docs/spark_joy_media/video_1_3.jpg',
+        sizeBytes: 45678,
+        sourceVideoId: 'video_1',
+        videoFrameIndex: 3,
+        videoFrameTimeMs: 9000,
+        videoDurationMs: 13000,
+        videoFrameCount: 5,
+      );
+
+      final restored = SparkIntakeFileRecord.tryFromJson(record.toJson())!;
+      expect(restored.isInternalVideoFrame, isTrue);
+      expect(restored.sourceVideoId, 'video_1');
+      expect(restored.videoFrameIndex, 3);
+      expect(restored.videoFrameTimeMs, 9000);
+      expect(restored.videoDurationMs, 13000);
+      expect(restored.videoFrameCount, 5);
+    });
+
     test(
       'транзиентные статусы сериализуются как staged (kill = дозаливка)',
       () {

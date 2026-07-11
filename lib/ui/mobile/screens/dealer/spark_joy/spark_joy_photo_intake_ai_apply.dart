@@ -20,6 +20,9 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
       cliche: AiQueueClicheBuilder.buildIntakeDistributionCliche(
         inspectionGroups: taxonomy,
       ),
+      videoCliche: AiQueueClicheBuilder.buildIntakeVideoDistributionCliche(
+        inspectionGroups: taxonomy,
+      ),
       elementsByGroup: <String, Set<String>>{
         for (final group in taxonomy)
           group.key: group.elements.map((element) => element.id).toSet(),

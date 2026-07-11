@@ -24,6 +24,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart'
     show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter_application_1/data/api/ai_queue_api.dart';
@@ -31,6 +32,7 @@ import 'package:flutter_application_1/data/api/storage_api.dart'
     show StorageApi, SessionExpiredException;
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_transfer.dart';
+import 'package:flutter_application_1/data/services/spark_joy_intake_video_prep.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_doc_scan_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_photo_prep.dart';
@@ -74,6 +76,16 @@ class SparkIntakeFileRecord {
   String? videoThumbPath;
   String? error;
 
+  /// Internal JPEG child produced from a video. Child records participate in
+  /// the normal S3 transfer but are hidden from UI and never enter the report.
+  String sourceVideoId;
+  int videoFrameIndex;
+  int videoFrameTimeMs;
+
+  /// Metadata of the original video, persisted for resume/debug/UX.
+  int videoDurationMs;
+  int videoFrameCount;
+
   /// sha256 ОРИГИНАЛЬНЫХ байт (hex) — ключ сопоставления вердикта ИИ с
   /// локальным оригиналом (в S3 уезжает сжатая копия) + дедуп вердиктов
   /// между одинаковыми фото.
@@ -104,6 +116,11 @@ class SparkIntakeFileRecord {
     this.compressedPath,
     this.videoThumbPath,
     this.error,
+    this.sourceVideoId = '',
+    this.videoFrameIndex = -1,
+    this.videoFrameTimeMs = 0,
+    this.videoDurationMs = 0,
+    this.videoFrameCount = 0,
     this.sha256 = '',
     this.aiSection = '',
     this.aiDocumentKind = '',
@@ -115,13 +132,17 @@ class SparkIntakeFileRecord {
   bool get isImage => mimeType.startsWith('image/');
   bool get isVideo => mimeType.startsWith('video/');
   bool get isDocument => !isImage && !isVideo;
+  bool get isInternalVideoFrame => sourceVideoId.isNotEmpty;
   bool get isUploaded => status == SparkIntakeFileStatus.uploaded;
   bool get isFailed => status == SparkIntakeFileStatus.failed;
   bool get isTerminal => isUploaded || isFailed;
 
-  /// Изображение ждёт вердикта ИИ (классифицируются только изображения:
-  /// vision не читает pdf/видео; документы раскладываются детерминированно).
-  bool get awaitsAiVerdict => isImage && isUploaded && aiSection.isEmpty;
+  /// Обычное фото или исходное видео ждёт вердикта ИИ. Скрытые кадры видео
+  /// являются входом vision, но сами отдельного назначения не получают.
+  bool get awaitsAiVerdict =>
+      ((isImage && !isInternalVideoFrame) || isVideo) &&
+      isUploaded &&
+      aiSection.isEmpty;
 
   Map<String, dynamic> toJson() {
     final persistedStatus = switch (status) {
@@ -143,6 +164,11 @@ class SparkIntakeFileRecord {
       if (compressedPath != null) 'compressedPath': compressedPath,
       if (videoThumbPath != null) 'videoThumbPath': videoThumbPath,
       if (error != null) 'error': error,
+      if (sourceVideoId.isNotEmpty) 'sourceVideoId': sourceVideoId,
+      if (videoFrameIndex >= 0) 'videoFrameIndex': videoFrameIndex,
+      if (videoFrameTimeMs > 0) 'videoFrameTimeMs': videoFrameTimeMs,
+      if (videoDurationMs > 0) 'videoDurationMs': videoDurationMs,
+      if (videoFrameCount > 0) 'videoFrameCount': videoFrameCount,
       if (sha256.isNotEmpty) 'sha256': sha256,
       if (aiSection.isNotEmpty) 'aiSection': aiSection,
       if (aiDocumentKind.isNotEmpty) 'aiDocumentKind': aiDocumentKind,
@@ -180,6 +206,15 @@ class SparkIntakeFileRecord {
       compressedPath: m['compressedPath']?.toString(),
       videoThumbPath: m['videoThumbPath']?.toString(),
       error: m['error']?.toString(),
+      sourceVideoId: m['sourceVideoId']?.toString() ?? '',
+      videoFrameIndex:
+          int.tryParse(m['videoFrameIndex']?.toString() ?? '') ?? -1,
+      videoFrameTimeMs:
+          int.tryParse(m['videoFrameTimeMs']?.toString() ?? '') ?? 0,
+      videoDurationMs:
+          int.tryParse(m['videoDurationMs']?.toString() ?? '') ?? 0,
+      videoFrameCount:
+          int.tryParse(m['videoFrameCount']?.toString() ?? '') ?? 0,
       sha256: m['sha256']?.toString() ?? '',
       aiSection: _intakeSectionFromJson(m),
       aiDocumentKind: _intakeDocumentKindFromJson(m),
@@ -216,12 +251,14 @@ String _intakeDocumentKindFromJson(Map<String, dynamic> map) {
 /// для его библиотеки) и передаётся сервису через [SparkJoyIntakeUploadService.configureAi].
 class SparkIntakeAiConfig {
   final String cliche;
+  final String videoCliche;
 
   /// groupKey → допустимые element id этой группы.
   final Map<String, Set<String>> elementsByGroup;
 
   const SparkIntakeAiConfig({
     required this.cliche,
+    this.videoCliche = '',
     required this.elementsByGroup,
   });
 }
@@ -334,10 +371,11 @@ class _IntakeDraftState {
 
   /// Запись готова к применению к черновику (экран разложит и удалит её
   /// из интейка): документы — детерминированно в «Материалы проверки»,
-  /// изображения — по вердикту ИИ. Видео и unknown остаются в интейке.
+  /// изображения и видео — по вердикту ИИ. Unknown остаётся в интейке.
   bool recordApplicable(SparkIntakeFileRecord r) {
+    if (r.isInternalVideoFrame) return false;
     if (r.isDocument) return r.isUploaded;
-    if (!r.isImage) return false;
+    if (!r.isImage && !r.isVideo) return false;
     return switch (r.aiSection) {
       SparkIntakeAiSection.inspection => r.aiGroup.isNotEmpty,
       SparkIntakeAiSection.materials =>
@@ -348,20 +386,28 @@ class _IntakeDraftState {
   }
 
   SparkIntakeSnapshot snapshot() {
+    final visibleFiles = files
+        .where((record) => !record.isInternalVideoFrame)
+        .toList(growable: false);
     var uploaded = 0;
     var failed = 0;
     var weightTotal = 0.0;
     var weightDone = 0.0;
     var hasLive = false;
     for (final r in files) {
+      // Original video is local-only. Its extracted child frames are the
+      // actual upload work and therefore carry progress weight.
+      if (r.isVideo && !r.isInternalVideoFrame) {
+        if (r.status == SparkIntakeFileStatus.compressing) hasLive = true;
+        continue;
+      }
       final weight = math.max(r.sizeBytes, 1).toDouble();
       weightTotal += weight;
       switch (r.status) {
         case SparkIntakeFileStatus.uploaded:
-          uploaded += 1;
           weightDone += weight;
         case SparkIntakeFileStatus.failed:
-          failed += 1;
+          break;
         case SparkIntakeFileStatus.uploading ||
             SparkIntakeFileStatus.enqueued ||
             SparkIntakeFileStatus.compressing:
@@ -371,17 +417,35 @@ class _IntakeDraftState {
           if (uploadRequested) hasLive = true;
       }
     }
+    for (final r in visibleFiles) {
+      if (r.isVideo) {
+        final frames = files
+            .where((frame) => frame.sourceVideoId == r.id)
+            .toList(growable: false);
+        if (r.isFailed || frames.any((frame) => frame.isFailed)) {
+          failed += 1;
+        } else if (frames.isNotEmpty &&
+            frames.every((frame) => frame.isUploaded)) {
+          uploaded += 1;
+        }
+      } else if (r.isUploaded) {
+        uploaded += 1;
+      } else if (r.isFailed) {
+        failed += 1;
+      }
+    }
     var aiTotal = 0;
     var aiClassified = 0;
     var aiPending = false;
     var hasApplicable = false;
-    for (final r in files) {
-      if (r.isImage && (r.isUploaded || r.aiSection.isNotEmpty)) {
+    for (final r in visibleFiles) {
+      if ((r.isImage || r.isVideo) &&
+          (r.isUploaded || r.aiSection.isNotEmpty)) {
         aiTotal += 1;
         if (r.aiSection.isNotEmpty) {
           aiClassified += 1;
         } else if (r.isUploaded) {
-          aiPending = true;
+          if (!r.isVideo || _videoFramesUploaded(r)) aiPending = true;
         }
         if (r.aiSection == SparkIntakeAiSection.materials &&
             r.aiDocumentKind == SparkIntakeDocumentKind.vehicleDoc &&
@@ -392,7 +456,7 @@ class _IntakeDraftState {
       if (uploadRequested && recordApplicable(r)) hasApplicable = true;
     }
     final SparkIntakePhase phase;
-    if (files.isEmpty) {
+    if (visibleFiles.isEmpty) {
       phase = SparkIntakePhase.idle;
     } else if (!uploadRequested) {
       phase = SparkIntakePhase.staged;
@@ -409,7 +473,7 @@ class _IntakeDraftState {
     }
     return SparkIntakeSnapshot(
       draftId: draftId,
-      files: List<SparkIntakeFileRecord>.unmodifiable(files),
+      files: List<SparkIntakeFileRecord>.unmodifiable(visibleFiles),
       uploadRequested: uploadRequested,
       uploadedCount: uploaded,
       failedCount: failed,
@@ -424,6 +488,15 @@ class _IntakeDraftState {
 
   void emit() {
     notifier.value = snapshot();
+  }
+
+  bool _videoFramesUploaded(SparkIntakeFileRecord video) {
+    final frames = files
+        .where((frame) => frame.sourceVideoId == video.id)
+        .toList(growable: false);
+    return frames.isNotEmpty &&
+        frames.length == video.videoFrameCount &&
+        frames.every((frame) => frame.isUploaded);
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -445,6 +518,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     presignOverride = null;
     aiChatOverride = null;
     viewUrlOverride = null;
+    videoFrameExtractorOverride = null;
   }
 
   /// Тестовый шов выпуска presigned URL (по умолчанию —
@@ -467,6 +541,15 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   /// StorageApi.getTemporaryViewUrl с reportNumber: 'temp').
   @visibleForTesting
   static Future<String> Function(String filename)? viewUrlOverride;
+
+  /// Test seam for native video decoding.
+  @visibleForTesting
+  static Future<SparkIntakeVideoFrameSet> Function({
+    required String videoPath,
+    required String outputDirectory,
+    required String filePrefix,
+  })?
+  videoFrameExtractorOverride;
 
   static const Duration _retryInterval = Duration(seconds: 60);
 
@@ -537,6 +620,21 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       }
       state.uploadRequested = rawPhotoIntake['uploadRequested'] == true;
     }
+    // Migration from the pre-video-AI pipeline: old drafts may mark the
+    // original video itself as uploaded. New pipeline uploads only frames.
+    for (final record in state.files) {
+      if (!record.isVideo || record.aiSection.isNotEmpty) continue;
+      final hasFrames = state.files.any(
+        (frame) => frame.sourceVideoId == record.id,
+      );
+      if (!hasFrames && record.status == SparkIntakeFileStatus.uploaded) {
+        record.status = SparkIntakeFileStatus.staged;
+        record.remoteName = '';
+        record.s3Key = '';
+        record.uploadedAtIso = '';
+        record.taskId = null;
+      }
+    }
     state.emit();
     if (state.files.isNotEmpty) {
       unawaited(_reconcileAndResume(state));
@@ -564,7 +662,24 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     // и до любого сжатия; последовательно, чтобы несколько больших фото не
     // держались одновременно в памяти.
     for (final record in records) {
-      if (!record.isImage || record.sha256.isNotEmpty) continue;
+      if ((!record.isImage && !record.isVideo) || record.sha256.isNotEmpty) {
+        continue;
+      }
+      if (record.isVideo && !kIsWeb) {
+        final path = await _resolveNativePath(record.localPath);
+        if (path == null) {
+          record.status = SparkIntakeFileStatus.failed;
+          record.error = 'Файл недоступен на устройстве';
+          continue;
+        }
+        try {
+          record.sha256 = await _sha256File(path);
+        } catch (_) {
+          record.status = SparkIntakeFileStatus.failed;
+          record.error = 'Не удалось прочитать видео на устройстве';
+        }
+        continue;
+      }
       final original = await _readLocalBytes(record.localPath);
       if (original == null || original.isEmpty) {
         record.status = SparkIntakeFileStatus.failed;
@@ -591,9 +706,15 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   }) async {
     if (recordIds.isEmpty) return;
     final state = _stateFor(draftId);
-    final removed = state.files.where((r) => recordIds.contains(r.id)).toList();
+    final expandedIds = <String>{...recordIds};
+    for (final record in state.files) {
+      if (recordIds.contains(record.sourceVideoId)) expandedIds.add(record.id);
+    }
+    final removed = state.files
+        .where((record) => expandedIds.contains(record.id))
+        .toList();
     if (removed.isEmpty) return;
-    state.files.removeWhere((r) => recordIds.contains(r.id));
+    state.files.removeWhere((record) => expandedIds.contains(record.id));
     for (final record in removed) {
       state.progressById.remove(record.id);
       state.noAutoRetry.remove(record.id);
@@ -617,10 +738,14 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     if (recordIds.isEmpty) return;
     final state = _states[draftId];
     if (state == null) return;
+    final expandedIds = <String>{...recordIds};
+    for (final record in state.files) {
+      if (recordIds.contains(record.sourceVideoId)) expandedIds.add(record.id);
+    }
     final applied = state.files
-        .where((record) => recordIds.contains(record.id))
+        .where((record) => expandedIds.contains(record.id))
         .toList(growable: false);
-    state.files.removeWhere((record) => recordIds.contains(record.id));
+    state.files.removeWhere((record) => expandedIds.contains(record.id));
     for (final record in applied) {
       state.progressById.remove(record.id);
       state.noAutoRetry.remove(record.id);
@@ -748,6 +873,10 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     SparkIntakeFileRecord record,
   ) async {
     try {
+      if (record.isVideo && !record.isInternalVideoFrame) {
+        await _prepareVideoFrames(state, record);
+        return;
+      }
       Uint8List? webBytes;
       // 1. Сжатие фото (требование: «перед отправкой в S3 надо сжатие»).
       if (record.isImage && record.compressedPath == null) {
@@ -858,6 +987,91 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _prepareVideoFrames(
+    _IntakeDraftState state,
+    SparkIntakeFileRecord record,
+  ) async {
+    if (kIsWeb) {
+      _failNoRetry(
+        state,
+        record,
+        'Распределение видео пока доступно только в мобильном приложении',
+      );
+      return;
+    }
+    final videoPath = await _resolveNativePath(record.localPath);
+    if (videoPath == null) {
+      _failNoRetry(state, record, 'Видео недоступно на устройстве');
+      return;
+    }
+    record.status = SparkIntakeFileStatus.compressing;
+    record.error = null;
+    state.emit();
+
+    final staleFrames = state.files
+        .where((frame) => frame.sourceVideoId == record.id)
+        .toList(growable: false);
+    state.files.removeWhere((frame) => frame.sourceVideoId == record.id);
+    for (final frame in staleFrames) {
+      await _deleteLocalArtifacts(frame);
+    }
+
+    try {
+      final extractor = videoFrameExtractorOverride;
+      final outputDirectory = extractor != null
+          ? File(videoPath).parent.path
+          : '${(await getApplicationDocumentsDirectory()).path}/'
+                '${SparkJoyStorage.mediaSubdirName}';
+      final prefix =
+          'intake_v_${record.id.replaceAll(RegExp(r'[^a-zA-Z0-9_-]'), '_')}';
+      final frameSet = extractor != null
+          ? await extractor(
+              videoPath: videoPath,
+              outputDirectory: outputDirectory,
+              filePrefix: prefix,
+            )
+          : await sparkExtractIntakeVideoFrames(
+              videoPath: videoPath,
+              outputDirectory: outputDirectory,
+              filePrefix: prefix,
+            );
+      if (frameSet.frames.isEmpty) {
+        throw const FormatException('Из видео не извлечено ни одного кадра');
+      }
+      final children = <SparkIntakeFileRecord>[];
+      for (final frame in frameSet.frames) {
+        final frameUri = Uri.file(frame.path).toString();
+        children.add(
+          SparkIntakeFileRecord(
+            id: '${record.id}_frame_${frame.index}',
+            name: '${record.name} · кадр ${frame.index + 1}',
+            mimeType: 'image/jpeg',
+            localPath: frameUri,
+            sizeBytes: frame.sizeBytes,
+            compressedPath: frameUri,
+            sourceVideoId: record.id,
+            videoFrameIndex: frame.index,
+            videoFrameTimeMs: frame.timeMs,
+          ),
+        );
+      }
+      record.videoDurationMs = frameSet.durationMs;
+      record.videoFrameCount = children.length;
+      record.status = SparkIntakeFileStatus.uploaded;
+      record.error = null;
+      state.files.addAll(children);
+      state.emit();
+      await _persist(state);
+    } on FormatException catch (e) {
+      _failNoRetry(state, record, e.message);
+    } catch (e) {
+      record.status = SparkIntakeFileStatus.failed;
+      record.error = 'Не удалось подготовить видео: $e';
+      state.emit();
+      await _persist(state);
+    }
+  }
+
   void _failNoRetry(
     _IntakeDraftState state,
     SparkIntakeFileRecord record,
@@ -904,7 +1118,13 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       // сами, когда аплоад-пайплайн доедет (триггер в _onTransferUpdate).
       var reuploadKicked = false;
       for (final r in state.files) {
-        if (r.awaitsAiVerdict && _isTempExpired(r)) {
+        final videoParent = r.isInternalVideoFrame
+            ? state.recordById(r.sourceVideoId)
+            : null;
+        final neededVideoFrame =
+            videoParent != null && videoParent.awaitsAiVerdict;
+        final standaloneUpload = r.awaitsAiVerdict && !r.isVideo;
+        if ((standaloneUpload || neededVideoFrame) && _isTempExpired(r)) {
           r.status = SparkIntakeFileStatus.staged;
           r.remoteName = '';
           r.s3Key = '';
@@ -921,10 +1141,77 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       }
 
       while (true) {
+        SparkIntakeFileRecord? pendingVideo;
+        var videoDirty = false;
+        for (final r in state.files) {
+          if (!r.isVideo || !r.awaitsAiVerdict) continue;
+          if (!state._videoFramesUploaded(r)) continue;
+          if ((state.aiAttemptsById[r.id] ?? 0) >= _kIntakeAiMaxAttempts) {
+            r.aiSection = SparkIntakeAiSection.unknown;
+            videoDirty = true;
+            continue;
+          }
+          pendingVideo = r;
+          break;
+        }
+        if (videoDirty) {
+          state.emit();
+          await _persist(state);
+        }
+        if (pendingVideo != null) {
+          final video = pendingVideo;
+          if (video.sha256.isEmpty) {
+            video.sha256 = await _hashOriginalVideo(video) ?? '';
+          }
+          SparkIntakeFileRecord? donor;
+          if (video.sha256.isNotEmpty) {
+            for (final candidate in state.files) {
+              if (candidate.id == video.id || candidate.aiSection.isEmpty) {
+                continue;
+              }
+              if (candidate.sha256 == video.sha256) {
+                donor = candidate;
+                break;
+              }
+            }
+          }
+          if (donor != null) {
+            video.aiSection = donor.aiSection;
+            video.aiDocumentKind = donor.aiDocumentKind;
+            video.aiGroup = donor.aiGroup;
+            video.aiElement = donor.aiElement;
+            video.aiDocJson = donor.aiDocJson;
+          } else if (video.sha256.isEmpty) {
+            video.aiSection = SparkIntakeAiSection.unknown;
+          } else {
+            try {
+              await _classifyVideo(state, config, video);
+              consecutiveFailures = 0;
+            } on SessionExpiredException {
+              rethrow;
+            } catch (e) {
+              state.aiAttemptsById[video.id] =
+                  (state.aiAttemptsById[video.id] ?? 0) + 1;
+              consecutiveFailures += 1;
+              _log(
+                'classify-video-failed',
+                draftId: state.draftId,
+                extra: 'id=${video.id} $e',
+              );
+              await Future<void>.delayed(
+                Duration(seconds: math.min(5 * consecutiveFailures, 15)),
+              );
+            }
+          }
+          state.emit();
+          await _persist(state);
+          continue;
+        }
+
         final batch = <SparkIntakeFileRecord>[];
         var dirty = false;
         for (final r in state.files) {
-          if (!r.awaitsAiVerdict) continue;
+          if (!r.awaitsAiVerdict || r.isVideo) continue;
           if ((state.aiAttemptsById[r.id] ?? 0) >= _kIntakeAiMaxAttempts) {
             // Платные вызовы не жжём бесконечно — честный unknown,
             // файл остаётся в интейке.
@@ -1052,6 +1339,58 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _classifyVideo(
+    _IntakeDraftState state,
+    SparkIntakeAiConfig config,
+    SparkIntakeFileRecord video,
+  ) async {
+    final frames =
+        state.files
+            .where(
+              (record) => record.sourceVideoId == video.id && record.isUploaded,
+            )
+            .toList(growable: false)
+          ..sort((a, b) => a.videoFrameIndex.compareTo(b.videoFrameIndex));
+    if (frames.isEmpty || frames.length != video.videoFrameCount) {
+      throw StateError('Не все кадры видео загружены');
+    }
+    final urls = <String>[];
+    final lines = <String>[
+      'hash исходного видео=${video.sha256}',
+      'длительность=${video.videoDurationMs} мс',
+    ];
+    for (final frame in frames) {
+      final url = await _viewUrlFor(frame.remoteName);
+      if (url.isEmpty) {
+        throw Exception('Не удалось получить ссылку на ${frame.remoteName}');
+      }
+      urls.add(url);
+      lines.add(
+        'кадр ${frame.videoFrameIndex + 1}: '
+        'timeMs=${frame.videoFrameTimeMs}',
+      );
+    }
+    final raw = await _aiCall(
+      text:
+          'Классифицируй исходное видео по приложенным кадрам.\n'
+          '${lines.join('\n')}',
+      cliche: config.videoCliche.isEmpty ? config.cliche : config.videoCliche,
+      fileUrls: urls,
+    );
+    final verdicts = parseIntakeDistributionResult(raw);
+    SparkIntakeAiVerdict? verdict;
+    for (final candidate in verdicts) {
+      if (candidate.hash == video.sha256.toLowerCase()) {
+        verdict = candidate;
+        break;
+      }
+    }
+    if (verdict == null) {
+      throw const FormatException('ИИ не вернул hash исходного видео');
+    }
+    _assignVerdict(config, video, verdict);
+  }
+
   void _assignVerdict(
     SparkIntakeAiConfig config,
     SparkIntakeFileRecord record,
@@ -1099,9 +1438,25 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       while (r.aiDocJson.isEmpty &&
           (state.aiAttemptsById[attemptKey] ?? 0) < _kIntakeAiMaxAttempts) {
         try {
-          final url = await _viewUrlFor(r.remoteName);
+          var sourceRemoteName = r.remoteName;
+          if (r.isVideo) {
+            final frames =
+                state.files
+                    .where(
+                      (frame) =>
+                          frame.sourceVideoId == r.id && frame.isUploaded,
+                    )
+                    .toList(growable: false)
+                  ..sort(
+                    (a, b) => a.videoFrameIndex.compareTo(b.videoFrameIndex),
+                  );
+            if (frames.isNotEmpty) {
+              sourceRemoteName = frames[frames.length ~/ 2].remoteName;
+            }
+          }
+          final url = await _viewUrlFor(sourceRemoteName);
           if (url.isEmpty) {
-            throw Exception('Не удалось получить ссылку на ${r.remoteName}');
+            throw Exception('Не удалось получить ссылку на $sourceRemoteName');
           }
           final raw = await _aiCall(
             text: 'Распознай документ на фото.',
@@ -1412,6 +1767,21 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
     if (!await File(path).exists()) return null;
     return path;
+  }
+
+  Future<String?> _hashOriginalVideo(SparkIntakeFileRecord record) async {
+    if (kIsWeb) {
+      final bytes = await _readLocalBytes(record.localPath);
+      if (bytes == null || bytes.isEmpty) return null;
+      return sparkIntakeSha256Hex(bytes);
+    }
+    final path = await _resolveNativePath(record.localPath);
+    return path == null ? null : _sha256File(path);
+  }
+
+  Future<String> _sha256File(String path) async {
+    final digest = await crypto.sha256.bind(File(path).openRead()).first;
+    return digest.toString();
   }
 
   Future<String?> _writeCompressedCopy(

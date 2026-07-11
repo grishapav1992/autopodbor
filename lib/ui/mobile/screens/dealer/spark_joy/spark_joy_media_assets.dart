@@ -158,8 +158,9 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
         files.isNotEmpty && files.every((file) => file.inspection.noDamage);
 
     final filteredTags = aggregateNoDamage ? const <String>[] : tags;
-    final filteredTagPhotos =
-        aggregateNoDamage ? const <String, List<String>>{} : tagPhotos;
+    final filteredTagPhotos = aggregateNoDamage
+        ? const <String, List<String>>{}
+        : tagPhotos;
 
     return MediaPartInspection(
       noDamage: aggregateNoDamage,
@@ -229,8 +230,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     return files.map((file) {
       final fileRef = _mediaItemRef(file);
       final fileRefs = _mediaItemRefs(file);
-      final applyForFile =
-          applyToAll || normalizedTargetRefs.contains(fileRef);
+      final applyForFile = applyToAll || normalizedTargetRefs.contains(fileRef);
       // Tag list per file is always derived by URL filter: a file gets
       // a tag iff its URL is in that tag's URL set (group-level
       // tagPhotos mapping). Previously this was gated by
@@ -257,9 +257,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       final isExplicitEdit = !applyToAll && applyForFile;
       final nextNoDamage = tagsForFile.isNotEmpty
           ? false
-          : (isExplicitEdit
-              ? partInspection.noDamage
-              : previous.noDamage);
+          : (isExplicitEdit ? partInspection.noDamage : previous.noDamage);
       // Per-item semantics: same `isExplicitEdit` gate as noDamage.
       // Delete / add code paths call us with `applyToFileRefs=null`
       // (= applyToAll), and previously that overwrote every file's
@@ -282,9 +280,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
         paintFrom: isExplicitEdit
             ? partInspection.paintFrom
             : previous.paintFrom,
-        paintTo: isExplicitEdit
-            ? partInspection.paintTo
-            : previous.paintTo,
+        paintTo: isExplicitEdit ? partInspection.paintTo : previous.paintTo,
         isDraft: isExplicitEdit ? partInspection.isDraft : previous.isDraft,
       );
       return file.copyWith(inspection: inspection);
@@ -313,6 +309,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     if (lower.endsWith('.heic') || lower.endsWith('.heif')) return 'image/heic';
     if (lower.endsWith('.mp4')) return 'video/mp4';
     if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.m4v')) return 'video/x-m4v';
     if (lower.endsWith('.webm')) return 'video/webm';
     if (lower.endsWith('.pdf')) return 'application/pdf';
     if (lower.endsWith('.doc')) return 'application/msword';
@@ -362,8 +359,10 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     // seeing as "мини фото растягивается". Prefer a single
     // dimension so Flutter rescales the other axis proportionally;
     // keep the tighter of the two so memory stays bounded.
-    final (int? decodeWidth, int? decodeHeight) = (cacheWidth != null &&
-            cacheHeight != null)
+    final (
+      int? decodeWidth,
+      int? decodeHeight,
+    ) = (cacheWidth != null && cacheHeight != null)
         ? (cacheWidth <= cacheHeight ? (cacheWidth, null) : (null, cacheHeight))
         : (cacheWidth, cacheHeight);
 
@@ -447,8 +446,7 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       // is treated as absent: the tile falls back to the spinner while the
       // frame-extraction fallback kicked off by _handleVideoPosterError runs.
       final posterFailed = _videoPosterFailed.contains(item.id);
-      final hasPoster =
-          !posterFailed && (item.videoThumbUrl ?? '').isNotEmpty;
+      final hasPoster = !posterFailed && (item.videoThumbUrl ?? '').isNotEmpty;
       // No preview yet (no on-disk thumb, no poster URL) and generation hasn't
       // given up → show the loading spinner instead of the "missing" placeholder
       // while `_generateVideoThumbsForGroup` works through it.

@@ -104,37 +104,63 @@ void main() {
       expect(cliche, contains('WMI'));
     });
 
-    test('factual builders: no prescriptions, keep inspector recs, no risk-speculation', () {
-      final cliches = <String>[
-        AiQueueClicheBuilder.buildElementClicheFromLabels(
-          elementLabel: 'Капот',
-          selectedTagLabels: const ['Скол'],
-          seriousTagLabels: const <String>{},
-        ),
-        AiQueueClicheBuilder.buildDocsCheckCommentCliche(
-          ownerMatch: false,
-          vinMatch: true,
-          engineMatch: true,
-        ),
-        AiQueueClicheBuilder.buildTdCommentCliche(
-          tdMode: 'problems',
-          subsystemStatus: const <String, bool?>{'engine': false},
-          subsystemTags: const <String, List<String>>{},
-        ),
-        AiQueueClicheBuilder.buildLegalCommentCliche(),
-        AiQueueClicheBuilder.buildReportFactsCliche(reportLabel: 'Осмотр'),
-      ];
-      for (final cliche in cliches) {
-        // факты-только + запрет советов покупателю
-        expect(cliche, contains('ничего не домысливай'), reason: cliche);
-        expect(cliche, contains('Не давай покупателю советов'), reason: cliche);
-        // исключение: рекомендацию инспектора из его текста сохраняем
-        expect(cliche, contains('сохрани её как есть'), reason: cliche);
-        // убраны провокации к домыслам о последствиях
-        expect(cliche, isNot(contains('какие риски это несёт')));
-        expect(cliche, isNot(contains('какие риски они несут')));
-      }
+    test('video intake cliche returns one verdict for original video', () {
+      final cliche = AiQueueClicheBuilder.buildIntakeVideoDistributionCliche(
+        inspectionGroups: const [
+          (
+            key: 'body',
+            title: 'Кузов',
+            elements: [(id: 'hood', label: 'Капот')],
+          ),
+        ],
+      );
+
+      expect(cliche, contains('ОДИН видеофайл'));
+      expect(cliche, contains('hash ОРИГИНАЛЬНОГО видео'));
+      expect(cliche, contains('РОВНО один объект'));
+      expect(cliche, contains('"body"'));
+      expect(cliche, contains('"hood"'));
+      expect(cliche, contains('{text}'));
     });
+
+    test(
+      'factual builders: no prescriptions, keep inspector recs, no risk-speculation',
+      () {
+        final cliches = <String>[
+          AiQueueClicheBuilder.buildElementClicheFromLabels(
+            elementLabel: 'Капот',
+            selectedTagLabels: const ['Скол'],
+            seriousTagLabels: const <String>{},
+          ),
+          AiQueueClicheBuilder.buildDocsCheckCommentCliche(
+            ownerMatch: false,
+            vinMatch: true,
+            engineMatch: true,
+          ),
+          AiQueueClicheBuilder.buildTdCommentCliche(
+            tdMode: 'problems',
+            subsystemStatus: const <String, bool?>{'engine': false},
+            subsystemTags: const <String, List<String>>{},
+          ),
+          AiQueueClicheBuilder.buildLegalCommentCliche(),
+          AiQueueClicheBuilder.buildReportFactsCliche(reportLabel: 'Осмотр'),
+        ];
+        for (final cliche in cliches) {
+          // факты-только + запрет советов покупателю
+          expect(cliche, contains('ничего не домысливай'), reason: cliche);
+          expect(
+            cliche,
+            contains('Не давай покупателю советов'),
+            reason: cliche,
+          );
+          // исключение: рекомендацию инспектора из его текста сохраняем
+          expect(cliche, contains('сохрани её как есть'), reason: cliche);
+          // убраны провокации к домыслам о последствиях
+          expect(cliche, isNot(contains('какие риски это несёт')));
+          expect(cliche, isNot(contains('какие риски они несут')));
+        }
+      },
+    );
   });
 }
 

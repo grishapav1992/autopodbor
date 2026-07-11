@@ -517,6 +517,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     if (normalized.contains('image/heif')) return 'heif';
     if (normalized.contains('video/mp4')) return 'mp4';
     if (normalized.contains('video/quicktime')) return 'mov';
+    if (normalized.contains('video/x-m4v')) return 'm4v';
     if (normalized.contains('video/webm')) return 'webm';
     if (normalized.contains('audio/wav')) return 'wav';
     if (normalized.contains('audio/mpeg')) return 'mp3';
@@ -2860,8 +2861,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'aiQueue': _buildAiQueueSnapshot(),
       // upsertDraft заменяет весь map черновика — без этого ключа каждый
       // автосейв стирал бы интейк, который сервис пишет через applyDraftPatch.
-      'photoIntake':
-          SparkJoyIntakeUploadService.instance.snapshotJsonForDraft(_draftId),
+      'photoIntake': SparkJoyIntakeUploadService.instance.snapshotJsonForDraft(
+        _draftId,
+      ),
     };
   }
 

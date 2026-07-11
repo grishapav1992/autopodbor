@@ -3,7 +3,7 @@ part of 'spark_joy_create_report_screen.dart';
 /// Экран интейка «Фото автомобиля» (макет «Отчёт - разделы - редизайн»,
 /// экран 2a): массовое добавление фото/видео/документов, группировка по
 /// формату, мультивыбор с удалением, внизу — «Распределить файлы» (сейчас
-/// = фоновая заливка в облако; сама ИИ-раскладка — следующий этап).
+/// = фоновая заливка кадров/фото в облако и ИИ-раскладка оригиналов).
 ///
 /// Живёт как третья ветка шелла редактора (наряду с обзором и редактором
 /// секции) — файлы и состояние остаются на общем черновике/контроллере.
@@ -25,14 +25,13 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
   }
 
   PreferredSizeWidget _photoIntakeAppBar() {
-    final snapshot =
-        SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
+    final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
     return sparkAppBar(
       title: 'Фото автомобиля',
       subtitle: snapshot.total == 0
           ? 'ИИ разложит файлы по разделу «Осмотр»'
           : '${sparkIntakeFilesCountLabel(snapshot.total)} · '
-              'ИИ разложит по разделу «Осмотр»',
+                'ИИ разложит по разделу «Осмотр»',
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded),
         onPressed: _closePhotoIntake,
@@ -75,6 +74,10 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
         'webp',
         'heic',
         'heif',
+        'mp4',
+        'mov',
+        'm4v',
+        'webm',
       ],
     );
     await _stageIntakeItems(items);
@@ -84,13 +87,15 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
     if (items.isEmpty) return;
     final records = <SparkIntakeFileRecord>[];
     for (final item in items) {
-      records.add(SparkIntakeFileRecord(
-        id: item.id,
-        name: item.name,
-        mimeType: item.mimeType,
-        localPath: item.dataUrl,
-        sizeBytes: await _intakeSourceSizeBytes(item.dataUrl),
-      ));
+      records.add(
+        SparkIntakeFileRecord(
+          id: item.id,
+          name: item.name,
+          mimeType: item.mimeType,
+          localPath: item.dataUrl,
+          sizeBytes: await _intakeSourceSizeBytes(item.dataUrl),
+        ),
+      );
     }
     await SparkJoyIntakeUploadService.instance.stageFiles(_draftId, records);
     _markDraftDirty();
@@ -126,8 +131,11 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
       final thumb = await _resolveSparkJoyVideoThumb(localPath);
       if (!mounted) return;
       if (thumb == null) continue;
-      await SparkJoyIntakeUploadService.instance
-          .updateVideoThumb(_draftId, record.id, thumb);
+      await SparkJoyIntakeUploadService.instance.updateVideoThumb(
+        _draftId,
+        record.id,
+        thumb,
+      );
       _setStateSafely(() {});
     }
   }
@@ -200,7 +208,8 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
             if (snapshot.files.isEmpty) ...[
               const SizedBox(height: SparkSpace.section),
               const MyText(
-                text: 'Добавьте фото осмотра, видео и документы — после '
+                text:
+                    'Добавьте фото осмотра, видео и документы — после '
                     'загрузки ИИ разложит их по разделу «Осмотр»',
                 size: SparkTextSize.body,
                 color: kGreyColor,
@@ -232,12 +241,10 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Widget _intakeGroupHeader(
-    String title,
-    List<SparkIntakeFileRecord> records,
-  ) {
-    final selected =
-        records.where((r) => _intakeSelectedIds.contains(r.id)).length;
+  Widget _intakeGroupHeader(String title, List<SparkIntakeFileRecord> records) {
+    final selected = records
+        .where((r) => _intakeSelectedIds.contains(r.id))
+        .length;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xxs),
       child: Row(
@@ -267,8 +274,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
     const visibleWhenCollapsed = 7;
     final collapsed =
         !_intakePhotosExpanded && photos.length > visibleWhenCollapsed + 1;
-    final visible =
-        collapsed ? photos.sublist(0, visibleWhenCollapsed) : photos;
+    final visible = collapsed
+        ? photos.sublist(0, visibleWhenCollapsed)
+        : photos;
     final itemCount = visible.length + (collapsed ? 1 : 0);
     return GridView.builder(
       shrinkWrap: true,
@@ -485,7 +493,8 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
 
   Widget _intakeDocumentRow(SparkIntakeFileRecord record) {
     final selected = _intakeSelectedIds.contains(record.id);
-    final isPdf = record.mimeType == 'application/pdf' ||
+    final isPdf =
+        record.mimeType == 'application/pdf' ||
         record.name.toLowerCase().endsWith('.pdf');
     return InkWell(
       onTap: () => _toggleIntakeSelection(record.id),
@@ -500,8 +509,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
               width: 36,
               height: 36,
               decoration: BoxDecoration(
-                color: (isPdf ? kOrangeColor : kSecondaryColor)
-                    .withValues(alpha: 0.10),
+                color: (isPdf ? kOrangeColor : kSecondaryColor).withValues(
+                  alpha: 0.10,
+                ),
                 borderRadius: BorderRadius.circular(SparkRadius.sm),
               ),
               alignment: Alignment.center,
@@ -687,8 +697,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                       : () => unawaited(_runStartIntakeUpload()),
                   style: FilledButton.styleFrom(
                     backgroundColor: kSecondaryColor,
-                    disabledBackgroundColor:
-                        kSecondaryColor.withValues(alpha: 0.35),
+                    disabledBackgroundColor: kSecondaryColor.withValues(
+                      alpha: 0.35,
+                    ),
                     foregroundColor: kWhiteColor,
                     disabledForegroundColor: kWhiteColor,
                     shape: RoundedRectangleBorder(
@@ -732,4 +743,3 @@ class _SparkIntakeStatusDot extends StatelessWidget {
     );
   }
 }
-
