@@ -28,8 +28,8 @@ class SparkJoyAssignmentDetailScreen extends StatelessWidget {
     final status = sjRead(assignment, 'status');
 
     return SparkPageScaffold(
-      appBar: AppBar(
-        title: Text(sjRead(assignment, 'title', fallback: 'Заявка')),
+      appBar: sparkAppBar(
+        title: sjRead(assignment, 'title', fallback: 'Заявка'),
       ),
       bottomInset: SparkSpace.xl,
       children: [

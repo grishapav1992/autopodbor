@@ -623,8 +623,9 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
                   }
 
                   return Scaffold(
-                    appBar: AppBar(
-                      title: const Text('Сканирование VIN'),
+                    appBar: sparkAppBar(
+                      title: 'Сканирование VIN',
+                      automaticallyImplyLeading: false,
                       leading: IconButton(
                         tooltip: 'Закрыть',
                         onPressed: () => Navigator.of(context).pop(),

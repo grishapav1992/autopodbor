@@ -9,7 +9,7 @@ import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_shee
 
 import 'spark_joy_create_report_screen.dart';
 import 'spark_joy_error_snackbar.dart';
-import 'spark_joy_external_link.dart';
+import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_filter_bar.dart';
 import 'spark_joy_request_refresh_bus.dart';
 import 'spark_joy_request_status.dart';
@@ -33,6 +33,7 @@ class _SparkJoySpecialistRequestsScreenState
   bool _loading = true;
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
+  String _query = '';
   bool _reloadWhenActive = false;
   bool _loadInFlight = false;
   bool _loadQueuedWhileInFlight = false;
@@ -207,8 +208,11 @@ class _SparkJoySpecialistRequestsScreenState
       );
     }
 
-    final requests = _requests ?? const [];
-    if (requests.isEmpty && _statusFilter == RequestStatusFilter.all) {
+    final rawRequests = _requests ?? const <Map<String, dynamic>>[];
+    final requests = rawRequests
+        .where((request) => _matchesSpecialistRequestQuery(request, _query))
+        .toList(growable: false);
+    if (rawRequests.isEmpty && _statusFilter == RequestStatusFilter.all) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
@@ -219,19 +223,14 @@ class _SparkJoySpecialistRequestsScreenState
       bottomInset: 24,
       onRefresh: _load,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Expanded(child: SparkSectionTitle('Назначенные заявки')),
-            SparkJoyRequestFilterBar(
-              value: _statusFilter,
-              onChanged: (filter) {
-                if (filter == _statusFilter) return;
-                setState(() => _statusFilter = filter);
-                _load();
-              },
-            ),
-          ],
+        SparkJoyRequestFilterBar(
+          value: _statusFilter,
+          onQueryChanged: (query) => setState(() => _query = query.trim()),
+          onChanged: (filter) {
+            if (filter == _statusFilter) return;
+            setState(() => _statusFilter = filter);
+            _load();
+          },
         ),
         const SizedBox(height: SparkSpace.lg),
         if (requests.isEmpty)
@@ -248,6 +247,15 @@ class _SparkJoySpecialistRequestsScreenState
       ],
     );
   }
+}
+
+bool _matchesSpecialistRequestQuery(
+  Map<String, dynamic> request,
+  String query,
+) {
+  final normalized = query.trim().toLowerCase();
+  if (normalized.isEmpty) return true;
+  return request.toString().toLowerCase().contains(normalized);
 }
 
 class _EmptyInboxState extends StatelessWidget {
@@ -849,24 +857,16 @@ class _SparkJoySpecialistRequestDetailScreenState
       _request['requestStatusHistories'],
       _requestStatusHistoriesFromCars,
     );
-    final canRespond = status == 'created';
-    final canAbandon = status == 'paid_escrow' || status == 'in_work';
 
     return Scaffold(
       backgroundColor: kPrimaryColor,
-      appBar: AppBar(
-        backgroundColor: kPrimaryColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: MyText(
-          text: number.isEmpty ? 'Заявка' : 'Заявка №$number',
-          size: SparkTextSize.titleLg,
-          weight: FontWeight.w800,
+      appBar: SparkRequestDetailAppBar(
+        title: number.isEmpty ? 'Заявка' : 'Заявка №$number',
+        subtitle: sparkRequestDetailSubtitle(
+          createdAt: createdAt,
+          dueAt: dueAt,
         ),
-        shape: const Border(
-          bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
-        ),
+        badge: badge,
       ),
       body: SparkScreenList(
         bottomInset: 24,
@@ -875,56 +875,6 @@ class _SparkJoySpecialistRequestDetailScreenState
           await _loadCars();
         },
         children: [
-          SparkCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: SparkSize.icon5xl,
-                  height: SparkSize.icon5xl,
-                  decoration: BoxDecoration(
-                    color: kSecondaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.assignment_ind_outlined,
-                    color: kSecondaryColor,
-                    size: SparkSize.iconLg,
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.lg),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SparkChip(
-                        text: badge.label,
-                        background: badge.bg,
-                        color: badge.fg,
-                      ),
-                      const SizedBox(height: SparkSpace.sm),
-                      MyText(
-                        text: 'Создана: ${_formatRuDateTime(createdAt)}',
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                      ),
-                      if (dueAt.isNotEmpty) ...[
-                        const SizedBox(height: SparkSpace.xxs),
-                        MyText(
-                          text: 'Срок: ${_formatRuDate(dueAt)}',
-                          size: SparkTextSize.caption,
-                          color: kGreyColor,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SparkSectionTitle('Автомобиль', top: SparkSpace.xxl),
           SparkCard(child: _buildCarSection()),
           if (city.isNotEmpty ||
               budgetFrom != null ||
@@ -983,70 +933,94 @@ class _SparkJoySpecialistRequestDetailScreenState
               ),
             )
           else
-            SparkCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (int i = 0; i < history.length; i++) ...[
-                    _HistoryEntry(entry: history[i]),
-                    if (i < history.length - 1)
-                      const Divider(height: 1, color: kBorderColor),
-                  ],
-                ],
-              ),
-            ),
-          const SizedBox(height: SparkSpace.xxl),
-          if (canRespond) ...[
-            SparkPrimaryActionButton(
-              label: _actionBusy ? 'Сохраняем...' : 'Принять заявку',
-              icon: Icons.check_rounded,
-              busy: _actionBusy,
-              onTap: _accept,
-            ),
-            const SizedBox(height: SparkSpace.md),
-            OutlinedButton.icon(
-              onPressed: _actionBusy ? null : _rejectNewRequest,
-              icon: const Icon(Icons.close_rounded),
-              label: const Text('Отклонить'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: kRedColor,
-                minimumSize: const Size(
-                  double.infinity,
-                  SparkSize.actionHeight,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SparkRadius.lg),
-                ),
-              ),
-            ),
-          ] else if (canAbandon) ...[
-            if (status == 'in_work') ...[
-              SparkPrimaryActionButton(
-                label: _openingReport ? 'Открываем...' : 'Начать отчёт',
-                icon: Icons.edit_note_rounded,
-                busy: _openingReport,
-                onTap: _openReportForRequest,
-              ),
-              const SizedBox(height: SparkSpace.md),
-            ],
-            OutlinedButton.icon(
-              onPressed: _actionBusy ? null : _abandonRequest,
-              icon: const Icon(Icons.error_outline_rounded),
-              label: Text(_actionBusy ? 'Сохраняем...' : 'Отметить неудачной'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: kRedColor,
-                minimumSize: const Size(
-                  double.infinity,
-                  SparkSize.actionHeight,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SparkRadius.lg),
-                ),
-              ),
-            ),
-          ],
+            SparkCard(child: SparkRequestHistoryTimeline(entries: history)),
           const SizedBox(height: SparkSpace.lg),
         ],
+      ),
+      bottomNavigationBar: _buildBottomBar(status),
+    );
+  }
+
+  /// Закреплённые внизу действия исполнителя: новая заявка — принять/
+  /// отклонить, в работе — начать отчёт/отметить неудачной, оплачена —
+  /// только «неудачная». Для финальных статусов панель не рендерится.
+  Widget? _buildBottomBar(String status) {
+    final children = <Widget>[];
+    if (status == 'created') {
+      children.add(
+        SparkPrimaryActionButton(
+          label: _actionBusy ? 'Сохраняем...' : 'Принять заявку',
+          icon: Icons.check_rounded,
+          busy: _actionBusy,
+          onTap: _accept,
+        ),
+      );
+      children.add(const SizedBox(height: SparkSpace.md));
+      children.add(
+        _buildDestructiveAction(
+          icon: Icons.close_rounded,
+          label: 'Отклонить',
+          onPressed: _actionBusy ? null : _rejectNewRequest,
+        ),
+      );
+    } else if (status == 'in_work' || status == 'paid_escrow') {
+      if (status == 'in_work') {
+        children.add(
+          SparkPrimaryActionButton(
+            label: _openingReport ? 'Открываем...' : 'Начать отчёт',
+            icon: Icons.edit_note_rounded,
+            busy: _openingReport,
+            onTap: _openReportForRequest,
+          ),
+        );
+        children.add(const SizedBox(height: SparkSpace.md));
+      }
+      children.add(
+        _buildDestructiveAction(
+          icon: Icons.error_outline_rounded,
+          label: _actionBusy ? 'Сохраняем...' : 'Отметить неудачной',
+          onPressed: _actionBusy ? null : _abandonRequest,
+        ),
+      );
+    }
+    if (children.isEmpty) return null;
+    return Container(
+      color: kPrimaryColor,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDestructiveAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: kRedColor,
+        side: BorderSide(color: kRedColor.withValues(alpha: 0.45)),
+        minimumSize: const Size(double.infinity, SparkSize.actionHeight),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SparkRadius.lg),
+        ),
       ),
     );
   }
@@ -1086,12 +1060,22 @@ class _SparkJoySpecialistRequestDetailScreenState
                 ],
               ),
             ),
-          const SizedBox(height: SparkSpace.md),
-          const SizedBox(
-            height: SparkSize.spinner,
-            width: SparkSize.spinner,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          if (carStrings.isEmpty)
+            const Row(
+              children: [
+                SizedBox(
+                  width: SparkSize.iconSm,
+                  height: SparkSize.iconSm,
+                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                ),
+                SizedBox(width: SparkSpace.md),
+                MyText(
+                  text: 'Загружаем данные автомобиля…',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+              ],
+            ),
         ] else if (_carsError != null) ...[
           SparkHintCard(
             text: _carsError!,

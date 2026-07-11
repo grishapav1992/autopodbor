@@ -1547,308 +1547,296 @@ class _SparkJoySpecialistProfileScreenState
 
   Widget _buildLinkedCompanyProfile() {
     if (_isLoadingLinkedCompany && _linkedCompanyProfile == null) {
-      return const Padding(
-        padding: EdgeInsets.all(SparkSpace.md),
-        child: Row(
-          children: [
-            SizedBox(
-              width: SparkSize.spinner,
-              height: SparkSize.spinner,
-              child: CircularProgressIndicator(strokeWidth: 2),
+      return const Row(
+        children: [
+          SizedBox(
+            width: SparkSize.spinner,
+            height: SparkSize.spinner,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: SparkSpace.md),
+          Expanded(
+            child: MyText(
+              text: 'Загружаем компанию...',
+              size: SparkTextSize.body,
+              color: kGreyColor,
             ),
-            SizedBox(width: SparkSpace.md),
-            Expanded(
-              child: MyText(
-                text: 'Загружаем компанию...',
-                size: SparkTextSize.body,
-                color: kGreyColor,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       );
     }
 
     final company = _linkedCompanyProfile;
     if (company == null || company.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(SparkSpace.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(
-                  Icons.business_outlined,
-                  size: SparkSize.iconLg,
-                  color: kGreyColor,
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.business_outlined,
+                size: SparkSize.iconLg,
+                color: kGreyColor,
+              ),
+              SizedBox(width: SparkSpace.md),
+              Expanded(
+                child: MyText(
+                  text: 'Компания не загружена',
+                  size: SparkTextSize.bodyLg,
+                  weight: FontWeight.w700,
                 ),
-                SizedBox(width: SparkSpace.md),
-                Expanded(
-                  child: MyText(
-                    text: 'Компания не загружена',
-                    size: SparkTextSize.bodyLg,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: SparkSpace.sm),
-            MyText(
-              text:
-                  _linkedCompanyError ??
-                  'Информация о компании появится после привязки к штату.',
-              size: SparkTextSize.body,
-              color: kGreyColor,
-              lineHeight: 1.35,
-            ),
-            if (_linkedCompanyId != null) ...[
-              const SizedBox(height: SparkSpace.lg),
-              OutlinedButton.icon(
-                onPressed: _fetchServerProfile,
-                icon: const Icon(Icons.refresh_rounded),
-                label: const Text('Повторить'),
               ),
             ],
+          ),
+          const SizedBox(height: SparkSpace.sm),
+          MyText(
+            text:
+                _linkedCompanyError ??
+                'Информация о компании появится после привязки к штату.',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+            lineHeight: 1.35,
+          ),
+          if (_linkedCompanyId != null) ...[
+            const SizedBox(height: SparkSpace.lg),
+            OutlinedButton.icon(
+              onPressed: _fetchServerProfile,
+              icon: const Icon(Icons.refresh_rounded),
+              label: const Text('Повторить'),
+            ),
           ],
-        ),
+        ],
       );
     }
 
     final name = sjRead(company, 'companyName', fallback: 'Компания').trim();
-    final city = sjRead(company, 'city').trim();
     final inn = sjRead(company, 'companyInn').trim();
-    final description = sjRead(company, 'description').trim();
     final avatarUrl = sjRead(company, 'urlAvatar').trim();
     final verified = company['isVerifyCompany'] == true;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Компактная карточка в одном ритме с «своей» компанией: детали
+    // (город/описание) живут в публичном профиле, который открывает тап.
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xs,
-            vertical: SparkSpace.md,
+        if (avatarUrl.isEmpty)
+          Container(
+            width: SparkSize.icon5xl,
+            height: SparkSize.icon5xl,
+            decoration: BoxDecoration(
+              color: kLightGreyColor,
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(
+              Icons.business_rounded,
+              size: SparkSize.iconXl,
+              color: kSecondaryColor,
+            ),
+          )
+        else
+          SparkInitialsAvatar(
+            name: name,
+            size: SparkSize.icon5xl,
+            textSize: SparkTextSize.label,
+            imageUrl: avatarUrl,
           ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+        const SizedBox(width: SparkSpace.xl),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SparkInitialsAvatar(
-                name: name,
-                size: SparkSize.avatarSm,
-                textSize: SparkTextSize.label,
-                imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
+              MyText(
+                text: name,
+                size: SparkTextSize.title,
+                weight: FontWeight.w800,
+                lineHeight: 1.25,
               ),
-              const SizedBox(width: SparkSpace.xl),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MyText(
-                      text: name,
-                      size: SparkTextSize.bodyLg,
-                      weight: FontWeight.w800,
-                      lineHeight: 1.25,
-                    ),
-                    const SizedBox(height: SparkSpace.xxs),
-                    MyText(
-                      text: 'Компания, в штате которой вы состоите',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                      lineHeight: 1.3,
-                    ),
-                  ],
-                ),
-              ),
-              if (verified) ...[
-                const SizedBox(width: SparkSpace.sm),
-                const SparkChip(
-                  text: 'Проверена',
-                  icon: Icons.verified_rounded,
-                  background: Color(0x1A1FA463),
-                  color: kGreenColor,
-                ),
-              ],
-              const SizedBox(width: SparkSpace.sm),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: SparkSize.iconLg,
+              const SizedBox(height: SparkSpace.xxs),
+              MyText(
+                text: inn.isEmpty
+                    ? 'Вы состоите в штате компании'
+                    : 'ИНН $inn',
+                size: SparkTextSize.caption,
                 color: kGreyColor,
               ),
             ],
           ),
         ),
-        if (city.isNotEmpty)
-          SparkProfileRow(
-            icon: Icons.location_city_outlined,
-            label: 'Город',
-            value: city,
-            muted: true,
+        if (verified) ...[
+          const SizedBox(width: SparkSpace.sm),
+          const SparkChip(
+            text: 'Проверена',
+            icon: Icons.verified_rounded,
+            background: Color(0x1A1FA463),
+            color: kGreenColor,
           ),
-        if (inn.isNotEmpty)
-          SparkProfileRow(
-            icon: Icons.numbers_rounded,
-            label: 'ИНН',
-            value: inn,
-            muted: true,
-          ),
-        if (description.isNotEmpty)
-          SparkProfileRow(
-            icon: Icons.notes_rounded,
-            label: 'Описание',
-            value: description,
-            muted: true,
-            maxLinesValue: 4,
-          ),
-      ],
-    );
-  }
-
-  // «Проверка компании» — verified state.
-  //
-  // List-style rows (паттерн идентичен «Информации»): Название
-  // tappable → переименование; ИНН — read-only info-row, тап
-  // открывает info-dialog «как сменить ИНН». Status-pill — только
-  // при isVerifyCompany=true (зелёная). Когда pill скрыт, header-row
-  // тоже исчезает целиком, чтобы карточка не висела с пустым
-  // пространством сверху — overflow-меню (⋯) переезжает в trailing
-  // первой row. Раньше карточка одновременно показывала «Статус
-  // подтверждён» (зелёная галочка) и отдельный бейдж «На модерации» —
-  // пользователь видел это как противоречие.
-  Widget _buildBusinessVerified() {
-    final canEditName =
-        _companyNameController.text.trim().isNotEmpty &&
-        !_isVerifyingCompanyName;
-    final companyName = _companyNameController.text.trim();
-    final pillVisible = _isVerifyCompany == true;
-    final overflowMenu = _buildCompanyOverflowMenu();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header rendering: pill + ⋯ когда есть pill; иначе ничего
-        // (⋯ переезжает в trailing первой row, см. ниже).
-        if (pillVisible) ...[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Expanded(child: _buildCompanyStatusPill()),
-              overflowMenu,
-            ],
-          ),
-          const SizedBox(height: SparkSpace.xs),
         ],
-        if (companyName.isNotEmpty)
-          SparkProfileRow(
-            icon: Icons.business_rounded,
-            label: 'Название',
-            value: _isVerifyingCompanyName ? '...' : companyName,
-            onTap: canEditName ? _promptEditCompanyName : null,
-            // Когда нет pill — overflow-menu сюда, как trailing.
-            trailing: pillVisible ? null : overflowMenu,
-          ),
-        SparkProfileRow(
-          icon: Icons.numbers_rounded,
-          label: 'ИНН',
-          value: _verifiedInn ?? '',
-          muted: true,
-          // ИНН не редактируется напрямую — но юзер всё равно тянет тап.
-          // Открываем info-bottom-sheet с объяснением, что для смены ИНН
-          // нужно сбросить статус.
-          onTap: _showInnReadonlySheet,
-          // Если pill нет И имя пустое (edge: только ИНН пришёл с
-          // сервера) — overflow-menu переезжает сюда.
-          trailing: (!pillVisible && companyName.isEmpty) ? overflowMenu : null,
+        const SizedBox(width: SparkSpace.sm),
+        const Icon(
+          Icons.chevron_right_rounded,
+          size: SparkSize.iconLg,
+          color: kGreyColor,
         ),
       ],
     );
   }
 
-  Widget _buildCompanyOverflowMenu() {
-    return PopupMenuButton<String>(
-      tooltip: 'Действия с компанией',
-      icon: const Icon(
-        Icons.more_horiz,
-        size: SparkSize.iconLg,
-        color: kGreyColor,
-      ),
-      padding: EdgeInsets.zero,
-      onSelected: (value) {
-        if (value == 'reset') {
-          unawaited(_resetBusinessStatus());
-        }
-      },
-      itemBuilder: (_) => const [
-        PopupMenuItem<String>(
-          value: 'reset',
-          child: Row(
+  // «Компания» — verified state (владелец).
+  //
+  // Компактная карточка «как в макете»: плитка-иконка + название +
+  // «ИНН …» + chevron. Все действия (переименовать / сбросить статус)
+  // переехали в bottom-sheet, который открывает тап по карточке —
+  // прежние inline-rows с overflow-меню «⋯» дробили карточку на
+  // несколько зон и выглядели противоречиво со status-pill.
+  Widget _buildCompanyCardVerified() {
+    final companyName = _companyNameController.text.trim();
+    final displayName = companyName.isEmpty
+        ? _businessTypeLabel()
+        : companyName;
+    final inn = (_verifiedInn ?? '').trim();
+    final verified = _isVerifyCompany == true;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Container(
+          width: SparkSize.icon5xl,
+          height: SparkSize.icon5xl,
+          decoration: BoxDecoration(
+            color: kLightGreyColor,
+            borderRadius: BorderRadius.circular(SparkRadius.md),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.business_rounded,
+            size: SparkSize.iconXl,
+            color: kSecondaryColor,
+          ),
+        ),
+        const SizedBox(width: SparkSpace.xl),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.restart_alt_rounded,
-                size: SparkSize.iconSm,
-                color: kRedColor,
-              ),
-              SizedBox(width: SparkSpace.sm),
               MyText(
-                text: 'Сбросить статус',
-                size: SparkTextSize.body,
-                color: kRedColor,
-                weight: FontWeight.w600,
+                text: _isVerifyingCompanyName ? '...' : displayName,
+                size: SparkTextSize.title,
+                weight: FontWeight.w800,
+                lineHeight: 1.25,
+              ),
+              const SizedBox(height: SparkSpace.xxs),
+              MyText(
+                text: inn.isEmpty ? 'ИНН не указан' : 'ИНН $inn',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
               ),
             ],
           ),
         ),
+        // «Проверена» — только при подтверждении. На модерации (false)
+        // или до первой синхронизации (null) чип не показываем, чтобы
+        // не создавать тревожный «pending»-сигнал (прежняя политика
+        // status-pill сохранена).
+        if (verified) ...[
+          const SizedBox(width: SparkSpace.sm),
+          const SparkChip(
+            text: 'Проверена',
+            icon: Icons.verified_rounded,
+            background: Color(0x1A1FA463),
+            color: kGreenColor,
+          ),
+        ],
+        const SizedBox(width: SparkSpace.sm),
+        const Icon(
+          Icons.chevron_right_rounded,
+          size: SparkSize.iconLg,
+          color: kGreyColor,
+        ),
       ],
     );
   }
 
-  /// Info-bottom-sheet для ИНН: объясняет, что поле read-only и как
-  /// его поменять (через сброс статуса). Юзер тапает по ИНН — это
-  /// очевидное действие; вместо deadeлок'а даём явный hint.
-  Future<void> _showInnReadonlySheet() async {
-    await showAppAdaptiveBottomSheet<void>(
+  /// Sheet действий со своей компанией: переименование и сброс статуса.
+  /// ИНН показан в подзаголовке с объяснением, что меняется только
+  /// сбросом — прежний отдельный info-sheet по тапу на ИНН стал лишним.
+  Future<void> _openOwnCompanySheet() async {
+    final companyName = _companyNameController.text.trim();
+    final displayName = companyName.isEmpty
+        ? _businessTypeLabel()
+        : companyName;
+    final inn = (_verifiedInn ?? '').trim();
+    final action = await showAppAdaptiveBottomSheet<String>(
       context: context,
       extent: AppBottomSheetExtent.content,
       builder: (ctx) {
         return SafeArea(
           top: false,
           child: Padding(
-            padding: const EdgeInsets.all(SparkSpace.xxxl),
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.lg,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: const [
-                    Icon(
-                      Icons.numbers_rounded,
-                      size: SparkSize.iconLg,
-                      color: kSecondaryColor,
-                    ),
-                    SizedBox(width: SparkSpace.md),
-                    MyText(
-                      text: 'ИНН изменить нельзя',
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w800,
-                    ),
-                  ],
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.sm,
+                  ),
+                  child: MyText(
+                    text: displayName,
+                    size: SparkTextSize.modalTitle,
+                    weight: FontWeight.w800,
+                  ),
                 ),
-                const SizedBox(height: SparkSpace.lg),
-                const MyText(
-                  text:
-                      'ИНН задаётся при регистрации компании. Чтобы '
-                      'указать другой ИНН, сбросьте текущий статус '
-                      'компании (меню «⋯» сверху карточки) и пройдите '
-                      'регистрацию заново.',
-                  size: SparkTextSize.body,
-                  color: kGreyColor,
-                  lineHeight: 1.40,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    SparkSpace.md,
+                    0,
+                    SparkSpace.md,
+                    SparkSpace.lg,
+                  ),
+                  child: MyText(
+                    text: inn.isEmpty
+                        ? 'ИНН не указан.'
+                        : 'ИНН $inn. Изменить ИНН можно только сбросом '
+                              'статуса компании и повторной регистрацией.',
+                    size: SparkTextSize.body,
+                    color: kGreyColor,
+                    lineHeight: 1.35,
+                  ),
                 ),
-                const SizedBox(height: SparkSpace.lg),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Понятно'),
+                _SheetActionRow(
+                  icon: Icons.edit_outlined,
+                  label: 'Изменить название',
+                  onTap: () => Navigator.of(ctx).pop('rename'),
+                ),
+                _SheetActionRow(
+                  icon: Icons.restart_alt_rounded,
+                  label: 'Сбросить статус компании',
+                  color: kRedColor,
+                  onTap: () => Navigator.of(ctx).pop('reset'),
+                ),
+                const SizedBox(height: SparkSpace.xxl),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                  ),
+                  child: SizedBox(
+                    height: SparkSize.actionHeight,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(SparkRadius.lg),
+                        ),
+                      ),
+                      child: const Text('Отмена'),
+                    ),
                   ),
                 ),
               ],
@@ -1857,43 +1845,12 @@ class _SparkJoySpecialistProfileScreenState
         );
       },
     );
-  }
-
-  /// Hero status-pill для карточки компании. Рендерим **только** при
-  /// `_isVerifyCompany == true` — зелёная «Подтверждено». На модерации
-  /// (false) или до первой синхронизации (null) — pill не показываем,
-  /// чтобы не создавать тревожный «pending»-сигнал на UI: фактическая
-  /// статусная информация всё равно ходит через server, и юзеру
-  /// достаточно знать, когда уже подтверждено.
-  Widget _buildCompanyStatusPill() {
-    if (_isVerifyCompany != true) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.md,
-        vertical: SparkSpace.xs,
-      ),
-      decoration: BoxDecoration(
-        color: kGreenColor.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(
-            Icons.verified_rounded,
-            size: SparkSize.iconSm,
-            color: kGreenColor,
-          ),
-          const SizedBox(width: SparkSpace.xs),
-          MyText(
-            text: '${_businessTypeLabel()} подтверждена',
-            size: SparkTextSize.caption,
-            weight: FontWeight.w700,
-            color: kGreenColor,
-          ),
-        ],
-      ),
-    );
+    if (action == null || !mounted) return;
+    if (action == 'rename') {
+      await _promptEditCompanyName();
+    } else if (action == 'reset') {
+      await _resetBusinessStatus();
+    }
   }
 
   // «Проверка компании» — unverified state.
@@ -1979,13 +1936,9 @@ class _SparkJoySpecialistProfileScreenState
     );
   }
 
-  Widget _buildProfileInfoRead(Map<String, dynamic> specialist) {
-    final city = _cityController.text.trim().isNotEmpty
-        ? _cityController.text.trim()
-        : sjRead(specialist, 'city').trim();
-    final description = _specializationController.text.trim().isNotEmpty
-        ? _specializationController.text.trim()
-        : sjRead(specialist, 'specialization').trim();
+  /// Карточка «Контакты»: Телефон / Email / Услуги. Город переехал в
+  /// бейдж hero-шапки, «Описание услуг» стало рядом «Услуги» с чипами.
+  Widget _buildContactsCard(Map<String, dynamic> specialist) {
     final phone = _phoneController.text.trim().isNotEmpty
         ? _phoneController.text.trim()
         : sjRead(specialist, 'phone').trim();
@@ -2006,36 +1959,16 @@ class _SparkJoySpecialistProfileScreenState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // ФИО намеренно отсутствует — оно живёт в identity-card сверху
-        // (avatar + name), которая теперь tappable → _editFullNameSheet.
-        // Дублирование row снизу было лишним.
-        SparkProfileRow(
-          icon: Icons.location_on_outlined,
-          label: 'Город',
-          value: city.isEmpty ? 'Не указан' : city,
-          valueIsPlaceholder: city.isEmpty,
-          onTap: _isSavingProfile ? null : _editCitySheet,
-        ),
-        SparkProfileRow(
-          icon: Icons.list_alt_rounded,
-          label: 'Описание услуг',
-          value: description.isEmpty ? 'Не указано' : description,
-          valueIsPlaceholder: description.isEmpty,
-          // Превью обрезается до 3 строк (с «…») — full-text открывается
-          // в редакторе. Без этого карточка пухла на 5+ строк, ломая
-          // ритм list-rows.
-          maxLinesValue: description.isEmpty ? null : 3,
-          onTap: _isSavingProfile ? null : _editDescriptionSheet,
-        ),
         SparkProfileRow(
           icon: Icons.phone_outlined,
           label: 'Телефон',
           value: phone.isEmpty ? 'Не указан' : phone,
           valueIsPlaceholder: phone.isEmpty,
-          // Телефон = auth identity, не редактируется. `muted` даёт
-          // серую иконку + dim-text, чтобы row не выглядел tappable.
-          muted: phone.isNotEmpty,
+          // Телефон = auth identity, не редактируется. Тап открывает
+          // info-sheet с объяснением вместо dead-end'а.
+          onTap: phone.isEmpty ? null : _showPhoneReadonlySheet,
         ),
+        _rowDivider(),
         SparkProfileRow(
           icon: Icons.mail_outline_rounded,
           label: 'Email',
@@ -2057,7 +1990,182 @@ class _SparkJoySpecialistProfileScreenState
                   }
                 },
         ),
+        _rowDivider(),
+        _buildServicesRow(specialist),
       ],
+    );
+  }
+
+  /// Разбирает free-text «описание услуг» на короткие теги: каждая
+  /// непустая строка минус ведущий буллет. Формат «• Подбор под ключ»
+  /// пишет chip-редактор описания, так что для типовых профилей это
+  /// точный обратный парсинг.
+  List<String> _parseServiceTags(String description) {
+    return description
+        .split('\n')
+        .map(
+          (line) => line.replaceFirst(RegExp(r'^\s*[•\-–—]+\s*'), '').trim(),
+        )
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  /// Ряд «Услуги»: короткие пункты рендерим чипами (как в макете),
+  /// длинный free-text — 3-строчным превью. Тап всегда открывает
+  /// полноценный редактор описания.
+  Widget _buildServicesRow(Map<String, dynamic> specialist) {
+    final description = _specializationController.text.trim().isNotEmpty
+        ? _specializationController.text.trim()
+        : sjRead(specialist, 'specialization').trim();
+    final tags = _parseServiceTags(description);
+    final asChips =
+        tags.isNotEmpty && tags.length <= 8 && tags.every((t) => t.length <= 36);
+
+    final Widget valueWidget;
+    if (description.isEmpty) {
+      valueWidget = const MyText(
+        text: 'Не указаны',
+        size: SparkTextSize.bodyLg,
+        color: kGreyColor,
+        lineHeight: 1.30,
+      );
+    } else if (asChips) {
+      valueWidget = Wrap(
+        spacing: SparkSpace.sm,
+        runSpacing: SparkSpace.sm,
+        children: [for (final tag in tags) _serviceChip(tag)],
+      );
+    } else {
+      valueWidget = MyText(
+        text: description,
+        size: SparkTextSize.bodyLg,
+        weight: FontWeight.w600,
+        lineHeight: 1.30,
+        maxLines: 3,
+        textOverflow: TextOverflow.ellipsis,
+      );
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: _isSavingProfile ? null : _editDescriptionSheet,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xs,
+            vertical: SparkSpace.md,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.list_alt_rounded,
+                size: SparkSize.iconLg,
+                color: description.isEmpty ? kGreyColor : kSecondaryColor,
+              ),
+              const SizedBox(width: SparkSpace.xl),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const MyText(
+                      text: 'Услуги',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                    const SizedBox(height: SparkSpace.xs),
+                    valueWidget,
+                  ],
+                ),
+              ),
+              const SizedBox(width: SparkSpace.xs),
+              const Icon(
+                Icons.chevron_right_rounded,
+                size: SparkSize.iconLg,
+                color: kGreyColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _serviceChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.lg,
+        vertical: SparkSpace.sm,
+      ),
+      decoration: BoxDecoration(
+        color: kGreyColor2,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+      ),
+      child: MyText(
+        text: text,
+        size: SparkTextSize.body,
+        weight: FontWeight.w600,
+        color: kTertiaryColor,
+      ),
+    );
+  }
+
+  /// Info-sheet для телефона: поле read-only (это идентификатор входа),
+  /// объясняем почему и куда идти за сменой номера.
+  Future<void> _showPhoneReadonlySheet() async {
+    await showAppAdaptiveBottomSheet<void>(
+      context: context,
+      extent: AppBottomSheetExtent.content,
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(SparkSpace.xxxl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(
+                      Icons.phone_outlined,
+                      size: SparkSize.iconLg,
+                      color: kSecondaryColor,
+                    ),
+                    SizedBox(width: SparkSpace.md),
+                    MyText(
+                      text: 'Телефон изменить нельзя',
+                      size: SparkTextSize.titleLg,
+                      weight: FontWeight.w800,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SparkSpace.lg),
+                const MyText(
+                  text:
+                      'Номер телефона используется для входа в аккаунт '
+                      'и привязан к нему. Если нужно перенести аккаунт '
+                      'на другой номер — напишите нам через «Обратная '
+                      'связь» в настройках.',
+                  size: SparkTextSize.body,
+                  color: kGreyColor,
+                  lineHeight: 1.40,
+                ),
+                const SizedBox(height: SparkSpace.lg),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Понятно'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -2184,23 +2292,26 @@ class _SparkJoySpecialistProfileScreenState
                     ),
                     const SizedBox(height: SparkSpace.sm),
                   ],
-                  _AvatarSheetAction(
+                  _SheetActionRow(
                     icon: Icons.photo_camera_outlined,
                     label: hasAvatar ? 'Сделать новое фото' : 'Сделать фото',
                     onTap: () => Navigator.of(ctx).pop('camera'),
                   ),
-                  _AvatarSheetAction(
+                  _sheetRowDivider(),
+                  _SheetActionRow(
                     icon: Icons.photo_library_outlined,
                     label: 'Выбрать из галереи',
                     onTap: () => Navigator.of(ctx).pop('gallery'),
                   ),
-                  if (hasAvatar)
-                    _AvatarSheetAction(
+                  if (hasAvatar) ...[
+                    _sheetRowDivider(),
+                    _SheetActionRow(
                       icon: Icons.delete_outline_rounded,
                       label: 'Удалить фото',
                       color: kRedColor,
                       onTap: () => Navigator.of(ctx).pop('delete'),
                     ),
+                  ],
                   const SizedBox(height: SparkSpace.xxl),
                   Padding(
                     padding: const EdgeInsets.symmetric(
@@ -2657,105 +2768,20 @@ class _SparkJoySpecialistProfileScreenState
     await _saveProfile();
   }
 
+  /// Лист «Услуги» (макет 2а): построчный редактор пунктов — каждая
+  /// строка отдельный пункт с крестиком удаления, тогл-чипы «Быстрое
+  /// добавление» (✓ = уже в списке, повторный тап убирает). Хранится
+  /// по-прежнему одной строкой описания «• пункт\n• пункт» — формат
+  /// полностью совместим со старыми профилями и парсером чипов.
   Future<void> _editDescriptionSheet() async {
-    final ctrl = TextEditingController(text: _specializationController.text);
-    String? error;
     final saved = await showAppAdaptiveBottomSheet<String>(
       context: context,
       extent: AppBottomSheetExtent.content,
-      builder: (sheetCtx) {
-        void append(String suggestion) {
-          final current = ctrl.text.trimRight();
-          final separator = current.isEmpty ? '' : '\n';
-          final next = '$current$separator• $suggestion';
-          ctrl.value = TextEditingValue(
-            text: next,
-            selection: TextSelection.collapsed(offset: next.length),
-          );
-        }
-
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            void submit() {
-              Navigator.of(sheetCtx).pop(ctrl.text);
-            }
-
-            return _SheetScaffold(
-              title: 'Описание услуг',
-              onCancel: () => Navigator.of(sheetCtx).pop(),
-              onSubmit: submit,
-              children: [
-                TextField(
-                  controller: ctrl,
-                  autofocus: true,
-                  maxLines: 10,
-                  minLines: 7,
-                  maxLength: 1500,
-                  buildCounter:
-                      (
-                        _, {
-                        required int currentLength,
-                        required int? maxLength,
-                        required bool isFocused,
-                      }) => null,
-                  textInputAction: TextInputAction.newline,
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  onChanged: (_) {
-                    if (error != null) setLocal(() => error = null);
-                  },
-                  decoration: sparkInputDecoration(
-                    'Например: выездной осмотр в Москве и области, '
-                    'кузов, электрика',
-                  ).copyWith(errorText: error),
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                const MyText(
-                  text: 'Быстрое добавление',
-                  size: SparkTextSize.caption,
-                  color: kGreyColor,
-                  paddingBottom: SparkSpace.sm,
-                ),
-                Wrap(
-                  spacing: SparkSpace.sm,
-                  runSpacing: SparkSpace.sm,
-                  children: _presetSpecializations
-                      .map(
-                        (s) => ActionChip(
-                          label: Text(s),
-                          avatar: const Icon(
-                            Icons.add_rounded,
-                            size: SparkSize.iconSm,
-                            color: kSecondaryColor,
-                          ),
-                          onPressed: () {
-                            HapticFeedback.selectionClick();
-                            append(s);
-                          },
-                          backgroundColor: kInputBgColor,
-                          side: const BorderSide(color: kBorderColor),
-                          labelStyle: const TextStyle(
-                            color: kTertiaryColor,
-                            fontWeight: FontWeight.w500,
-                            fontSize: SparkTextSize.body,
-                          ),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                          visualDensity: const VisualDensity(
-                            horizontal: 0,
-                            vertical: -2,
-                          ),
-                        ),
-                      )
-                      .toList(growable: false),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (sheetCtx) => _ServicesEditorSheet(
+        initialItems: _parseServiceTags(_specializationController.text.trim()),
+        presets: _presetSpecializations,
+      ),
     );
-    _disposeTextControllersAfterRouteClose(ctrl);
     if (saved == null || !mounted) return;
     if (saved.trim() == _specializationController.text.trim()) return;
     _specializationController.text = saved;
@@ -2848,6 +2874,217 @@ class _SparkJoySpecialistProfileScreenState
     );
   }
 
+  /// Подпись роли в бейдже hero-шапки. Владелец — подтверждённая своя
+  /// компания/ИП; сотрудник — специалист, привязанный к чужой компании;
+  /// иначе — независимый специалист.
+  String _heroRoleLabel() {
+    if ((_verifiedInn ?? '').isNotEmpty) return 'Владелец';
+    if (_linkedCompanyId != null || _linkedCompanyProfile != null) {
+      return 'Сотрудник';
+    }
+    return 'Специалист';
+  }
+
+  /// Тёмная hero-«шапка» профиля (макет 1a): аватар с камера-бейджем,
+  /// имя+фамилия крупно, отчество отдельной строкой, пилюля
+  /// «роль · город». Зоны тапа независимые: аватар → управление фото,
+  /// имя/карандаш → редактор ФИО, пилюля → выбор города.
+  Widget _buildHeroCard(Map<String, dynamic> specialist, String profileName) {
+    final first = _firstNameController.text.trim();
+    final last = _lastNameController.text.trim();
+    final middle = _middleNameController.text.trim();
+    final mainLine = [first, last].where((p) => p.isNotEmpty).join(' ');
+    // «Имя Фамилия» — как в макете; отчество вынесено вниз. Fallback —
+    // полное составное имя (или «Специалист») из build().
+    final displayName = mainLine.isNotEmpty ? mainLine : profileName;
+    final city = _cityController.text.trim();
+    final roleLabel = _heroRoleLabel();
+    final badgeText = city.isEmpty ? roleLabel : '$roleLabel · $city';
+    final blocked = sjRead(specialist, 'status') != 'active';
+    final busy = _isSavingProfile || _isUploadingAvatar;
+
+    return Container(
+      padding: const EdgeInsets.all(SparkSpace.section),
+      decoration: BoxDecoration(
+        color: kSecondaryColor,
+        borderRadius: BorderRadius.circular(SparkRadius.sheet),
+        boxShadow: const [
+          BoxShadow(
+            color: kShadowColor,
+            blurRadius: 24,
+            offset: Offset(0, 8),
+            spreadRadius: -4,
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: busy ? null : _openAvatarPickerSheet,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(SparkSpace.xxs),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: kWhiteColor.withValues(alpha: 0.28),
+                      width: 2,
+                    ),
+                  ),
+                  child: SparkInitialsAvatar(
+                    name: displayName,
+                    size: 72,
+                    textSize: SparkTextSize.pageTitle,
+                    backgroundColor: kWhiteColor.withValues(alpha: 0.14),
+                    textColor: kWhiteColor,
+                    imageUrl: _urlAvatar,
+                    imageBase64: _avatarBase64,
+                    presetIndex: _avatarPresetIndex,
+                  ),
+                ),
+                if (_isUploadingAvatar)
+                  Positioned.fill(
+                    child: ClipOval(
+                      child: ColoredBox(
+                        color: Colors.black45,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: kWhiteColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: -2,
+                  bottom: -2,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: kWhiteColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: kSecondaryColor.withValues(alpha: 0.18),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.photo_camera_rounded,
+                      size: 14,
+                      color: kSecondaryColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: SparkSpace.xxl),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _isSavingProfile ? null : _editFullNameSheet,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MyText(
+                    text: displayName,
+                    size: SparkTextSize.pageTitle,
+                    weight: FontWeight.w800,
+                    color: kWhiteColor,
+                    lineHeight: 1.20,
+                  ),
+                  if (middle.isNotEmpty)
+                    MyText(
+                      text: middle,
+                      size: SparkTextSize.label,
+                      color: kWhiteColor.withValues(alpha: 0.66),
+                      paddingTop: SparkSpace.xxs,
+                    ),
+                  const SizedBox(height: SparkSpace.lg),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _isSavingProfile ? null : _editCitySheet,
+                      borderRadius: BorderRadius.circular(SparkRadius.pill),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: SparkSpace.lg,
+                          vertical: SparkSpace.sm,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(
+                            SparkRadius.pill,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.verified_rounded,
+                              size: SparkSize.iconXs,
+                              color: kWhiteColor,
+                            ),
+                            const SizedBox(width: SparkSpace.xs),
+                            Flexible(
+                              child: MyText(
+                                text: badgeText,
+                                size: SparkTextSize.caption,
+                                weight: FontWeight.w700,
+                                color: kWhiteColor,
+                                maxLines: 1,
+                                textOverflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (blocked)
+                    Padding(
+                      padding: const EdgeInsets.only(top: SparkSpace.sm),
+                      child: SparkChip(
+                        text: 'Неактивен',
+                        background: kRedColor.withValues(alpha: 0.85),
+                        color: kWhiteColor,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: SparkSpace.sm),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _isSavingProfile ? null : _editFullNameSheet,
+              customBorder: const CircleBorder(),
+              child: Padding(
+                padding: const EdgeInsets.all(SparkSpace.sm),
+                child: Icon(
+                  Icons.edit_outlined,
+                  size: SparkSize.iconLg,
+                  color: kWhiteColor.withValues(alpha: 0.7),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final specialist = _specialist();
@@ -2901,248 +3138,225 @@ class _SparkJoySpecialistProfileScreenState
             );
           },
         ),
-        // SparkPageHeader removed — the shell's AppBar already shows
-        // "Профиль" as the tab title, and the shapka card below owns
-        // the specialist's identity. The extra "Мой профиль" + subtitle
-        // were a third redundant greeting and crowded the top of the
-        // screen.
-        SparkCard(
-          // Identity-card раньше была tappable целиком → ФИО-редактор.
-          // Теперь зоны независимые: аватар открывает меню управления фото,
-          // name+chevron → ФИО-редактор.
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: (_isSavingProfile || _isUploadingAvatar)
-                    ? null
-                    : _openAvatarPickerSheet,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    SparkInitialsAvatar(
-                      name: profileName,
-                      size: SparkSize.icon6xl,
-                      textSize: SparkTextSize.modalTitle,
-                      imageUrl: _urlAvatar,
-                      imageBase64: _avatarBase64,
-                      presetIndex: _avatarPresetIndex,
-                    ),
-                    if (_isUploadingAvatar)
-                      Positioned.fill(
-                        child: ClipOval(
-                          child: ColoredBox(
-                            color: Colors.black45,
-                            child: const Center(
-                              child: SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2.5,
-                                  color: kWhiteColor,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    Positioned(
-                      right: -2,
-                      bottom: -2,
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: (_isSavingProfile || _isUploadingAvatar)
-                            ? null
-                            : _openAvatarPickerSheet,
-                        child: Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            color: kSecondaryColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: kWhiteColor, width: 2),
-                          ),
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.photo_camera_rounded,
-                            size: 14,
-                            color: kWhiteColor,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: SparkSpace.xl),
-              Expanded(
-                child: InkWell(
-                  onTap: _isSavingProfile ? null : _editFullNameSheet,
-                  borderRadius: BorderRadius.circular(SparkRadius.sm),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: SparkSpace.xs,
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              MyText(
-                                text: profileName,
-                                size: SparkTextSize.title,
-                                weight: FontWeight.w800,
-                                lineHeight: 1.30,
-                                tracking: true,
-                              ),
-                              // Status chip: показываем ТОЛЬКО когда юзер
-                              // заблокирован («Неактивен» — красный).
-                              () {
-                                final active =
-                                    sjRead(specialist, 'status') == 'active';
-                                if (active) return const SizedBox.shrink();
-                                return Padding(
-                                  padding: const EdgeInsets.only(
-                                    top: SparkSpace.xs,
-                                  ),
-                                  child: SparkChip(
-                                    text: 'Неактивен',
-                                    background: kRedColor.withValues(
-                                      alpha: 0.12,
-                                    ),
-                                    color: kRedColor,
-                                  ),
-                                );
-                              }(),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: SparkSpace.sm),
-                        const Icon(
-                          Icons.chevron_right_rounded,
-                          color: kGreyColor,
-                          size: SparkSize.iconLg,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SparkSectionTitle('Информация', top: SparkSpace.xl),
+        // Тёмная hero-«шапка» владеет identity: аватар (тап → управление
+        // фото), имя+карандаш (тап → редактор ФИО), бейдж «роль · город»
+        // (тап → выбор города). Роль в бейдже заменяет чип из AppBar.
+        _buildHeroCard(specialist, profileName),
+        const SparkSectionTitle('Контакты', top: SparkSpace.section),
         SparkCard(
           padding: const EdgeInsets.symmetric(
             horizontal: SparkSpace.md,
             vertical: SparkSpace.sm,
           ),
-          child: _buildProfileInfoRead(specialist),
+          child: _buildContactsCard(specialist),
         ),
-        const SparkSectionTitle('Компания', top: SparkSpace.xl),
+        const SparkSectionTitle('Компания', top: SparkSpace.section),
         SparkCard(
-          onTap: hasLinkedCompany ? _openLinkedCompanyProfile : null,
-          // Если карточка в verified-state — list-style padding, как у
-          // «Информации». В unverified-state (форма ИНН) — стандартный
-          // card padding xl со всех сторон.
-          padding: (hasVerifiedBusiness || hasLinkedCompany)
-              ? const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.md,
-                  vertical: SparkSpace.sm,
-                )
-              : const EdgeInsets.all(SparkSpace.xl),
+          // Своя компания → sheet действий (переименовать / сбросить),
+          // компания-работодатель → её публичный профиль.
+          onTap: hasVerifiedBusiness
+              ? _openOwnCompanySheet
+              : (hasLinkedCompany ? _openLinkedCompanyProfile : null),
           child: hasVerifiedBusiness
-              ? _buildBusinessVerified()
+              ? _buildCompanyCardVerified()
               : hasLinkedCompany
               ? _buildLinkedCompanyProfile()
               : _buildBusinessUnverified(),
         ),
-        const SparkSectionTitle('Правовая информация', top: SparkSpace.xl),
+        const SparkSectionTitle('Настройки', top: SparkSpace.section),
         SparkCard(
-          onTap: _openPrivacyPolicy,
-          child: const _ProfileActionRow(
-            icon: Icons.privacy_tip_outlined,
-            title: 'Политика конфиденциальности',
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.md,
+            vertical: SparkSpace.sm,
+          ),
+          child: Column(
+            children: [
+              _SettingsRow(
+                icon: Icons.shield_outlined,
+                title: 'Политика конфиденциальности',
+                onTap: _openPrivacyPolicy,
+              ),
+              _rowDivider(),
+              _SettingsRow(
+                icon: Icons.fact_check_outlined,
+                title: 'Согласие и условия',
+                onTap: _openConsentAndTermsSheet,
+              ),
+              _rowDivider(),
+              _SettingsRow(
+                icon: Icons.chat_outlined,
+                title: 'Обратная связь',
+                onTap: _openFeedback,
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: SparkSpace.md),
-        SparkCard(
-          onTap: _openPersonalDataConsent,
-          child: const _ProfileActionRow(
-            icon: Icons.fact_check_outlined,
-            title: 'Согласие на обработку персональных данных',
+        const SizedBox(height: SparkSpace.section),
+        _buildAccountActions(),
+      ],
+    );
+  }
+
+  /// Нижний ряд аккаунт-действий: широкая «Выйти» + компактная красная
+  /// корзина (удаление аккаунта). Обе за confirm-диалогами. Раньше это
+  /// были две полноширинные красные карточки под заголовком «Аккаунт» —
+  /// слишком много алармового красного в постоянной зоне экрана.
+  Widget _buildAccountActions() {
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(SparkRadius.lg),
+    );
+    final deleteBusy = _isAccountDeletionRequesting;
+    final Widget deleteButton = Material(
+      color: kRedColor.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(SparkRadius.lg),
+      child: InkWell(
+        onTap: deleteBusy ? null : _confirmAccountDeactivation,
+        borderRadius: BorderRadius.circular(SparkRadius.lg),
+        child: Container(
+          width: SparkSize.inputHeightLg,
+          height: SparkSize.inputHeightLg,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+            border: Border.all(color: kRedColor.withValues(alpha: 0.25)),
           ),
-        ),
-        const SizedBox(height: SparkSpace.md),
-        SparkCard(
-          onTap: _openTerms,
-          child: const _ProfileActionRow(
-            icon: Icons.description_outlined,
-            title: 'Условия использования',
-          ),
-        ),
-        const SparkSectionTitle('Поддержка', top: SparkSpace.xl),
-        SparkCard(
-          onTap: _openFeedback,
-          child: const _ProfileActionRow(
-            icon: Icons.feedback_outlined,
-            title: 'Оставить обратную связь',
-          ),
-        ),
-        const SparkSectionTitle('Аккаунт', top: SparkSpace.xl),
-        if (widget.onLogout != null)
-          SparkCard(
-            onTap: _confirmLogout,
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.logout_rounded,
-                  color: kRedColor,
-                  size: SparkSize.iconLg,
-                ),
-                const SizedBox(width: SparkSpace.md),
-                const Expanded(
-                  child: MyText(
-                    text: 'Выйти из аккаунта',
-                    size: SparkTextSize.body,
-                    weight: FontWeight.w600,
+          alignment: Alignment.center,
+          child: deleteBusy
+              ? const SizedBox(
+                  width: SparkSize.spinner,
+                  height: SparkSize.spinner,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
                     color: kRedColor,
+                  ),
+                )
+              : const Icon(
+                  Icons.delete_outline_rounded,
+                  color: kRedColor,
+                  size: SparkSize.iconXl,
+                ),
+        ),
+      ),
+    );
+
+    if (widget.onLogout == null) {
+      // Logout недоступен (screen встроен без callback'а) — удаление
+      // остаётся единственным действием, растягиваем его на всю ширину.
+      return SizedBox(
+        height: SparkSize.inputHeightLg,
+        child: OutlinedButton.icon(
+          onPressed: deleteBusy ? null : _confirmAccountDeactivation,
+          icon: const Icon(Icons.delete_outline_rounded,
+              size: SparkSize.iconMd),
+          label: Text(deleteBusy ? 'Удаляем аккаунт...' : 'Удалить аккаунт'),
+          style: OutlinedButton.styleFrom(
+            backgroundColor: kWhiteColor,
+            foregroundColor: kRedColor,
+            side: BorderSide(color: kRedColor.withValues(alpha: 0.35)),
+            shape: buttonShape,
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: SparkSize.inputHeightLg,
+            child: OutlinedButton.icon(
+              onPressed: _confirmLogout,
+              icon: const Icon(Icons.logout_rounded, size: SparkSize.iconMd),
+              label: const Text('Выйти'),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: kWhiteColor,
+                foregroundColor: kTertiaryColor,
+                side: const BorderSide(color: kBorderColor),
+                textStyle: const TextStyle(
+                  fontSize: SparkTextSize.label,
+                  fontWeight: FontWeight.w700,
+                ),
+                shape: buttonShape,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: SparkSpace.lg),
+        deleteButton,
+      ],
+    );
+  }
+
+  /// «Согласие и условия» объединяет два правовых документа в один
+  /// пункт «Настроек» (как в макете) — sheet даёт выбрать конкретный.
+  Future<void> _openConsentAndTermsSheet() async {
+    final action = await showAppAdaptiveBottomSheet<String>(
+      context: context,
+      extent: AppBottomSheetExtent.content,
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.lg,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.sm,
+                  ),
+                  child: MyText(
+                    text: 'Согласие и условия',
+                    size: SparkTextSize.modalTitle,
+                    weight: FontWeight.w800,
+                  ),
+                ),
+                _SheetActionRow(
+                  icon: Icons.fact_check_outlined,
+                  label: 'Согласие на обработку персональных данных',
+                  onTap: () => Navigator.of(ctx).pop('consent'),
+                ),
+                _SheetActionRow(
+                  icon: Icons.description_outlined,
+                  label: 'Условия использования',
+                  onTap: () => Navigator.of(ctx).pop('terms'),
+                ),
+                const SizedBox(height: SparkSpace.xxl),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                  ),
+                  child: SizedBox(
+                    height: SparkSize.actionHeight,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(SparkRadius.lg),
+                        ),
+                      ),
+                      child: const Text('Отмена'),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        const SizedBox(height: SparkSpace.md),
-        SparkCard(
-          onTap: _isAccountDeletionRequesting
-              ? null
-              : _confirmAccountDeactivation,
-          child: Row(
-            children: [
-              const Icon(
-                Icons.delete_forever_outlined,
-                color: kRedColor,
-                size: SparkSize.iconLg,
-              ),
-              const SizedBox(width: SparkSpace.md),
-              Expanded(
-                child: MyText(
-                  text: _isAccountDeletionRequesting
-                      ? 'Удаляем аккаунт...'
-                      : 'Удалить аккаунт',
-                  size: SparkTextSize.body,
-                  weight: FontWeight.w600,
-                  color: kRedColor,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+        );
+      },
     );
+    if (action == null || !mounted) return;
+    if (action == 'consent') {
+      _openPersonalDataConsent();
+    } else if (action == 'terms') {
+      _openTerms();
+    }
   }
 
   /// Confirm-диалог перед logout — раньше в AppBar был просто
@@ -3185,19 +3399,29 @@ class _SparkJoySpecialistProfileScreenState
   void _openPrivacyPolicy() {
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+    ).push(
+      MaterialPageRoute(
+        builder: (_) => const PrivacyPolicy(sparkHeader: true),
+      ),
+    );
   }
 
   void _openPersonalDataConsent() {
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const PersonalDataConsent()));
+    ).push(
+      MaterialPageRoute(
+        builder: (_) => const PersonalDataConsent(sparkHeader: true),
+      ),
+    );
   }
 
   void _openTerms() {
     Navigator.of(
       context,
-    ).push(MaterialPageRoute(builder: (_) => const Terms()));
+    ).push(
+      MaterialPageRoute(builder: (_) => const Terms(sparkHeader: true)),
+    );
   }
 
   Future<void> _confirmAccountDeactivation() async {
@@ -3257,47 +3481,85 @@ class _SparkJoySpecialistProfileScreenState
   }
 }
 
-class _ProfileActionRow extends StatelessWidget {
-  const _ProfileActionRow({required this.icon, required this.title});
+/// Тонкий разделитель между рядами внутри карточки-группы. Отступ слева
+/// выравнивает линию под текст ряда (иконка 20 + gap 12 + h-padding 4).
+Widget _rowDivider() {
+  return Padding(
+    padding: const EdgeInsets.only(
+      left: SparkSize.iconLg + SparkSpace.xl + SparkSpace.xs,
+    ),
+    child: Container(
+      height: SparkSpace.hairline,
+      color: kBorderColor.withValues(alpha: 0.6),
+    ),
+  );
+}
+
+/// Ряд карточки «Настройки»: иконка + заголовок + chevron, единый ритм
+/// со SparkProfileRow. Раньше каждый пункт был отдельной карточкой.
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
 
   final IconData icon;
   final String title;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: kSecondaryColor, size: SparkSize.iconLg),
-        const SizedBox(width: SparkSpace.md),
-        Expanded(
-          child: MyText(
-            text: title,
-            size: SparkTextSize.body,
-            weight: FontWeight.w600,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xs,
+            vertical: SparkSpace.lg,
+          ),
+          child: Row(
+            children: [
+              Icon(icon, color: kSecondaryColor, size: SparkSize.iconLg),
+              const SizedBox(width: SparkSpace.xl),
+              Expanded(
+                child: MyText(
+                  text: title,
+                  size: SparkTextSize.bodyLg,
+                  weight: FontWeight.w600,
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: kGreyColor,
+                size: SparkSize.iconLg,
+              ),
+            ],
           ),
         ),
-        const Icon(
-          Icons.chevron_right_rounded,
-          color: kGreyColor,
-          size: SparkSize.iconMd,
-        ),
-      ],
+      ),
     );
   }
 }
 
-/// Каркас bottom-sheet для редактирования профиля: заголовок,
-/// scrollable-body (входит в keyboard-safe padding), action-row
-/// «Отмена / Сохранить». Используется всеми _edit*-методами профиля.
+/// Каркас bottom-sheet для редактирования профиля: заголовок (+
+/// опциональный подзаголовок), scrollable-body (входит в keyboard-safe
+/// padding), action-row «Отмена / Сохранить» в стиле макета — серая
+/// filled-отмена и широкая тёмная «Сохранить». Используется всеми
+/// _edit*-методами профиля.
 class _SheetScaffold extends StatelessWidget {
   const _SheetScaffold({
     required this.title,
     required this.children,
     required this.onCancel,
     required this.onSubmit,
+    this.subtitle,
   });
 
   final String title;
+  final String? subtitle;
   final List<Widget> children;
   final VoidCallback onCancel;
   final VoidCallback onSubmit;
@@ -3324,7 +3586,7 @@ class _SheetScaffold extends StatelessWidget {
                 Expanded(
                   child: MyText(
                     text: title,
-                    size: SparkTextSize.titleLg,
+                    size: SparkTextSize.modalTitle,
                     weight: FontWeight.w800,
                   ),
                 ),
@@ -3335,6 +3597,14 @@ class _SheetScaffold extends StatelessWidget {
                 ),
               ],
             ),
+            if (subtitle != null)
+              MyText(
+                text: subtitle!,
+                size: SparkTextSize.bodyLg,
+                color: kGreyColor,
+                lineHeight: 1.30,
+                paddingBottom: SparkSpace.sm,
+              ),
             const SizedBox(height: SparkSpace.md),
             Flexible(
               child: SingleChildScrollView(
@@ -3349,22 +3619,40 @@ class _SheetScaffold extends StatelessWidget {
             Row(
               children: [
                 Expanded(
+                  flex: 2,
                   child: SizedBox(
-                    height: SparkSize.actionHeight,
-                    child: OutlinedButton(
+                    height: SparkSize.inputHeight,
+                    child: FilledButton(
                       onPressed: onCancel,
-                      style: OutlinedButton.styleFrom(shape: buttonShape),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kGreyColor2,
+                        foregroundColor: kTertiaryColor,
+                        textStyle: const TextStyle(
+                          fontSize: SparkTextSize.label,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: buttonShape,
+                      ),
                       child: const Text('Отмена'),
                     ),
                   ),
                 ),
                 const SizedBox(width: SparkSpace.md),
                 Expanded(
+                  flex: 3,
                   child: SizedBox(
-                    height: SparkSize.actionHeight,
+                    height: SparkSize.inputHeight,
                     child: FilledButton(
                       onPressed: onSubmit,
-                      style: FilledButton.styleFrom(shape: buttonShape),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: kSecondaryColor,
+                        foregroundColor: kWhiteColor,
+                        textStyle: const TextStyle(
+                          fontSize: SparkTextSize.label,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        shape: buttonShape,
+                      ),
                       child: const Text('Сохранить'),
                     ),
                   ),
@@ -3374,6 +3662,263 @@ class _SheetScaffold extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Тело листа «Услуги»: список пунктов-строк в одной рамке (каждая
+/// строка — свой TextField с «•» и крестиком) + тогл-чипы пресетов.
+/// Возвращает через Navigator.pop сериализованное описание
+/// («• пункт\n• пункт») или null при отмене. Владеет контроллерами
+/// строк и корректно их освобождает.
+class _ServicesEditorSheet extends StatefulWidget {
+  const _ServicesEditorSheet({
+    required this.initialItems,
+    required this.presets,
+  });
+
+  final List<String> initialItems;
+  final List<String> presets;
+
+  @override
+  State<_ServicesEditorSheet> createState() => _ServicesEditorSheetState();
+}
+
+class _ServicesEditorSheetState extends State<_ServicesEditorSheet> {
+  final List<TextEditingController> _controllers = [];
+  final List<FocusNode> _nodes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    for (final item in widget.initialItems) {
+      _createItem(_controllers.length, item);
+    }
+    if (_controllers.isEmpty) _createItem(0, '');
+  }
+
+  @override
+  void dispose() {
+    for (final c in _controllers) {
+      c.dispose();
+    }
+    for (final n in _nodes) {
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  void _createItem(int index, String text) {
+    _controllers.insert(index, TextEditingController(text: text));
+    _nodes.insert(index, FocusNode());
+  }
+
+  void _removeAt(int index) {
+    final controller = _controllers.removeAt(index);
+    final node = _nodes.removeAt(index);
+    // Виджет строки ещё в дереве до конца кадра — освобождаем после.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.dispose();
+      node.dispose();
+    });
+    if (_controllers.isEmpty) _createItem(0, '');
+    setState(() {});
+  }
+
+  /// Перенос строки внутри пункта = разделение на отдельные пункты.
+  /// Так «каждая строка — отдельный пункт» работает и для ручного
+  /// Enter, и для вставки многострочного текста из буфера.
+  void _handleChanged(int index, String value) {
+    if (value.contains('\n')) {
+      final parts = value.split('\n');
+      final first = parts.first;
+      _controllers[index].value = TextEditingValue(
+        text: first,
+        selection: TextSelection.collapsed(offset: first.length),
+      );
+      var insertAt = index + 1;
+      for (final part in parts.skip(1)) {
+        _createItem(insertAt, part.trim());
+        insertAt++;
+      }
+      final lastInserted = insertAt - 1;
+      _nodes[lastInserted].requestFocus();
+      final tail = _controllers[lastInserted];
+      tail.selection = TextSelection.collapsed(offset: tail.text.length);
+    }
+    // Перерисовка нужна и без переноса: чипы/крестики зависят от текста.
+    setState(() {});
+  }
+
+  int _indexOfText(String text) {
+    final needle = text.trim().toLowerCase();
+    return _controllers.indexWhere(
+      (c) => c.text.trim().toLowerCase() == needle,
+    );
+  }
+
+  void _togglePreset(String label) {
+    HapticFeedback.selectionClick();
+    final existing = _indexOfText(label);
+    if (existing >= 0) {
+      _removeAt(existing);
+      return;
+    }
+    // Заполняем первую пустую строку, чтобы не плодить хвосты; иначе —
+    // новый пункт в конец.
+    final emptyIndex = _controllers.indexWhere((c) => c.text.trim().isEmpty);
+    if (emptyIndex >= 0) {
+      _controllers[emptyIndex].value = TextEditingValue(
+        text: label,
+        selection: TextSelection.collapsed(offset: label.length),
+      );
+    } else {
+      _createItem(_controllers.length, label);
+    }
+    setState(() {});
+  }
+
+  void _submit() {
+    final items = [
+      for (final c in _controllers) c.text.trim(),
+    ].where((t) => t.isNotEmpty).toList(growable: false);
+    final text = [for (final t in items) '• $t'].join('\n');
+    Navigator.of(context).pop(text);
+  }
+
+  Widget _buildItemRow(int index) {
+    final hasText = _controllers[index].text.trim().isNotEmpty;
+    return Row(
+      key: ObjectKey(_controllers[index]),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: SparkSpace.lg),
+          child: MyText(
+            text: '•',
+            size: SparkTextSize.label,
+            weight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(width: SparkSpace.md),
+        Expanded(
+          child: TextField(
+            controller: _controllers[index],
+            focusNode: _nodes[index],
+            maxLines: null,
+            keyboardType: TextInputType.multiline,
+            textInputAction: TextInputAction.newline,
+            textCapitalization: TextCapitalization.sentences,
+            inputFormatters: [LengthLimitingTextInputFormatter(200)],
+            decoration: const InputDecoration(
+              isDense: true,
+              border: InputBorder.none,
+              hintText: 'Опишите услугу',
+              contentPadding: EdgeInsets.symmetric(vertical: SparkSpace.lg),
+            ),
+            onChanged: (value) => _handleChanged(index, value),
+          ),
+        ),
+        // Крестик — только у заполненных пунктов (как в макете: строка
+        // с курсором без крестика).
+        if (hasText)
+          InkWell(
+            onTap: () => _removeAt(index),
+            customBorder: const CircleBorder(),
+            child: const Padding(
+              padding: EdgeInsets.all(SparkSpace.md),
+              child: Icon(
+                Icons.close_rounded,
+                size: SparkSize.iconMd,
+                color: kGreyColor,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPresetChip(String label) {
+    final selected = _indexOfText(label) >= 0;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () => _togglePreset(label),
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xxl,
+            vertical: SparkSpace.lg,
+          ),
+          decoration: BoxDecoration(
+            color: selected ? kGreyColor2 : kWhiteColor,
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
+            border: Border.all(
+              color: selected ? Colors.transparent : kBorderColor,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                selected ? Icons.check_rounded : Icons.add_rounded,
+                size: SparkSize.iconSm,
+                color: selected ? kGreenColor : kSecondaryColor,
+              ),
+              const SizedBox(width: SparkSpace.sm),
+              MyText(
+                text: label,
+                size: SparkTextSize.bodyLg,
+                weight: FontWeight.w600,
+                color: selected ? kGreyColor : kTertiaryColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _SheetScaffold(
+      title: 'Услуги',
+      subtitle: 'Опишите услуги своими словами или добавляйте готовые пункты.',
+      onCancel: () => Navigator.of(context).pop(),
+      onSubmit: _submit,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xl,
+            vertical: SparkSpace.sm,
+          ),
+          decoration: BoxDecoration(
+            color: kWhiteColor,
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Column(
+            children: [
+              for (var i = 0; i < _controllers.length; i++) _buildItemRow(i),
+            ],
+          ),
+        ),
+        const MyText(
+          text: 'Каждая строка — отдельный пункт',
+          size: SparkTextSize.caption,
+          color: kGreyColor,
+          textAlign: TextAlign.right,
+          paddingTop: SparkSpace.sm,
+        ),
+        const SparkSectionTitle('Быстрое добавление', top: SparkSpace.xl),
+        Wrap(
+          spacing: SparkSpace.md,
+          runSpacing: SparkSpace.md,
+          children: [
+            for (final preset in widget.presets) _buildPresetChip(preset),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -3464,10 +4009,26 @@ class _SheetTextField extends StatelessWidget {
   }
 }
 
-/// Row-кнопка в avatar bottom-sheet'е. Иконка + лейбл, цвет
-/// переключается на `kRedColor` для destructive «Удалить».
-class _AvatarSheetAction extends StatelessWidget {
-  const _AvatarSheetAction({
+/// Тонкий разделитель между action-рядами bottom-sheet'ов (фото профиля,
+/// компания, согласие и условия). Отступ слева выравнивает линию под
+/// текст ряда `_SheetActionRow` (h-padding 8 + иконка 20 + gap 10).
+Widget _sheetRowDivider() {
+  return Padding(
+    padding: const EdgeInsets.only(
+      left: SparkSpace.md + SparkSize.iconLg + SparkSpace.lg,
+      right: SparkSpace.md,
+    ),
+    child: Container(
+      height: SparkSpace.hairline,
+      color: kBorderColor.withValues(alpha: 0.7),
+    ),
+  );
+}
+
+/// Row-кнопка в bottom-sheet'ах профиля. Иконка + лейбл, цвет
+/// переключается на `kRedColor` для destructive-действий.
+class _SheetActionRow extends StatelessWidget {
+  const _SheetActionRow({
     required this.icon,
     required this.label,
     required this.onTap,

@@ -4,7 +4,9 @@ import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.da
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 class Terms extends StatelessWidget {
-  const Terms({super.key});
+  const Terms({super.key, this.sparkHeader = false});
+
+  final bool sparkHeader;
 
   static const _serviceName = 'AutoBase';
   static const _operatorName =
@@ -16,7 +18,10 @@ class Terms extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: 'Условия использования'),
+      appBar: simpleAppBar(
+        title: 'Условия использования',
+        sparkStyle: sparkHeader,
+      ),
       body: ListView(
         shrinkWrap: true,
         padding: AppSizes.listPaddingWithBottomBar(),

@@ -462,20 +462,7 @@ class _SparkJoyCompanyCreateRequestScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kPrimaryColor,
-      appBar: AppBar(
-        backgroundColor: kPrimaryColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: const MyText(
-          text: 'Создать заявку',
-          size: SparkTextSize.titleLg,
-          weight: FontWeight.w800,
-        ),
-        shape: const Border(
-          bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
-        ),
-      ),
+      appBar: sparkAppBar(title: 'Создать заявку'),
       body: SparkScreenList(
         bottomInset: 24,
         children: [

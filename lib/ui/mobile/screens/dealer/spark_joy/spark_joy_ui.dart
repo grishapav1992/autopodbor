@@ -354,7 +354,20 @@ class SparkInitialsAvatar extends StatelessWidget {
     return _buildDefaultAvatar();
   }
 
+  /// Инициалы из первых букв до двух слов имени («Григорий Павленко» →
+  /// «ГП»). Пусто — когда имя не задано; тогда fallback на иконку.
+  String get _initials {
+    final parts = name
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList(growable: false);
+    if (parts.isEmpty) return '';
+    return parts.take(2).map((p) => p.substring(0, 1).toUpperCase()).join();
+  }
+
   Widget _buildDefaultAvatar() {
+    final initials = _initials;
     return Container(
       width: size,
       height: size,
@@ -363,11 +376,18 @@ class SparkInitialsAvatar extends StatelessWidget {
         color: backgroundColor ?? kSecondaryColor.withValues(alpha: 0.10),
       ),
       alignment: Alignment.center,
-      child: Icon(
-        Icons.person_rounded,
-        size: size * 0.52,
-        color: textColor.withValues(alpha: 0.82),
-      ),
+      child: initials.isEmpty
+          ? Icon(
+              Icons.person_rounded,
+              size: size * 0.52,
+              color: textColor.withValues(alpha: 0.82),
+            )
+          : MyText(
+              text: initials,
+              size: textSize,
+              weight: FontWeight.w800,
+              color: textColor,
+            ),
     );
   }
 }
@@ -1062,6 +1082,45 @@ class SparkPageHeader extends StatelessWidget {
   }
 }
 
+/// Единый хедер для всех обычных экранов Spark Joy.
+///
+/// Главный shell и вложенные маршруты используют одну поверхность,
+/// типографику и нижний разделитель. Вложенные экраны отличаются только
+/// системной кнопкой «Назад» и своими actions.
+AppBar sparkAppBar({
+  required String title,
+  List<Widget>? actions,
+  Widget? leading,
+  bool automaticallyImplyLeading = true,
+  double? toolbarHeight,
+}) {
+  final hasLeading = leading != null || automaticallyImplyLeading;
+  return AppBar(
+    automaticallyImplyLeading: automaticallyImplyLeading,
+    centerTitle: false,
+    leading: leading,
+    titleSpacing: hasLeading ? 0 : SparkSpace.section,
+    toolbarHeight: toolbarHeight,
+    backgroundColor: kPrimaryColor,
+    foregroundColor: kSecondaryColor,
+    elevation: 0,
+    scrolledUnderElevation: 0,
+    surfaceTintColor: Colors.transparent,
+    shape: const Border(
+      bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
+    ),
+    title: MyText(
+      text: title,
+      size: SparkTextSize.titleLg,
+      weight: FontWeight.w800,
+      color: kSecondaryColor,
+      maxLines: 1,
+      textOverflow: TextOverflow.ellipsis,
+    ),
+    actions: actions,
+  );
+}
+
 class SparkReportEditorAppBar extends StatelessWidget
     implements PreferredSizeWidget {
   // Одна строка заголовка (+ мета + пилюля автосейва) укладывается в ~60px;
@@ -1111,6 +1170,14 @@ class SparkReportEditorAppBar extends StatelessWidget
     return AppBar(
       centerTitle: false,
       toolbarHeight: _toolbarHeight,
+      backgroundColor: kPrimaryColor,
+      foregroundColor: kSecondaryColor,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      shape: const Border(
+        bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
+      ),
       leading: IconButton(
         onPressed: onBack,
         icon: const Icon(Icons.arrow_back_rounded),
@@ -1120,51 +1187,97 @@ class SparkReportEditorAppBar extends StatelessWidget
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (titleController != null && titleFocusNode != null)
-            TextField(
-              controller: titleController,
-              focusNode: titleFocusNode,
-              textInputAction: TextInputAction.done,
-              maxLines: 1,
-              onSubmitted: (_) => titleFocusNode!.unfocus(),
-              onTapOutside: (_) => titleFocusNode!.unfocus(),
-              style: TextStyle(
-                fontSize: AppResponsive.sp(context, SparkTextSize.title),
-                fontWeight: FontWeight.w700,
-                height: 1.15,
-                fontFamily: AppFonts.URBANIST,
-                fontFamilyFallback: const [
-                  'SF Pro Text',
-                  'Helvetica',
-                  'Roboto',
-                  'Arial',
-                  'Noto Sans',
-                  'sans-serif',
-                ],
-              ),
-              decoration: const InputDecoration.collapsed(
-                hintText: 'Новый отчёт',
-              ),
+            ListenableBuilder(
+              listenable: titleFocusNode!,
+              builder: (context, _) {
+                final editing = titleFocusNode!.hasFocus;
+                final border = OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.md),
+                  borderSide: const BorderSide(color: kBorderColor),
+                );
+                return TextField(
+                  controller: titleController,
+                  focusNode: titleFocusNode,
+                  textInputAction: TextInputAction.done,
+                  maxLines: 1,
+                  onSubmitted: (_) => titleFocusNode!.unfocus(),
+                  onTapOutside: (_) => titleFocusNode!.unfocus(),
+                  style: TextStyle(
+                    fontSize: AppResponsive.sp(context, SparkTextSize.title),
+                    fontWeight: FontWeight.w700,
+                    height: 1.15,
+                    fontFamily: AppFonts.URBANIST,
+                    fontFamilyFallback: const [
+                      'SF Pro Text',
+                      'Helvetica',
+                      'Roboto',
+                      'Arial',
+                      'Noto Sans',
+                      'sans-serif',
+                    ],
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Новый отчёт',
+                    isDense: true,
+                    filled: true,
+                    fillColor: kInputBgColor,
+                    contentPadding: const EdgeInsets.fromLTRB(10, 7, 2, 7),
+                    border: border,
+                    enabledBorder: border,
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(SparkRadius.md),
+                      borderSide: const BorderSide(
+                        color: kSecondaryColor,
+                        width: 1.5,
+                      ),
+                    ),
+                    suffixIconConstraints: const BoxConstraints(
+                      minWidth: 0,
+                      minHeight: 0,
+                    ),
+                    suffixIcon: TextButton(
+                      onPressed: editing
+                          ? titleFocusNode!.unfocus
+                          : titleFocusNode!.requestFocus,
+                      style: TextButton.styleFrom(
+                        foregroundColor: editing ? kSecondaryColor : kGreyColor,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: SparkSpace.md,
+                          vertical: SparkSpace.xs,
+                        ),
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(editing ? 'Готово' : 'Изменить'),
+                    ),
+                  ),
+                );
+              },
             )
           else
             _SparkReportTitle(title: title),
-          const SizedBox(height: SparkSpace.xxs),
-          MyText(
-            text: meta,
-            size: SparkTextSize.body,
-            color: kGreyColor,
-            maxLines: 1,
-            textOverflow: TextOverflow.ellipsis,
-          ),
           const SizedBox(height: SparkSpace.xs),
-          // Пилюля статуса прижата к правому краю шапки (фидбек 2026-07-10).
-          Align(
-            alignment: Alignment.centerRight,
-            child: _SparkDraftSaveBadge(
-              text: draftStatus,
-              color: draftStatusColor,
-              icon: draftStatusIcon,
-              saving: draftSaving,
-            ),
+          Row(
+            children: [
+              Flexible(
+                fit: FlexFit.loose,
+                child: MyText(
+                  text: meta,
+                  size: SparkTextSize.body,
+                  color: kGreyColor,
+                  maxLines: 1,
+                  textOverflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              _SparkDraftSaveBadge(
+                text: draftStatus,
+                color: draftStatusColor,
+                icon: draftStatusIcon,
+                saving: draftSaving,
+              ),
+            ],
           ),
         ],
       ),

@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'spark_joy_company_specialist_picker.dart';
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_external_link.dart';
+import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -422,7 +423,7 @@ class _SparkJoyCompanyRequestDetailScreenState
 
   @override
   Widget build(BuildContext context) {
-    final status = _str('status');
+    final status = normalizeRequestStatus(_str('status'));
     final badge = requestStatusBadge(status);
     final number = _str('requestNumber');
     final createdAt = _str('createdAt');
@@ -441,77 +442,19 @@ class _SparkJoyCompanyRequestDetailScreenState
 
     return Scaffold(
       backgroundColor: kPrimaryColor,
-      appBar: AppBar(
-        backgroundColor: kPrimaryColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        title: MyText(
-          text: number.isEmpty ? 'Заявка' : 'Заявка №$number',
-          size: SparkTextSize.titleLg,
-          weight: FontWeight.w800,
+      appBar: SparkRequestDetailAppBar(
+        title: number.isEmpty ? 'Заявка' : 'Заявка №$number',
+        subtitle: sparkRequestDetailSubtitle(
+          createdAt: createdAt,
+          dueAt: dueAt,
         ),
-        shape: const Border(
-          bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
-        ),
+        badge: badge,
       ),
       body: SparkScreenList(
         bottomInset: 24,
         onRefresh: _refreshAll,
         children: [
-          // ── Header card ─────────────────────────────────────────────
-          SparkCard(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: SparkSize.icon5xl,
-                  height: SparkSize.icon5xl,
-                  decoration: BoxDecoration(
-                    color: kSecondaryColor.withValues(alpha: 0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.assignment_outlined,
-                    color: kSecondaryColor,
-                    size: SparkSize.iconLg,
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.lg),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SparkChip(
-                        text: badge.label,
-                        background: badge.bg,
-                        color: badge.fg,
-                      ),
-                      const SizedBox(height: SparkSpace.sm),
-                      MyText(
-                        text: 'Создана: ${_formatRuDateTime(createdAt)}',
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                      ),
-                      if (dueAt.isNotEmpty) ...[
-                        const SizedBox(height: SparkSpace.xxs),
-                        MyText(
-                          text: 'Срок: ${_formatRuDate(dueAt)}',
-                          size: SparkTextSize.caption,
-                          color: kGreyColor,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           // ── Автомобиль ──────────────────────────────────────────────
-          const SparkSectionTitle('Автомобиль', top: SparkSpace.xxl),
           SparkCard(child: _buildCarSection()),
 
           // ── Параметры подбора ───────────────────────────────────────
@@ -574,80 +517,93 @@ class _SparkJoyCompanyRequestDetailScreenState
               ),
             )
           else
-            SparkCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (int i = 0; i < history.length; i++) ...[
-                    _HistoryEntry(entry: history[i]),
-                    if (i < history.length - 1)
-                      const Divider(height: 1, color: kBorderColor),
-                  ],
-                ],
-              ),
-            ),
+            SparkCard(child: SparkRequestHistoryTimeline(entries: history)),
 
-          // ── Actions ─────────────────────────────────────────────────
-          const SizedBox(height: SparkSpace.xxl),
-          if (_canManageAssignment) ...[
-            OutlinedButton.icon(
-              onPressed: _actionBusy ? null : _assignSpecialist,
-              icon: const Icon(Icons.person_add_alt_1_rounded),
-              label: Text(
-                _hasAssignedSpecialist
-                    ? 'Переназначить специалиста'
-                    : 'Назначить специалиста',
-              ),
-              style: OutlinedButton.styleFrom(
-                minimumSize: const Size(
-                  double.infinity,
-                  SparkSize.actionHeight,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SparkRadius.lg),
-                ),
-              ),
-            ),
-            const SizedBox(height: SparkSpace.md),
-          ],
-          if (status == 'done') ...[
-            SparkPrimaryActionButton(
-              label: _shareBusy ? 'Генерируем...' : 'Поделиться отчётом',
-              icon: Icons.ios_share_rounded,
-              busy: _shareBusy,
-              onTap: _shareReport,
-            ),
-            const SizedBox(height: SparkSpace.md),
-          ],
-          OutlinedButton.icon(
-            onPressed: _canManageAssignment && !_actionBusy
-                ? _cancelRequest
-                : null,
-            icon: const Icon(Icons.cancel_outlined),
-            label: Text(_actionBusy ? 'Сохраняем...' : 'Отменить заявку'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kRedColor,
-              minimumSize: const Size(double.infinity, SparkSize.actionHeight),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(SparkRadius.lg),
-              ),
-            ),
-          ),
+          // ── Отмена недоступна — поясняем почему ─────────────────────
           if (!_canManageAssignment)
-            const Padding(
-              padding: EdgeInsets.symmetric(
+            Padding(
+              padding: const EdgeInsets.symmetric(
                 horizontal: SparkSpace.md,
-                vertical: SparkSpace.sm,
+                vertical: SparkSpace.section,
               ),
               child: MyText(
-                text: 'Отмена доступна только до оплаты или начала работы.',
-                size: SparkTextSize.caption,
+                text: sparkCancelUnavailableLabel(status),
+                size: SparkTextSize.body,
                 color: kGreyColor,
+                weight: FontWeight.w600,
                 textAlign: TextAlign.center,
               ),
             ),
           const SizedBox(height: SparkSpace.lg),
         ],
+      ),
+      bottomNavigationBar: _buildBottomBar(status),
+    );
+  }
+
+  /// Закреплённые внизу действия: для завершённой заявки — «Поделиться
+  /// отчётом», для новой/неоплаченной — назначение специалиста + отмена.
+  /// Когда действий нет (в работе, отменена, …) — панель не рендерится.
+  Widget? _buildBottomBar(String status) {
+    final children = <Widget>[];
+    if (status == 'done') {
+      children.add(
+        SparkPrimaryActionButton(
+          label: _shareBusy ? 'Генерируем...' : 'Поделиться отчётом',
+          icon: Icons.ios_share_rounded,
+          busy: _shareBusy,
+          onTap: _shareReport,
+        ),
+      );
+    }
+    if (_canManageAssignment) {
+      children.add(
+        SparkPrimaryActionButton(
+          label: _actionBusy
+              ? 'Сохраняем...'
+              : _hasAssignedSpecialist
+              ? 'Переназначить специалиста'
+              : 'Назначить специалиста',
+          icon: Icons.person_add_alt_1_rounded,
+          busy: _actionBusy,
+          onTap: _assignSpecialist,
+        ),
+      );
+      children.add(const SizedBox(height: SparkSpace.md));
+      children.add(
+        OutlinedButton.icon(
+          onPressed: _actionBusy ? null : _cancelRequest,
+          icon: const Icon(Icons.cancel_outlined),
+          label: const Text('Отменить заявку'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: kRedColor,
+            side: BorderSide(color: kRedColor.withValues(alpha: 0.45)),
+            minimumSize: const Size(double.infinity, SparkSize.actionHeight),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(SparkRadius.lg),
+            ),
+          ),
+        ),
+      );
+    }
+    if (children.isEmpty) return null;
+    return Container(
+      color: kPrimaryColor,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+            SparkSpace.xxxl,
+            SparkSpace.xl,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
       ),
     );
   }
@@ -693,12 +649,22 @@ class _SparkJoyCompanyRequestDetailScreenState
                 ],
               ),
             ),
-          const SizedBox(height: SparkSpace.md),
-          const SizedBox(
-            height: SparkSize.spinner,
-            width: SparkSize.spinner,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          ),
+          if (carStrings.isEmpty)
+            const Row(
+              children: [
+                SizedBox(
+                  width: SparkSize.iconSm,
+                  height: SparkSize.iconSm,
+                  child: CircularProgressIndicator(strokeWidth: 1.5),
+                ),
+                SizedBox(width: SparkSpace.md),
+                MyText(
+                  text: 'Загружаем данные автомобиля…',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+              ],
+            ),
         ] else if (_carsError != null) ...[
           SparkHintCard(
             text: _carsError!,
@@ -715,7 +681,10 @@ class _SparkJoyCompanyRequestDetailScreenState
         ] else
           for (int i = 0; i < detailedCars.length; i++) ...[
             if (i > 0) const Divider(height: 24, color: kBorderColor),
-            _CarDetailBlock(car: detailedCars[i]),
+            SparkRequestCarBlock(
+              car: detailedCars[i],
+              city: _str('city').trim(),
+            ),
           ],
       ],
     );
@@ -750,18 +719,20 @@ class _SparkJoyCompanyRequestDetailScreenState
         : '';
     final avatar = (specialist?['urlAvatar'] ?? '').toString().trim();
 
+    // Как в макете: тёмный аватар с инициалом, имя + город, справа —
+    // квадратные кнопки «позвонить»/«написать» (появляются только когда
+    // соответствующий контакт есть в данных).
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        CircleAvatar(
-          radius: 22,
-          backgroundColor: kSecondaryColor.withValues(alpha: 0.1),
-          backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-          child: avatar.isEmpty
-              ? const Icon(Icons.person_rounded, color: kSecondaryColor)
-              : null,
+        SparkInitialsAvatar(
+          name: fullName,
+          size: SparkSize.avatarSm,
+          backgroundColor: kSecondaryColor,
+          textColor: kWhiteColor,
+          imageUrl: avatar.isEmpty ? null : avatar,
         ),
-        const SizedBox(width: SparkSpace.md),
+        const SizedBox(width: SparkSpace.xl),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -770,18 +741,14 @@ class _SparkJoyCompanyRequestDetailScreenState
                 text: fullName.isEmpty
                     ? 'Специалист #${assignedId ?? ''}'.trim()
                     : fullName,
-                size: SparkTextSize.bodyLg,
+                size: SparkTextSize.title,
                 weight: FontWeight.w700,
               ),
-              if (phone.isNotEmpty || email.isNotEmpty || city.isNotEmpty) ...[
+              if (city.isNotEmpty) ...[
                 const SizedBox(height: SparkSpace.xxs),
                 MyText(
-                  text: [
-                    if (city.isNotEmpty) city,
-                    if (phone.isNotEmpty) phone,
-                    if (email.isNotEmpty) email,
-                  ].join(' · '),
-                  size: SparkTextSize.caption,
+                  text: city,
+                  size: SparkTextSize.bodyLg,
                   color: kGreyColor,
                 ),
               ],
@@ -796,253 +763,23 @@ class _SparkJoyCompanyRequestDetailScreenState
             ],
           ),
         ),
-      ],
-    );
-  }
-}
-
-// ── Car detail block ──────────────────────────────────────────────────
-
-class _CarDetailBlock extends StatelessWidget {
-  const _CarDetailBlock({required this.car});
-
-  final Map<String, dynamic> car;
-
-  String _str(String key) => (car[key] ?? '').toString();
-
-  String get _title {
-    final brand = car['brand'];
-    final model = car['model'];
-    final brandName = (brand is Map) ? (brand['name'] ?? '').toString() : '';
-    final modelName = (model is Map)
-        ? (model['model'] ?? model['name'] ?? '').toString()
-        : '';
-    final combined = [
-      brandName,
-      modelName,
-    ].where((s) => s.isNotEmpty).join(' ');
-    return combined.isEmpty ? 'Автомобиль' : combined;
-  }
-
-  String? get _generationLabel {
-    // Диапазон годов, если рестайлинги под рукой (тот же контракт toJson);
-    // иначе — номер поколения как раньше.
-    final range = storage_api.GenerationItem.yearRangeFromRestylingsJson(
-      car['restylings'],
-    );
-    if (range != null) return 'Поколение $range';
-    final g = car['generation'];
-    if (g is num) return 'Поколение $g';
-    if (g is String && g.isNotEmpty) return 'Поколение $g';
-    return null;
-  }
-
-  List<Map<String, dynamic>> get _restylings {
-    final r = car['restylings'];
-    if (r is List) {
-      return r
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
-    }
-    return [];
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final sellerPhone = _str('phone').trim();
-    final sellerUrl = _str('url').trim();
-    final tags = car['tags'];
-    final tagList = tags is List
-        ? tags.map((e) => e.toString()).where((s) => s.isNotEmpty).toList()
-        : <String>[];
-    final gen = _generationLabel;
-    final restylings = _restylings;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.directions_car_outlined,
-              color: kSecondaryColor,
-              size: SparkSize.iconLg,
-            ),
-            const SizedBox(width: SparkSpace.md),
-            Expanded(
-              child: MyText(
-                text: _title,
-                size: SparkTextSize.bodyLg,
-                weight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-        if (gen != null) ...[
-          const SizedBox(height: SparkSpace.xs),
-          Padding(
-            padding: const EdgeInsets.only(left: 32),
-            child: MyText(
-              text: gen,
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-            ),
-          ),
-        ],
-        if (restylings.isNotEmpty) ...[
-          const SizedBox(height: SparkSpace.xs),
-          Padding(
-            padding: const EdgeInsets.only(left: 32),
-            child: MyText(
-              text: restylings
-                  .map((r) {
-                    final name = (r['restyling'] ?? '').toString().trim();
-                    final ys = r['yearStart'];
-                    final ye = r['yearEnd'];
-                    final years = [ys, ye]
-                        .where((y) => y != null)
-                        .map((y) => y.toString())
-                        .join('–');
-                    if (name.isEmpty && years.isEmpty) return 'Без рестайлинга';
-                    if (years.isEmpty) return name;
-                    if (name.isEmpty) return years;
-                    return '$name ($years)';
-                  })
-                  .join(', '),
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-            ),
-          ),
-        ],
-        if (tagList.isNotEmpty) ...[
-          const SizedBox(height: SparkSpace.sm),
-          Wrap(
-            spacing: SparkSpace.xs,
-            runSpacing: SparkSpace.xs,
-            children: tagList
-                .map(
-                  (t) => SparkChip(
-                    text: t,
-                    background: kSecondaryColor.withValues(alpha: 0.1),
-                    color: kSecondaryColor,
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-        if (sellerPhone.isNotEmpty || sellerUrl.isNotEmpty) ...[
-          const SizedBox(height: SparkSpace.md),
-          const Divider(height: 1, color: kBorderColor),
-          const SizedBox(height: SparkSpace.md),
-          if (sellerPhone.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: SparkSpace.xs),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.phone_outlined,
-                    color: kGreyColor,
-                    size: SparkSize.iconSm,
-                  ),
-                  const SizedBox(width: SparkSpace.sm),
-                  MyText(
-                    text: sellerPhone,
-                    size: SparkTextSize.body,
-                    weight: FontWeight.w600,
-                  ),
-                ],
-              ),
-            ),
-          if (sellerUrl.isNotEmpty) SparkExternalLinkRow(url: sellerUrl),
-        ],
-      ],
-    );
-  }
-}
-
-// ── History entry ────────────────────────────────────────────────────
-
-class _HistoryEntry extends StatelessWidget {
-  const _HistoryEntry({required this.entry});
-
-  final Map<String, dynamic> entry;
-
-  @override
-  Widget build(BuildContext context) {
-    final oldStatus = (entry['oldStatus'] ?? '').toString();
-    final newStatus = (entry['newStatus'] ?? '').toString();
-    final role = (entry['changedByRole'] ?? '').toString();
-    final reason = requestHistoryReason((entry['reason'] ?? '').toString());
-    final createdAt = (entry['createdAt'] ?? '').toString();
-
-    final badge = requestStatusBadge(newStatus);
-    final transition = oldStatus.isEmpty
-        ? badge.label
-        : '${requestStatusBadge(oldStatus).label} → ${badge.label}';
-    final roleLabel = requestRoleLabel(role);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: SparkSpace.md),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: SparkSize.iconLg,
-            height: SparkSize.iconLg,
-            decoration: BoxDecoration(color: badge.bg, shape: BoxShape.circle),
-            alignment: Alignment.center,
-            child: Icon(
-              requestStatusIcon(newStatus),
-              color: badge.fg,
-              size: SparkSize.iconSm,
-            ),
-          ),
+        if (phone.isNotEmpty) ...[
           const SizedBox(width: SparkSpace.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                MyText(
-                  text: transition,
-                  size: SparkTextSize.body,
-                  weight: FontWeight.w600,
-                ),
-                if (roleLabel.isNotEmpty || createdAt.isNotEmpty) ...[
-                  const SizedBox(height: SparkSpace.xxs),
-                  MyText(
-                    text: [
-                      if (roleLabel.isNotEmpty) roleLabel,
-                      if (createdAt.isNotEmpty) _formatRuDateTime(createdAt),
-                    ].join(' · '),
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                  ),
-                ],
-                if (reason.label.isNotEmpty) ...[
-                  const SizedBox(height: SparkSpace.xs),
-                  MyText(
-                    text: reason.label,
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    lineHeight: 1.4,
-                  ),
-                ],
-                if (reason.comment != null) ...[
-                  const SizedBox(height: SparkSpace.xxs),
-                  MyText(
-                    text: 'Комментарий: ${reason.comment}',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    lineHeight: 1.4,
-                  ),
-                ],
-              ],
-            ),
+          SparkContactIconButton(
+            icon: Icons.call_rounded,
+            tooltip: 'Позвонить специалисту',
+            onTap: () => sparkLaunchPhone(context, phone),
           ),
         ],
-      ),
+        if (email.isNotEmpty) ...[
+          const SizedBox(width: SparkSpace.md),
+          SparkContactIconButton(
+            icon: Icons.mail_rounded,
+            tooltip: 'Написать специалисту',
+            onTap: () => sparkLaunchEmail(context, email),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -1077,22 +814,6 @@ List<Map<String, dynamic>> _historyNewestFirst(dynamic primary, dynamic extra) {
     return bT.compareTo(aT);
   });
   return history;
-}
-
-String _formatRuDate(String iso) {
-  // ISO 8601 — берём YYYY-MM-DD префикс, переворачиваем.
-  final m = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(iso);
-  if (m == null) return iso;
-  return '${m.group(3)}.${m.group(2)}.${m.group(1)}';
-}
-
-String _formatRuDateTime(String iso) {
-  final dm = RegExp(
-    r'^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})',
-  ).firstMatch(iso);
-  if (dm == null) return _formatRuDate(iso);
-  return '${dm.group(3)}.${dm.group(2)}.${dm.group(1)} '
-      '${dm.group(4)}:${dm.group(5)}';
 }
 
 String _formatBudget(dynamic from, dynamic to) {

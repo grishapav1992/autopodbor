@@ -4,6 +4,10 @@ import 'package:flutter_application_1/core/constants/design_tokens.dart';
 
 enum AppBottomSheetExtent { content, expanded }
 
+const appAdaptiveBottomSheetSurfaceKey = ValueKey<String>(
+  'app-adaptive-bottom-sheet-surface',
+);
+
 /// Единый контейнер для модальных экранов, которые появляются снизу.
 ///
 /// [AppBottomSheetExtent.expanded] заполняет почти всю доступную высоту и
@@ -56,22 +60,21 @@ class _AppAdaptiveBottomSheetSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final expanded = extent == AppBottomSheetExtent.expanded;
-    return SafeArea(
-      top: false,
-      child: Container(
-        width: double.infinity,
-        constraints: expanded
-            ? null
-            : BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.90,
-              ),
-        clipBehavior: Clip.antiAlias,
-        decoration: const BoxDecoration(
-          color: kPrimaryColor,
-          borderRadius: BorderRadius.vertical(
-            top: Radius.circular(SparkRadius.sheet),
-          ),
+    return Container(
+      key: appAdaptiveBottomSheetSurfaceKey,
+      width: double.infinity,
+      constraints: expanded
+          ? null
+          : BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.90),
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(
+        color: kPrimaryColor,
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(SparkRadius.sheet),
         ),
+      ),
+      child: SafeArea(
+        top: false,
         child: Column(
           mainAxisSize: expanded ? MainAxisSize.max : MainAxisSize.min,
           children: [

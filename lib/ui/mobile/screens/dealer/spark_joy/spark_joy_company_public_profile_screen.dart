@@ -229,7 +229,7 @@ class _SparkJoyCompanyPublicProfileScreenState
     ];
 
     return SparkPageScaffold(
-      appBar: AppBar(centerTitle: false, title: const Text('Профиль компании')),
+      appBar: sparkAppBar(title: 'Профиль компании'),
       bottomInset: SparkSpace.xl,
       children: [
         if (_loading && profile == null)

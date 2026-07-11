@@ -228,25 +228,9 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
-          appBar: AppBar(
-            centerTitle: false,
-            titleSpacing: SparkSpace.md,
-            title: const Text(
-              'Уведомления',
-              style: TextStyle(
-                fontSize: SparkTextSize.titleLg,
-                fontWeight: FontWeight.w700,
-                color: kPrimaryColor,
-              ),
-            ),
+          appBar: sparkAppBar(
+            title: 'Уведомления',
             actions: const [_MarkAllReadAction()],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(SparkSpace.hairline),
-              child: Container(
-                height: SparkSpace.hairline,
-                color: kBorderColor,
-              ),
-            ),
           ),
           body: SparkJoyNotificationsScreen(
             onOpenRequest: (requestId) async {
@@ -489,6 +473,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     // labels Material needs more vertical room, so bumped up 8px to
     // 64 — still noticeably tighter than the original 72.
     const navHeight = 64.0;
+    const navContentOffset = SparkSpace.xxxs;
 
     return Scaffold(
       // Keep extendBody for the frosted BottomNav (it floats over the
@@ -500,45 +485,31 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       // for the same solid, fixed top we use in the report editor.
       extendBody: true,
       backgroundColor: kPrimaryColor,
-      appBar: AppBar(
+      appBar: sparkAppBar(
+        title: _currentTabTitle(),
         automaticallyImplyLeading: false,
-        centerTitle: false,
-        titleSpacing: SparkSpace.section,
-        backgroundColor: kPrimaryColor,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
-        shape: const Border(
-          bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
-        ),
-        title: Text(
-          _currentTabTitle(),
-          style: const TextStyle(
-            fontSize: SparkTextSize.titleLg,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.2,
-            color: kSecondaryColor,
-          ),
-        ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: SparkSpace.md),
-            child: Center(
-              child: InkWell(
-                onTap: () => _showRoleInfoSheet(context),
-                borderRadius: BorderRadius.circular(SparkRadius.pill),
-                child: SparkChip(
-                  text: _roleBadgeLabel(),
-                  background: kSecondaryColor.withValues(alpha: 0.08),
-                  color: kSecondaryColor,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.xl,
-                    vertical: SparkSpace.sm,
+          // На вкладке «Профиль» чип роли скрыт — роль показана в бейдже
+          // hero-шапки профиля, дублировать её в AppBar незачем.
+          if (!(isSpecialist ? index == 2 : index == 3))
+            Padding(
+              padding: const EdgeInsets.only(right: SparkSpace.md),
+              child: Center(
+                child: InkWell(
+                  onTap: () => _showRoleInfoSheet(context),
+                  borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  child: SparkChip(
+                    text: _roleBadgeLabel(),
+                    background: kSecondaryColor.withValues(alpha: 0.08),
+                    color: kSecondaryColor,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.xl,
+                      vertical: SparkSpace.sm,
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
           IconButton(
             tooltip: 'Уведомления',
             onPressed: () => _openNotifications(context),
@@ -583,7 +554,7 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 backgroundColor: kWhiteColor.withValues(alpha: 0.78),
                 surfaceTintColor: Colors.transparent,
                 shadowColor: Colors.transparent,
-                height: navHeight,
+                height: navHeight - navContentOffset,
                 labelTextStyle: WidgetStateProperty.resolveWith((states) {
                   final selected = states.contains(WidgetState.selected);
                   return TextStyle(
@@ -606,23 +577,27 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 }),
                 indicatorColor: kSecondaryColor.withValues(alpha: 0.12),
               ),
-              child: NavigationBar(
-                selectedIndex: index,
-                // Labels always visible — pulling them from inactive
-                // destinations read as mystery-meat icons. Height was
-                // bumped to compensate.
-                labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-                onDestinationSelected: (value) {
-                  if (value != index) {
-                    HapticFeedback.selectionClick();
-                  }
-                  setState(() => _index = value);
-                  if (value == 0) {
-                    _requestedReportsTab.value = 'drafts';
-                  }
-                  _maybeShowTabOnboarding(value);
-                },
-                destinations: destinations,
+              child: Padding(
+                padding: const EdgeInsets.only(top: navContentOffset),
+                child: NavigationBar(
+                  selectedIndex: index,
+                  // Labels always visible — pulling them from inactive
+                  // destinations read as mystery-meat icons. Height was
+                  // bumped to compensate.
+                  labelBehavior:
+                      NavigationDestinationLabelBehavior.alwaysShow,
+                  onDestinationSelected: (value) {
+                    if (value != index) {
+                      HapticFeedback.selectionClick();
+                    }
+                    setState(() => _index = value);
+                    if (value == 0) {
+                      _requestedReportsTab.value = 'drafts';
+                    }
+                    _maybeShowTabOnboarding(value);
+                  },
+                  destinations: destinations,
+                ),
               ),
             ),
           ),

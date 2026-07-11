@@ -49,7 +49,7 @@ class _SparkJoyNewReportNameScreenState
   Widget build(BuildContext context) {
     final enabled = _controller.text.trim().isNotEmpty;
     return SparkPageScaffold(
-      appBar: AppBar(centerTitle: false, title: const Text('Новый отчёт')),
+      appBar: sparkAppBar(title: 'Новый отчёт'),
       children: [
         Form(
           key: _formKey,

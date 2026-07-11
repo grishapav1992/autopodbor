@@ -42,6 +42,7 @@ class _SparkJoyCompanyRequestsScreenState
   bool _loading = true;
   String? _loadError;
   RequestStatusFilter _statusFilter = RequestStatusFilter.all;
+  String _query = '';
   bool _reloadWhenActive = false;
   bool _loadInFlight = false;
   bool _loadQueuedWhileInFlight = false;
@@ -291,15 +292,21 @@ class _SparkJoyCompanyRequestsScreenState
     }
     final requests = _requests ?? const [];
     final draftCard = _draftCardData(_requestDraft);
-    final showDraft =
+    final canShowDraft =
         draftCard != null &&
         (_statusFilter == RequestStatusFilter.all ||
             _statusFilter == RequestStatusFilter.draft);
-    final visibleRequests = _statusFilter == RequestStatusFilter.draft
+    final rawVisibleRequests = _statusFilter == RequestStatusFilter.draft
         ? const <Map<String, dynamic>>[]
         : requests;
+    final showDraft =
+        canShowDraft && _matchesRequestQuery(draftCard, _query);
+    final visibleRequests = rawVisibleRequests
+        .where((request) => _matchesRequestQuery(request, _query))
+        .toList(growable: false);
     final hasVisibleItems = showDraft || visibleRequests.isNotEmpty;
-    if (!hasVisibleItems && _statusFilter == RequestStatusFilter.all) {
+    final hasAnyItems = canShowDraft || rawVisibleRequests.isNotEmpty;
+    if (!hasAnyItems && _statusFilter == RequestStatusFilter.all) {
       return SparkScreenList(
         bottomInset: 24,
         onRefresh: _load,
@@ -359,9 +366,11 @@ class _SparkJoyCompanyRequestsScreenState
           onTap: _openCreateRequest,
         ),
         const SizedBox(height: SparkSpace.lg),
-        _RequestsToolbar(
-          filter: _statusFilter,
-          onFilterChanged: (filter) {
+        SparkJoyRequestFilterBar(
+          value: _statusFilter,
+          filters: RequestStatusFilter.values,
+          onQueryChanged: (query) => setState(() => _query = query.trim()),
+          onChanged: (filter) {
             if (filter == _statusFilter) return;
             setState(() => _statusFilter = filter);
             _load();
@@ -383,28 +392,6 @@ class _SparkJoyCompanyRequestsScreenState
             ),
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _RequestsToolbar extends StatelessWidget {
-  const _RequestsToolbar({required this.filter, required this.onFilterChanged});
-
-  final RequestStatusFilter filter;
-  final ValueChanged<RequestStatusFilter> onFilterChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const Expanded(child: SparkSectionTitle('Мои заявки')),
-        SparkJoyRequestFilterBar(
-          value: filter,
-          filters: RequestStatusFilter.values,
-          onChanged: onFilterChanged,
-        ),
       ],
     );
   }
@@ -433,6 +420,12 @@ bool _isVisibleRequestDraft(Map<String, dynamic>? draft) {
     if (value != null && value is! String && value is! Map) return true;
   }
   return false;
+}
+
+bool _matchesRequestQuery(Map<String, dynamic> request, String query) {
+  final normalized = query.trim().toLowerCase();
+  if (normalized.isEmpty) return true;
+  return request.toString().toLowerCase().contains(normalized);
 }
 
 Map<String, dynamic>? _draftCardData(Map<String, dynamic>? draft) {

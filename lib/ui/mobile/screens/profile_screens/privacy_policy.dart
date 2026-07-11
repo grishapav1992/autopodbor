@@ -5,7 +5,9 @@ import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.da
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 class PrivacyPolicy extends StatelessWidget {
-  const PrivacyPolicy({super.key});
+  const PrivacyPolicy({super.key, this.sparkHeader = false});
+
+  final bool sparkHeader;
 
   static const _serviceName = 'AutoBase';
   static const _operatorName =
@@ -27,7 +29,10 @@ class PrivacyPolicy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: 'Политика ПДн'),
+      appBar: simpleAppBar(
+        title: 'Политика ПДн',
+        sparkStyle: sparkHeader,
+      ),
       body: ListView(
         shrinkWrap: true,
         padding: AppSizes.listPaddingWithBottomBar(),

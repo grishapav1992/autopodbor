@@ -7,7 +7,6 @@ import 'package:flutter_application_1/core/utils/profanity_moderator.dart';
 import 'package:flutter_application_1/data/api/feedback_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart'
     show SessionExpiredException;
-import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_button_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:speech_to_text/speech_to_text.dart';
@@ -225,7 +224,7 @@ class _SparkJoyFeedbackScreenState extends State<SparkJoyFeedbackScreen> {
         textLength <= SparkJoyFeedbackScreen.maxTextLength;
 
     return Scaffold(
-      appBar: simpleAppBar(title: 'Обратная связь'),
+      appBar: sparkAppBar(title: 'Обратная связь'),
       body: SparkScreenList(
         children: [
           const MyText(

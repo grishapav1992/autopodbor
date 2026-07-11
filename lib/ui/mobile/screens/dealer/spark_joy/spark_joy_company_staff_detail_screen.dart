@@ -176,7 +176,7 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
     }).length;
 
     return SparkPageScaffold(
-      appBar: AppBar(centerTitle: false, title: Text(staffName)),
+      appBar: sparkAppBar(title: staffName),
       bottomInset: SparkSpace.xl,
       children: [
         SparkPageHeader(

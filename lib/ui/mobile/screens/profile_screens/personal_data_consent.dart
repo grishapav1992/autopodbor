@@ -5,7 +5,9 @@ import 'package:flutter_application_1/ui/common/widgets/custom_app_bar_widget.da
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 class PersonalDataConsent extends StatelessWidget {
-  const PersonalDataConsent({super.key});
+  const PersonalDataConsent({super.key, this.sparkHeader = false});
+
+  final bool sparkHeader;
 
   static const _serviceName = 'AutoBase';
   static const _operatorName =
@@ -22,7 +24,10 @@ class PersonalDataConsent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: simpleAppBar(title: 'Согласие на ПДн'),
+      appBar: simpleAppBar(
+        title: 'Согласие на ПДн',
+        sparkStyle: sparkHeader,
+      ),
       body: ListView(
         shrinkWrap: true,
         padding: AppSizes.listPaddingWithBottomBar(),
