@@ -56,6 +56,10 @@ const List<Map<String, dynamic>> sparkCompanies = [
 const List<Map<String, dynamic>> sparkSpecialists = [
   {
     'id': 'spec-1',
+    // sub=34 from the dev JWT — calling Notification.SendNotification with
+    // this recipient hits a real account on carreports.ru:8085 so the loop
+    // (company → server → specialist) can be tested end-to-end.
+    'userId': 34,
     'name': 'Иван Сидоров',
     'city': 'Москва',
     'phone': '+7 (926) 111-22-33',
@@ -73,6 +77,7 @@ const List<Map<String, dynamic>> sparkSpecialists = [
   },
   {
     'id': 'spec-2',
+    'userId': 35,
     'name': 'Пётр Волков',
     'city': 'Москва',
     'phone': '+7 (903) 444-55-66',
@@ -90,6 +95,7 @@ const List<Map<String, dynamic>> sparkSpecialists = [
   },
   {
     'id': 'spec-3',
+    'userId': 36,
     'name': 'Андрей Кузнецов',
     'city': 'Москва',
     'phone': '+7 (915) 777-88-99',
@@ -107,6 +113,7 @@ const List<Map<String, dynamic>> sparkSpecialists = [
   },
   {
     'id': 'spec-7',
+    'userId': 37,
     'name': 'Максим Егоров',
     'city': 'Москва',
     'phone': '+7 (925) 111-00-22',

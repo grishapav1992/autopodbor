@@ -122,6 +122,12 @@ class BackendNotification {
   bool get isInteractivePending =>
       type.isInteractive && status == NotificationStatus.pending;
 
+  /// Typed view of the payload for `task`/`invitation`; `null` otherwise.
+  NotificationTaskPayload? get taskPayload =>
+      (type == NotificationType.task || type == NotificationType.invitation)
+      ? NotificationTaskPayload.tryParse(payload)
+      : null;
+
   int? get requestId {
     final entityType = (payload['entityType'] ?? '').toString();
     final raw =
@@ -354,4 +360,139 @@ class NotificationPushEvent {
       previewCreatedAt: BackendNotification._parseDt(preview['createdAt']),
     );
   }
+}
+
+/// Typed view of `BackendNotification.payload` for task notifications.
+class NotificationTaskPayload {
+  const NotificationTaskPayload({
+    this.requestId,
+    this.requestNumber = '',
+    this.requestType = '',
+    this.dueAt,
+    this.clientUser,
+    this.requestCars = const <NotificationRequestCar>[],
+    this.note = '',
+  });
+
+  final int? requestId;
+  final String requestNumber;
+  final String requestType;
+  final DateTime? dueAt;
+  final NotificationClientUser? clientUser;
+  final List<NotificationRequestCar> requestCars;
+  final String note;
+
+  bool get isEmpty =>
+      requestId == null &&
+      requestNumber.isEmpty &&
+      requestType.isEmpty &&
+      dueAt == null &&
+      clientUser == null &&
+      requestCars.isEmpty &&
+      note.isEmpty;
+
+  static NotificationTaskPayload? tryParse(Map<String, dynamic> raw) {
+    if (raw.isEmpty) return null;
+    final requestId = raw['requestId'] is num
+        ? (raw['requestId'] as num).toInt()
+        : int.tryParse('${raw['requestId'] ?? ''}');
+    final cars = <NotificationRequestCar>[];
+    final rawCars = raw['requestCars'];
+    if (rawCars is List) {
+      for (final car in rawCars) {
+        final parsed = NotificationRequestCar.tryParse(car);
+        if (parsed != null) cars.add(parsed);
+      }
+    }
+    final result = NotificationTaskPayload(
+      requestId: requestId,
+      requestNumber: (raw['requestNumber'] ?? '').toString(),
+      requestType: (raw['requestType'] ?? '').toString(),
+      dueAt: BackendNotification._parseDt(raw['dueAt']),
+      clientUser: NotificationClientUser.tryParse(raw['clientUser']),
+      requestCars: cars,
+      note: (raw['note'] ?? '').toString(),
+    );
+    return result.isEmpty ? null : result;
+  }
+
+  List<Map<String, dynamic>> requestCarsToJson() =>
+      requestCars.map((car) => car.toJson()).toList(growable: false);
+}
+
+class NotificationClientUser {
+  const NotificationClientUser({this.userId, this.name = '', this.phone = ''});
+
+  final int? userId;
+  final String name;
+  final String phone;
+
+  static NotificationClientUser? tryParse(Object? input) {
+    if (input is! Map) return null;
+    final map = input.map((key, value) => MapEntry(key.toString(), value));
+    if (map.isEmpty) return null;
+    final userId = map['userId'] is num
+        ? (map['userId'] as num).toInt()
+        : (map['id'] is num
+              ? (map['id'] as num).toInt()
+              : int.tryParse('${map['userId'] ?? map['id'] ?? ''}'));
+    var name = (map['name'] ?? map['fullName'] ?? '').toString();
+    if (name.isEmpty) {
+      final first = (map['firstName'] ?? '').toString().trim();
+      final last = (map['lastName'] ?? '').toString().trim();
+      name = [first, last].where((value) => value.isNotEmpty).join(' ');
+    }
+    final phone = (map['phone'] ?? '').toString();
+    if (userId == null && name.isEmpty && phone.isEmpty) return null;
+    return NotificationClientUser(userId: userId, name: name, phone: phone);
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    if (userId != null) 'userId': userId,
+    if (name.isNotEmpty) 'name': name,
+    if (phone.isNotEmpty) 'phone': phone,
+  };
+}
+
+class NotificationRequestCar {
+  const NotificationRequestCar({
+    this.restylingIds = const <int>[],
+    this.phone,
+    this.url,
+  });
+
+  final List<int> restylingIds;
+  final String? phone;
+  final String? url;
+
+  static NotificationRequestCar? tryParse(Object? input) {
+    if (input is! Map) return null;
+    final map = input.map((key, value) => MapEntry(key.toString(), value));
+    final ids = <int>[];
+    final rawIds = map['restylings'];
+    if (rawIds is List) {
+      for (final value in rawIds) {
+        final parsed = value is num ? value.toInt() : int.tryParse('$value');
+        if (parsed != null) ids.add(parsed);
+      }
+    }
+    final phone = map['phone']?.toString();
+    final url = map['url']?.toString();
+    if (ids.isEmpty &&
+        (phone == null || phone.isEmpty) &&
+        (url == null || url.isEmpty)) {
+      return null;
+    }
+    return NotificationRequestCar(
+      restylingIds: ids,
+      phone: (phone == null || phone.isEmpty) ? null : phone,
+      url: (url == null || url.isEmpty) ? null : url,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'restylings': restylingIds,
+    if (phone != null) 'phone': phone,
+    if (url != null) 'url': url,
+  };
 }

@@ -159,6 +159,48 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     return assigneeId.isNotEmpty || inviteLink.isNotEmpty;
   }
 
+  bool _isIncomingDraft(Map<String, dynamic> draft) =>
+      sjRead(draft, 'source') == kSparkDraftSourceIncoming;
+
+  /// Chip text for incoming drafts. Falls through `incomingFromName` →
+  /// `incomingFromPhone` → "Получено извне" so the chip is never empty.
+  String _incomingChipLabel(Map<String, dynamic> draft) {
+    final name = sjRead(draft, 'incomingFromName').trim();
+    if (name.isNotEmpty) return 'Получено от $name';
+    final phone = sjRead(draft, 'incomingFromPhone').trim();
+    if (phone.isNotEmpty) return 'Получено от $phone';
+    return 'Получено извне';
+  }
+
+  Widget _statusPill({required String label, IconData? icon}) {
+    final text = MyText(
+      text: label,
+      size: SparkTextSize.caption,
+      weight: FontWeight.w600,
+      color: kSecondaryColor,
+    );
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.md,
+        vertical: SparkSpace.xs,
+      ),
+      decoration: BoxDecoration(
+        color: kSecondaryColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+      ),
+      child: icon == null
+          ? text
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 14, color: kSecondaryColor),
+                const SizedBox(width: SparkSpace.xs),
+                text,
+              ],
+            ),
+    );
+  }
+
   /// Human-readable status for an assigned company draft. Falls back
   /// to the raw `status` field (`assigned` / `awaiting_invite` /
   /// `in_progress` set in the create flow + future backend updates).
@@ -260,22 +302,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                 weight: FontWeight.w700,
               ),
               const SizedBox(height: SparkSpace.md),
-              Container(
+              Align(
                 alignment: Alignment.centerLeft,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.md,
-                  vertical: SparkSpace.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: kSecondaryColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                ),
-                child: MyText(
-                  text: statusLabel,
-                  size: SparkTextSize.caption,
-                  weight: FontWeight.w600,
-                  color: kSecondaryColor,
-                ),
+                child: _statusPill(label: statusLabel),
               ),
               const SizedBox(height: SparkSpace.lg),
               if (assigneeName.isNotEmpty)
@@ -544,8 +573,10 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     if (confirmed != true) return;
     // Сначала гасим фоновую заливку интейка и её локальные копии — после
     // deleteDraft ссылок на файлы уже не будет и их подобрал бы только GC.
-    await SparkJoyIntakeUploadService.instance
-        .dropDraft(id, deleteLocalFiles: true);
+    await SparkJoyIntakeUploadService.instance.dropDraft(
+      id,
+      deleteLocalFiles: true,
+    );
     await SparkJoyStorage.deleteDraft(id);
     if (!mounted) return;
     await _load();
@@ -774,6 +805,16 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
               color: kGreyColor,
               paddingTop: SparkSpace.xxs,
             ),
+            if (_isIncomingDraft(draft)) ...[
+              const SizedBox(height: SparkSpace.sm),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: _statusPill(
+                  label: _incomingChipLabel(draft),
+                  icon: Icons.inbox_rounded,
+                ),
+              ),
+            ],
             const SizedBox(height: SparkSpace.md),
             // Single-colour progress bar — just "filled / total" sections with
             // no required/optional distinction.
@@ -864,22 +905,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             const SizedBox(height: SparkSpace.md),
             Align(
               alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.md,
-                  vertical: SparkSpace.xs,
-                ),
-                decoration: BoxDecoration(
-                  color: kSecondaryColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                ),
-                child: MyText(
-                  text: statusLabel,
-                  size: SparkTextSize.caption,
-                  weight: FontWeight.w600,
-                  color: kSecondaryColor,
-                ),
-              ),
+              child: _statusPill(label: statusLabel),
             ),
           ],
         ),

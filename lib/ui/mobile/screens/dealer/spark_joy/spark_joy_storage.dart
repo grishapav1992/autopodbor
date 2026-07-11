@@ -62,6 +62,14 @@ int _estimateRawBytes(List<String> raw) {
 /// для списка из 1–2 черновиков не срабатывал никогда.
 final Map<String, int> _lastKnownListBytes = <String, int>{};
 
+/// Marker for drafts seeded from accepting an incoming task notification.
+const String kSparkDraftSourceIncoming = 'incoming';
+
+/// Extra task payload keys used to correlate a notification with its source.
+const String kSparkPayloadCompanyName = 'companyName';
+const String kSparkPayloadCompanyId = 'companyId';
+const String kSparkPayloadAssignedDraftId = 'sparkAssignedDraftId';
+
 class SparkJoyStorage {
   SparkJoyStorage._();
 
@@ -96,10 +104,8 @@ class SparkJoyStorage {
   static const String _pendingTagDeletesKey =
       'spark_joy_pending_tag_deletes_v1';
   static const String _frameCatalogKey = 'spark_joy_frame_catalog_v1';
-  static const String _converterBatchesKey =
-      'spark_joy_converter_batches_v1';
-  static const String _converterResultsKey =
-      'spark_joy_converter_results_v1';
+  static const String _converterBatchesKey = 'spark_joy_converter_batches_v1';
+  static const String _converterResultsKey = 'spark_joy_converter_results_v1';
 
   static Future<bool> isLoggedIn() async {
     final pref = UserSimplePreferences.pref;
