@@ -495,8 +495,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
                   if (canOfferChecks) ...[
                     const SizedBox(height: SparkSpace.sm),
                     InkWell(
-                      onTap: () =>
-                          setDialogState(() => runChecks = !runChecks),
+                      onTap: () => setDialogState(() => runChecks = !runChecks),
                       borderRadius: BorderRadius.circular(SparkRadius.md),
                       child: Row(
                         children: [
@@ -543,6 +542,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
   Future<void> _applyDocScanResult(
     DocScanAiResult r, {
     required bool runChecks,
+    bool showFeedback = true,
   }) async {
     // Строгий режим: сырой текст с документа в поля марки/модели НЕ пишем —
     // сперва маппим на каталог (cache-first, офлайн работает от персиста)
@@ -635,7 +635,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       _lastVinIdentityResolved = vinNow;
     }
     _markDraftDirty();
-    if (mounted) {
+    if (mounted && showFeedback) {
       final parts = <String>[
         if (filled.isNotEmpty) 'Заполнено с документа: ${filled.join(', ')}',
         if (filled.isEmpty && unmatched.isEmpty)
@@ -644,9 +644,9 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         if (unmatched.isNotEmpty)
           'Не найдено в каталоге: ${unmatched.join(', ')} — выберите вручную',
       ];
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(parts.join('. '))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(parts.join('. '))));
     }
     if (runChecks) _autoStartLegalChecksAfterDocScan();
   }

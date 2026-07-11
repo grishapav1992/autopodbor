@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart' as crypto;
 import 'package:image/image.dart' as img;
 
 /// Подготовка фото интейка «Фото автомобиля» перед заливкой в S3:
@@ -16,13 +17,16 @@ import 'package:image/image.dart' as img;
 const int kIntakePhotoMaxSide = 2560;
 const int kIntakePhotoJpegQuality = 82;
 
-/// Best-effort: любые сбои декода (например HEIC, который package:image не
-/// умеет) возвращают исходные байты — файл уйдёт в S3 как есть, это хуже
-/// по трафику, но не ломает загрузку.
+/// Любой принятый результат — JPEG. Если декодировать исходник нельзя,
+/// бросаем [FormatException]: отправлять оригинал под видом сжатой копии
+/// нельзя, иначе нарушается контракт интейка и vision может получить HEIC с
+/// заголовком image/jpeg. Локальный оригинал при этом остаётся нетронутым.
 Uint8List sparkPrepareIntakePhoto(Uint8List bytes) {
   try {
     final decoded = img.decodeImage(bytes);
-    if (decoded == null) return bytes;
+    if (decoded == null) {
+      throw const FormatException('Формат изображения не поддерживается');
+    }
     // EXIF-ориентация теряется при пере-энкоде — запекаем поворот в пиксели.
     var im = img.bakeOrientation(decoded);
     final needsResize =
@@ -35,12 +39,18 @@ Uint8List sparkPrepareIntakePhoto(Uint8List bytes) {
     final encoded = Uint8List.fromList(
       img.encodeJpg(im, quality: kIntakePhotoJpegQuality),
     );
-    // После даунскейла JPEG возвращаем всегда (важно РАЗРЕШЕНИЕ — vision-
-    // токены и канал). Без ресайза пере-энкод маленького уже-сжатого файла
-    // может только РАЗДУТЬ его — тогда оригинал честнее.
-    if (needsResize) return encoded;
-    return encoded.length < bytes.length ? encoded : bytes;
-  } catch (_) {
-    return bytes;
+    // Возвращаем JPEG всегда, даже если маленький исходник был компактнее:
+    // для временного vision-объекта важнее единый читаемый формат, чем
+    // экономия нескольких килобайт.
+    return encoded;
+  } on FormatException {
+    rethrow;
+  } catch (e) {
+    throw FormatException('Не удалось подготовить изображение: $e');
   }
 }
+
+/// SHA-256 именно оригинальных байт. Вызывается до сжатия и загрузки, поэтому
+/// hash стабильно сопоставляет ответ ИИ с локальным оригиналом.
+String sparkIntakeSha256Hex(Uint8List bytes) =>
+    crypto.sha256.convert(bytes).toString();

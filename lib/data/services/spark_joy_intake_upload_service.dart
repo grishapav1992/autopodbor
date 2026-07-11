@@ -26,9 +26,13 @@ import 'package:flutter/widgets.dart'
     show AppLifecycleState, WidgetsBinding, WidgetsBindingObserver;
 import 'package:path_provider/path_provider.dart';
 
+import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart'
     show StorageApi, SessionExpiredException;
+import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_transfer.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_doc_scan_ai.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_photo_prep.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 
@@ -70,6 +74,22 @@ class SparkIntakeFileRecord {
   String? videoThumbPath;
   String? error;
 
+  /// sha256 ОРИГИНАЛЬНЫХ байт (hex) — ключ сопоставления вердикта ИИ с
+  /// локальным оригиналом (в S3 уезжает сжатая копия) + дедуп вердиктов
+  /// между одинаковыми фото.
+  String sha256;
+
+  /// Куда положить локальный оригинал: materials / inspection / unknown.
+  /// Для materials [aiDocumentKind] отличает СТС/ПТС от прочих документов.
+  String aiSection;
+  String aiDocumentKind;
+  String aiGroup;
+  String aiElement;
+
+  /// Для vehicle_doc: JSON шести полей СТС/ПТС (второй вызов — проверенный
+  /// 6-польный скан); применяет экран через _applyDocScanResult.
+  String aiDocJson;
+
   SparkIntakeFileRecord({
     required this.id,
     required this.name,
@@ -84,6 +104,12 @@ class SparkIntakeFileRecord {
     this.compressedPath,
     this.videoThumbPath,
     this.error,
+    this.sha256 = '',
+    this.aiSection = '',
+    this.aiDocumentKind = '',
+    this.aiGroup = '',
+    this.aiElement = '',
+    this.aiDocJson = '',
   });
 
   bool get isImage => mimeType.startsWith('image/');
@@ -92,6 +118,10 @@ class SparkIntakeFileRecord {
   bool get isUploaded => status == SparkIntakeFileStatus.uploaded;
   bool get isFailed => status == SparkIntakeFileStatus.failed;
   bool get isTerminal => isUploaded || isFailed;
+
+  /// Изображение ждёт вердикта ИИ (классифицируются только изображения:
+  /// vision не читает pdf/видео; документы раскладываются детерминированно).
+  bool get awaitsAiVerdict => isImage && isUploaded && aiSection.isEmpty;
 
   Map<String, dynamic> toJson() {
     final persistedStatus = switch (status) {
@@ -113,6 +143,12 @@ class SparkIntakeFileRecord {
       if (compressedPath != null) 'compressedPath': compressedPath,
       if (videoThumbPath != null) 'videoThumbPath': videoThumbPath,
       if (error != null) 'error': error,
+      if (sha256.isNotEmpty) 'sha256': sha256,
+      if (aiSection.isNotEmpty) 'aiSection': aiSection,
+      if (aiDocumentKind.isNotEmpty) 'aiDocumentKind': aiDocumentKind,
+      if (aiGroup.isNotEmpty) 'aiGroup': aiGroup,
+      if (aiElement.isNotEmpty) 'aiElement': aiElement,
+      if (aiDocJson.isNotEmpty) 'aiDocJson': aiDocJson,
     };
   }
 
@@ -144,8 +180,50 @@ class SparkIntakeFileRecord {
       compressedPath: m['compressedPath']?.toString(),
       videoThumbPath: m['videoThumbPath']?.toString(),
       error: m['error']?.toString(),
+      sha256: m['sha256']?.toString() ?? '',
+      aiSection: _intakeSectionFromJson(m),
+      aiDocumentKind: _intakeDocumentKindFromJson(m),
+      aiGroup: m['aiGroup']?.toString() ?? '',
+      aiElement: m['aiElement']?.toString() ?? '',
+      aiDocJson: m['aiDocJson']?.toString() ?? '',
     );
   }
+}
+
+String _intakeSectionFromJson(Map<String, dynamic> map) {
+  final direct = map['aiSection']?.toString() ?? '';
+  if (direct.isNotEmpty) return direct;
+  return switch (map['aiCategory']?.toString() ?? '') {
+    'inspection' => SparkIntakeAiSection.inspection,
+    'document' || 'vehicle_doc' => SparkIntakeAiSection.materials,
+    'unknown' => SparkIntakeAiSection.unknown,
+    _ => '',
+  };
+}
+
+String _intakeDocumentKindFromJson(Map<String, dynamic> map) {
+  final direct = map['aiDocumentKind']?.toString() ?? '';
+  if (direct.isNotEmpty) return direct;
+  return switch (map['aiCategory']?.toString() ?? '') {
+    'vehicle_doc' => SparkIntakeDocumentKind.vehicleDoc,
+    'document' => SparkIntakeDocumentKind.document,
+    _ => '',
+  };
+}
+
+/// Конфиг ИИ-раскладки: клише + допустимая таксономия для валидации
+/// вердиктов. Строится экраном отчёта (реестры групп/элементов приватны
+/// для его библиотеки) и передаётся сервису через [SparkJoyIntakeUploadService.configureAi].
+class SparkIntakeAiConfig {
+  final String cliche;
+
+  /// groupKey → допустимые element id этой группы.
+  final Map<String, Set<String>> elementsByGroup;
+
+  const SparkIntakeAiConfig({
+    required this.cliche,
+    required this.elementsByGroup,
+  });
 }
 
 enum SparkIntakePhase {
@@ -158,7 +236,15 @@ enum SparkIntakePhase {
   /// Заливка запрошена и не вся завершена.
   uploading,
 
-  /// Всё загружено.
+  /// Загрузка завершена, ИИ раскладывает изображения по разделам.
+  classifying,
+
+  /// Вердикты готовы, есть что применить к черновику — экран отчёта
+  /// подхватывает и раскладывает автоматически.
+  classified,
+
+  /// Всё загружено и разложено; в интейке могли остаться только
+  /// нераспознанные файлы/видео.
   done,
 
   /// Заливка запрошена, живых попыток нет, есть ошибки.
@@ -177,6 +263,11 @@ class SparkIntakeSnapshot {
   final double progress;
   final SparkIntakePhase phase;
 
+  /// Прогресс ИИ-классификации: изображений всего к раскладке / уже с
+  /// вердиктом (для карточки «ИИ раскладывает · N из M»).
+  final int aiTotal;
+  final int aiClassified;
+
   const SparkIntakeSnapshot({
     required this.draftId,
     required this.files,
@@ -185,19 +276,21 @@ class SparkIntakeSnapshot {
     required this.failedCount,
     required this.progress,
     required this.phase,
+    this.aiTotal = 0,
+    this.aiClassified = 0,
   });
 
   int get total => files.length;
 
   static SparkIntakeSnapshot empty(String draftId) => SparkIntakeSnapshot(
-        draftId: draftId,
-        files: const <SparkIntakeFileRecord>[],
-        uploadRequested: false,
-        uploadedCount: 0,
-        failedCount: 0,
-        progress: 0,
-        phase: SparkIntakePhase.idle,
-      );
+    draftId: draftId,
+    files: const <SparkIntakeFileRecord>[],
+    uploadRequested: false,
+    uploadedCount: 0,
+    failedCount: 0,
+    progress: 0,
+    phase: SparkIntakePhase.idle,
+  );
 }
 
 class _IntakeDraftState {
@@ -205,6 +298,12 @@ class _IntakeDraftState {
   final List<SparkIntakeFileRecord> files = <SparkIntakeFileRecord>[];
   bool uploadRequested = false;
   bool pipelineRunning = false;
+  bool classifyRunning = false;
+
+  /// Конфиг ИИ-раскладки (клише + таксономия). In-memory: экран отчёта
+  /// передаёт его при инициализации черновика; без него классификация
+  /// не стартует.
+  SparkIntakeAiConfig? aiConfig;
 
   /// Прогресс текущей заливки per-record (0..1), только in-memory.
   final Map<String, double> progressById = <String, double>{};
@@ -216,6 +315,11 @@ class _IntakeDraftState {
   /// (протухший presigned URL) — вторые 403 уходят в общий retry-цикл.
   final Set<String> retriedForExpiredUrl = <String>{};
 
+  /// Попытки ИИ-классификации per-record (in-memory): после
+  /// [_kIntakeAiMaxAttempts] неудач запись честно уходит в unknown —
+  /// платные вызовы не жжём бесконечно.
+  final Map<String, int> aiAttemptsById = <String, int>{};
+
   late final ValueNotifier<SparkIntakeSnapshot> notifier =
       ValueNotifier<SparkIntakeSnapshot>(SparkIntakeSnapshot.empty(draftId));
 
@@ -226,6 +330,21 @@ class _IntakeDraftState {
       if (r.id == id) return r;
     }
     return null;
+  }
+
+  /// Запись готова к применению к черновику (экран разложит и удалит её
+  /// из интейка): документы — детерминированно в «Материалы проверки»,
+  /// изображения — по вердикту ИИ. Видео и unknown остаются в интейке.
+  bool recordApplicable(SparkIntakeFileRecord r) {
+    if (r.isDocument) return r.isUploaded;
+    if (!r.isImage) return false;
+    return switch (r.aiSection) {
+      SparkIntakeAiSection.inspection => r.aiGroup.isNotEmpty,
+      SparkIntakeAiSection.materials =>
+        r.aiDocumentKind != SparkIntakeDocumentKind.vehicleDoc ||
+            r.aiDocJson.isNotEmpty,
+      _ => false,
+    };
   }
 
   SparkIntakeSnapshot snapshot() {
@@ -244,25 +363,49 @@ class _IntakeDraftState {
         case SparkIntakeFileStatus.failed:
           failed += 1;
         case SparkIntakeFileStatus.uploading ||
-              SparkIntakeFileStatus.enqueued ||
-              SparkIntakeFileStatus.compressing:
+            SparkIntakeFileStatus.enqueued ||
+            SparkIntakeFileStatus.compressing:
           hasLive = true;
           weightDone += weight * (progressById[r.id] ?? 0).clamp(0.0, 1.0);
         default:
           if (uploadRequested) hasLive = true;
       }
     }
+    var aiTotal = 0;
+    var aiClassified = 0;
+    var aiPending = false;
+    var hasApplicable = false;
+    for (final r in files) {
+      if (r.isImage && (r.isUploaded || r.aiSection.isNotEmpty)) {
+        aiTotal += 1;
+        if (r.aiSection.isNotEmpty) {
+          aiClassified += 1;
+        } else if (r.isUploaded) {
+          aiPending = true;
+        }
+        if (r.aiSection == SparkIntakeAiSection.materials &&
+            r.aiDocumentKind == SparkIntakeDocumentKind.vehicleDoc &&
+            r.aiDocJson.isEmpty) {
+          aiPending = true;
+        }
+      }
+      if (uploadRequested && recordApplicable(r)) hasApplicable = true;
+    }
     final SparkIntakePhase phase;
     if (files.isEmpty) {
       phase = SparkIntakePhase.idle;
     } else if (!uploadRequested) {
       phase = SparkIntakePhase.staged;
-    } else if (uploaded == files.length) {
-      phase = SparkIntakePhase.done;
     } else if (hasLive) {
       phase = SparkIntakePhase.uploading;
-    } else {
+    } else if (classifyRunning || aiPending) {
+      phase = SparkIntakePhase.classifying;
+    } else if (hasApplicable) {
+      phase = SparkIntakePhase.classified;
+    } else if (failed > 0) {
       phase = SparkIntakePhase.failed;
+    } else {
+      phase = SparkIntakePhase.done;
     }
     return SparkIntakeSnapshot(
       draftId: draftId,
@@ -270,8 +413,12 @@ class _IntakeDraftState {
       uploadRequested: uploadRequested,
       uploadedCount: uploaded,
       failedCount: failed,
-      progress: weightTotal <= 0 ? 0 : (weightDone / weightTotal).clamp(0.0, 1.0),
+      progress: weightTotal <= 0
+          ? 0
+          : (weightDone / weightTotal).clamp(0.0, 1.0),
       phase: phase,
+      aiTotal: aiTotal,
+      aiClassified: aiClassified,
     );
   }
 
@@ -280,9 +427,9 @@ class _IntakeDraftState {
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'files': files.map((f) => f.toJson()).toList(),
-        'uploadRequested': uploadRequested,
-      };
+    'files': files.map((f) => f.toJson()).toList(),
+    'uploadRequested': uploadRequested,
+  };
 }
 
 class SparkJoyIntakeUploadService with WidgetsBindingObserver {
@@ -296,15 +443,41 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     instance = SparkJoyIntakeUploadService._();
     instance._transferOverride = transfer;
     presignOverride = null;
+    aiChatOverride = null;
+    viewUrlOverride = null;
   }
 
   /// Тестовый шов выпуска presigned URL (по умолчанию —
   /// StorageApi.getTemporaryUploadUrl с reportNumber: 'temp').
   @visibleForTesting
   static Future<({String url, String key})> Function(String filename)?
-      presignOverride;
+  presignOverride;
+
+  /// Тестовый шов вызова ИИ (по умолчанию — AiQueue.ChatCompletions с
+  /// одноразовым chatId + clearChatHistory). Возвращает сырой текст модели.
+  @visibleForTesting
+  static Future<String> Function({
+    required String text,
+    required String cliche,
+    required List<String> fileUrls,
+  })?
+  aiChatOverride;
+
+  /// Тестовый шов выпуска presigned GET (по умолчанию —
+  /// StorageApi.getTemporaryViewUrl с reportNumber: 'temp').
+  @visibleForTesting
+  static Future<String> Function(String filename)? viewUrlOverride;
 
   static const Duration _retryInterval = Duration(seconds: 60);
+
+  /// Пачка изображений на один vision-вызов: меньше — надёжнее матчинг
+  /// hash↔изображение, больше — дешевле (клише амортизируется).
+  static const int _kIntakeAiBatchSize = 4;
+  static const int _kIntakeAiMaxAttempts = 2;
+
+  /// temp/-хранилище живёт сутки; старше порога — перезаливаем сжатую
+  /// копию перед классификацией (локальный оригинал всегда на месте).
+  static const Duration _kTempFreshness = Duration(hours: 20);
 
   final Map<String, _IntakeDraftState> _states = <String, _IntakeDraftState>{};
   SparkIntakeTransfer? _transferOverride;
@@ -316,8 +489,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   SparkIntakeTransfer get _transfer {
     final override = _transferOverride;
     if (override != null) return override;
-    return _transferInstance ??=
-        kIsWeb ? SparkIntakeTransferWeb() : SparkIntakeTransferIo();
+    return _transferInstance ??= kIsWeb
+        ? SparkIntakeTransferWeb()
+        : SparkIntakeTransferIo();
   }
 
   // ── Публичное API ─────────────────────────────────────────────────────
@@ -351,6 +525,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     state.progressById.clear();
     state.noAutoRetry.clear();
     state.retriedForExpiredUrl.clear();
+    state.aiAttemptsById.clear();
     state.uploadRequested = false;
     if (rawPhotoIntake != null) {
       final rawFiles = rawPhotoIntake['files'];
@@ -368,6 +543,15 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
   }
 
+  /// Передаёт клише и таксономию ИИ-раскладки (экран отчёта строит их из
+  /// своих реестров). Без конфига классификация не стартует; с появлением
+  /// конфига — добираем накопившееся.
+  void configureAi(String draftId, SparkIntakeAiConfig config) {
+    final state = _stateFor(draftId);
+    state.aiConfig = config;
+    _maybeStartClassification(state);
+  }
+
   /// Добавляет файлы в интейк и персистит. Файлы уже должны лежать в
   /// локальном хранилище (пикеры экрана копируют их сами).
   Future<void> stageFiles(
@@ -376,6 +560,21 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   ) async {
     if (records.isEmpty) return;
     final state = _stateFor(draftId);
+    // Контракт начинается с hash оригинала. Считаем до постановки в очередь
+    // и до любого сжатия; последовательно, чтобы несколько больших фото не
+    // держались одновременно в памяти.
+    for (final record in records) {
+      if (!record.isImage || record.sha256.isNotEmpty) continue;
+      final original = await _readLocalBytes(record.localPath);
+      if (original == null || original.isEmpty) {
+        record.status = SparkIntakeFileStatus.failed;
+        record.error = 'Файл недоступен на устройстве';
+        continue;
+      }
+      record.sha256 = kIsWeb
+          ? sparkIntakeSha256Hex(original)
+          : await compute(sparkIntakeSha256Hex, original);
+    }
     state.files.addAll(records);
     state.emit();
     await _persist(state);
@@ -406,6 +605,27 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       if (deleteLocalFiles) {
         unawaited(_deleteLocalArtifacts(record));
       }
+    }
+    state.emit();
+    await _persist(state);
+  }
+
+  /// Подтверждает, что экран атомарно перенёс оригиналы в модель отчёта.
+  /// Оригиналы не удаляем: теперь на них ссылаются media/legalFiles. Сжатые
+  /// временные JPEG больше не нужны и удаляются best-effort.
+  Future<void> acknowledgeApplied(String draftId, Set<String> recordIds) async {
+    if (recordIds.isEmpty) return;
+    final state = _states[draftId];
+    if (state == null) return;
+    final applied = state.files
+        .where((record) => recordIds.contains(record.id))
+        .toList(growable: false);
+    state.files.removeWhere((record) => recordIds.contains(record.id));
+    for (final record in applied) {
+      state.progressById.remove(record.id);
+      state.noAutoRetry.remove(record.id);
+      state.retriedForExpiredUrl.remove(record.id);
+      unawaited(_deleteCompressedCopy(record));
     }
     state.emit();
     await _persist(state);
@@ -445,7 +665,10 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   /// Чистит состояние черновика; [deleteLocalFiles] — вместе с локальными
   /// копиями (удаление черновика). S3-копии не трогаем — temp/ сам умрёт
   /// через сутки, метода удаления в API всё равно нет.
-  Future<void> dropDraft(String draftId, {bool deleteLocalFiles = false}) async {
+  Future<void> dropDraft(
+    String draftId, {
+    bool deleteLocalFiles = false,
+  }) async {
     final state = _states.remove(draftId);
     if (state == null) return;
     for (final record in state.files) {
@@ -516,6 +739,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       state.pipelineRunning = false;
       state.emit();
       _scheduleRetryTimerIfNeeded();
+      _maybeStartClassification(state);
     }
   }
 
@@ -541,12 +765,18 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
             : await compute(sparkPrepareIntakePhoto, original);
         if (kIsWeb) {
           webBytes = prepared;
-        } else if (!identical(prepared, original)) {
+        } else {
           final path = await _writeCompressedCopy(record, prepared);
-          if (path != null) {
-            record.compressedPath = path;
-            await _persist(state);
+          if (path == null) {
+            _failNoRetry(
+              state,
+              record,
+              'Не удалось сохранить сжатую копию изображения',
+            );
+            return;
           }
+          record.compressedPath = path;
+          await _persist(state);
         }
       } else if (kIsWeb) {
         webBytes = await _readLocalBytes(record.localPath);
@@ -574,8 +804,8 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
         record.remoteName = sparkIntakeRemoteName(
           mimeType: record.mimeType,
           originalName: record.name,
-          compressed: record.compressedPath != null ||
-              (kIsWeb && record.isImage),
+          compressed:
+              record.compressedPath != null || (kIsWeb && record.isImage),
         );
       }
       final presign = presignOverride;
@@ -588,18 +818,20 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       record.s3Key = presigned.key;
 
       // 4. Enqueue в транспорт.
-      final uploadMime = record.compressedPath != null ||
-              (kIsWeb && record.isImage)
+      final uploadMime =
+          record.compressedPath != null || (kIsWeb && record.isImage)
           ? 'image/jpeg'
           : record.mimeType;
-      final taskId = await _transfer.enqueue(SparkIntakeUploadPayload(
-        draftId: state.draftId,
-        recordId: record.id,
-        url: presigned.url,
-        mimeType: uploadMime,
-        filePath: filePath,
-        bytes: webBytes,
-      ));
+      final taskId = await _transfer.enqueue(
+        SparkIntakeUploadPayload(
+          draftId: state.draftId,
+          recordId: record.id,
+          url: presigned.url,
+          mimeType: uploadMime,
+          filePath: filePath,
+          bytes: webBytes,
+        ),
+      );
       if (taskId == null) {
         _failNoRetry(state, record, 'Не удалось поставить файл в загрузку');
         return;
@@ -618,7 +850,11 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       record.error = e.toString();
       state.emit();
       await _persist(state);
-      _log('record-failed', draftId: state.draftId, extra: 'id=${record.id} $e');
+      _log(
+        'record-failed',
+        draftId: state.draftId,
+        extra: 'id=${record.id} $e',
+      );
     }
   }
 
@@ -632,6 +868,321 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     record.error = message;
     state.emit();
     unawaited(_persist(state));
+  }
+
+  // ── ИИ-классификация ──────────────────────────────────────────────────
+  //
+  // Стартует автоматически, когда заливка запрошена и все записи в
+  // терминальном статусе. Пачками по [_kIntakeAiBatchSize] изображений:
+  // текст запроса перечисляет hash каждого изображения (в порядке
+  // приложения), модель возвращает {"items":[{hash, category, group,
+  // element}]} — hash и есть ключ сопоставления вердикта с локальным
+  // оригиналом (сжатая S3-копия оригинал не идентифицирует). Для СТС/ПТС
+  // вторым вызовом гоняется проверенный 6-польный скан документа.
+
+  bool _uploadsSettled(_IntakeDraftState state) {
+    if (!state.uploadRequested) return false;
+    for (final r in state.files) {
+      if (!r.isTerminal) return false;
+    }
+    return true;
+  }
+
+  void _maybeStartClassification(_IntakeDraftState state) {
+    if (state.aiConfig == null || !_uploadsSettled(state)) return;
+    unawaited(_runClassification(state));
+  }
+
+  Future<void> _runClassification(_IntakeDraftState state) async {
+    if (state.classifyRunning) return;
+    final config = state.aiConfig;
+    if (config == null || !_uploadsSettled(state)) return;
+    state.classifyRunning = true;
+    var consecutiveFailures = 0;
+    try {
+      // Протухшие temp-копии перезаливаем ДО классификации: вернёмся сюда
+      // сами, когда аплоад-пайплайн доедет (триггер в _onTransferUpdate).
+      var reuploadKicked = false;
+      for (final r in state.files) {
+        if (r.awaitsAiVerdict && _isTempExpired(r)) {
+          r.status = SparkIntakeFileStatus.staged;
+          r.remoteName = '';
+          r.s3Key = '';
+          r.uploadedAtIso = '';
+          r.taskId = null;
+          reuploadKicked = true;
+        }
+      }
+      if (reuploadKicked) {
+        state.emit();
+        await _persist(state);
+        unawaited(_runPipeline(state));
+        return;
+      }
+
+      while (true) {
+        final batch = <SparkIntakeFileRecord>[];
+        var dirty = false;
+        for (final r in state.files) {
+          if (!r.awaitsAiVerdict) continue;
+          if ((state.aiAttemptsById[r.id] ?? 0) >= _kIntakeAiMaxAttempts) {
+            // Платные вызовы не жжём бесконечно — честный unknown,
+            // файл остаётся в интейке.
+            r.aiSection = SparkIntakeAiSection.unknown;
+            dirty = true;
+            continue;
+          }
+          batch.add(r);
+          if (batch.length == _kIntakeAiBatchSize) break;
+        }
+        if (dirty) {
+          state.emit();
+          await _persist(state);
+        }
+        if (batch.isEmpty) break;
+
+        // Hash оригинала — лениво (старые записи без него) + дедуп: то же
+        // фото, добавленное дважды, второй раз не оплачивается.
+        for (final r in batch) {
+          if (r.sha256.isEmpty) {
+            final bytes = await _readLocalBytes(r.localPath);
+            if (bytes != null && bytes.isNotEmpty) {
+              r.sha256 = kIsWeb
+                  ? sparkIntakeSha256Hex(bytes)
+                  : await compute(sparkIntakeSha256Hex, bytes);
+            }
+          }
+        }
+        var deduped = false;
+        for (final r in [...batch]) {
+          if (r.sha256.isEmpty) {
+            // Оригинал пропал — классифицировать нечего.
+            r.aiSection = SparkIntakeAiSection.unknown;
+            batch.remove(r);
+            deduped = true;
+            continue;
+          }
+          for (final donor in state.files) {
+            if (donor.id == r.id || donor.aiSection.isEmpty) continue;
+            if (donor.sha256 != r.sha256) continue;
+            r.aiSection = donor.aiSection;
+            r.aiDocumentKind = donor.aiDocumentKind;
+            r.aiGroup = donor.aiGroup;
+            r.aiElement = donor.aiElement;
+            r.aiDocJson = donor.aiDocJson;
+            batch.remove(r);
+            deduped = true;
+            break;
+          }
+        }
+        if (deduped) {
+          state.emit();
+          await _persist(state);
+        }
+        if (batch.isEmpty) continue;
+
+        try {
+          await _classifyBatch(state, config, batch);
+          consecutiveFailures = 0;
+        } on SessionExpiredException {
+          rethrow;
+        } catch (e) {
+          for (final r in batch) {
+            state.aiAttemptsById[r.id] = (state.aiAttemptsById[r.id] ?? 0) + 1;
+          }
+          consecutiveFailures += 1;
+          _log(
+            'classify-batch-failed',
+            draftId: state.draftId,
+            extra: e.toString(),
+          );
+          // Короткий backoff, чтобы транзиент не сжёг обе попытки залпом.
+          await Future<void>.delayed(
+            Duration(seconds: math.min(5 * consecutiveFailures, 15)),
+          );
+        }
+        state.emit();
+        await _persist(state);
+      }
+
+      await _runDocScans(state, config);
+    } on SessionExpiredException {
+      // Сессия умерла — глобальный обработчик уведёт на логин.
+    } catch (e) {
+      _log('classify-error', draftId: state.draftId, extra: e.toString());
+    } finally {
+      state.classifyRunning = false;
+      state.emit();
+    }
+  }
+
+  Future<void> _classifyBatch(
+    _IntakeDraftState state,
+    SparkIntakeAiConfig config,
+    List<SparkIntakeFileRecord> batch,
+  ) async {
+    final urls = <String>[];
+    final lines = <String>[];
+    for (var i = 0; i < batch.length; i++) {
+      final url = await _viewUrlFor(batch[i].remoteName);
+      if (url.isEmpty) {
+        throw Exception('Не удалось получить ссылку на ${batch[i].remoteName}');
+      }
+      urls.add(url);
+      lines.add('изображение ${i + 1}: hash=${batch[i].sha256}');
+    }
+    final text = 'Классифицируй приложенные изображения.\n${lines.join('\n')}';
+    final raw = await _aiCall(
+      text: text,
+      cliche: config.cliche,
+      fileUrls: urls,
+    );
+    final verdicts = parseIntakeDistributionResult(raw);
+    final byHash = <String, SparkIntakeAiVerdict>{
+      for (final v in verdicts) v.hash: v,
+    };
+    for (final r in batch) {
+      final verdict = byHash[r.sha256.toLowerCase()];
+      if (verdict == null) {
+        // Модель потеряла/исказила hash — считаем попыткой этой записи.
+        state.aiAttemptsById[r.id] = (state.aiAttemptsById[r.id] ?? 0) + 1;
+        continue;
+      }
+      _assignVerdict(config, r, verdict);
+    }
+  }
+
+  void _assignVerdict(
+    SparkIntakeAiConfig config,
+    SparkIntakeFileRecord record,
+    SparkIntakeAiVerdict verdict,
+  ) {
+    var section = verdict.section;
+    var documentKind = verdict.documentKind;
+    var group = verdict.group;
+    var element = verdict.element;
+    if (section == SparkIntakeAiSection.inspection) {
+      // Строгая валидация по таксономии: выдуманная группа = unknown,
+      // выдуманный элемент = группа без элемента.
+      final allowed = config.elementsByGroup[group];
+      if (allowed == null) {
+        section = SparkIntakeAiSection.unknown;
+        documentKind = '';
+        group = '';
+        element = '';
+      } else if (element.isNotEmpty && !allowed.contains(element)) {
+        element = '';
+      }
+    }
+    record.aiSection = section;
+    record.aiDocumentKind = documentKind;
+    record.aiGroup = group;
+    record.aiElement = element;
+  }
+
+  /// Для СТС/ПТС — второй вызов: проверенный 6-польный скан документа
+  /// (клише и парсер те же, что у ручного скана). Результат кладётся в
+  /// aiDocJson; применяет его экран (_applyDocScanResult, only-empty).
+  Future<void> _runDocScans(
+    _IntakeDraftState state,
+    SparkIntakeAiConfig config,
+  ) async {
+    // Снимок защищает итерацию от будущих изменений списка после завершения
+    // классификации и применения результатов экраном.
+    for (final r in List<SparkIntakeFileRecord>.of(state.files)) {
+      if (r.aiSection != SparkIntakeAiSection.materials ||
+          r.aiDocumentKind != SparkIntakeDocumentKind.vehicleDoc) {
+        continue;
+      }
+      if (r.aiDocJson.isNotEmpty) continue;
+      final attemptKey = 'doc:${r.id}';
+      while (r.aiDocJson.isEmpty &&
+          (state.aiAttemptsById[attemptKey] ?? 0) < _kIntakeAiMaxAttempts) {
+        try {
+          final url = await _viewUrlFor(r.remoteName);
+          if (url.isEmpty) {
+            throw Exception('Не удалось получить ссылку на ${r.remoteName}');
+          }
+          final raw = await _aiCall(
+            text: 'Распознай документ на фото.',
+            cliche: AiQueueClicheBuilder.buildDocScanCliche(),
+            fileUrls: [url],
+          );
+          final result = parseDocScanAiResult(raw);
+          r.aiDocJson = hasAnyDocScanData(result)
+              ? jsonEncode(<String, String>{
+                  'docType': result.docType,
+                  'vin': result.vin,
+                  'gosNumber': result.gosNumber,
+                  'brand': result.brand,
+                  'model': result.model,
+                  'year': result.year,
+                  'color': result.color,
+                })
+              : '{}';
+        } on SessionExpiredException {
+          rethrow;
+        } catch (e) {
+          final attempts = (state.aiAttemptsById[attemptKey] ?? 0) + 1;
+          state.aiAttemptsById[attemptKey] = attempts;
+          _log('doc-scan-failed', draftId: state.draftId, extra: e.toString());
+          if (attempts < _kIntakeAiMaxAttempts) {
+            await Future<void>.delayed(Duration(seconds: attempts * 5));
+          }
+        }
+      }
+      // Даже без считанных полей оригинал документа должен попасть в
+      // «Материалы проверки»; '{}' — терминальный маркер only-no-data.
+      if (r.aiDocJson.isEmpty) r.aiDocJson = '{}';
+      state.emit();
+      await _persist(state);
+    }
+  }
+
+  Future<String> _aiCall({
+    required String text,
+    required String cliche,
+    required List<String> fileUrls,
+  }) async {
+    final override = aiChatOverride;
+    if (override != null) {
+      return override(text: text, cliche: cliche, fileUrls: fileUrls);
+    }
+    // Одноразовый chatId + чистка истории: на фото могут быть ПДн
+    // (документы), нечего им лежать в серверной истории чата.
+    final chatId = DateTime.now().microsecondsSinceEpoch.toUnsigned(32);
+    try {
+      final result = await AiQueueApi.chatCompletions(
+        chatId: chatId,
+        text: text,
+        cliche: cliche,
+        fileUrls: fileUrls,
+        // Vision-пачка из 4 фото думает дольше одиночного скана (75с).
+        timeout: const Duration(seconds: 150),
+      );
+      return result.text;
+    } finally {
+      unawaited(AiQueueApi.clearChatHistory(chatId: chatId).catchError((_) {}));
+    }
+  }
+
+  Future<String> _viewUrlFor(String remoteName) {
+    if (remoteName.isEmpty) return Future.value('');
+    final override = viewUrlOverride;
+    if (override != null) return override(remoteName);
+    return StorageApi.getTemporaryViewUrl(
+      reportNumber: 'temp',
+      filename: remoteName,
+      expiresInSeconds: 600,
+      timeout: const Duration(seconds: 30),
+    );
+  }
+
+  bool _isTempExpired(SparkIntakeFileRecord record) {
+    if (!record.isUploaded) return false;
+    final uploadedAt = DateTime.tryParse(record.uploadedAtIso);
+    if (uploadedAt == null) return true;
+    return DateTime.now().difference(uploadedAt) > _kTempFreshness;
   }
 
   // ── Апдейты транспорта ────────────────────────────────────────────────
@@ -684,6 +1235,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
           state.emit();
         }
     }
+    _maybeStartClassification(state);
   }
 
   // ── Reconcile / авто-возобновление ────────────────────────────────────
@@ -719,6 +1271,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     if (state.uploadRequested) {
       unawaited(_runPipeline(state));
     }
+    _maybeStartClassification(state);
   }
 
   // ── Retry-цикл (длинные обрывы сети) ──────────────────────────────────
@@ -795,8 +1348,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     for (final draftState in _states.values) {
       if (!draftState.uploadRequested) continue;
-      final hasWork =
-          draftState.files.any((r) => _isPipelineCandidate(draftState, r));
+      final hasWork = draftState.files.any(
+        (r) => _isPipelineCandidate(draftState, r),
+      );
       if (hasWork) {
         unawaited(_runPipeline(draftState));
       }
@@ -891,6 +1445,18 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       } catch (_) {
         // Best-effort: не удалилось — подчистит gcOrphanedMedia.
       }
+    }
+  }
+
+  Future<void> _deleteCompressedCopy(SparkIntakeFileRecord record) async {
+    if (kIsWeb) return;
+    final source = record.compressedPath;
+    if (source == null || source.isEmpty) return;
+    try {
+      final path = await _resolveNativePath(source);
+      if (path != null) await File(path).delete();
+    } catch (_) {
+      // Regenerable temp copy; общий GC подчистит при следующем запуске.
     }
   }
 

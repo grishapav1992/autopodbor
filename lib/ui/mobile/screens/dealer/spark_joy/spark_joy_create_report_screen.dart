@@ -51,6 +51,7 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_upload_identity.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_vin_params_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_doc_scan_ai.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_types.dart';
 import 'package:image/image.dart' as img;
@@ -84,6 +85,7 @@ part 'spark_joy_navigation_rules.dart';
 part 'spark_joy_overview_rules.dart';
 part 'spark_joy_photo_intake_card.dart';
 part 'spark_joy_photo_intake_screen.dart';
+part 'spark_joy_photo_intake_ai_apply.dart';
 part 'spark_joy_form_helpers.dart';
 part 'spark_joy_company_cards.dart';
 part 'spark_joy_lkp_widgets.dart';
@@ -412,6 +414,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
   /// Свёрнутый грид фото (первые 7 + тайл «Ещё N») раскрыт до закрытия.
   bool _intakePhotosExpanded = false;
+
+  ValueListenable<SparkIntakeSnapshot>? _intakeListenable;
+  bool _intakeApplyRunning = false;
+  bool _intakeApplyRequested = false;
 
   final ScrollController _pageScrollController = ScrollController();
   final FocusNode _vinFocusNode = FocusNode();

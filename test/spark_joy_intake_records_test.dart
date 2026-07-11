@@ -18,6 +18,12 @@ void main() {
         compressedPath: 'file:///docs/spark_joy_media/intake_c_1.jpg',
         videoThumbPath: null,
         error: null,
+        sha256: List<String>.filled(64, 'a').join(),
+        aiSection: 'inspection',
+        aiDocumentKind: '',
+        aiGroup: 'body',
+        aiElement: 'hood',
+        aiDocJson: '{"vin":"XTA210990Y2765432"}',
       );
       final restored = SparkIntakeFileRecord.tryFromJson(record.toJson());
       expect(restored, isNotNull);
@@ -32,27 +38,37 @@ void main() {
       expect(restored.uploadedAtIso, '2026-07-11T12:00:00.000');
       expect(restored.taskId, 'task_9');
       expect(restored.compressedPath, record.compressedPath);
+      expect(restored.sha256, record.sha256);
+      expect(restored.aiSection, 'inspection');
+      expect(restored.aiGroup, 'body');
+      expect(restored.aiElement, 'hood');
+      expect(restored.aiDocJson, contains('XTA210990Y2765432'));
     });
 
-    test('транзиентные статусы сериализуются как staged (kill = дозаливка)',
-        () {
-      for (final transient in [
-        SparkIntakeFileStatus.compressing,
-        SparkIntakeFileStatus.enqueued,
-        SparkIntakeFileStatus.uploading,
-      ]) {
-        final record = SparkIntakeFileRecord(
-          id: 'r',
-          name: 'f',
-          mimeType: 'image/jpeg',
-          localPath: '/tmp/f.jpg',
-          sizeBytes: 1,
-          status: transient,
-        );
-        expect(record.toJson()['status'], SparkIntakeFileStatus.staged,
-            reason: 'статус $transient должен персиститься как staged');
-      }
-    });
+    test(
+      'транзиентные статусы сериализуются как staged (kill = дозаливка)',
+      () {
+        for (final transient in [
+          SparkIntakeFileStatus.compressing,
+          SparkIntakeFileStatus.enqueued,
+          SparkIntakeFileStatus.uploading,
+        ]) {
+          final record = SparkIntakeFileRecord(
+            id: 'r',
+            name: 'f',
+            mimeType: 'image/jpeg',
+            localPath: '/tmp/f.jpg',
+            sizeBytes: 1,
+            status: transient,
+          );
+          expect(
+            record.toJson()['status'],
+            SparkIntakeFileStatus.staged,
+            reason: 'статус $transient должен персиститься как staged',
+          );
+        }
+      },
+    );
 
     test('терминальные статусы персистятся как есть', () {
       for (final terminal in [

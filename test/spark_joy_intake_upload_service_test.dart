@@ -5,7 +5,9 @@ import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_transfer.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeTransfer implements SparkIntakeTransfer {
@@ -42,30 +44,36 @@ class _FakeTransfer implements SparkIntakeTransfer {
   }
 
   void emitComplete(String draftId, String recordId) {
-    _updates.add(SparkIntakeTransferUpdate(
-      draftId: draftId,
-      recordId: recordId,
-      kind: SparkIntakeTransferUpdateKind.complete,
-    ));
+    _updates.add(
+      SparkIntakeTransferUpdate(
+        draftId: draftId,
+        recordId: recordId,
+        kind: SparkIntakeTransferUpdateKind.complete,
+      ),
+    );
   }
 
   void emitFailed(String draftId, String recordId, {int? statusCode}) {
-    _updates.add(SparkIntakeTransferUpdate(
-      draftId: draftId,
-      recordId: recordId,
-      kind: SparkIntakeTransferUpdateKind.failed,
-      httpStatusCode: statusCode,
-      error: 'boom',
-    ));
+    _updates.add(
+      SparkIntakeTransferUpdate(
+        draftId: draftId,
+        recordId: recordId,
+        kind: SparkIntakeTransferUpdateKind.failed,
+        httpStatusCode: statusCode,
+        error: 'boom',
+      ),
+    );
   }
 
   void emitProgress(String draftId, String recordId, double progress) {
-    _updates.add(SparkIntakeTransferUpdate(
-      draftId: draftId,
-      recordId: recordId,
-      kind: SparkIntakeTransferUpdateKind.progress,
-      progress: progress,
-    ));
+    _updates.add(
+      SparkIntakeTransferUpdate(
+        draftId: draftId,
+        recordId: recordId,
+        kind: SparkIntakeTransferUpdateKind.progress,
+        progress: progress,
+      ),
+    );
   }
 }
 
@@ -82,8 +90,7 @@ Future<void> _waitFor(
   }
 }
 
-SparkJoyIntakeUploadService get service =>
-    SparkJoyIntakeUploadService.instance;
+SparkJoyIntakeUploadService get service => SparkJoyIntakeUploadService.instance;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -102,6 +109,23 @@ void main() {
       mimeType: 'application/pdf',
       localPath: file.path,
       sizeBytes: 100,
+    );
+  }
+
+  Future<SparkIntakeFileRecord> makeImageRecord(String id) async {
+    final image = img.Image(width: 64, height: 48);
+    img.fill(image, color: img.ColorRgb8(20, 40, 60));
+    final original = File('${tempDir.path}/$id.png');
+    await original.writeAsBytes(img.encodePng(image));
+    final compressed = File('${tempDir.path}/${id}_compressed.jpg');
+    await compressed.writeAsBytes(img.encodeJpg(image, quality: 82));
+    return SparkIntakeFileRecord(
+      id: id,
+      name: '$id.png',
+      mimeType: 'image/png',
+      localPath: original.path,
+      compressedPath: compressed.path,
+      sizeBytes: await original.length(),
     );
   }
 
@@ -153,10 +177,10 @@ void main() {
   });
 
   test('happy path: startUpload → enqueue со свежим URL → uploaded', () async {
-    await service.stageFiles(
-      draftId,
-      [await makeDocRecord('a'), await makeDocRecord('b')],
-    );
+    await service.stageFiles(draftId, [
+      await makeDocRecord('a'),
+      await makeDocRecord('b'),
+    ]);
     await service.startUpload(draftId);
     await _waitFor(() => transfer.enqueued.length == 2);
     expect(presignCalls, 2);
@@ -175,13 +199,12 @@ void main() {
     transfer.emitComplete(draftId, 'a');
     transfer.emitComplete(draftId, 'b');
     await _waitFor(
-      () => service.snapshotOf(draftId).phase == SparkIntakePhase.done,
+      () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
     );
     final snapshot = service.snapshotOf(draftId);
     expect(snapshot.uploadedCount, 2);
     expect(snapshot.progress, 1.0);
-    final recordA =
-        snapshot.files.firstWhere((r) => r.id == 'a');
+    final recordA = snapshot.files.firstWhere((r) => r.id == 'a');
     expect(recordA.s3Key, startsWith('temp/intake_'));
     expect(recordA.uploadedAtIso, isNotEmpty);
 
@@ -206,21 +229,23 @@ void main() {
     expect(record.error, 'boom');
   });
 
-  test('HTTP 403 (протухший URL) → одно бесплатное перевыставление задачи',
-      () async {
-    await service.stageFiles(draftId, [await makeDocRecord('a')]);
-    await service.startUpload(draftId);
-    await _waitFor(() => transfer.enqueued.length == 1);
-    transfer.emitFailed(draftId, 'a', statusCode: 403);
-    // Свежий URL + новая задача.
-    await _waitFor(() => transfer.enqueued.length == 2);
-    expect(presignCalls, 2);
-    transfer.emitComplete(draftId, 'a');
-    await _waitFor(
-      () => service.snapshotOf(draftId).phase == SparkIntakePhase.done,
-    );
-    // Повторный 403 уже не крутит бесплатный цикл (уйдёт в retry-таймер).
-  });
+  test(
+    'HTTP 403 (протухший URL) → одно бесплатное перевыставление задачи',
+    () async {
+      await service.stageFiles(draftId, [await makeDocRecord('a')]);
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 1);
+      transfer.emitFailed(draftId, 'a', statusCode: 403);
+      // Свежий URL + новая задача.
+      await _waitFor(() => transfer.enqueued.length == 2);
+      expect(presignCalls, 2);
+      transfer.emitComplete(draftId, 'a');
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+      );
+      // Повторный 403 уже не крутит бесплатный цикл (уйдёт в retry-таймер).
+    },
+  );
 
   test('reconcile: complete в БД задач → uploaded без перезаливки', () async {
     transfer.lookups['task_done'] = SparkIntakeTaskLookup.complete;
@@ -239,7 +264,7 @@ void main() {
       },
     );
     await _waitFor(
-      () => service.snapshotOf(draftId).phase == SparkIntakePhase.done,
+      () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
     );
     expect(transfer.enqueued, isEmpty, reason: 'файл уже долетел — не грузим');
     final restored = service.snapshotOf(draftId).files.single;
@@ -262,10 +287,10 @@ void main() {
   });
 
   test('removeFiles: отмена живой задачи + удаление записи', () async {
-    await service.stageFiles(
-      draftId,
-      [await makeDocRecord('a'), await makeDocRecord('b')],
-    );
+    await service.stageFiles(draftId, [
+      await makeDocRecord('a'),
+      await makeDocRecord('b'),
+    ]);
     await service.startUpload(draftId);
     await _waitFor(() => transfer.enqueued.length == 2);
     await service.removeFiles(draftId, {'a'});
@@ -276,8 +301,7 @@ void main() {
     expect((persisted!['files'] as List).length, 1);
   });
 
-  test('removeFiles с deleteLocalFiles=true удаляет локальную копию',
-      () async {
+  test('removeFiles с deleteLocalFiles=true удаляет локальную копию', () async {
     final record = await makeDocRecord('a');
     final file = File(record.localPath);
     expect(await file.exists(), isTrue);
@@ -340,12 +364,104 @@ void main() {
     await service.startUpload(draftId);
     await _waitFor(() => transfer.enqueued.length == 2);
     transfer.emitComplete(draftId, 'small');
-    await _waitFor(
-      () => service.snapshotOf(draftId).uploadedCount == 1,
-    );
+    await _waitFor(() => service.snapshotOf(draftId).uploadedCount == 1);
     final snapshot = service.snapshotOf(draftId);
     expect(snapshot.total, 2);
     // 100 из 400 байт → 25%.
     expect(snapshot.progress, closeTo(0.25, 0.001));
   });
+
+  test(
+    'hash считается до загрузки, а ИИ стартует после последнего complete',
+    () async {
+      var aiCalls = 0;
+      SparkJoyIntakeUploadService.viewUrlOverride = (filename) async =>
+          'https://s3.example/get/$filename';
+      SparkJoyIntakeUploadService.aiChatOverride =
+          ({required text, required cliche, required fileUrls}) async {
+            aiCalls += 1;
+            final hash = RegExp(
+              r'hash=([a-f0-9]{64})',
+            ).firstMatch(text)!.group(1)!;
+            return '{"items":[{"hash":"$hash","section":"inspection",'
+                '"documentKind":"","group":"body","element":"hood"}]}';
+          };
+      service.configureAi(
+        draftId,
+        const SparkIntakeAiConfig(
+          cliche: 'test {text}',
+          elementsByGroup: <String, Set<String>>{
+            'body': <String>{'hood'},
+          },
+        ),
+      );
+      final record = await makeImageRecord('photo');
+      await service.stageFiles(draftId, [record]);
+      expect(record.sha256, hasLength(64));
+      expect(aiCalls, 0);
+
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 1);
+      expect(aiCalls, 0, reason: 'до complete vision запускать нельзя');
+      transfer.emitComplete(draftId, record.id);
+
+      await _waitFor(() => aiCalls == 1);
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+      );
+      final classified = service.snapshotOf(draftId).files.single;
+      expect(classified.aiSection, SparkIntakeAiSection.inspection);
+      expect(classified.aiGroup, 'body');
+      expect(classified.aiElement, 'hood');
+    },
+  );
+
+  test(
+    'СТС остаётся classifying до извлечения полей и затем идёт в materials',
+    () async {
+      final docScanResponse = Completer<String>();
+      var aiCalls = 0;
+      SparkJoyIntakeUploadService.viewUrlOverride = (filename) async =>
+          'https://s3.example/get/$filename';
+      SparkJoyIntakeUploadService.aiChatOverride =
+          ({required text, required cliche, required fileUrls}) async {
+            aiCalls += 1;
+            if (aiCalls == 1) {
+              final hash = RegExp(
+                r'hash=([a-f0-9]{64})',
+              ).firstMatch(text)!.group(1)!;
+              return '{"items":[{"hash":"$hash","section":"materials",'
+                  '"documentKind":"vehicle_doc","group":"","element":""}]}';
+            }
+            return docScanResponse.future;
+          };
+      service.configureAi(
+        draftId,
+        const SparkIntakeAiConfig(
+          cliche: 'test {text}',
+          elementsByGroup: <String, Set<String>>{},
+        ),
+      );
+      final record = await makeImageRecord('sts');
+      await service.stageFiles(draftId, [record]);
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 1);
+      transfer.emitComplete(draftId, record.id);
+      await _waitFor(() => aiCalls == 2);
+      expect(service.snapshotOf(draftId).phase, SparkIntakePhase.classifying);
+
+      docScanResponse.complete(
+        '{"docType":"sts","vin":"XTA210990Y2765432",'
+        '"gosNumber":"A123BC77","brand":"Lada","model":"2109",'
+        '"year":"2000","color":"белый"}',
+      );
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+      );
+      final classified = service.snapshotOf(draftId).files.single;
+      expect(classified.aiSection, SparkIntakeAiSection.materials);
+      expect(classified.aiDocumentKind, SparkIntakeDocumentKind.vehicleDoc);
+      expect(classified.aiDocJson, contains('XTA210990Y2765432'));
+    },
+  );
 }

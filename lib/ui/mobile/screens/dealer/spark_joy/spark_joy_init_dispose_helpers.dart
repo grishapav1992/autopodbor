@@ -15,6 +15,7 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     // делают повторное открытие заполненного черновика no-op'ом. Пост-фрейм —
     // нужен живой context для снэкбара.
     if (!widget.readOnly) {
+      _initializePhotoIntakeAi();
       // Легаси-черновик со свободным текстом марки/модели (до строгого
       // режима) → фоновая привязка к каталогу; новые черновики всегда
       // несут ID и выходят из ре-байнда сразу.
@@ -68,5 +69,6 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
     // dictation speech-to-text + кэш картинок.
     unawaited(_tdSpeechToText.stop());
     _dataUrlImageBytesCache.clear();
+    _disposePhotoIntakeAi();
   }
 }

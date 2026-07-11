@@ -9,18 +9,19 @@ part of 'spark_joy_create_report_screen.dart';
 extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
   Widget _photoIntakeCard() {
     return ValueListenableBuilder<SparkIntakeSnapshot>(
-      valueListenable:
-          SparkJoyIntakeUploadService.instance.watch(_draftId),
+      valueListenable: SparkJoyIntakeUploadService.instance.watch(_draftId),
       builder: (context, snapshot, _) {
         final Widget body = switch (snapshot.phase) {
           SparkIntakePhase.idle => _photoIntakeEmptyBody(),
           SparkIntakePhase.uploading => _photoIntakeProgressBody(snapshot),
+          SparkIntakePhase.classifying => _photoIntakeAiProgressBody(snapshot),
           _ => _photoIntakeSummaryBody(snapshot),
         };
         return SparkCard(
           radius: SparkRadius.md,
-          onTap:
-              snapshot.phase == SparkIntakePhase.idle ? null : _openPhotoIntake,
+          onTap: snapshot.phase == SparkIntakePhase.idle
+              ? null
+              : _openPhotoIntake,
           child: body,
         );
       },
@@ -120,7 +121,8 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
         ),
         const SizedBox(height: SparkSpace.md),
         MyText(
-          text: 'Загрузка идёт в фоне — можно заполнять другие разделы. '
+          text:
+              'Загрузка идёт в фоне — можно заполнять другие разделы. '
               'После загрузки ИИ разложит материалы по разделу «Осмотр»',
           size: SparkTextSize.caption,
           color: kGreyColor,
@@ -136,7 +138,9 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
     final String hint;
     if (snapshot.phase == SparkIntakePhase.done) {
       subtitle = 'Загружено · ${sparkIntakeFilesCountLabel(snapshot.total)}';
-      hint = 'ИИ-распределение по разделу «Осмотр» появится позже';
+      hint = snapshot.total == 0
+          ? 'Все оригиналы распределены по отчёту'
+          : 'Неуверенно распознанные файлы остались здесь';
     } else if (snapshot.phase == SparkIntakePhase.failed) {
       subtitle =
           'Загружено ${snapshot.uploadedCount} из ${snapshot.total} · '
@@ -167,6 +171,44 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
         const SizedBox(height: SparkSpace.md),
         MyText(
           text: hint,
+          size: SparkTextSize.caption,
+          color: kGreyColor,
+          lineHeight: 1.4,
+        ),
+      ],
+    );
+  }
+
+  Widget _photoIntakeAiProgressBody(SparkIntakeSnapshot snapshot) {
+    final total = snapshot.aiTotal;
+    final completed = snapshot.aiClassified;
+    final progress = total == 0 ? null : completed / total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _photoIntakeCardHeader(
+          subtitle: 'ИИ распределяет · $completed из $total',
+          trailing: const SizedBox(
+            width: SparkSize.iconLg,
+            height: SparkSize.iconLg,
+            child: CircularProgressIndicator(strokeWidth: 2.5),
+          ),
+        ),
+        const SizedBox(height: SparkSpace.md),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(SparkRadius.pill),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            backgroundColor: kLightGreyColor,
+            valueColor: const AlwaysStoppedAnimation<Color>(kSecondaryColor),
+          ),
+        ),
+        const SizedBox(height: SparkSpace.md),
+        const MyText(
+          text:
+              'Можно продолжать заполнять отчёт — оригиналы добавятся в '
+              '«Материалы проверки» и элементы «Осмотра» автоматически.',
           size: SparkTextSize.caption,
           color: kGreyColor,
           lineHeight: 1.4,
@@ -234,4 +276,3 @@ Widget _sparkIntakeDashedButton({
     ),
   );
 }
-
