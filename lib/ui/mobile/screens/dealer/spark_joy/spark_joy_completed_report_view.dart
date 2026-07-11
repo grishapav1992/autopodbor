@@ -126,7 +126,10 @@ Widget? _buildCompletedReportRequestCard(_SparkJoyCreateReportScreenState s) {
   if (!requestContext.hasAny) return null;
 
   final specialist = requestContext.specialistLabel;
+  final specialistPhone = requestContext.specialistPhone.trim();
   final canOpenRequest = requestContext.requestId != null;
+  final canOpenSpecialist =
+      requestContext.specialistId != null || requestContext.hasSpecialist;
 
   Future<void> openRequest() async {
     final initial = sparkJoyRequestInitialFromReport(report);
@@ -134,6 +137,23 @@ Widget? _buildCompletedReportRequestCard(_SparkJoyCreateReportScreenState s) {
     await Navigator.of(s.context).push<void>(
       MaterialPageRoute(
         builder: (_) => SparkJoyCompanyRequestDetailScreen(initial: initial),
+      ),
+    );
+  }
+
+  Future<void> openSpecialist() async {
+    final name = requestContext.specialistName.trim();
+    final avatar = requestContext.specialistAvatarUrl.trim();
+    await Navigator.of(s.context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SparkJoySpecialistPublicProfileScreen(
+          specialistId: requestContext.specialistId,
+          initialProfile: {
+            if (name.isNotEmpty) 'name': name,
+            if (specialistPhone.isNotEmpty) 'phone': specialistPhone,
+            if (avatar.isNotEmpty) 'urlAvatar': avatar,
+          },
+        ),
       ),
     );
   }
@@ -172,29 +192,40 @@ Widget? _buildCompletedReportRequestCard(_SparkJoyCreateReportScreenState s) {
                     weight: FontWeight.w700,
                   ),
                   if (specialist.isNotEmpty)
-                    MyText(
-                      text: 'Исполнитель: $specialist',
-                      size: SparkTextSize.body,
-                      color: kGreyColor,
-                      paddingTop: SparkSpace.xxs,
+                    // Тап по исполнителю — его публичный профиль.
+                    GestureDetector(
+                      onTap: canOpenSpecialist ? openSpecialist : null,
+                      child: MyText(
+                        text: 'Исполнитель: $specialist',
+                        size: SparkTextSize.body,
+                        color: canOpenSpecialist ? kSecondaryColor : kGreyColor,
+                        paddingTop: SparkSpace.xxs,
+                      ),
                     ),
-                  if (requestContext.specialistPhone.trim().isNotEmpty)
-                    MyText(
-                      text: requestContext.specialistPhone.trim(),
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                      paddingTop: 2,
+                  if (specialistPhone.isNotEmpty)
+                    // Тап по номеру — звонок.
+                    GestureDetector(
+                      onTap: () => sparkLaunchPhone(s.context, specialistPhone),
+                      child: MyText(
+                        text: specialistPhone,
+                        size: SparkTextSize.caption,
+                        color: kSecondaryColor,
+                        paddingTop: 2,
+                      ),
                     ),
                 ],
               ),
             ),
             if (requestContext.hasSpecialist) ...[
               const SizedBox(width: SparkSpace.md),
-              SparkInitialsAvatar(
-                name: specialist.isEmpty ? 'Специалист' : specialist,
-                imageUrl: requestContext.specialistAvatarUrl,
-                size: SparkSize.avatarSm,
-                textSize: SparkTextSize.caption,
+              GestureDetector(
+                onTap: canOpenSpecialist ? openSpecialist : null,
+                child: SparkInitialsAvatar(
+                  name: specialist.isEmpty ? 'Специалист' : specialist,
+                  imageUrl: requestContext.specialistAvatarUrl,
+                  size: SparkSize.avatarSm,
+                  textSize: SparkTextSize.caption,
+                ),
               ),
             ],
           ],

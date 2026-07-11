@@ -9,23 +9,30 @@ import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
-class SparkJoyCompanyPublicProfileScreen extends StatefulWidget {
-  const SparkJoyCompanyPublicProfileScreen({
+/// Публичный профиль специалиста — зеркало [SparkJoyCompanyPublicProfileScreen].
+///
+/// `initialProfile` (данные, уже пришедшие с заявкой/отчётом: имя, город,
+/// телефон, email, рейтинг, аватар) рендерится мгновенно; при наличии
+/// [specialistId] поверх подгружается `Storage.GetSpecialistProfile`.
+/// RPC контакты НЕ отдаёт (так спроектирован бэк), поэтому мерж накатывает
+/// только непустые поля ответа — телефон/email из initialProfile выживают.
+class SparkJoySpecialistPublicProfileScreen extends StatefulWidget {
+  const SparkJoySpecialistPublicProfileScreen({
     super.key,
-    this.companyId,
+    this.specialistId,
     this.initialProfile,
   });
 
-  final int? companyId;
+  final int? specialistId;
   final Map<String, dynamic>? initialProfile;
 
   @override
-  State<SparkJoyCompanyPublicProfileScreen> createState() =>
-      _SparkJoyCompanyPublicProfileScreenState();
+  State<SparkJoySpecialistPublicProfileScreen> createState() =>
+      _SparkJoySpecialistPublicProfileScreenState();
 }
 
-class _SparkJoyCompanyPublicProfileScreenState
-    extends State<SparkJoyCompanyPublicProfileScreen> {
+class _SparkJoySpecialistPublicProfileScreenState
+    extends State<SparkJoySpecialistPublicProfileScreen> {
   Map<String, dynamic>? _profile;
   bool _loading = false;
   String? _error;
@@ -36,38 +43,62 @@ class _SparkJoyCompanyPublicProfileScreenState
     _profile = widget.initialProfile == null
         ? null
         : Map<String, dynamic>.from(widget.initialProfile!);
-    if (_profile == null && widget.companyId != null) {
+    if (widget.specialistId != null) {
       _load();
     }
   }
 
   Future<void> _load() async {
-    final companyId = widget.companyId;
-    if (companyId == null || companyId <= 0) return;
+    final specialistId = widget.specialistId;
+    if (specialistId == null || specialistId <= 0) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final profile = await storage_api.StorageApi.getCompanyProfile(
-        companyId: companyId,
+      final fetched = await storage_api.StorageApi.getSpecialistProfile(
+        specialistId: specialistId,
       );
       if (!mounted) return;
       setState(() {
-        _profile = profile.isEmpty ? null : profile;
         _loading = false;
-        _error = profile.isEmpty ? 'Компания не найдена' : null;
+        if (fetched.isNotEmpty) {
+          _profile = _merge(_profile, fetched);
+        } else if (_profile == null) {
+          // Пустой result = удалён/не специалист. Если с заявкой уже
+          // пришли данные — показываем их, ошибкой не пугаем.
+          _error = 'Специалист не найден';
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = sparkJoyReadableErrorText(
-          e,
-          fallback: 'Не удалось загрузить профиль компании',
-        );
+        // Сеть упала, но initialProfile есть — молча остаёмся на нём.
+        if (_profile == null) {
+          _error = sparkJoyReadableErrorText(
+            e,
+            fallback: 'Не удалось загрузить профиль специалиста',
+          );
+        }
       });
     }
+  }
+
+  /// Накатывает только непустые поля [fetched] поверх [base] — контакты и
+  /// рейтинг из initialProfile не должны затираться null'ами RPC.
+  static Map<String, dynamic> _merge(
+    Map<String, dynamic>? base,
+    Map<String, dynamic> fetched,
+  ) {
+    final merged = Map<String, dynamic>.from(base ?? const {});
+    for (final entry in fetched.entries) {
+      final value = entry.value;
+      if (value == null) continue;
+      if (value is String && value.trim().isEmpty) continue;
+      merged[entry.key] = value;
+    }
+    return merged;
   }
 
   String _read(String key, {String fallback = ''}) {
@@ -77,8 +108,8 @@ class _SparkJoyCompanyPublicProfileScreenState
     return text.isEmpty ? fallback : text;
   }
 
-  /// First non-empty value across [keys] — backend field naming varies, so
-  /// we probe a few variants and surface whatever it actually returns (B8).
+  /// First non-empty value across [keys] — поле может приехать и из RPC,
+  /// и из payload заявки с разным неймингом (см. company-профиль, B8).
   String _readAny(List<String> keys) {
     for (final key in keys) {
       final value = _read(key);
@@ -87,68 +118,36 @@ class _SparkJoyCompanyPublicProfileScreenState
     return '';
   }
 
-  String _companyName() {
-    for (final key in const ['companyName', 'name', 'fullName', 'title']) {
-      final value = _read(key);
-      if (value.isNotEmpty) return value;
-    }
-    return 'Компания';
+  String _fullName() {
+    final composed = [
+      _read('lastName'),
+      _read('firstName'),
+      _read('middleName'),
+    ].where((part) => part.isNotEmpty).join(' ');
+    if (composed.isNotEmpty) return composed;
+    final single = _readAny(['name', 'displayName', 'fullName']);
+    return single.isEmpty ? 'Специалист' : single;
   }
 
-  String _companyInn() {
-    for (final key in const ['companyInn', 'inn', 'tin']) {
-      final value = _read(key);
-      if (value.isNotEmpty) return value;
-    }
-    return '';
-  }
-
-  String _avatarUrl() {
-    for (final key in const [
-      'urlAvatar',
-      'avatarUrl',
-      'avatar_url',
-      'photoUrl',
-    ]) {
-      final value = _read(key);
-      if (value.isNotEmpty) return value;
+  String _rating() {
+    final value = _profile?['rating'] ?? _profile?['ratingAverage'];
+    if (value is num && value > 0) {
+      return value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 1);
     }
     return '';
-  }
-
-  bool _verified() {
-    final value = _profile?['isVerifyCompany'] ?? _profile?['isVerified'];
-    if (value is bool) return value;
-    return value.toString().trim().toLowerCase() == 'true';
   }
 
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
-    final name = _companyName();
+    final name = _fullName();
     final city = _read('city');
-    final description = _read('description');
-    final inn = _companyInn();
-    final avatarUrl = _avatarUrl();
-    // Surface whatever else the backend returns — naming varies, so probe
-    // several variants per field and render only the ones present (B8).
     final phone = _readAny(['phone', 'contactPhone', 'phoneNumber']);
     final email = _readAny(['email', 'contactEmail']);
-    final website = _readAny(['website', 'webSite', 'site', 'url']);
-    final address = _readAny([
-      'address',
-      'legalAddress',
-      'addressLegal',
-      'companyAddress',
-    ]);
-    final ogrn = _readAny(['ogrn', 'companyOgrn', 'ogrnip']);
-    final rating = _readAny(['rating', 'ratingAverage']);
-    final staffCount = _readAny([
-      'staffCount',
-      'specialistsCount',
-      'employeesCount',
-    ]);
-    final reportsCount = _readAny(['reportsCount', 'completedReportsCount']);
+    final description = _readAny(['description', 'specialization']);
+    final avatarUrl = _readAny(['urlAvatar', 'avatarUrl', 'photoUrl']);
+    final rating = _rating();
+
     final infoRows = <Widget>[
       if (city.isNotEmpty)
         SparkProfileRow(
@@ -183,34 +182,6 @@ class _SparkJoyCompanyPublicProfileScreenState
             color: kSecondaryColor,
           ),
         ),
-      if (website.isNotEmpty)
-        SparkProfileRow(
-          icon: Icons.language_rounded,
-          label: 'Сайт',
-          value: website,
-          muted: true,
-        ),
-      if (address.isNotEmpty)
-        SparkProfileRow(
-          icon: Icons.location_on_outlined,
-          label: 'Адрес',
-          value: address,
-          muted: true,
-        ),
-      if (inn.isNotEmpty)
-        SparkProfileRow(
-          icon: Icons.numbers_rounded,
-          label: 'ИНН',
-          value: inn,
-          muted: true,
-        ),
-      if (ogrn.isNotEmpty)
-        SparkProfileRow(
-          icon: Icons.badge_outlined,
-          label: 'ОГРН',
-          value: ogrn,
-          muted: true,
-        ),
       if (rating.isNotEmpty)
         SparkProfileRow(
           icon: Icons.star_outline_rounded,
@@ -218,35 +189,21 @@ class _SparkJoyCompanyPublicProfileScreenState
           value: rating,
           muted: true,
         ),
-      if (staffCount.isNotEmpty)
-        SparkProfileRow(
-          icon: Icons.groups_outlined,
-          label: 'Специалистов',
-          value: staffCount,
-          muted: true,
-        ),
-      if (reportsCount.isNotEmpty)
-        SparkProfileRow(
-          icon: Icons.description_outlined,
-          label: 'Отчётов',
-          value: reportsCount,
-          muted: true,
-        ),
       if (description.isNotEmpty)
         SparkProfileRow(
-          icon: Icons.notes_rounded,
-          label: 'Описание',
+          icon: Icons.description_outlined,
+          label: 'Описание услуг',
           value: description,
           muted: true,
         ),
     ];
 
     return SparkPageScaffold(
-      appBar: sparkAppBar(title: 'Профиль компании'),
+      appBar: sparkAppBar(title: 'Профиль специалиста'),
       bottomInset: SparkSpace.xl,
       children: [
         if (_loading && profile == null)
-          const SparkLoadingState(message: 'Загрузка профиля компании...')
+          const SparkLoadingState(message: 'Загрузка профиля специалиста...')
         else if (_error != null && profile == null)
           SparkErrorState(
             title: sjT('spark.state.error.title', fallback: 'Ошибка загрузки'),
@@ -286,15 +243,6 @@ class _SparkJoyCompanyPublicProfileScreenState
                     ],
                   ),
                 ),
-                if (_verified()) ...[
-                  const SizedBox(width: SparkSpace.sm),
-                  const SparkChip(
-                    text: 'Проверена',
-                    icon: Icons.verified_rounded,
-                    background: Color(0x1A1FA463),
-                    color: kGreenColor,
-                  ),
-                ],
               ],
             ),
           ),
@@ -308,7 +256,8 @@ class _SparkJoyCompanyPublicProfileScreenState
               children: infoRows.isEmpty
                   ? const [
                       SparkHintCard(
-                        text: 'Компания пока не заполнила публичную информацию',
+                        text:
+                            'Специалист пока не заполнил публичную информацию',
                       ),
                     ]
                   : infoRows,

@@ -4,6 +4,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_request_detail_screen.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -244,14 +245,26 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
                     icon: Icons.phone_outlined,
                     label: 'Телефон',
                     value: phone,
-                    muted: true,
+                    onTap: () => sparkLaunchPhone(context, phone),
+                    showChevron: false,
+                    trailing: const Icon(
+                      Icons.call_rounded,
+                      size: SparkSize.iconLg,
+                      color: kSecondaryColor,
+                    ),
                   ),
                 if (email.isNotEmpty)
                   SparkProfileRow(
                     icon: Icons.mail_outline_rounded,
                     label: 'Email',
                     value: email,
-                    muted: true,
+                    onTap: () => sparkLaunchEmail(context, email),
+                    showChevron: false,
+                    trailing: const Icon(
+                      Icons.mail_rounded,
+                      size: SparkSize.iconLg,
+                      color: kSecondaryColor,
+                    ),
                   ),
                 if (specialization.isNotEmpty)
                   SparkProfileRow(

@@ -17,7 +17,9 @@ import 'spark_joy_i18n.dart';
 import 'spark_joy_new_report_name_screen.dart';
 import 'spark_joy_onboarding.dart';
 import 'spark_joy_report_context.dart';
+import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_share.dart';
+import 'spark_joy_specialist_public_profile_screen.dart';
 import 'spark_joy_storage.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -223,6 +225,13 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       'assignedSpecialistName',
       fallback: sjRead(draft, 'specialistName'),
     ).trim();
+    final assigneeId = int.tryParse(
+      sjRead(
+        draft,
+        'assignedSpecialistId',
+        fallback: sjRead(draft, 'specialistId'),
+      ).trim(),
+    );
     final inviteLink = sjRead(draft, 'staffInviteLink').trim();
     final createdAt = sjFormatDate(
       sjRead(draft, 'createdAt', fallback: sjRead(draft, 'updatedAt')),
@@ -269,7 +278,16 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
               ),
               const SizedBox(height: SparkSpace.lg),
               if (assigneeName.isNotEmpty)
-                SparkInfoRow(label: 'Исполнитель', value: assigneeName),
+                SparkInfoRow(
+                  label: 'Исполнитель',
+                  value: assigneeName,
+                  onTap: () => _openSpecialistProfile(
+                    SparkJoyReportRequestContext(
+                      specialistId: assigneeId,
+                      specialistName: assigneeName,
+                    ),
+                  ),
+                ),
               if (inviteLink.isNotEmpty) ...[
                 const SizedBox(height: SparkSpace.md),
                 const MyText(
@@ -1011,11 +1029,97 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
   }
 
+  /// Открывает публичный профиль исполнителя: показываем сразу то, что
+  /// уже знаем из отчёта, RPC доложит остальное (если есть id).
+  Future<void> _openSpecialistProfile(
+    SparkJoyReportRequestContext requestContext,
+  ) async {
+    final name = requestContext.specialistName.trim();
+    final phone = requestContext.specialistPhone.trim();
+    final avatar = requestContext.specialistAvatarUrl.trim();
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SparkJoySpecialistPublicProfileScreen(
+          specialistId: requestContext.specialistId,
+          initialProfile: {
+            if (name.isNotEmpty) 'name': name,
+            if (phone.isNotEmpty) 'phone': phone,
+            if (avatar.isNotEmpty) 'urlAvatar': avatar,
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildCompletedRequestContext(
     SparkJoyReportRequestContext requestContext, {
     bool hideRequestLabel = false,
   }) {
     final specialist = requestContext.specialistLabel;
+    final phone = requestContext.specialistPhone.trim();
+    final canOpenSpecialist =
+        requestContext.specialistId != null || requestContext.hasSpecialist;
+    final content = Row(
+      children: [
+        if (requestContext.hasSpecialist)
+          SparkInitialsAvatar(
+            name: specialist.isEmpty ? 'Специалист' : specialist,
+            imageUrl: requestContext.specialistAvatarUrl,
+            size: 34,
+            textSize: SparkTextSize.caption,
+          )
+        else
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: kSecondaryColor.withValues(alpha: 0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.assignment_outlined,
+              size: 18,
+              color: kSecondaryColor,
+            ),
+          ),
+        const SizedBox(width: SparkSpace.md),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (requestContext.hasRequest && !hideRequestLabel)
+                MyText(
+                  text: requestContext.requestLabel,
+                  size: SparkTextSize.caption,
+                  weight: FontWeight.w700,
+                  color: kSecondaryColor,
+                ),
+              if (specialist.isNotEmpty)
+                MyText(
+                  text: 'Исполнитель: $specialist',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                  paddingTop: requestContext.hasRequest && !hideRequestLabel
+                      ? 2
+                      : 0,
+                ),
+              if (phone.isNotEmpty)
+                // Вложенный тап: номер звонит, остальная плашка ведёт
+                // в профиль исполнителя.
+                GestureDetector(
+                  onTap: () => sparkLaunchPhone(context, phone),
+                  child: MyText(
+                    text: phone,
+                    size: SparkTextSize.caption,
+                    color: kSecondaryColor,
+                    paddingTop: 2,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
     return Container(
       padding: const EdgeInsets.all(SparkSpace.md),
       decoration: BoxDecoration(
@@ -1023,62 +1127,16 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         borderRadius: BorderRadius.circular(SparkRadius.md),
         border: Border.all(color: kSecondaryColor.withValues(alpha: 0.08)),
       ),
-      child: Row(
-        children: [
-          if (requestContext.hasSpecialist)
-            SparkInitialsAvatar(
-              name: specialist.isEmpty ? 'Специалист' : specialist,
-              imageUrl: requestContext.specialistAvatarUrl,
-              size: 34,
-              textSize: SparkTextSize.caption,
-            )
-          else
-            Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                color: kSecondaryColor.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.assignment_outlined,
-                size: 18,
-                color: kSecondaryColor,
+      child: !canOpenSpecialist
+          ? content
+          : Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => _openSpecialistProfile(requestContext),
+                borderRadius: BorderRadius.circular(SparkRadius.md),
+                child: content,
               ),
             ),
-          const SizedBox(width: SparkSpace.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (requestContext.hasRequest && !hideRequestLabel)
-                  MyText(
-                    text: requestContext.requestLabel,
-                    size: SparkTextSize.caption,
-                    weight: FontWeight.w700,
-                    color: kSecondaryColor,
-                  ),
-                if (specialist.isNotEmpty)
-                  MyText(
-                    text: 'Исполнитель: $specialist',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    paddingTop: requestContext.hasRequest && !hideRequestLabel
-                        ? 2
-                        : 0,
-                  ),
-                if (requestContext.specialistPhone.trim().isNotEmpty)
-                  MyText(
-                    text: requestContext.specialistPhone.trim(),
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    paddingTop: 2,
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
     );
   }
 

@@ -13,6 +13,7 @@ import 'spark_joy_company_staff_detail_screen.dart';
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
 import 'spark_joy_invite_by_phone_dialog.dart';
+import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -537,11 +538,16 @@ class _SparkJoyCompanyStaffScreenState
                         maxLines: 2,
                       ),
                     if (phone.trim().isNotEmpty)
-                      MyText(
-                        text: phone,
-                        size: SparkTextSize.caption,
-                        color: kGreyColor,
-                        paddingTop: SparkSpace.xxxs,
+                      // Вложенный тап: номер звонит, остальная карточка
+                      // по-прежнему открывает сотрудника.
+                      GestureDetector(
+                        onTap: () => sparkLaunchPhone(context, phone),
+                        child: MyText(
+                          text: phone,
+                          size: SparkTextSize.caption,
+                          color: kSecondaryColor,
+                          paddingTop: SparkSpace.xxxs,
+                        ),
                       )
                     else if (email.trim().isNotEmpty)
                       MyText(

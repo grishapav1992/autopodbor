@@ -155,13 +155,13 @@ enum TokenRefreshStatus { success, rejected, transient }
 
 class TokenRefreshResult {
   const TokenRefreshResult.success()
-      : status = TokenRefreshStatus.success,
-        error = null;
+    : status = TokenRefreshStatus.success,
+      error = null;
   const TokenRefreshResult.rejected()
-      : status = TokenRefreshStatus.rejected,
-        error = null;
+    : status = TokenRefreshStatus.rejected,
+      error = null;
   const TokenRefreshResult.transient(this.error)
-      : status = TokenRefreshStatus.transient;
+    : status = TokenRefreshStatus.transient;
 
   final TokenRefreshStatus status;
 
@@ -945,8 +945,7 @@ class StorageApi {
   /// Detailed verdict for callers that must распознать «сессия мертва»
   /// (rejected → logout-flow) vs «сеть моргнула» (transient → пробросить
   /// сетевую ошибку и повторить позже, НЕ разлогинивая пользователя).
-  static Future<TokenRefreshResult> refreshTokensDetailed() =>
-      _refreshTokens();
+  static Future<TokenRefreshResult> refreshTokensDetailed() => _refreshTokens();
 
   /// Single-flight protection: при одновременных вызовах (pre-send JWT
   /// skew check + 401-retry + manual из других модулей) все caller'ы
@@ -3885,6 +3884,24 @@ class StorageApi {
     final data = await _postRpc(
       method: 'Storage.GetCompanyProfile',
       params: <String, dynamic>{'companyId': companyId},
+      timeout: timeout,
+    );
+    return _asMap(data['result']);
+  }
+
+  /// Returns public specialist profile data by specialist user id.
+  ///
+  /// Backend `result` = `{id, firstName, lastName, middleName, urlAvatar,
+  /// description, role, companyId}` — контакты (phone/email) сервер
+  /// намеренно НЕ отдаёт. Пустая map = специалист не найден/удалён/не
+  /// specialist.
+  static Future<Map<String, dynamic>> getSpecialistProfile({
+    required int specialistId,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final data = await _postRpc(
+      method: 'Storage.GetSpecialistProfile',
+      params: <String, dynamic>{'specialistId': specialistId},
       timeout: timeout,
     );
     return _asMap(data['result']);

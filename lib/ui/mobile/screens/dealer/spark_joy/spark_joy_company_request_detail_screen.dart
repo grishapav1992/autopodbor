@@ -11,6 +11,7 @@ import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_external_link.dart';
 import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_status.dart';
+import 'spark_joy_specialist_public_profile_screen.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
@@ -274,6 +275,22 @@ class _SparkJoyCompanyRequestDetailScreenState
     final raw = _request['assignedSpecialist'];
     if (raw is Map && raw.isNotEmpty) return true;
     return _assignedSpecialistId != null;
+  }
+
+  /// Публичный профиль назначенного специалиста: payload заявки идёт как
+  /// initialProfile (там контакты/город/рейтинг, которых RPC не отдаёт),
+  /// `Storage.GetSpecialistProfile` доложит описание услуг.
+  Future<void> _openAssignedSpecialistProfile() async {
+    final raw = _request['assignedSpecialist'];
+    final specialist = raw is Map ? Map<String, dynamic>.from(raw) : null;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => SparkJoySpecialistPublicProfileScreen(
+          specialistId: _assignedSpecialistId,
+          initialProfile: specialist,
+        ),
+      ),
+    );
   }
 
   Future<void> _assignSpecialist() async {
@@ -721,46 +738,62 @@ class _SparkJoyCompanyRequestDetailScreenState
 
     // Как в макете: тёмный аватар с инициалом, имя + город, справа —
     // квадратные кнопки «позвонить»/«написать» (появляются только когда
-    // соответствующий контакт есть в данных).
+    // соответствующий контакт есть в данных). Тап по аватару/имени
+    // открывает публичный профиль специалиста; кнопки контактов —
+    // отдельные тап-зоны.
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        SparkInitialsAvatar(
-          name: fullName,
-          size: SparkSize.avatarSm,
-          backgroundColor: kSecondaryColor,
-          textColor: kWhiteColor,
-          imageUrl: avatar.isEmpty ? null : avatar,
-        ),
-        const SizedBox(width: SparkSpace.xl),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              MyText(
-                text: fullName.isEmpty
-                    ? 'Специалист #${assignedId ?? ''}'.trim()
-                    : fullName,
-                size: SparkTextSize.title,
-                weight: FontWeight.w700,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _openAssignedSpecialistProfile(),
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  SparkInitialsAvatar(
+                    name: fullName,
+                    size: SparkSize.avatarSm,
+                    backgroundColor: kSecondaryColor,
+                    textColor: kWhiteColor,
+                    imageUrl: avatar.isEmpty ? null : avatar,
+                  ),
+                  const SizedBox(width: SparkSpace.xl),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MyText(
+                          text: fullName.isEmpty
+                              ? 'Специалист #${assignedId ?? ''}'.trim()
+                              : fullName,
+                          size: SparkTextSize.title,
+                          weight: FontWeight.w700,
+                        ),
+                        if (city.isNotEmpty) ...[
+                          const SizedBox(height: SparkSpace.xxs),
+                          MyText(
+                            text: city,
+                            size: SparkTextSize.bodyLg,
+                            color: kGreyColor,
+                          ),
+                        ],
+                        if (ratingText.isNotEmpty) ...[
+                          const SizedBox(height: SparkSpace.xs),
+                          SparkChip(
+                            text: 'Рейтинг $ratingText',
+                            background: kSecondaryColor.withValues(alpha: 0.08),
+                            color: kSecondaryColor,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              if (city.isNotEmpty) ...[
-                const SizedBox(height: SparkSpace.xxs),
-                MyText(
-                  text: city,
-                  size: SparkTextSize.bodyLg,
-                  color: kGreyColor,
-                ),
-              ],
-              if (ratingText.isNotEmpty) ...[
-                const SizedBox(height: SparkSpace.xs),
-                SparkChip(
-                  text: 'Рейтинг $ratingText',
-                  background: kSecondaryColor.withValues(alpha: 0.08),
-                  color: kSecondaryColor,
-                ),
-              ],
-            ],
+            ),
           ),
         ),
         if (phone.isNotEmpty) ...[

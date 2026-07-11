@@ -579,13 +579,29 @@ class SparkStepHeader extends StatelessWidget {
 }
 
 class SparkInfoRow extends StatelessWidget {
-  const SparkInfoRow({super.key, required this.label, required this.value});
+  const SparkInfoRow({
+    super.key,
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
 
   final String label;
   final String value;
 
+  /// Делает value тапабельным (акцентный цвет — видно, что это действие,
+  /// например переход в профиль исполнителя).
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
+    final valueText = MyText(
+      text: value,
+      size: SparkTextSize.body,
+      textAlign: TextAlign.right,
+      weight: FontWeight.w600,
+      color: onTap == null ? null : kSecondaryColor,
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: SparkSpace.md),
       child: Row(
@@ -600,12 +616,16 @@ class SparkInfoRow extends StatelessWidget {
           ),
           const SizedBox(width: SparkSpace.lg),
           Flexible(
-            child: MyText(
-              text: value,
-              size: SparkTextSize.body,
-              textAlign: TextAlign.right,
-              weight: FontWeight.w600,
-            ),
+            child: onTap == null
+                ? valueText
+                : Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onTap,
+                      borderRadius: BorderRadius.circular(SparkRadius.sm),
+                      child: valueText,
+                    ),
+                  ),
           ),
         ],
       ),
@@ -632,6 +652,7 @@ class SparkProfileRow extends StatelessWidget {
     this.muted = false,
     this.maxLinesValue,
     this.required = false,
+    this.showChevron = true,
   });
 
   final IconData icon;
@@ -639,6 +660,11 @@ class SparkProfileRow extends StatelessWidget {
   final String value;
   final VoidCallback? onTap;
   final Widget? trailing;
+
+  /// Прячет шеврон «→» у тапабельной строки. Для действий-не-переходов
+  /// (позвонить/написать) шеврон врёт про навигацию — вместо него caller
+  /// передаёт свою иконку через [trailing].
+  final bool showChevron;
 
   /// Когда value — это placeholder для пустого поля («Не указано»),
   /// рендерим его серым/regular-весом, чтобы не путать с реальными
@@ -725,7 +751,7 @@ class SparkProfileRow extends StatelessWidget {
             const SizedBox(width: SparkSpace.sm),
             trailing!,
           ],
-          if (onTap != null) ...[
+          if (onTap != null && showChevron) ...[
             const SizedBox(width: SparkSpace.xs),
             const Icon(
               Icons.chevron_right_rounded,
