@@ -672,8 +672,10 @@ class _SparkJoySpecialistRequestDetailScreenState
         .where((id) => id.isNotEmpty)
         .toList();
     for (final id in ids) {
-      await SparkJoyIntakeUploadService.instance
-          .dropDraft(id, deleteLocalFiles: true);
+      await SparkJoyIntakeUploadService.instance.dropDraft(
+        id,
+        deleteLocalFiles: true,
+      );
       await SparkJoyStorage.deleteDraft(id);
     }
   }
@@ -718,8 +720,65 @@ class _SparkJoySpecialistRequestDetailScreenState
     final existing = drafts.where((draft) {
       return _draftRequestId(draft) == requestId;
     }).toList();
-    if (existing.isNotEmpty) return existing.first;
+    if (existing.isNotEmpty) {
+      final draft = existing.first;
+      final car = (_cars != null && _cars!.isNotEmpty) ? _cars!.first : null;
+      return car == null ? draft : _syncRequestDraftCarFields(draft, car);
+    }
     return _createRequestDraft(requestId);
+  }
+
+  /// Обогащает созданный старой версией черновик годами и каталожными ID из
+  /// актуального `GetRequestCar`. Пользовательский перевыбор другого авто не
+  /// перезаписываем: синхронизация разрешена только для той же марки/модели.
+  Future<Map<String, dynamic>> _syncRequestDraftCarFields(
+    Map<String, dynamic> draft,
+    Map<String, dynamic> car,
+  ) async {
+    final incoming = _draftCarFields(car);
+    String normalized(dynamic value) =>
+        value.toString().trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+    final draftBrand = normalized(draft['brand'] ?? '');
+    final draftModel = normalized(draft['model'] ?? '');
+    final incomingBrand = normalized(incoming['brand'] ?? '');
+    final incomingModel = normalized(incoming['model'] ?? '');
+    final sameCar =
+        (draftBrand.isEmpty || draftBrand == incomingBrand) &&
+        (draftModel.isEmpty || draftModel == incomingModel);
+    if (!sameCar) return draft;
+
+    final updated = Map<String, dynamic>.from(draft);
+    var changed = false;
+    final currentGeneration = (updated['generation'] ?? '').toString().trim();
+    final incomingGeneration = (incoming['generation'] ?? '').toString().trim();
+    if (incomingGeneration.isNotEmpty &&
+        (currentGeneration.isEmpty ||
+            int.tryParse(currentGeneration) != null)) {
+      if (currentGeneration != incomingGeneration) {
+        updated['generation'] = incomingGeneration;
+        changed = true;
+      }
+    }
+
+    for (final key in const ['brandId', 'modelCarId', 'generationNumber']) {
+      final current = int.tryParse((updated[key] ?? '').toString());
+      final next = incoming[key];
+      if ((current == null || current <= 0) && next != null) {
+        updated[key] = next;
+        changed = true;
+      }
+    }
+    if ((updated['restyling'] ?? '').toString().trim().isEmpty &&
+        (incoming['restyling'] ?? '').toString().trim().isNotEmpty) {
+      updated['restyling'] = incoming['restyling'];
+      changed = true;
+    }
+
+    if (!changed) return draft;
+    updated['lastSavedAtIso'] = DateTime.now().toIso8601String();
+    await SparkJoyStorage.upsertDraft(updated);
+    return updated;
   }
 
   int? _draftRequestId(Map<String, dynamic> draft) {
@@ -799,8 +858,23 @@ class _SparkJoySpecialistRequestDetailScreenState
   Map<String, dynamic> _draftCarFields(Map<String, dynamic> car) {
     final brandName = _carBrandName(car['brand']);
     final modelName = _carModelName(car['model']);
-    final generation = (car['generation'] ?? '').toString().trim();
+    final generation =
+        storage_api.GenerationItem.displayValueFromRequestCarJson(car) ?? '';
     final restylings = car['restyling'] ?? car['restylings'];
+    int? positiveInt(dynamic raw) {
+      final parsed = raw is int
+          ? raw
+          : (raw is num
+                ? raw.toInt()
+                : int.tryParse((raw ?? '').toString().trim()));
+      return parsed != null && parsed > 0 ? parsed : null;
+    }
+
+    final rawBrand = car['brand'];
+    final rawModel = car['model'];
+    final brandId = rawBrand is Map ? positiveInt(rawBrand['id']) : null;
+    final modelCarId = rawModel is Map ? positiveInt(rawModel['id']) : null;
+    final generationNumber = positiveInt(car['generation']);
     var restylingLabel = '';
     if (restylings is List && restylings.isNotEmpty) {
       final first = restylings.first;
@@ -824,6 +898,9 @@ class _SparkJoySpecialistRequestDetailScreenState
       if (brandName.isNotEmpty) 'brand': brandName,
       if (modelName.isNotEmpty) 'model': modelName,
       if (generation.isNotEmpty) 'generation': generation,
+      if (brandId != null) 'brandId': brandId,
+      if (modelCarId != null) 'modelCarId': modelCarId,
+      if (generationNumber != null) 'generationNumber': generationNumber,
       if (restylingLabel.isNotEmpty) 'restyling': restylingLabel,
       if (adLink.isNotEmpty) 'adLink': adLink,
       if (vin.isNotEmpty) 'vin': vin,

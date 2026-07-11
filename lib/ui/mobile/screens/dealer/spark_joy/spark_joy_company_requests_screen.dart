@@ -443,10 +443,8 @@ Map<String, dynamic>? _draftCardData(Map<String, dynamic>? draft) {
   // Показываем диапазон годов вместо номера поколения (черновик хранит полный
   // GenerationItem.toJson с рестайлингами); фолбэк — номер как раньше.
   final generationText =
-      storage_api.GenerationItem.yearRangeFromRestylingsJson(
-        generation['restylings'],
-      ) ??
-      _draftString(generation['generation']);
+      storage_api.GenerationItem.displayValueFromRequestCarJson(generation) ??
+      '';
   final restylingText = _draftString(restyling['restyling']);
   final subtitleParts = [
     if (carName.isNotEmpty) carName,

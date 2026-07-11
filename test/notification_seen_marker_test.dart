@@ -73,5 +73,20 @@ void main() {
 
       expect(count, 1);
     });
+
+    test('treats all loaded items as unseen when marker is absent', () {
+      final notifications = [
+        _notification('first', DateTime.utc(2026, 7, 11, 10)),
+        _notification('second', DateTime.utc(2026, 7, 11, 9)),
+      ];
+
+      final count = NotificationController.countNotificationsNewerThanSeen(
+        notifications: notifications,
+        seenId: null,
+        seenCreatedAt: null,
+      );
+
+      expect(count, 2);
+    });
   });
 }

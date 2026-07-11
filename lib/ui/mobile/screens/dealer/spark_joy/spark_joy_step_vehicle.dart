@@ -112,8 +112,8 @@ Widget _buildSparkJoyStepVehicle(
               ),
             ],
             // Поле госномера идёт сразу за VIN — без разделителя «или» и
-            // без лейбла (2026-07-10). Страна — отдельной кнопкой справа
-            // от поля, в одном стиле с кнопкой скана у VIN.
+            // без лейбла (2026-07-10). Страна определяется автоматически,
+            // справа показывается её флаг без ручного выбора.
             const SizedBox(height: SparkSpace.lg),
             Row(
               children: [
@@ -148,25 +148,13 @@ Widget _buildSparkJoyStepVehicle(
                         // покажет «?».
                         // Locked-mode: sanitize/format строго под выбранную
                         // страну (RU→KZ выкидывает кириллицу и т.п.).
-                        String formatted;
-                        if (s._plateCountryLocked) {
-                          final sanitized = s._sanitizePlate(value);
-                          formatted = s._formatPlate(sanitized);
-                        } else {
-                          final permissive = sanitizePlatePermissive(value);
-                          final detected = detectPlateCountry(permissive);
-                          final nextCountry = detected ?? PlateCountry.other;
-                          if (nextCountry != s._plateCountry) {
-                            s._plateCountry = nextCountry;
-                          }
-                          if (detected != null) {
-                            final fmt = plateFormatFor(detected);
-                            final sanitized = sanitizePlate(permissive, fmt);
-                            formatted = formatPlate(sanitized, fmt);
-                          } else {
-                            formatted = permissive;
-                          }
+                        final normalized = normalizePlateAutomatically(value);
+                        final nextCountry =
+                            normalized.country ?? PlateCountry.other;
+                        if (nextCountry != s._plateCountry) {
+                          s._plateCountry = nextCountry;
                         }
+                        final formatted = normalized.text;
                         if (formatted != value) {
                           s._plateController.value = TextEditingValue(
                             text: formatted,
@@ -199,36 +187,28 @@ Widget _buildSparkJoyStepVehicle(
                   ),
                 ),
                 const SizedBox(width: SparkSpace.md),
-                // Кнопка страны: флаг + chevron, тап → bottom sheet со
-                // списком стран и пунктом «Автоматически». Когда детектор
-                // не определил страну — «?».
+                // Только индикатор: ручного выбора страны больше нет.
                 SizedBox(
                   width: 52,
                   height: 52,
-                  child: OutlinedButton(
-                    onPressed: () => unawaited(
-                      s._showPlateCountryPicker(s.context, setStateFn),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      side: const BorderSide(color: kBorderColor),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(SparkRadius.lg),
+                  child: Tooltip(
+                    message: _plateCountryTooltip(s),
+                    child: Semantics(
+                      label: _plateCountryTooltip(s),
+                      child: ExcludeSemantics(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: kLightGreyColor,
+                            border: Border.all(color: kBorderColor),
+                            borderRadius: BorderRadius.circular(SparkRadius.lg),
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(
+                            _plateInputFlag(s),
+                            style: const TextStyle(fontSize: 22),
+                          ),
+                        ),
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _plateInputFlag(s),
-                          style: const TextStyle(fontSize: 18),
-                        ),
-                        const Icon(
-                          Icons.expand_more_rounded,
-                          size: 14,
-                          color: kTertiaryColor,
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -423,23 +403,25 @@ Widget _buildSparkJoyStepVehicle(
 
 // ── Plate country display helpers ──────────────────────────────────────
 //
-// Что показать на кнопке страны справа от инпута госномера:
-// - locked → флаг выбранной страны
-// - auto + детектор сработал → флаг определённой страны
-// - auto + детектор НЕ сработал (PlateCountry.other) → «?»
+// Что показать справа от инпута госномера:
+// - детектор сработал → флаг определённой страны;
+// - номер неполный/неоднозначный → нейтральный глобус.
 
 String _plateInputFlag(_SparkJoyCreateReportScreenState s) {
-  if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
-    return '❓';
-  }
+  if (s._plateCountry == PlateCountry.other) return '🌐';
   return s._plateFormat.flag;
 }
 
 String _plateInputHint(_SparkJoyCreateReportScreenState s) {
-  if (!s._plateCountryLocked && s._plateCountry == PlateCountry.other) {
-    return 'Введите номер';
-  }
+  if (s._plateCountry == PlateCountry.other) return 'Введите номер';
   return s._plateFormat.placeholder;
+}
+
+String _plateCountryTooltip(_SparkJoyCreateReportScreenState s) {
+  if (s._plateCountry == PlateCountry.other) {
+    return 'Страна определится автоматически';
+  }
+  return 'Определено: ${s._plateFormat.name}';
 }
 
 /// Результат выбора в picker-bottom-sheet:

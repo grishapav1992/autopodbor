@@ -809,14 +809,6 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
                     const SizedBox(height: SparkSpace.md),
                   ],
                   Expanded(child: listContent()),
-                  const SizedBox(height: SparkSpace.sm),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Отмена'),
-                    ),
-                  ),
                 ],
               ),
             );

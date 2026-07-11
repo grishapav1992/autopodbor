@@ -9,8 +9,8 @@
 ///     rendering in summary cards.
 ///
 /// Used by `spark_joy_vehicle_business_helpers.dart` (sanitize / format /
-/// error helpers) and by `spark_joy_step_vehicle.dart` (country chip
-/// row + TextField placeholder).
+/// error helpers) and by `spark_joy_step_vehicle.dart` (automatic flag
+/// indicator + TextField placeholder).
 ///
 /// Validation scope: passenger plates with regional suffix only. Trailer,
 /// commercial, gov, diplomat etc. series are NOT enforced — the regex
@@ -28,8 +28,7 @@ enum PlateCountry {
   uz, // Узбекистан
   ab, // Абхазия (РФ-style + регион 80)
   ua, // Украина
-
-  // ── Picker-only (без авто-детекта, skipValidation=true) ──
+  // ── Неоднозначные для авто-детекта (skipValidation=true) ──
   // Бывший СССР / постсоветское пространство:
   ge, // Грузия
   az, // Азербайджан
@@ -50,13 +49,9 @@ enum PlateCountry {
   kr, // Корея
   jp, // Япония
   cn, // Китай
-
-  // Универсальный fallback: любая страна вне списка плюс случай
-  // «авто-детект не сработал». Без валидации формата — sanitize
-  // принимает любые буквы (кириллица + латиница) и цифры, длина
-  // до maxLength=14. Используется и как явный выбор «Другая страна»
-  // в picker'е, и как неявное состояние когда auto-mode не нашёл
-  // подходящего шаблона.
+  // Универсальный fallback: любая страна вне списка плюс случай,
+  // когда авто-детект ещё не сработал. Без валидации формата — sanitize
+  // принимает поддерживаемые письменности и цифры, длина до 14.
   other,
 }
 
@@ -77,11 +72,10 @@ class PlateFormat {
 
   final PlateCountry country;
 
-  /// Полное название страны на русском — для picker-листа («Россия»,
-  /// «Беларусь», «Абхазия» и т.д.).
+  /// Полное название страны на русском — для подсказки у флага.
   final String name;
 
-  /// Short label for the country chip ("РФ", "BY", ...).
+  /// Короткий код страны для сериализации и вспомогательного UI.
   final String label;
 
   /// Flag emoji shown alongside the label.
@@ -125,6 +119,9 @@ class PlateFormat {
 /// Both countries share the same Cyrillic-Latin-lookalike subset.
 const String _plateCyr = 'АВЕКМНОРСТУХ';
 
+/// Полный русский кириллический диапазон для нейтрального ввода.
+const String _plateCyrAll = 'А-ЯЁ';
+
 /// Latin letters used by KZ / AM / KG / UZ plate series we support.
 /// Full A-Z; some series in these countries do use Q (e.g. KZ taxi /
 /// rare regional codes), so excluding it would silently drop valid
@@ -137,12 +134,11 @@ const String _plateLatin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 /// SO-специфичной логикой.
 final RegExp _unusedPattern = RegExp('^.+\$');
 
-/// Расширенный whitelist для picker-only стран — включает Cyrillic +
-/// Latin + азиатские символы (CJK ideographs / Hangul / Hiragana /
-/// Katakana). Без этого инспектор, выбравший Корею/Китай/Японию в
-/// picker'е, не сможет ввести настоящий номер: hangul/kanji символы
-/// отфильтровывались бы как «не из whitelist'а». Diacritic-латиница
-/// (ä/ö/ü/ñ etc.) тоже включена для редких европейских регионов.
+/// Расширенный whitelist для универсального ввода: Cyrillic + Latin +
+/// азиатские символы (CJK ideographs / Hangul / Hiragana / Katakana).
+/// Благодаря ему письменность можно определить автоматически, не теряя
+/// символы в процессе ввода. Diacritic-латиница тоже сохранена для редких
+/// европейских регионов.
 const String _plateAsianRanges =
     '一-鿿' // CJK Unified Ideographs (Китай, Япония кандзи)
     '가-힣' // Hangul Syllables (Корея) — стандартный диапазон, без зарезервированных
@@ -167,7 +163,9 @@ final PlateFormat _ruFormat = PlateFormat(
   placeholder: 'А123ВЕ77',
 );
 
-final RegExp _ruPattern = RegExp('^[$_plateCyr]\\d{3}[$_plateCyr]{2}\\d{2,3}\$');
+final RegExp _ruPattern = RegExp(
+  '^[$_plateCyr]\\d{3}[$_plateCyr]{2}\\d{2,3}\$',
+);
 
 final PlateFormat _byFormat = PlateFormat(
   country: PlateCountry.by,
@@ -243,7 +241,9 @@ final PlateFormat _uzFormat = PlateFormat(
   placeholder: '01A123AB',
 );
 
-final RegExp _uzPattern = RegExp('^\\d{2}[$_plateLatin]\\d{3}[$_plateLatin]{2}\$');
+final RegExp _uzPattern = RegExp(
+  '^\\d{2}[$_plateLatin]\\d{3}[$_plateLatin]{2}\$',
+);
 
 final PlateFormat _abFormat = PlateFormat(
   country: PlateCountry.ab,
@@ -293,7 +293,7 @@ final PlateFormat _soFormat = PlateFormat(
   // на случай дикого input'а (paste / dictation с азиатскими
   // символами и т.п.). Регион имеет несколько конкурирующих
   // исторических форматов — стрипать ничего не должны.
-  allowedChars: _plateCyr + _plateLatin + _plateAsianRanges,
+  allowedChars: _plateCyrAll + _plateLatin + _plateAsianRanges,
   pattern: _unusedPattern,
   maxLength: 14,
   minLength: 1,
@@ -309,7 +309,7 @@ final PlateFormat _otherFormat = PlateFormat(
   // Максимально широкий whitelist — кириллица + латиница + азиатские
   // символы + Latin Extended. «Другая страна» — fallback для всего
   // что детектор не распознал: должен принимать вообще любые плата.
-  allowedChars: _plateCyr + _plateLatin + _plateAsianRanges,
+  allowedChars: _plateCyrAll + _plateLatin + _plateAsianRanges,
   pattern: _unusedPattern,
   maxLength: 14,
   minLength: 1,
@@ -317,10 +317,9 @@ final PlateFormat _otherFormat = PlateFormat(
   skipValidation: true,
 );
 
-/// Создаёт picker-only формат: без жёсткой валидации, но с правильным
-/// именем / флагом / placeholder'ом для отображения. Используется для
-/// стран, которые инспектор может выбрать вручную, но детектор за них
-/// не отвечает (слишком много вариантов или коллизий шаблонов).
+/// Создаёт формат без жёсткой валидации. Такие форматы нужны для хранения
+/// метаданных стран, которые нельзя надёжно различить по одной структуре
+/// номера из-за множества вариантов и коллизий шаблонов.
 PlateFormat _pickerOnlyFormat({
   required PlateCountry country,
   required String name,
@@ -334,10 +333,8 @@ PlateFormat _pickerOnlyFormat({
     label: label,
     flag: flag,
     // Permissive whitelist — Cyr + Lat + digits + азиатские символы +
-    // латиница с диакритикой. Без расширенных диапазонов корейские/
-    // японские/китайские плата невозможно ввести (hangul/kanji
-    // отфильтровываются sanitize), хотя страна выбрана в picker'е.
-    allowedChars: _plateCyr + _plateLatin + _plateAsianRanges,
+    // латиница с диакритикой.
+    allowedChars: _plateCyrAll + _plateLatin + _plateAsianRanges,
     pattern: _unusedPattern,
     maxLength: 14,
     minLength: 1,
@@ -346,13 +343,11 @@ PlateFormat _pickerOnlyFormat({
   );
 }
 
-// ── Picker-only форматы: бывший СССР, ЕС, Азия ────────────────────────
+// ── Нестрогие форматы: бывший СССР, ЕС, Азия ─────────────────────────
 //
-// Без авто-детекта (см. [kAutoDetectFormats]). Если инспектор вручную
-// выбирает страну в picker'е — мы переключаемся на её формат, но не
-// валидируем строго (skipValidation=true). Это исключает ложные
-// срабатывания детектора между похожими шаблонами (FR=IT=GE,
-// AM=AZ и т.п.) и при этом даёт инспектору правильный label и флаг.
+// Большинство не участвует в структурном авто-детекте: это исключает
+// ложные совпадения между похожими шаблонами (FR=IT=GE, AM=AZ и т.п.).
+// Азия дополнительно определяется по письменности.
 
 final PlateFormat _geFormat = _pickerOnlyFormat(
   country: PlateCountry.ge,
@@ -482,10 +477,8 @@ final PlateFormat _cnFormat = _pickerOnlyFormat(
   placeholder: '京A12345',
 );
 
-/// Ordered list — defines the picker sequence in the UI.
-/// Группировка: распознаваемые детектором → бывший СССР → ЕС → Азия →
-/// Южная Осетия → «Другая страна». Auto-detect использует
-/// [kAutoDetectFormats] (строгий subset).
+/// Каталог поддерживаемых форматов. Auto-detect использует строгий subset
+/// [kAutoDetectFormats] и отдельное определение азиатской письменности.
 final List<PlateFormat> kPlateFormats = <PlateFormat>[
   // Распознаются детектором:
   _ruFormat,
@@ -496,7 +489,7 @@ final List<PlateFormat> kPlateFormats = <PlateFormat>[
   _kgFormat,
   _uzFormat,
   _abFormat,
-  // Picker-only — бывший СССР:
+  // Нестрогие — бывший СССР:
   _geFormat,
   _azFormat,
   _mdFormat,
@@ -506,13 +499,13 @@ final List<PlateFormat> kPlateFormats = <PlateFormat>[
   _lvFormat,
   _ltFormat,
   _soFormat,
-  // Picker-only — ЕС:
+  // Нестрогие — ЕС:
   _deFormat,
   _plFormat,
   _frFormat,
   _itFormat,
   _esFormat,
-  // Picker-only — Азия:
+  // Определяются по письменности — Азия:
   _krFormat,
   _jpFormat,
   _cnFormat,
@@ -524,8 +517,8 @@ final List<PlateFormat> kPlateFormats = <PlateFormat>[
 /// чем RU — фиксированный регион 80). UA и BY с уникальной структурой
 /// (4-значный блок цифр) — следующими. RU после AB чтобы не
 /// перехватить АБХ-плату. Latin (KZ/AM/KG/UZ) — структуры разные,
-/// порядок неважен. SO / other / picker-only страны в детекторе НЕ
-/// участвуют — explicit-only выбор.
+/// порядок неважен. SO / other и неоднозначные латинские форматы в
+/// структурном детекторе не участвуют.
 final List<PlateFormat> kAutoDetectFormats = <PlateFormat>[
   _abFormat,
   _uaFormat,
@@ -618,14 +611,17 @@ String formatPlate(String sanitized, PlateFormat fmt) {
 }
 
 /// Permissive-сanitize для auto-mode: убирает пробелы, апперкейзит,
-/// фильтрует под универсальный whitelist (Cyr+Lat+digits) и режет
+/// фильтрует под универсальный whitelist и режет
 /// до 14 символов (общий максимум по всем форматам). Используется
 /// пока auto-детектор ещё не определил страну — чтобы инспектор мог
-/// набирать любые символы из любого алфавита, а под формат-специфичный
-/// whitelist строка пересушится автоматически после матча.
+/// набирать кириллицу, латиницу и азиатские символы без ручного выбора
+/// страны. Под формат-специфичный whitelist строка пересушится
+/// автоматически после уверенного матча.
 String sanitizePlatePermissive(String input) {
   final upper = input.toUpperCase().replaceAll(RegExp(r'\s+'), '');
-  final allowed = '$_plateCyr$_plateLatin' '0-9';
+  final allowed =
+      'А-ЯЁ$_plateLatin$_plateAsianRanges'
+      '0-9';
   final cleaned = upper.replaceAll(RegExp('[^$allowed]'), '');
   if (cleaned.length > 14) return cleaned.substring(0, 14);
   return cleaned;
@@ -634,10 +630,18 @@ String sanitizePlatePermissive(String input) {
 /// Прогоняет [input] через [kAutoDetectFormats] в порядке специфичности.
 /// Для каждого кандидата делает format-specific sanitize и проверяет
 /// `pattern.hasMatch`. Возвращает первый страновой код с полным матчем,
-/// либо null если ни один не подошёл (тогда UI показывает «Не определено»).
+/// либо null если ни один не подошёл (тогда UI показывает нейтральный глобус).
 PlateCountry? detectPlateCountry(String input) {
   final permissive = sanitizePlatePermissive(input);
   if (permissive.isEmpty) return null;
+
+  // Для азиатских номеров письменность надёжнее структуры: хангыль
+  // однозначно указывает на Корею, кана — на Японию, а CJK-идеограф
+  // без каны в поддерживаемом наборе относится к Китаю.
+  if (RegExp(r'[가-힣]').hasMatch(permissive)) return PlateCountry.kr;
+  if (RegExp(r'[぀-ヿ]').hasMatch(permissive)) return PlateCountry.jp;
+  if (RegExp(r'[一-鿿]').hasMatch(permissive)) return PlateCountry.cn;
+
   for (final fmt in kAutoDetectFormats) {
     final sanitized = sanitizePlate(permissive, fmt);
     if (sanitized.length < fmt.minLength) continue;
@@ -646,6 +650,23 @@ PlateCountry? detectPlateCountry(String input) {
     }
   }
   return null;
+}
+
+typedef AutoDetectedPlate = ({PlateCountry? country, String text});
+
+/// Единая нормализация номера для ручного ввода, OCR и черновиков.
+///
+/// При уверенном распознавании применяет формат страны. Если шаблон
+/// неоднозначен или ещё не допечатан, сохраняет универсально очищенный
+/// номер и возвращает `country: null` — UI показывает нейтральный флаг.
+AutoDetectedPlate normalizePlateAutomatically(String input) {
+  final permissive = sanitizePlatePermissive(input);
+  final country = detectPlateCountry(permissive);
+  if (country == null) return (country: null, text: permissive);
+
+  final format = plateFormatFor(country);
+  final sanitized = sanitizePlate(permissive, format);
+  return (country: country, text: formatPlate(sanitized, format));
 }
 
 /// Returns null if the sanitized input matches the country pattern,
@@ -721,10 +742,14 @@ String _formatUz(String s) {
   final region = s.substring(0, 2);
   final letter = s.length >= 3 ? s.substring(2, 3) : '';
   if (letter.isEmpty) return region;
-  final digits = s.length > 3 ? s.substring(3, s.length < 6 ? s.length : 6) : '';
+  final digits = s.length > 3
+      ? s.substring(3, s.length < 6 ? s.length : 6)
+      : '';
   if (digits.isEmpty) return '$region $letter';
   final tail = s.length > 6 ? s.substring(6) : '';
-  return tail.isEmpty ? '$region $letter $digits' : '$region $letter $digits $tail';
+  return tail.isEmpty
+      ? '$region $letter $digits'
+      : '$region $letter $digits $tail';
 }
 
 String _formatUa(String s) {

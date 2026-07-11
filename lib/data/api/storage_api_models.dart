@@ -176,8 +176,8 @@ class RestylingItem {
     return RestylingItem(
       id: id,
       restyling: _catalogJsonString(map['restyling']),
-      yearStart: _catalogJsonInt(map['yearStart']),
-      yearEnd: _catalogJsonInt(map['yearEnd']),
+      yearStart: _catalogJsonYear(map['yearStart']),
+      yearEnd: _catalogJsonYear(map['yearEnd']),
       frames: _catalogJsonList(map['frames'], FrameItem.tryFromJson),
       photos: _catalogJsonList(map['photos'], PhotoItem.tryFromJson),
     );
@@ -249,6 +249,26 @@ class GenerationItem {
     ).yearRange;
   }
 
+  /// Человекочитаемое значение поколения из ответа `Storage.GetRequestCar`.
+  ///
+  /// В этом контракте номер поколения лежит в `generation`, а годы — внутри
+  /// `restyling` (singular). Старые/кэшированные ответы могут использовать
+  /// `restylings` (plural), поэтому поддерживаем обе формы. Если годов нет,
+  /// сохраняем обратную совместимость и возвращаем номер поколения.
+  static String? displayValueFromRequestCarJson(dynamic rawCar) {
+    final car = _catalogJsonMap(rawCar);
+    final range =
+        yearRangeFromRestylingsJson(car['restylings']) ??
+        yearRangeFromRestylingsJson(car['restyling']);
+    if (range != null) return range;
+
+    final rawGeneration = car['generation'];
+    final number = _catalogJsonInt(rawGeneration);
+    if (number != null) return number > 0 ? '$number' : null;
+    final text = _catalogJsonString(rawGeneration).trim();
+    return text.isEmpty ? null : text;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'modelCarId': modelCarId,
@@ -293,6 +313,17 @@ int? _catalogJsonInt(dynamic raw) {
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();
   if (raw is String) return int.tryParse(raw.trim());
+  return null;
+}
+
+int? _catalogJsonYear(dynamic raw) {
+  final direct = _catalogJsonInt(raw);
+  if (direct != null) return direct;
+  if (raw is Map) return _catalogJsonYear(raw['date']);
+  if (raw is String) {
+    final match = RegExp(r'\d{4}').firstMatch(raw.trim());
+    return match == null ? null : int.tryParse(match.group(0)!);
+  }
   return null;
 }
 

@@ -66,25 +66,13 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
     _vinController = TextEditingController(
       text: _read(draft, 'vin', fallback: _read(assignment, 'vin')),
     );
-    // Plate country must be set BEFORE sanitize/format below — those
-    // helpers consult `_plateCountry` for alphabet + max-length rules.
-    // Old drafts without `gosNumberCountry` default to РФ via parser.
-    _plateCountry = parsePlateCountry(_read(draft, 'gosNumberCountry'));
-    // Был ли выбор страны зафиксирован пользователем через picker.
-    // Старые черновики без поля → false (auto-mode). После hydrate'а
-    // detect-логика заработает в onChanged как обычно — для строго
-    // совпадающего плата детектор вернёт ту же страну (no-op),
-    // для plate'ов под picker-only страны останемся в saved country
-    // только если flag=true.
-    final lockedRaw = _read(
-      draft,
-      'gosNumberCountryLocked',
-    ).trim().toLowerCase();
-    _plateCountryLocked = lockedRaw == 'true' || lockedRaw == '1';
-    _plateController = TextEditingController(text: _read(draft, 'plate'));
-    final initialPlate = _sanitizePlate(_plateController.text);
-    if (initialPlate.isNotEmpty) {
-      _plateController.text = _formatPlate(initialPlate);
+    // Ручной выбор страны больше не используется. Даже если старый черновик
+    // хранит выбранную страну и lock, восстанавливаем номер через актуальный
+    // автоматический детектор, чтобы поведение совпадало с обычным вводом.
+    final normalizedPlate = normalizePlateAutomatically(_read(draft, 'plate'));
+    _plateCountry = normalizedPlate.country ?? PlateCountry.other;
+    _plateController = TextEditingController(text: normalizedPlate.text);
+    if (normalizedPlate.text.isNotEmpty) {
       // У восстановленного черновика поле уже наполнено — валидация
       // должна работать сразу, без ожидания нового blur'а.
       _plateBlurred = true;

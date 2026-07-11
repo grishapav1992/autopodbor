@@ -31,6 +31,15 @@ void main() {
       // AB должен быть строже RU (фиксированный регион 80) и победить.
       expect(detectPlateCountry('А123ВЕ80'), PlateCountry.ab);
     });
+    test('Корея определяется по хангылю', () {
+      expect(detectPlateCountry('12가1234'), PlateCountry.kr);
+    });
+    test('Япония определяется по кане', () {
+      expect(detectPlateCountry('500さ1234'), PlateCountry.jp);
+    });
+    test('Китай определяется по иероглифу', () {
+      expect(detectPlateCountry('京A12345'), PlateCountry.cn);
+    });
   });
 
   group('detectPlateCountry — non-detected cases', () {
@@ -44,9 +53,6 @@ void main() {
     test('немецкий plate не распознаётся', () {
       // BAB1234 не матчит ни один из 8 шаблонов.
       expect(detectPlateCountry('BAB1234'), null);
-    });
-    test('корейский plate с hangul не распознаётся', () {
-      expect(detectPlateCountry('12가1234'), null);
     });
   });
 
@@ -74,6 +80,10 @@ void main() {
       final fmt = plateFormatFor(PlateCountry.so);
       expect(sanitizePlate('가1234', fmt), '가1234');
     });
+    test('нейтральный формат сохраняет полную кириллицу', () {
+      final fmt = plateFormatFor(PlateCountry.other);
+      expect(sanitizePlate('БЮЯ123', fmt), 'БЮЯ123');
+    });
     test('РФ: латиница стрипается (whitelist строгий)', () {
       final fmt = plateFormatFor(PlateCountry.ru);
       expect(sanitizePlate('А123BВ77', fmt), 'А123В77');
@@ -92,10 +102,36 @@ void main() {
     test('режет до 14 символов', () {
       expect(sanitizePlatePermissive('А' * 20).length, 14);
     });
-    test('не пропускает hangul (auto-mode только Cyr+Lat+digits)', () {
-      // Permissive whitelist в auto-mode уже для детектора, hangul
-      // не входит — и не должен, т.к. KR в детекторе нет.
-      expect(sanitizePlatePermissive('가1234'), '1234');
+    test('сохраняет hangul для автоматического определения Кореи', () {
+      expect(sanitizePlatePermissive('가1234'), '가1234');
+    });
+  });
+
+  group('normalizePlateAutomatically', () {
+    test('определяет РФ и возвращает форматированный номер', () {
+      final result = normalizePlateAutomatically('а 123 ве 77');
+      expect(result.country, PlateCountry.ru);
+      expect(result.text, 'А123ВЕ77');
+    });
+    test('определяет Беларусь и применяет раскладку', () {
+      final result = normalizePlateAutomatically('1234аа7');
+      expect(result.country, PlateCountry.by);
+      expect(result.text, '1234 АА-7');
+    });
+    test('неоднозначный латинский номер сохраняет без ложного флага', () {
+      final result = normalizePlateAutomatically('B-AB 1234');
+      expect(result.country, isNull);
+      expect(result.text, 'BAB1234');
+    });
+    test('частичный номер сохраняется до завершения ввода', () {
+      final result = normalizePlateAutomatically('а12');
+      expect(result.country, isNull);
+      expect(result.text, 'А12');
+    });
+    test('корейский номер определяется и сохраняется', () {
+      final result = normalizePlateAutomatically('12가1234');
+      expect(result.country, PlateCountry.kr);
+      expect(result.text, '12가1234');
     });
   });
 
@@ -105,7 +141,7 @@ void main() {
       expect(plateError('что-то 123', fmt), null);
       expect(plateError('хххххх', fmt), null);
     });
-    test('Германия (picker-only): нет ошибки даже для невалидного ввода', () {
+    test('Германия (нестрогий формат): нет ошибки для произвольного ввода', () {
       final fmt = plateFormatFor(PlateCountry.de);
       expect(plateError('totally wrong format', fmt), null);
     });
@@ -129,24 +165,34 @@ void main() {
 
   group('formatPlate раскладка', () {
     test('РФ: слитно А123ВЕ77 (без пробелов между группами)', () {
-      expect(formatPlate('А123ВЕ77', plateFormatFor(PlateCountry.ru)),
-          'А123ВЕ77');
+      expect(
+        formatPlate('А123ВЕ77', plateFormatFor(PlateCountry.ru)),
+        'А123ВЕ77',
+      );
     });
     test('Беларусь: 1234 АА-7', () {
-      expect(formatPlate('1234АА7', plateFormatFor(PlateCountry.by)),
-          '1234 АА-7');
+      expect(
+        formatPlate('1234АА7', plateFormatFor(PlateCountry.by)),
+        '1234 АА-7',
+      );
     });
     test('Украина: АА 1234 АА', () {
-      expect(formatPlate('АА1234АА', plateFormatFor(PlateCountry.ua)),
-          'АА 1234 АА');
+      expect(
+        formatPlate('АА1234АА', plateFormatFor(PlateCountry.ua)),
+        'АА 1234 АА',
+      );
     });
-    test('Корея: возвращается как есть (picker-only)', () {
-      expect(formatPlate('12가1234', plateFormatFor(PlateCountry.kr)),
-          '12가1234');
+    test('Корея: возвращается как есть', () {
+      expect(
+        formatPlate('12가1234', plateFormatFor(PlateCountry.kr)),
+        '12가1234',
+      );
     });
-    test('Германия: возвращается как есть (picker-only)', () {
-      expect(formatPlate('BAB1234', plateFormatFor(PlateCountry.de)),
-          'BAB1234');
+    test('Германия: возвращается как есть', () {
+      expect(
+        formatPlate('BAB1234', plateFormatFor(PlateCountry.de)),
+        'BAB1234',
+      );
     });
   });
 
@@ -172,11 +218,14 @@ void main() {
   group('PlateFormat.skipValidation distribution', () {
     test('детектируемые страны имеют skipValidation=false', () {
       for (final fmt in kAutoDetectFormats) {
-        expect(fmt.skipValidation, false,
-            reason: '${fmt.country.name} в детекторе должна валидировать');
+        expect(
+          fmt.skipValidation,
+          false,
+          reason: '${fmt.country.name} в детекторе должна валидировать',
+        );
       }
     });
-    test('picker-only страны имеют skipValidation=true', () {
+    test('нестрогие страны имеют skipValidation=true', () {
       const detectorCountries = {
         PlateCountry.ru,
         PlateCountry.by,
@@ -189,16 +238,25 @@ void main() {
       };
       for (final fmt in kPlateFormats) {
         if (detectorCountries.contains(fmt.country)) continue;
-        expect(fmt.skipValidation, true,
-            reason: '${fmt.country.name} picker-only должна skip-validate');
+        expect(
+          fmt.skipValidation,
+          true,
+          reason: '${fmt.country.name} должна пропускать строгую валидацию',
+        );
       }
     });
     test('каждая enum-value имеет ровно один формат в kPlateFormats', () {
       final countries = kPlateFormats.map((f) => f.country).toSet();
-      expect(countries.length, kPlateFormats.length,
-          reason: 'дубликат страны в kPlateFormats');
-      expect(countries, PlateCountry.values.toSet(),
-          reason: 'не все enum-values покрыты в kPlateFormats');
+      expect(
+        countries.length,
+        kPlateFormats.length,
+        reason: 'дубликат страны в kPlateFormats',
+      );
+      expect(
+        countries,
+        PlateCountry.values.toSet(),
+        reason: 'не все enum-values покрыты в kPlateFormats',
+      );
     });
   });
 }

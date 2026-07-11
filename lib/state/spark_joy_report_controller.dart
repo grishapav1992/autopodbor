@@ -84,17 +84,10 @@ class SparkJoyReportController extends GetxController {
   final Rxn<bool> mileageMismatch = Rxn<bool>();
 
   /// Country whose plate-format rules apply to the госномер field.
-  /// Defaults to RF; persisted в черновике как wire-string под ключом
+  /// Starts neutral until the number is detected; persisted в черновике под
   /// `gosNumberCountry`. См. `spark_joy_plate_formats.dart` для полного
   /// каталога (РФ + СНГ + АБХ + Ю.Осетия + «Другая»).
-  final Rx<PlateCountry> plateCountry = Rx<PlateCountry>(PlateCountry.ru);
-
-  /// Был ли выбор страны для plate'а зафиксирован вручную через picker.
-  /// false → детектор управляет [plateCountry] на каждый keystroke.
-  /// true → инспектор явно выбрал страну, авто-детект отключён до
-  /// возврата в режим «Авто». Persisted в черновике как
-  /// `gosNumberCountryLocked`.
-  final RxBool plateCountryLocked = false.obs;
+  final Rx<PlateCountry> plateCountry = Rx<PlateCountry>(PlateCountry.other);
 
   // ──────────────────────────────────────────────────────────────────
   // Chunk 5 — Paintwork thickness ranges
@@ -237,8 +230,9 @@ class SparkJoyReportController extends GetxController {
   // is library-private and would need a rename first (see chunk 13).
   // ──────────────────────────────────────────────────────────────────
 
-  final Rx<Map<String, dynamic>> backendUploadState =
-      Rx<Map<String, dynamic>>(<String, dynamic>{});
+  final Rx<Map<String, dynamic>> backendUploadState = Rx<Map<String, dynamic>>(
+    <String, dynamic>{},
+  );
   final RxBool backendUploadInProgress = false.obs;
   final RxBool backendUploadFailed = false.obs;
   final RxString backendUploadStatusText = ''.obs;
@@ -264,16 +258,21 @@ class SparkJoyReportController extends GetxController {
   // living in the same `part of` library.
   // ──────────────────────────────────────────────────────────────────
 
-  final Rx<List<UploadedItem>> legalFiles =
-      Rx<List<UploadedItem>>(const <UploadedItem>[]);
-  final Rx<List<UploadedItem>> docsCommentAudioFiles =
-      Rx<List<UploadedItem>>(const <UploadedItem>[]);
-  final Rx<List<UploadedItem>> legalCommentAudioFiles =
-      Rx<List<UploadedItem>>(const <UploadedItem>[]);
-  final Rx<List<UploadedItem>> tdCommentAudioFiles =
-      Rx<List<UploadedItem>>(const <UploadedItem>[]);
-  final Rx<List<UploadedItem>> expertAudioFiles =
-      Rx<List<UploadedItem>>(const <UploadedItem>[]);
+  final Rx<List<UploadedItem>> legalFiles = Rx<List<UploadedItem>>(
+    const <UploadedItem>[],
+  );
+  final Rx<List<UploadedItem>> docsCommentAudioFiles = Rx<List<UploadedItem>>(
+    const <UploadedItem>[],
+  );
+  final Rx<List<UploadedItem>> legalCommentAudioFiles = Rx<List<UploadedItem>>(
+    const <UploadedItem>[],
+  );
+  final Rx<List<UploadedItem>> tdCommentAudioFiles = Rx<List<UploadedItem>>(
+    const <UploadedItem>[],
+  );
+  final Rx<List<UploadedItem>> expertAudioFiles = Rx<List<UploadedItem>>(
+    const <UploadedItem>[],
+  );
 
   final Rx<List<BackendUploadFileProgress>> backendUploadFilesProgress =
       Rx<List<BackendUploadFileProgress>>(const <BackendUploadFileProgress>[]);

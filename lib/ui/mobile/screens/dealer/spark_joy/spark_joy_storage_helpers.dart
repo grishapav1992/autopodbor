@@ -52,7 +52,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         return;
       }
       if (!context.mounted) return;
-      await shareSpecialistReportUrl(context, url: url, subject: _reportTitle());
+      await shareSpecialistReportUrl(
+        context,
+        url: url,
+        subject: _reportTitle(),
+      );
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(
@@ -1149,11 +1153,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     _backendUploadErrorSupportText = '';
   }
 
-  String _backendUploadStateKey(
-    String filename,
-    UploadedItem item,
-    int index,
-  ) {
+  String _backendUploadStateKey(String filename, UploadedItem item, int index) {
     return sparkJoyUploadStateKey(
       filename: filename,
       source: item.dataUrl,
@@ -2176,7 +2176,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           : _sanitizePlate(_plateController.text.trim()),
       // Country of the gosNumber — needed downstream so the server
       // can interpret a non-РФ plate without re-running heuristics.
-      // Для picker-only стран (skipValidation=true: ЕС/Азия/часть
+      // Для нестрогих форматов (skipValidation=true: ЕС/Азия/часть
       // постсоветского) отправляем "other" вместо точного кода —
       // в схеме `gosNumberCountry` нет (см. PrepareSpecialistReport.md),
       // и мы не хотим засорять wire-format новыми ISO-кодами на случай
@@ -2327,7 +2327,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       if (sourceKey.isEmpty) {
         _setBackendUploadError(
           code: SparkJoyErrorCode.fileEmptySource,
-          message: 'Пустой источник файла ${index + 1}/$totalItems: '
+          message:
+              'Пустой источник файла ${index + 1}/$totalItems: '
               '${item.name}',
         );
         _updateBackendUploadFileProgress(
@@ -2777,7 +2778,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),
       'gosNumberCountry': _plateCountry.name,
-      'gosNumberCountryLocked': _plateCountryLocked,
+      // Legacy-ключ оставляем для совместимости со старыми версиями,
+      // но ручной выбор страны больше не поддерживается.
+      'gosNumberCountryLocked': false,
       'adLink': _adLinkController.text.trim(),
       'mileage': _mileageController.text.trim(),
       'mileageMismatch': _mileageMismatch,
@@ -3130,7 +3133,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       'vin': _vinController.text.trim(),
       'plate': _sanitizePlate(_plateController.text.trim()),
       'gosNumberCountry': _plateCountry.name,
-      'gosNumberCountryLocked': _plateCountryLocked,
+      // Legacy-ключ оставляем для совместимости со старыми версиями,
+      // но ручной выбор страны больше не поддерживается.
+      'gosNumberCountryLocked': false,
       'mileage': _mileageController.text.trim(),
       'owners': _ownersCountController.text.trim(),
       'docsMismatchComment': _docsMismatchCommentController.text.trim(),
@@ -3266,9 +3271,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       }
       if (!mounted) return;
       if (_uploadCancelled) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Выгрузка отменена')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Выгрузка отменена')));
         return;
       }
       final errorText = _backendUploadErrorText

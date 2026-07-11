@@ -312,4 +312,55 @@ void main() {
       expect(GenerationItem.yearRangeFromRestylingsJson(42), isNull);
     });
   });
+
+  group('GenerationItem.displayValueFromRequestCarJson', () {
+    test('живой GetRequestCar: singular restyling и строковые годы', () {
+      final value = GenerationItem.displayValueFromRequestCarJson({
+        'generation': 4,
+        'restyling': [
+          {'id': 10, 'yearStart': '2018', 'yearEnd': '2022'},
+        ],
+      });
+      expect(value, '2018–2022');
+    });
+
+    test('ISO-даты годов тоже преобразуются в диапазон', () {
+      final value = GenerationItem.displayValueFromRequestCarJson({
+        'generation': 2,
+        'restyling': [
+          {
+            'id': 10,
+            'yearStart': '2019-01-01',
+            'yearEnd': '2021-12-31',
+          },
+        ],
+      });
+      expect(value, '2019–2021');
+    });
+
+    test('легаси plural restylings поддерживается', () {
+      final value = GenerationItem.displayValueFromRequestCarJson({
+        'generation': 3,
+        'restylings': [
+          {'id': 10, 'yearStart': 2015, 'yearEnd': null},
+        ],
+      });
+      expect(value, 'с 2015');
+    });
+
+    test('без годов используется номер поколения', () {
+      expect(
+        GenerationItem.displayValueFromRequestCarJson({'generation': 7}),
+        '7',
+      );
+    });
+
+    test('нулевое и отсутствующее поколение не показываются', () {
+      expect(
+        GenerationItem.displayValueFromRequestCarJson({'generation': 0}),
+        isNull,
+      );
+      expect(GenerationItem.displayValueFromRequestCarJson(const {}), isNull);
+    });
+  });
 }

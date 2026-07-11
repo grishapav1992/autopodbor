@@ -91,7 +91,7 @@ class NotificationController extends GetxController {
     }
     await _ensureLastSeenLoaded();
     _pushSub ??= NotificationWebsocketService.instance.stream.listen(
-      _onPushEvent,
+      handlePushEvent,
     );
     // Let the WS recover from an expired notification token: on repeated
     // disconnects it refreshes all tokens and reconnects with the fresh
@@ -153,7 +153,6 @@ class NotificationController extends GetxController {
       await _ensureLastSeenLoaded();
       items.assignAll(page.items);
       nextCursor.value = page.nextCursor;
-      await _seedLastSeenFromCurrentPageIfNeeded();
       _recomputeBadgeState();
     } catch (e) {
       errorMessage.value = e.toString();
@@ -418,8 +417,14 @@ class NotificationController extends GetxController {
 
   // ── Internals ─────────────────────────────────────────────────────────
 
-  void _onPushEvent(NotificationPushEvent event) {
-    if (!event.requiresFetch) return;
+  @visibleForTesting
+  void handlePushEvent(NotificationPushEvent event) {
+    // `requiresFetch=false` only means the server considers the preview
+    // sufficient. This controller never inserts previews into [items] because
+    // they do not carry status/body/payload, so every valid push must refetch
+    // the authoritative feed. Ignoring such a push made the first
+    // CreateRequest assignment appear only after opening the notifications
+    // screen, while later AssignSpecialist pushes happened to update the badge.
     // Debounce схлопывает короткий всплеск пушей в один рефетч; троттлинг
     // ограничивает устойчивый поток (частые пуши / цикл переподключения WS)
     // до одного GetNotifications раз в [_minPushReloadInterval]. Одиночный
@@ -446,21 +451,6 @@ class NotificationController extends GetxController {
     _lastSeenNotificationId = marker?.id;
     _lastSeenNotificationCreatedAt = marker?.createdAt?.toUtc();
     _lastSeenLoaded = true;
-  }
-
-  Future<void> _seedLastSeenFromCurrentPageIfNeeded() async {
-    if (_lastSeenNotificationId != null ||
-        _lastSeenNotificationCreatedAt != null) {
-      return;
-    }
-    final latest = _latestComparableNotification(items);
-    if (latest == null) return;
-    _lastSeenNotificationId = latest.id;
-    _lastSeenNotificationCreatedAt = latest.createdAt.toUtc();
-    await UserSimplePreferences.setLastSeenNotification(
-      id: latest.id,
-      createdAt: latest.createdAt,
-    );
   }
 
   void _recomputeBadgeState() {
@@ -505,6 +495,13 @@ class NotificationController extends GetxController {
         badgeIds.add(n.id);
       }
     }
+    if (seenId == null && seenCreatedAt == null) {
+      // A missing marker means the user has never opened the feed. Do not
+      // silently establish a background baseline: every loaded notification
+      // is unseen until the screen explicitly calls markLatestNotificationSeen.
+      badgeIds.addAll(notifications.map((n) => n.id));
+      return badgeIds.length;
+    }
     final seenIndex = seenId == null
         ? -1
         : notifications.indexWhere((n) => n.id == seenId);
@@ -530,7 +527,7 @@ class NotificationController extends GetxController {
     required DateTime? seenCreatedAt,
   }) {
     final visible = notifications.where((n) => !n.isLegalConverter).toList();
-    if (seenId == null && seenCreatedAt == null) return 0;
+    if (seenId == null && seenCreatedAt == null) return visible.length;
     final seenIndex = seenId == null
         ? -1
         : visible.indexWhere((n) => n.id == seenId);

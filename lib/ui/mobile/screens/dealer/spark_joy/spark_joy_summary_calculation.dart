@@ -350,7 +350,9 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       if (r.timedOut) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('ApiCloud ещё обрабатывает запрос. Попробуйте позже.'),
+            content: Text(
+              'ApiCloud ещё обрабатывает запрос. Попробуйте позже.',
+            ),
           ),
         );
         return;
@@ -432,9 +434,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         return;
       }
       _setStateSafely(() => _vinLookupInfo = info);
-      final name = [info['Марка'] ?? '', info['Модель'] ?? '']
-          .where((e) => e.isNotEmpty)
-          .join(' ');
+      final name = [
+        info['Марка'] ?? '',
+        info['Модель'] ?? '',
+      ].where((e) => e.isNotEmpty).join(' ');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -468,15 +471,9 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// `TextField.onChanged` на программный `.text =` не срабатывает, поэтому
   /// повторяем ту же логику, что в обработчике ввода (spark_joy_step_vehicle).
   void _applyDetectedPlate(String raw) {
-    final permissive = sanitizePlatePermissive(raw);
-    final detected = detectPlateCountry(permissive);
-    _plateCountry = detected ?? PlateCountry.other;
-    _plateController.text = detected != null
-        ? formatPlate(
-            sanitizePlate(permissive, plateFormatFor(detected)),
-            plateFormatFor(detected),
-          )
-        : permissive;
+    final normalized = normalizePlateAutomatically(raw);
+    _plateCountry = normalized.country ?? PlateCountry.other;
+    _plateController.text = normalized.text;
     _plateBlurred = true;
   }
 

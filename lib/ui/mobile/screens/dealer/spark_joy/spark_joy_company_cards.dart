@@ -8,8 +8,8 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
     // (reportModelUnresolved), теперь несоответствие невозможно по
     // построению. Единственная точка входа — кнопка ниже: она открывает
     // каталог-визард с шага «Марка» (раньше это делали три поля-дублёра).
-    // Марка/модель/поколение показываются теми же readOnly-полями, но уже
-    // как отображение — они не открывают пикер. Конвертер VIN/госномера и
+    // Марка/модель/поколение показываются статичными блоками без фокуса и
+    // анимации поля ввода. Конвертер VIN/госномера и
     // скан СТС пишут сюда уже привязанные к каталогу значения (см.
     // _bindConverterCarToCatalog).
     final photo = _carPhotoUrl.trim();
@@ -144,19 +144,30 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
     );
   }
 
-  /// readOnly-поле только для ОТОБРАЖЕНИЯ выбранного каталожного значения —
-  /// не открывает пикер и не редактируется. Единственная точка входа в
-  /// каталог-визард теперь кнопка «Выбрать/Изменить авто».
+  /// Статичное отображение выбранного каталожного значения. В отличие от
+  /// readOnly TextField не получает фокус и не меняет рамку при касании —
+  /// единственная точка входа в каталог теперь «Выбрать/Изменить авто».
   Widget _catalogDisplayField({
     required TextEditingController controller,
     required String hint,
   }) {
-    return TextField(
-      controller: controller,
+    final value = controller.text.trim();
+    return Semantics(
+      label: value.isEmpty ? hint : value,
       readOnly: true,
-      enableInteractiveSelection: false,
-      mouseCursor: SystemMouseCursors.basic,
-      decoration: _fieldDecoration(hint),
+      child: InputDecorator(
+        decoration: _fieldDecoration(hint),
+        isEmpty: value.isEmpty,
+        child: value.isEmpty
+            ? null
+            : MyText(
+                text: value,
+                size: SparkTextSize.title,
+                color: kTertiaryColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+      ),
     );
   }
 }
