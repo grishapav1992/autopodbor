@@ -83,7 +83,7 @@ String sjFormatReportMeta(String code, String createdAt) {
   if (trimmedCode.isEmpty) {
     return sjTFormat(
       'spark.report.meta.noCode',
-      fallback: 'от {date}',
+      fallback: 'Отчёт от {date}',
       args: <String, String>{'date': formattedDate},
     );
   }

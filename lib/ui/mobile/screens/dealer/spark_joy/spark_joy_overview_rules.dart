@@ -46,17 +46,13 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  Widget _sectionCard(int index, {required _SparkJoyOverviewState overview}) {
+  Widget _sectionRow(int index, {required _SparkJoyOverviewState overview}) {
     final step = _SparkJoyStepRegistry.steps[index];
-    final value = overview.sectionValues[step.id] ?? '';
     final fillState =
         overview.sectionFillStates[step.id] ?? SparkJoySectionFillState.empty;
-    return SparkSectionNavCard(
-      index: index,
+    return SparkSectionStatusRow(
       title: step.title,
-      icon: _overviewController.sectionIcon(step.id),
       description: step.description,
-      value: value,
       fillState: fillState,
       required: _SparkJoyStepRegistry.isRequiredStep(step.id),
       onTap: () => _openSection(index),
@@ -87,14 +83,14 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
             children: [
               MyText(
                 text: 'Прогресс отчёта',
-                size: SparkTextSize.body,
+                size: SparkTextSize.sectionTitle,
                 weight: FontWeight.w700,
                 color: kTertiaryColor,
               ),
               const SizedBox(height: SparkSpace.xxs),
               MyText(
                 text: 'Заполнено разделов: $filled из $total',
-                size: SparkTextSize.caption,
+                size: SparkTextSize.body,
                 color: kGreyColor,
               ),
               const SizedBox(height: SparkSpace.md),
@@ -104,21 +100,32 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
                   value: progress,
                   minHeight: SparkSize.progress,
                   backgroundColor: kLightGreyColor,
-                  valueColor: const AlwaysStoppedAnimation<Color>(
-                    kSecondaryColor,
-                  ),
+                  valueColor: const AlwaysStoppedAnimation<Color>(kGreenColor),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: SparkSpace.lg),
-        ...List.generate(_SparkJoyStepRegistry.steps.length, (index) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: SparkSpace.lg),
-            child: _sectionCard(index, overview: overview),
-          );
-        }),
+        const SparkSectionTitle('Разделы', top: SparkSpace.xxl),
+        SparkCard(
+          padding: EdgeInsets.zero,
+          child: ClipRRect(
+            // SparkCard не клипует содержимое — без ClipRRect ripple строк
+            // вылезал бы за скругления карточки.
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+            child: Material(
+              color: Colors.transparent,
+              child: Column(
+                children: [
+                  for (var index = 0; index < total; index++) ...[
+                    if (index > 0) const SparkSectionRowDivider(),
+                    _sectionRow(index, overview: overview),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }

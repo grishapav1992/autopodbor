@@ -2910,7 +2910,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     if (lastSavedAt == null) return 'Сохранено';
     final hours = lastSavedAt.hour.toString().padLeft(2, '0');
     final minutes = lastSavedAt.minute.toString().padLeft(2, '0');
-    return 'Сохранено в $hours:$minutes';
+    // Только время: иконка-облачко уже говорит «сохранено», а компактная
+    // пилюля не отъедает ширину у заголовка (макет 2026-07-11).
+    return '$hours:$minutes';
   }
 
   Color _draftSaveStatusColor() {

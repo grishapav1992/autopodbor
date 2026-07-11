@@ -71,12 +71,16 @@ void main() {
       ),
     );
 
+    // В покое шапка читается как текст: поля нет, есть заголовок и карандаш.
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Старое название'), findsOneWidget);
+    expect(find.byIcon(Icons.edit_rounded), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.edit_rounded));
+    await tester.pump();
+    await tester.pump();
     final titleField = find.byType(TextField);
     expect(titleField, findsOneWidget);
-    expect(find.text('Изменить'), findsOneWidget);
-
-    await tester.tap(find.text('Изменить'));
-    await tester.pump();
     expect(focusNode.hasFocus, isTrue);
     expect(find.text('Готово'), findsOneWidget);
 
@@ -86,12 +90,18 @@ void main() {
 
     expect(controller.text, 'Новое название');
     expect(focusNode.hasFocus, isFalse);
-    expect(find.text('Изменить'), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
+    expect(find.text('Новое название'), findsOneWidget);
+    expect(find.byIcon(Icons.edit_rounded), findsOneWidget);
 
+    // Пилюля автосейва прижата к правому краю шапки и висит по центру
+    // блока «заголовок + мета» (макет 2026-07-11).
+    final titleCenter = tester.getCenter(find.text('Новое название'));
     final metaCenter = tester.getCenter(find.text('Черновик'));
     final statusCenter = tester.getCenter(find.text('Сохранено'));
-    expect((metaCenter.dy - statusCenter.dy).abs(), lessThan(6));
-    expect(statusCenter.dx, lessThan(400));
+    expect(statusCenter.dx, greaterThan(600));
+    expect(statusCenter.dy, greaterThan(titleCenter.dy - 1));
+    expect(statusCenter.dy, lessThan(metaCenter.dy + 1));
   });
 
   testWidgets('completed report title stays read-only', (tester) async {

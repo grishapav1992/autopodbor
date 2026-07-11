@@ -77,6 +77,7 @@ const Map<String, String> ruRu = {
   "spark.status.confirmed": "Подтверждён",
   "spark.unit.km": "км",
   "spark.report.meta": "{code} от {date}",
+  "spark.report.meta.noCode": "Отчёт от {date}",
   "vehicleSummary": "Сводка по авто",
   "leadSource": "Источник лида",
   "type": "Тип",

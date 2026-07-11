@@ -15,18 +15,17 @@ class _SparkJoyStepRegistry {
     _StepConfig(
       id: idVehicle,
       title: 'Автомобиль',
-      description:
-          'VIN, госномер, марка/модель, пробег, владельцы и город осмотра',
+      description: 'VIN, госномер, пробег, владельцы',
     ),
     _StepConfig(
       id: idParams,
       title: 'Параметры',
-      description: 'Двигатель, КПП, привод, цвет, комплектация',
+      description: 'Двигатель, КПП, привод, цвет',
     ),
     _StepConfig(
       id: idDocsCheck,
       title: 'Сверка документов',
-      description: 'Проверка совпадения владельца, VIN и модели двигателя',
+      description: 'Владелец, VIN, модель двигателя',
     ),
     _StepConfig(
       id: idLegal,
@@ -36,7 +35,7 @@ class _SparkJoyStepRegistry {
     _StepConfig(
       id: idMedia,
       title: 'Осмотр',
-      description: 'Группы осмотра, заметки и ссылки на фото/видео',
+      description: 'Группы осмотра, заметки, фото/видео',
     ),
     _StepConfig(
       id: idTestDrive,
@@ -46,7 +45,7 @@ class _SparkJoyStepRegistry {
     _StepConfig(
       id: idSummary,
       title: 'Итог',
-      description: 'Итоговый вердикт, чеклист и заключение специалиста',
+      description: 'Вердикт, чеклист, заключение',
     ),
   ];
 

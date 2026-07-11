@@ -1209,103 +1209,44 @@ class SparkReportEditorAppBar extends StatelessWidget
         icon: const Icon(Icons.arrow_back_rounded),
       ),
       titleSpacing: 0,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (titleController != null && titleFocusNode != null)
-            ListenableBuilder(
-              listenable: titleFocusNode!,
-              builder: (context, _) {
-                final editing = titleFocusNode!.hasFocus;
-                final border = OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(SparkRadius.md),
-                  borderSide: const BorderSide(color: kBorderColor),
-                );
-                return TextField(
-                  controller: titleController,
-                  focusNode: titleFocusNode,
-                  textInputAction: TextInputAction.done,
-                  maxLines: 1,
-                  onSubmitted: (_) => titleFocusNode!.unfocus(),
-                  onTapOutside: (_) => titleFocusNode!.unfocus(),
-                  style: TextStyle(
-                    fontSize: AppResponsive.sp(context, SparkTextSize.title),
-                    fontWeight: FontWeight.w700,
-                    height: 1.15,
-                    fontFamily: AppFonts.URBANIST,
-                    fontFamilyFallback: const [
-                      'SF Pro Text',
-                      'Helvetica',
-                      'Roboto',
-                      'Arial',
-                      'Noto Sans',
-                      'sans-serif',
-                    ],
+      // Пилюля автосейва прижата к правому краю шапки (макет 2026-07-11),
+      // а не стоит вплотную к подзаголовку — так «☁ 09:36» читается как
+      // системный индикатор, а не как продолжение меты.
+      title: Padding(
+        padding: EdgeInsets.only(right: onShare == null ? SparkSpace.xl : 0),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (titleController != null && titleFocusNode != null)
+                    _SparkEditableReportTitle(
+                      controller: titleController!,
+                      focusNode: titleFocusNode!,
+                    )
+                  else
+                    _SparkReportTitle(title: title),
+                  const SizedBox(height: SparkSpace.xs),
+                  MyText(
+                    text: meta,
+                    size: SparkTextSize.body,
+                    color: kGreyColor,
+                    maxLines: 1,
+                    textOverflow: TextOverflow.ellipsis,
                   ),
-                  decoration: InputDecoration(
-                    hintText: 'Новый отчёт',
-                    isDense: true,
-                    filled: true,
-                    fillColor: kInputBgColor,
-                    contentPadding: const EdgeInsets.fromLTRB(10, 7, 2, 7),
-                    border: border,
-                    enabledBorder: border,
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(SparkRadius.md),
-                      borderSide: const BorderSide(
-                        color: kSecondaryColor,
-                        width: 1.5,
-                      ),
-                    ),
-                    suffixIconConstraints: const BoxConstraints(
-                      minWidth: 0,
-                      minHeight: 0,
-                    ),
-                    suffixIcon: TextButton(
-                      onPressed: editing
-                          ? titleFocusNode!.unfocus
-                          : titleFocusNode!.requestFocus,
-                      style: TextButton.styleFrom(
-                        foregroundColor: editing ? kSecondaryColor : kGreyColor,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: SparkSpace.md,
-                          vertical: SparkSpace.xs,
-                        ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(editing ? 'Готово' : 'Изменить'),
-                    ),
-                  ),
-                );
-              },
-            )
-          else
-            _SparkReportTitle(title: title),
-          const SizedBox(height: SparkSpace.xs),
-          Row(
-            children: [
-              Flexible(
-                fit: FlexFit.loose,
-                child: MyText(
-                  text: meta,
-                  size: SparkTextSize.body,
-                  color: kGreyColor,
-                  maxLines: 1,
-                  textOverflow: TextOverflow.ellipsis,
-                ),
+                ],
               ),
-              const SizedBox(width: SparkSpace.md),
-              _SparkDraftSaveBadge(
-                text: draftStatus,
-                color: draftStatusColor,
-                icon: draftStatusIcon,
-                saving: draftSaving,
-              ),
-            ],
-          ),
-        ],
+            ),
+            const SizedBox(width: SparkSpace.md),
+            _SparkDraftSaveBadge(
+              text: draftStatus,
+              color: draftStatusColor,
+              icon: draftStatusIcon,
+              saving: draftSaving,
+            ),
+          ],
+        ),
       ),
       actions: [
         if (onShare != null)
@@ -1321,6 +1262,160 @@ class SparkReportEditorAppBar extends StatelessWidget
                 : const Icon(Icons.ios_share_rounded),
           ),
       ],
+    );
+  }
+}
+
+/// Название черновика в шапке: в покое — обычный однострочный заголовок
+/// с карандашом (тап по любому из них включает правку), в правке — поле
+/// с кнопкой «Готово». Поле не живёт в дереве постоянно, чтобы шапка
+/// читалась как заголовок, а не как форма (макет 2026-07-11).
+class _SparkEditableReportTitle extends StatefulWidget {
+  const _SparkEditableReportTitle({
+    required this.controller,
+    required this.focusNode,
+  });
+
+  final TextEditingController controller;
+  final FocusNode focusNode;
+
+  @override
+  State<_SparkEditableReportTitle> createState() =>
+      _SparkEditableReportTitleState();
+}
+
+class _SparkEditableReportTitleState extends State<_SparkEditableReportTitle> {
+  bool _editing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SparkEditableReportTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_handleFocusChange);
+      widget.focusNode.addListener(_handleFocusChange);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_handleFocusChange);
+    super.dispose();
+  }
+
+  // Правка живёт ровно столько, сколько фокус: «Готово», сабмит или тап
+  // мимо поля снимают фокус — и заголовок схлопывается обратно в текст.
+  void _handleFocusChange() {
+    if (!widget.focusNode.hasFocus && _editing) {
+      setState(() => _editing = false);
+    }
+  }
+
+  void _startEditing() {
+    setState(() => _editing = true);
+    // Поле появится только после rebuild — фокус запрашиваем пост-фреймом.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _editing) {
+        widget.focusNode.requestFocus();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_editing) {
+      return ListenableBuilder(
+        listenable: widget.controller,
+        builder: (context, _) {
+          final text = widget.controller.text.trim();
+          return GestureDetector(
+            onTap: _startEditing,
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: MyText(
+                    text: text.isEmpty ? 'Новый отчёт' : text,
+                    size: SparkTextSize.title,
+                    weight: FontWeight.w700,
+                    lineHeight: 1.15,
+                    color: text.isEmpty ? kGreyColor : null,
+                    maxLines: 1,
+                    textOverflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.md),
+                const Icon(
+                  Icons.edit_rounded,
+                  size: SparkSize.iconSm,
+                  color: kGreyColor,
+                ),
+              ],
+            ),
+          );
+        },
+      );
+    }
+
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(SparkRadius.md),
+      borderSide: const BorderSide(color: kBorderColor),
+    );
+    return TextField(
+      controller: widget.controller,
+      focusNode: widget.focusNode,
+      textInputAction: TextInputAction.done,
+      maxLines: 1,
+      onSubmitted: (_) => widget.focusNode.unfocus(),
+      onTapOutside: (_) => widget.focusNode.unfocus(),
+      style: TextStyle(
+        fontSize: AppResponsive.sp(context, SparkTextSize.title),
+        fontWeight: FontWeight.w700,
+        height: 1.15,
+        fontFamily: AppFonts.URBANIST,
+        fontFamilyFallback: const [
+          'SF Pro Text',
+          'Helvetica',
+          'Roboto',
+          'Arial',
+          'Noto Sans',
+          'sans-serif',
+        ],
+      ),
+      decoration: InputDecoration(
+        hintText: 'Новый отчёт',
+        isDense: true,
+        filled: true,
+        fillColor: kInputBgColor,
+        contentPadding: const EdgeInsets.fromLTRB(10, 7, 2, 7),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SparkRadius.md),
+          borderSide: const BorderSide(color: kSecondaryColor, width: 1.5),
+        ),
+        suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+        suffixIcon: TextButton(
+          onPressed: widget.focusNode.unfocus,
+          style: TextButton.styleFrom(
+            foregroundColor: kSecondaryColor,
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.md,
+              vertical: SparkSpace.xs,
+            ),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+          child: const Text('Готово'),
+        ),
+      ),
     );
   }
 }
@@ -2008,239 +2103,196 @@ class SparkStepHeroCard extends StatelessWidget {
   }
 }
 
-class SparkProgressSummaryCard extends StatelessWidget {
-  const SparkProgressSummaryCard({
+/// Строка раздела в группированной карточке обзора черновика.
+///
+/// Статус читается по ведущему кругу: зелёная галочка — раздел заполнен,
+/// оранжевый «!» — обязательный и пока пустой, пунктирный контур —
+/// необязательный и пустой. Правый край дублирует статус словами
+/// («заполнить» / «не обяз.»), чтобы список читался без легенды.
+class SparkSectionStatusRow extends StatelessWidget {
+  const SparkSectionStatusRow({
     super.key,
-    required this.completed,
-    required this.total,
-    required this.progress,
-    this.label = 'Заполнено разделов',
-  });
-
-  final int completed;
-  final int total;
-  final double progress;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return SparkCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.checklist_rounded,
-                size: SparkSize.iconSm,
-                color: kSecondaryColor,
-              ),
-              const SizedBox(width: SparkSpace.sm),
-              MyText(
-                text: '$label: $completed из $total',
-                size: SparkTextSize.body,
-                color: kTertiaryColor,
-                weight: FontWeight.w700,
-              ),
-            ],
-          ),
-          const SizedBox(height: SparkSpace.lg),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(SparkRadius.pill),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              minHeight: SparkSize.progress,
-              backgroundColor: kLightGreyColor,
-              valueColor: const AlwaysStoppedAnimation<Color>(kSecondaryColor),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class SparkSectionNavCard extends StatelessWidget {
-  const SparkSectionNavCard({
-    super.key,
-    required this.index,
     required this.title,
     required this.onTap,
     required this.fillState,
-    this.icon,
     this.description = '',
-    this.value = '',
     this.required = false,
   });
 
-  final int index;
   final String title;
   final VoidCallback onTap;
   final SparkJoySectionFillState fillState;
-  final IconData? icon;
   final String description;
-  final String value;
   final bool required;
 
   @override
   Widget build(BuildContext context) {
-    final isFilled = fillState != SparkJoySectionFillState.empty;
     final isLoading = fillState == SparkJoySectionFillState.loading;
-    final stateColor = isFilled ? kSecondaryColor : kGreyColor;
-    final stateBorderColor = isFilled
-        ? kSecondaryColor.withValues(alpha: 0.32)
-        : kBorderColor;
-    final stateBackgroundColor = isFilled
-        ? kSecondaryColor.withValues(alpha: 0.1)
-        : kLightGreyColor;
-    final hasValue = value.trim().isNotEmpty;
-    final showDescription = !hasValue && description.trim().isNotEmpty;
+    final isFilled = !isLoading && fillState != SparkJoySectionFillState.empty;
+    final needsAction = required && !isFilled && !isLoading;
+    final dashed = !required && !isFilled && !isLoading;
 
-    return SparkCard(
-      onTap: onTap,
-      radius: SparkRadius.lg,
-      padding: const EdgeInsets.symmetric(
-        horizontal: SparkSpace.xl,
-        vertical: SparkSpace.xl,
-      ),
-      borderColor: stateBorderColor,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: SparkSize.navStepBadge,
-            height: SparkSize.navStepBadge,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: stateBackgroundColor,
-              border: Border.all(color: stateBorderColor),
-              borderRadius: BorderRadius.circular(SparkRadius.md),
+    final Widget? badgeChild = isLoading
+        ? const SizedBox(
+            width: SparkSize.iconSm,
+            height: SparkSize.iconSm,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(kGreyColor),
             ),
-            child: isLoading
-                ? SizedBox(
-                    width: SparkSize.iconSm,
-                    height: SparkSize.iconSm,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(stateColor),
-                    ),
-                  )
-                : icon != null
-                ? Icon(
-                    icon,
-                    size: SparkSize.iconSm,
-                    color: fillState == SparkJoySectionFillState.empty
-                        ? kGreyColor
-                        : stateColor,
-                  )
-                : MyText(
-                    text: '${index + 1}',
-                    size: SparkTextSize.body,
+          )
+        : isFilled
+        ? const Icon(
+            Icons.check_rounded,
+            size: SparkSize.iconSm,
+            color: kGreenColor,
+          )
+        : needsAction
+        ? const Icon(
+            Icons.priority_high_rounded,
+            size: SparkSize.iconSm,
+            color: kOrangeColor,
+          )
+        : null;
+
+    final Color? badgeBackground = isFilled
+        ? kGreenColor.withValues(alpha: 0.12)
+        : needsAction
+        ? kOrangeColor.withValues(alpha: 0.12)
+        : null;
+
+    Widget statusBadge = Container(
+      width: SparkSize.navStepBadge,
+      height: SparkSize.navStepBadge,
+      alignment: Alignment.center,
+      decoration: badgeBackground == null
+          ? null
+          : BoxDecoration(shape: BoxShape.circle, color: badgeBackground),
+      child: badgeChild,
+    );
+    if (dashed) {
+      statusBadge = CustomPaint(
+        painter: _DashedCirclePainter(
+          color: kGreyColor.withValues(alpha: 0.5),
+        ),
+        child: statusBadge,
+      );
+    }
+
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: SparkSpace.xl,
+          vertical: SparkSpace.xl,
+        ),
+        child: Row(
+          children: [
+            statusBadge,
+            const SizedBox(width: SparkSpace.xl),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  MyText(
+                    text: title,
+                    size: SparkTextSize.title,
                     weight: FontWeight.w700,
-                    color: fillState == SparkJoySectionFillState.empty
-                        ? kGreyColor
-                        : stateColor,
+                    color: kTertiaryColor,
                   ),
-          ),
-          const SizedBox(width: SparkSpace.xl),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: MyText(
-                        text: title,
-                        size: SparkTextSize.title,
-                        weight: FontWeight.w700,
-                        color: isFilled ? kSecondaryColor : kTertiaryColor,
-                        requiredMark: required,
-                      ),
+                  if (description.trim().isNotEmpty) ...[
+                    const SizedBox(height: SparkSpace.xxs),
+                    MyText(
+                      text: description.trim(),
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                      maxLines: 2,
+                      textOverflow: TextOverflow.ellipsis,
                     ),
                   ],
-                ),
-                if (hasValue) ...[
-                  const SizedBox(height: SparkSpace.xxs),
-                  MyText(
-                    text: value.trim(),
-                    size: SparkTextSize.caption,
-                    color: isFilled ? kSecondaryColor : kGreyColor,
-                    maxLines: 2,
-                    textOverflow: TextOverflow.ellipsis,
-                  ),
                 ],
-                if (showDescription) ...[
-                  const SizedBox(height: SparkSpace.xxs),
-                  MyText(
-                    text: description.trim(),
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                    maxLines: 2,
-                    textOverflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ],
+              ),
             ),
-          ),
-          const SizedBox(width: SparkSpace.sm),
-          Container(
-            width: SparkSize.iconXl,
-            height: SparkSize.iconXl,
-            alignment: Alignment.center,
-            child: Icon(
+            if (needsAction) ...[
+              const SizedBox(width: SparkSpace.md),
+              const MyText(
+                text: 'заполнить',
+                size: SparkTextSize.body,
+                weight: FontWeight.w700,
+                color: kOrangeColor,
+              ),
+            ] else if (!required) ...[
+              const SizedBox(width: SparkSpace.md),
+              const MyText(
+                text: 'не обяз.',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+              ),
+            ],
+            const SizedBox(width: SparkSpace.xs),
+            const Icon(
               Icons.chevron_right_rounded,
-              color: isFilled ? kSecondaryColor : kGreyColor,
+              color: kGreyColor,
               size: SparkSize.iconSm,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-class SparkSectionsOverview extends StatelessWidget {
-  const SparkSectionsOverview({
-    super.key,
-    required this.completed,
-    required this.total,
-    required this.progress,
-    required this.itemCount,
-    required this.itemBuilder,
-  });
-
-  final int completed;
-  final int total;
-  final double progress;
-  final int itemCount;
-  final Widget Function(int index) itemBuilder;
+/// Волосяной разделитель между строками группированной карточки разделов —
+/// левый отступ выравнивает его под текст (мимо статус-круга), как в
+/// профильных экранах.
+class SparkSectionRowDivider extends StatelessWidget {
+  const SparkSectionRowDivider({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        const Divider(height: 1, color: kBorderColor),
-        const SizedBox(height: SparkSpace.xxxl),
-        SparkCard(
-          padding: const EdgeInsets.all(SparkSpace.section),
-          child: SparkProgressSummaryCard(
-            completed: completed,
-            total: total,
-            progress: progress,
-          ),
-        ),
-        const SizedBox(height: SparkSpace.lg),
-        ...List.generate(itemCount, (index) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: SparkSpace.lg),
-            child: itemBuilder(index),
-          );
-        }),
-      ],
+    return Container(
+      margin: const EdgeInsets.only(
+        left: SparkSpace.xl + SparkSize.navStepBadge + SparkSpace.xl,
+      ),
+      height: SparkSpace.hairline,
+      color: kBorderColor.withValues(alpha: 0.6),
     );
   }
+}
+
+/// Пунктирная окружность пустого необязательного раздела — «слот, который
+/// можно и не занимать». Flutter не рисует пунктирный border из коробки,
+/// поэтому штрихуем дугами по метрике пути.
+class _DashedCirclePainter extends CustomPainter {
+  const _DashedCirclePainter({required this.color});
+
+  final Color color;
+
+  static const double _dash = 4;
+  static const double _gap = 3;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    final circle = Path()
+      ..addOval((Offset.zero & size).deflate(paint.strokeWidth));
+    for (final metric in circle.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = (distance + _dash).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance += _dash + _gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedCirclePainter oldDelegate) =>
+      oldDelegate.color != color;
 }
 
 class SparkSearchField extends StatelessWidget {

@@ -23,6 +23,9 @@ const kGreyColor = Color(0xff6B7280);
 const kRedColor = Color(0xffC62828);
 const kGreenColor = Color(0xff2E7D32);
 const kYellowColor = Color(0xffF9A825);
+// Жжёный оранжевый для «требует действия» (пустой обязательный раздел
+// черновика): жёлтый на белом не читается, красный = ошибка.
+const kOrangeColor = Color(0xffC2410C);
 const kSkyBlueColor = Color(0xffE6F0F5);
 const kBlueColor = Color(0xff1B3A57);
 const kRedColor2 = Color(0xffC62828);

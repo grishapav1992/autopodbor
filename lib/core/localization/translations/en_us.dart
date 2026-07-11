@@ -79,6 +79,7 @@ const Map<String, String> enUS = {
   "spark.status.confirmed": "Confirmed",
   "spark.unit.km": "km",
   "spark.report.meta": "{code} on {date}",
+  "spark.report.meta.noCode": "Report from {date}",
   "vehicleSummary": 'Vehicle Summary',
   "leadSource": 'Lead Source',
   "type": 'Type',

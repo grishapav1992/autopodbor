@@ -1,12 +1,8 @@
 part of 'spark_joy_create_report_screen.dart';
 
 class _SparkJoyOverviewState {
-  const _SparkJoyOverviewState({
-    required this.sectionValues,
-    required this.sectionFillStates,
-  });
+  const _SparkJoyOverviewState({required this.sectionFillStates});
 
-  final Map<String, String> sectionValues;
   final Map<String, SparkJoySectionFillState> sectionFillStates;
 }
 
@@ -14,19 +10,13 @@ class _SparkJoyOverviewController {
   const _SparkJoyOverviewController();
 
   _SparkJoyOverviewState build(_SparkJoyCreateReportScreenState s) {
-    final values = <String, String>{};
     final fillStates = <String, SparkJoySectionFillState>{};
 
     for (final step in _SparkJoyStepRegistry.steps) {
-      final value = sectionValue(s, step.id);
-      values[step.id] = value;
       fillStates[step.id] = sectionFillState(s, step.id);
     }
 
-    return _SparkJoyOverviewState(
-      sectionValues: values,
-      sectionFillStates: fillStates,
-    );
+    return _SparkJoyOverviewState(sectionFillStates: fillStates);
   }
 
   SparkJoySectionFillState sectionFillState(
