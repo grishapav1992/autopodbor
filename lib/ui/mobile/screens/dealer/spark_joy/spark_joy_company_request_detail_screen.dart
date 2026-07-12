@@ -351,8 +351,10 @@ class _SparkJoyCompanyRequestDetailScreenState
     if (_actionBusy) return;
     final requestId = _requestId;
     if (requestId == null) return;
-    final reason = await _showCancelReasonSheet();
-    if (reason == null || _actionBusy) return;
+    final reason = cancelReasonForRequestStatus(_str('status'));
+    if (reason == null) return;
+    final confirmed = await _showCancelConfirmation();
+    if (!confirmed || _actionBusy) return;
     HapticFeedback.mediumImpact();
     setState(() => _actionBusy = true);
     try {
@@ -389,53 +391,27 @@ class _SparkJoyCompanyRequestDetailScreenState
     }
   }
 
-  Future<String?> _showCancelReasonSheet() {
-    return showAppAdaptiveBottomSheet<String>(
+  Future<bool> _showCancelConfirmation() async {
+    final confirmed = await showDialog<bool>(
       context: context,
-      extent: AppBottomSheetExtent.content,
       builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(SparkSpace.xxxl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: MyText(
-                        text: 'Отменить заявку',
-                        size: SparkTextSize.titleLg,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: SparkSpace.md),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(ctx).pop('canceled_not_signed'),
-                  icon: const Icon(Icons.assignment_late_outlined),
-                  label: const Text('Договор не подписан'),
-                ),
-                const SizedBox(height: SparkSpace.md),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      Navigator.of(ctx).pop('canceled_signed_unpaid'),
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Подписан, но не оплачен'),
-                ),
-              ],
+        return AlertDialog(
+          title: const Text('Отменить заявку?'),
+          content: const Text('Это действие нельзя отменить.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Не отменять'),
             ),
-          ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Отменить заявку'),
+            ),
+          ],
         );
       },
     );
+    return confirmed ?? false;
   }
 
   @override

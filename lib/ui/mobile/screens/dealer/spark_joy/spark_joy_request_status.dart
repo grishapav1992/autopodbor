@@ -44,6 +44,19 @@ String normalizeRequestStatus(String status) {
   };
 }
 
+/// Возвращает обязательную для `Storage.CancelRequest` причину отмены.
+///
+/// Пользователь не выбирает техническую причину вручную: она однозначно
+/// следует из текущего этапа заявки. Для статусов, в которых отмена запрещена,
+/// возвращается `null`.
+String? cancelReasonForRequestStatus(String status) {
+  return switch (normalizeRequestStatus(status)) {
+    'created' => 'canceled_not_signed',
+    'await_payment' => 'canceled_signed_unpaid',
+    _ => null,
+  };
+}
+
 RequestStatusBadge requestStatusBadge(String status) {
   final normalized = normalizeRequestStatus(status);
   switch (normalized) {

@@ -13,7 +13,7 @@ import 'spark_joy_notification_detail_rows.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
-/// Notifications feed — dealer/specialist side.
+/// Notifications feed — dealer/specialist side (design «2a»).
 ///
 /// Backed by [NotificationController] (HTTP + realtime push). On-screen
 /// reactions:
@@ -21,6 +21,11 @@ import 'spark_joy_ui.dart';
 ///     call `Notification.ActionNotification`.
 ///   • `reminder` / `system` mark themselves read once they are shown.
 ///   • Pull-to-refresh re-fetches page 1 from the backend.
+///
+/// Layout (variant 2a): compact cards with a type-tinted icon, unread items on
+/// a light-blue fill with a navy dot, single cards expand inline details, and
+/// repeated read notifications collapse into a single group «stack» with a
+/// count badge (see [buildNotificationFeedEntries]).
 ///
 /// Notifications cannot be deleted by the user (per spec); status
 /// transitions (`pending` → `accepted` / `rejected` / `read`) are how
@@ -41,6 +46,7 @@ class _SparkJoyNotificationsScreenState
       Get.find<NotificationController>();
   late final ScrollController _scrollController;
   final Set<String> _expandedIds = <String>{};
+  final Set<String> _expandedGroups = <String>{};
   final Set<String> _autoReadQueuedIds = <String>{};
   String? _seenMarkerQueuedForId;
 
@@ -110,6 +116,14 @@ class _SparkJoyNotificationsScreenState
     setState(() {
       if (!_expandedIds.add(n.id)) {
         _expandedIds.remove(n.id);
+      }
+    });
+  }
+
+  void _toggleGroup(String key) {
+    setState(() {
+      if (!_expandedGroups.add(key)) {
+        _expandedGroups.remove(key);
       }
     });
   }
@@ -195,19 +209,8 @@ class _SparkJoyNotificationsScreenState
                 color: kGreyColor,
               ),
             ),
-            for (final n in group.items)
-              _NotificationCard(
-                notification: n,
-                expanded: _expandedIds.contains(n.id),
-                onTap: () => _toggleDetails(n),
-                onOpenRequest:
-                    n.requestId != null && widget.onOpenRequest != null
-                    ? () => _openRequest(n)
-                    : null,
-                onOpenCompany: _companyIdForNotification(n) != null
-                    ? () => _openCompany(n)
-                    : null,
-              ),
+            for (final entry in buildNotificationFeedEntries(group.items))
+              _feedEntryWidget(entry),
           ],
           if (loading)
             const Padding(
@@ -227,6 +230,36 @@ class _SparkJoyNotificationsScreenState
         ],
       );
     });
+  }
+
+  Widget _feedEntryWidget(NotificationFeedEntry entry) {
+    if (entry is NotificationGroupEntry) {
+      // Идентичность разворота — по id новейшего члена, а НЕ по groupKey:
+      // ключ не содержит даты, поэтому одинаковые группы в разных бакетах
+      // («Сегодня»/«Вчера») делили бы одно состояние и разворачивались вместе.
+      final groupUiId = entry.newest.id;
+      return _NotificationGroupCard(
+        entry: entry,
+        expanded: _expandedGroups.contains(groupUiId),
+        onToggle: () => _toggleGroup(groupUiId),
+        style: _styleForType(entry.newest.type),
+        onOpenRequest: widget.onOpenRequest == null
+            ? null
+            : (n) => _openRequest(n),
+      );
+    }
+    final n = (entry as NotificationSingleEntry).notification;
+    return _NotificationCard(
+      notification: n,
+      expanded: _expandedIds.contains(n.id),
+      onTap: () => _toggleDetails(n),
+      onOpenRequest: n.requestId != null && widget.onOpenRequest != null
+          ? () => _openRequest(n)
+          : null,
+      onOpenCompany: _companyIdForNotification(n) != null
+          ? () => _openCompany(n)
+          : null,
+    );
   }
 
   /// Groups notifications into ordered buckets: Сегодня, Вчера, Ранее.
@@ -268,6 +301,126 @@ class _NotificationGroup {
   final List<BackendNotification> items;
 }
 
+// ── Feed entries: single card vs collapsed group «stack» (design 2a) ─────────
+
+/// Minimum number of same-kind read notifications in a date bucket before they
+/// collapse into a single group «stack». Below this the items render as
+/// individual cards.
+const int _kGroupThreshold = 3;
+
+/// Light-blue fill for unread cards (design 2a). Distinct from the per-type
+/// tint used for the icon so unread state reads at a glance regardless of type.
+const Color _kUnreadCardBg = Color(0xFFEFF3F8);
+
+/// One rendered row of the feed: either a standalone notification card
+/// ([NotificationSingleEntry]) or a collapsed group of repeated notifications
+/// ([NotificationGroupEntry]).
+sealed class NotificationFeedEntry {
+  const NotificationFeedEntry();
+}
+
+class NotificationSingleEntry extends NotificationFeedEntry {
+  const NotificationSingleEntry(this.notification);
+
+  final BackendNotification notification;
+}
+
+class NotificationGroupEntry extends NotificationFeedEntry {
+  const NotificationGroupEntry({required this.key, required this.items});
+
+  /// Grouping key (see [notificationGroupKey]).
+  final String key;
+
+  /// Members, newest-first (same order as the source bucket).
+  final List<BackendNotification> items;
+
+  int get count => items.length;
+  BackendNotification get newest => items.first;
+}
+
+/// Whether [n] may be folded into a group. Only READ, non-interactive items
+/// WITHOUT free-text detail are groupable:
+///   • unread items and pending invitations/tasks (accept/reject) always
+///     deserve an individual card and must never be hidden inside a stack;
+///   • an item carrying a comment / reason must stay expandable — that text
+///     lives only in the «Подробнее» panel, so folding it would make the
+///     specialist's rejection reason unreachable in-app (the mockup keeps such
+///     items as standalone cards for the same reason).
+@visibleForTesting
+bool notificationIsGroupable(BackendNotification n) =>
+    !n.isInteractivePending &&
+    n.status != NotificationStatus.pending &&
+    !_notificationHasReadableComment(n);
+
+/// True when [n]'s payload carries user-facing free text (comment / reason)
+/// that is only surfaced in the expanded details panel.
+bool _notificationHasReadableComment(BackendNotification n) {
+  for (final key in const ['note', 'comment', 'message', 'reason']) {
+    final v = n.payload[key];
+    if (v != null && v.toString().trim().isNotEmpty) return true;
+  }
+  return false;
+}
+
+/// Grouping key for [n]: notification type plus its title with the variable
+/// parts (request codes `REQ-…`, `№…` tokens and bare numbers) stripped, so
+/// «Специалист отклонил заявку REQ-A225453» and «…REQ-A894735» share a key.
+@visibleForTesting
+String notificationGroupKey(BackendNotification n) {
+  final base = _notificationDisplayTitle(n)
+      .replaceAll(RegExp(r'REQ-[A-Za-z0-9]+'), '')
+      .replaceAll(RegExp(r'№\s*\S+'), '')
+      .replaceAll(RegExp(r'\d+'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim()
+      .toLowerCase();
+  return '${n.type.name}|$base';
+}
+
+/// Folds a single date bucket (newest-first) into feed entries. Any group key
+/// with at least [threshold] groupable members becomes a [NotificationGroupEntry]
+/// positioned where its newest member sits; everything else stays a
+/// [NotificationSingleEntry] in place. Chronological order is preserved.
+@visibleForTesting
+List<NotificationFeedEntry> buildNotificationFeedEntries(
+  List<BackendNotification> bucket, {
+  int threshold = _kGroupThreshold,
+}) {
+  final counts = <String, int>{};
+  for (final n in bucket) {
+    if (notificationIsGroupable(n)) {
+      final k = notificationGroupKey(n);
+      counts[k] = (counts[k] ?? 0) + 1;
+    }
+  }
+  final emitted = <String>{};
+  final entries = <NotificationFeedEntry>[];
+  for (final n in bucket) {
+    if (notificationIsGroupable(n)) {
+      final k = notificationGroupKey(n);
+      if ((counts[k] ?? 0) >= threshold) {
+        if (emitted.add(k)) {
+          entries.add(
+            NotificationGroupEntry(
+              key: k,
+              items: bucket
+                  .where(
+                    (m) =>
+                        notificationIsGroupable(m) &&
+                        notificationGroupKey(m) == k,
+                  )
+                  .toList(growable: false),
+            ),
+          );
+        }
+        continue;
+      }
+    }
+    entries.add(NotificationSingleEntry(n));
+  }
+  return entries;
+}
+
 class _NotificationCard extends StatelessWidget {
   const _NotificationCard({
     required this.notification,
@@ -283,22 +436,6 @@ class _NotificationCard extends StatelessWidget {
   final VoidCallback? onOpenRequest;
   final VoidCallback? onOpenCompany;
 
-  _TypeStyle _styleForType(NotificationType type) {
-    switch (type) {
-      case NotificationType.task:
-        return _TypeStyle(
-          icon: Icons.assignment_outlined,
-          color: kSecondaryColor,
-        );
-      case NotificationType.invitation:
-        return _TypeStyle(icon: Icons.group_add_outlined, color: kBlueColor);
-      case NotificationType.reminder:
-        return _TypeStyle(icon: Icons.schedule_rounded, color: kYellowColor);
-      case NotificationType.system:
-        return _TypeStyle(icon: Icons.info_outline_rounded, color: kGreyColor);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final style = _styleForType(notification.type);
@@ -313,26 +450,15 @@ class _NotificationCard extends StatelessWidget {
         horizontal: SparkSpace.xl,
         vertical: SparkSpace.lg,
       ),
-      backgroundColor: unread
-          ? style.color.withValues(alpha: 0.04)
-          : kWhiteColor,
+      backgroundColor: unread ? _kUnreadCardBg : kWhiteColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: style.color.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Icon(style.icon, size: 20, color: style.color),
-              ),
-              const SizedBox(width: SparkSpace.md),
+              _TypeAvatar(style: style),
+              const SizedBox(width: SparkSpace.lg),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -415,6 +541,254 @@ class _NotificationCard extends StatelessWidget {
   }
 }
 
+/// Collapsed «stack» of repeated notifications (design 2a). Tapping the card
+/// toggles an inline list of the members; while collapsed, two thin offset bars
+/// beneath the card render the paper-stack effect.
+class _NotificationGroupCard extends StatelessWidget {
+  const _NotificationGroupCard({
+    required this.entry,
+    required this.expanded,
+    required this.onToggle,
+    required this.style,
+    required this.onOpenRequest,
+  });
+
+  final NotificationGroupEntry entry;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final _TypeStyle style;
+  final void Function(BackendNotification n)? onOpenRequest;
+
+  @override
+  Widget build(BuildContext context) {
+    final newest = entry.newest;
+    final title = _groupDisplayTitle(newest);
+    final subtitle =
+        '${_groupRowLabel(newest)} и ещё ${entry.count - 1} · '
+        '${_groupTimeRange(entry.items)}';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SparkListCard(
+          bottom: expanded ? SparkSpace.lg : 0,
+          onTap: onToggle,
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xl,
+            vertical: SparkSpace.lg,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _TypeAvatar(style: style),
+                  const SizedBox(width: SparkSpace.lg),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: MyText(
+                                text: title,
+                                size: SparkTextSize.body,
+                                weight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: SparkSpace.sm),
+                            _CountBadge(count: entry.count),
+                          ],
+                        ),
+                        MyText(
+                          text: subtitle,
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                          paddingTop: SparkSpace.xxs,
+                          lineHeight: 1.35,
+                          maxLines: 2,
+                          textOverflow: TextOverflow.ellipsis,
+                        ),
+                        MyText(
+                          text: expanded
+                              ? 'Свернуть'
+                              : 'Показать все ${entry.count}',
+                          size: SparkTextSize.chip,
+                          weight: FontWeight.w700,
+                          color: kSecondaryColor,
+                          paddingTop: SparkSpace.sm,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (expanded)
+                Padding(
+                  padding: const EdgeInsets.only(top: SparkSpace.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (final n in entry.items)
+                        _GroupRow(
+                          notification: n,
+                          onOpen: (n.requestId != null && onOpenRequest != null)
+                              ? () => onOpenRequest!(n)
+                              : null,
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (!expanded) ...[
+          const _StackShadowBar(inset: SparkSpace.lg, radius: 12),
+          const _StackShadowBar(inset: 22, radius: 10),
+          const SizedBox(height: SparkSpace.lg),
+        ],
+      ],
+    );
+  }
+}
+
+/// One member line inside an expanded group: short request/notification label,
+/// time and (when the notification points at a request) an open affordance.
+class _GroupRow extends StatelessWidget {
+  const _GroupRow({required this.notification, this.onOpen});
+
+  final BackendNotification notification;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onOpen,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: SparkSpace.md),
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: kGreyColor2)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: MyText(
+                text: _groupRowLabel(notification),
+                size: SparkTextSize.caption,
+                weight: FontWeight.w600,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: SparkSpace.sm),
+            MyText(
+              text: _hhmm(notification.createdAt.toLocal()),
+              size: SparkTextSize.chip,
+              color: kGreyColor,
+            ),
+            if (onOpen != null) ...[
+              const SizedBox(width: SparkSpace.sm),
+              const Icon(
+                Icons.open_in_new_rounded,
+                size: SparkSize.iconXs,
+                color: kSecondaryColor,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Thin offset bar drawn beneath a collapsed group to suggest a stack of cards.
+class _StackShadowBar extends StatelessWidget {
+  const _StackShadowBar({required this.inset, required this.radius});
+
+  final double inset;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 5,
+      margin: EdgeInsets.symmetric(horizontal: inset),
+      decoration: BoxDecoration(
+        color: kWhiteColor,
+        border: const Border(
+          left: BorderSide(color: kBorderColor),
+          right: BorderSide(color: kBorderColor),
+          bottom: BorderSide(color: kBorderColor),
+        ),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(radius)),
+      ),
+    );
+  }
+}
+
+/// Pill count badge shown on a group card.
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.md,
+        vertical: SparkSpace.xxs,
+      ),
+      decoration: BoxDecoration(
+        color: kChipNewBg,
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+      ),
+      child: MyText(
+        text: '$count',
+        size: SparkTextSize.chip,
+        weight: FontWeight.w700,
+        color: kChipNewFg,
+      ),
+    );
+  }
+}
+
+/// Round type-tinted icon shared by single and group cards (design 2a: 34px).
+class _TypeAvatar extends StatelessWidget {
+  const _TypeAvatar({required this.style});
+
+  final _TypeStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: SparkSize.iconState,
+      height: SparkSize.iconState,
+      decoration: BoxDecoration(
+        color: style.color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Icon(style.icon, size: SparkSize.iconMd, color: style.color),
+    );
+  }
+}
+
+_TypeStyle _styleForType(NotificationType type) {
+  switch (type) {
+    case NotificationType.task:
+      return _TypeStyle(icon: Icons.assignment_outlined, color: kSecondaryColor);
+    case NotificationType.invitation:
+      return _TypeStyle(icon: Icons.group_add_outlined, color: kBlueColor);
+    case NotificationType.reminder:
+      return _TypeStyle(icon: Icons.schedule_rounded, color: kYellowColor);
+    case NotificationType.system:
+      return _TypeStyle(icon: Icons.info_outline_rounded, color: kGreyColor);
+  }
+}
+
 // ── ApiCloud legal-review (system) уведомления: короткий читаемый текст ──────
 // Бэк шлёт техничный title («…завершена со статусом: not_found») и сырой
 // payload. Здесь переписываем в человеческий вид. Ссылок на черновик/отчёт нет
@@ -469,6 +843,45 @@ String _legalNotificationSubtitle(BackendNotification n) {
   return parts.join(' · ');
 }
 
+// ── Group labels ────────────────────────────────────────────────────────────
+
+/// Header title for a group: the newest member's display title with its
+/// request code / `№…` token stripped (case preserved), e.g. «Специалист
+/// отклонил заявку REQ-A225453» → «Специалист отклонил заявку».
+String _groupDisplayTitle(BackendNotification n) {
+  final title = _notificationDisplayTitle(n);
+  final stripped = title
+      .replaceAll(RegExp(r'\s*REQ-[A-Za-z0-9]+'), '')
+      .replaceAll(RegExp(r'\s*№\s*\S+'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return stripped.isEmpty ? title : stripped;
+}
+
+/// Short identifier for a group member row / the subtitle lead: the request
+/// code from the title, else `№<requestNumber>`, else the display title.
+String _groupRowLabel(BackendNotification n) {
+  final title = _notificationDisplayTitle(n);
+  final match = RegExp(r'REQ-[A-Za-z0-9]+').firstMatch(title);
+  if (match != null) return match.group(0)!;
+  final number = n.requestNumber;
+  if (number.isNotEmpty) return '№$number';
+  return title;
+}
+
+/// Compact time span of a group's members: `HH:MM–HH:MM` within one day,
+/// otherwise `dd.MM–dd.MM`.
+String _groupTimeRange(List<BackendNotification> items) {
+  final times = items.map((n) => n.createdAt.toLocal()).toList()..sort();
+  final a = times.first;
+  final b = times.last;
+  final sameDay = a.year == b.year && a.month == b.month && a.day == b.day;
+  if (sameDay) {
+    return a == b ? _hhmm(a) : '${_hhmm(a)}–${_hhmm(b)}';
+  }
+  return '${_dd(a.day)}.${_dd(a.month)}–${_dd(b.day)}.${_dd(b.month)}';
+}
+
 class _NotificationDetails extends StatelessWidget {
   const _NotificationDetails({
     required this.notification,
@@ -496,13 +909,6 @@ class _NotificationDetails extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            MyText(
-              text: 'Детали уведомления',
-              size: SparkTextSize.caption,
-              weight: FontWeight.w700,
-              color: kGreyColor,
-            ),
-            const SizedBox(height: SparkSpace.sm),
             for (final row in rows)
               Padding(
                 padding: const EdgeInsets.only(bottom: SparkSpace.xs),
@@ -510,7 +916,7 @@ class _NotificationDetails extends StatelessWidget {
                   text: TextSpan(
                     style: const TextStyle(
                       fontSize: SparkTextSize.caption,
-                      height: 1.35,
+                      height: 1.5,
                       color: kBlackColor,
                     ),
                     children: [

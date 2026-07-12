@@ -810,11 +810,11 @@ class _MarkAllReadActionState extends State<_MarkAllReadAction> {
           builder: (context, snapshot) {
             final count = snapshot.data ?? 0;
             if (count <= 0) return const SizedBox.shrink();
-            return TextButton.icon(
+            return IconButton(
               onPressed: _run,
-              icon: const Icon(Icons.done_all_rounded, size: 18),
-              label: const Text('Прочитать всё'),
-              style: TextButton.styleFrom(foregroundColor: kSecondaryColor),
+              icon: const Icon(Icons.done_all_rounded, size: SparkSize.iconXl),
+              color: kSecondaryColor,
+              tooltip: 'Отметить все прочитанными',
             );
           },
         );
