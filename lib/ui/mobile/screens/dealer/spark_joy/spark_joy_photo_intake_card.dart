@@ -1,9 +1,9 @@
 part of 'spark_joy_create_report_screen.dart';
 
-/// Карточка «Фото автомобиля» на обзоре разделов (макет «Отчёт - разделы -
+/// Карточка «Материалы автомобиля» на обзоре разделов (макет «Отчёт - разделы -
 /// редизайн», экраны 1a/2b): точка входа в массовую ИИ-загрузку материалов.
 /// Три состояния из снапшота [SparkJoyIntakeUploadService]:
-///  - пусто — призыв «Загрузите все фото одной пачкой» + кнопка;
+///  - пусто — призыв загрузить все материалы одной пачкой + кнопка;
 ///  - идёт загрузка — «Загрузка файлов · N из M» + процент + прогресс-бар;
 ///  - загружено/добавлено — счётчик + подсказка о будущей ИИ-раскладке.
 extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
@@ -52,7 +52,7 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               MyText(
-                text: 'Фото автомобиля',
+                text: 'Материалы автомобиля',
                 size: SparkTextSize.sectionTitle,
                 weight: FontWeight.w700,
                 color: kTertiaryColor,
@@ -81,12 +81,13 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
       children: [
         _photoIntakeCardHeader(
           subtitle:
-              'Загрузите все фото одной пачкой — ИИ разложит их по разделу «Осмотр»',
+              'Загрузите фото, видео и документы одной пачкой — '
+              'ИИ распределит их по разделам отчёта',
         ),
         const SizedBox(height: SparkSpace.xl),
         _sparkIntakeDashedButton(
           icon: Icons.add_photo_alternate_outlined,
-          label: 'Загрузить фото',
+          label: 'Загрузить материалы',
           height: 44,
           onTap: _openPhotoIntake,
         ),
@@ -123,7 +124,7 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
         MyText(
           text:
               'Загрузка идёт в фоне — можно заполнять другие разделы. '
-              'После загрузки ИИ разложит материалы по разделу «Осмотр»',
+              'После загрузки ИИ распределит материалы по разделам отчёта',
           size: SparkTextSize.caption,
           color: kGreyColor,
           lineHeight: 1.4,

@@ -66,13 +66,26 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
 
       final docResults = <DocScanAiResult>[];
       final appliedIds = <String>{};
+      final videoThumbs = await _resolveIntakeVideoThumbs(records);
+      if (!mounted) return;
       _setStateSafely(() {
         for (final record in records) {
+          final videoThumbPath = videoThumbs[record.id];
+          if (record.isVideo) {
+            if (videoThumbPath == null) {
+              _videoThumbsUnavailable.add(record.id);
+            } else {
+              _videoThumbsUnavailable.remove(record.id);
+            }
+          }
           final item = UploadedItem(
             id: record.id,
             name: record.name,
+            originalName: record.originalName,
+            displayName: record.displayName,
             mimeType: record.mimeType,
             dataUrl: record.localPath,
+            videoThumbPath: videoThumbPath,
             inspection: record.aiSection == SparkIntakeAiSection.inspection
                 ? MediaInspection(
                     elementType: record.aiElement.isEmpty
@@ -85,8 +98,18 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
 
           if (record.isDocument ||
               record.aiSection == SparkIntakeAiSection.materials) {
-            if (!_intakeItemExists(_legalFiles, item)) {
+            final existingIndex = _legalFiles.indexWhere(
+              (existing) => _intakeItemMatches(existing, item),
+            );
+            if (existingIndex < 0) {
               _legalFiles = [..._legalFiles, item];
+            } else if (videoThumbPath != null &&
+                _legalFiles[existingIndex].videoThumbPath == null) {
+              final updated = [..._legalFiles];
+              updated[existingIndex] = updated[existingIndex].copyWith(
+                videoThumbPath: videoThumbPath,
+              );
+              _legalFiles = updated;
             }
             final parsed = _intakeDocResult(record.aiDocJson);
             if (parsed != null && hasAnyDocScanData(parsed)) {
@@ -98,8 +121,20 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
 
           final group = _mediaState[record.aiGroup];
           if (group == null) continue;
-          if (!_intakeItemExists(group.files, item)) {
-            final files = [...group.files, item];
+          final existingIndex = group.files.indexWhere(
+            (existing) => _intakeItemMatches(existing, item),
+          );
+          if (existingIndex < 0 ||
+              (videoThumbPath != null &&
+                  group.files[existingIndex].videoThumbPath == null)) {
+            final files = [...group.files];
+            if (existingIndex < 0) {
+              files.add(item);
+            } else {
+              files[existingIndex] = files[existingIndex].copyWith(
+                videoThumbPath: videoThumbPath,
+              );
+            }
             final partInspection = _syncPartInspectionWithFiles(
               partInspection: group.partInspection,
               files: files,
@@ -152,6 +187,29 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
     }
   }
 
+  Future<Map<String, String?>> _resolveIntakeVideoThumbs(
+    List<SparkIntakeFileRecord> records,
+  ) async {
+    final result = <String, String?>{};
+    for (final record in records) {
+      if (!record.isVideo) continue;
+      final existing = record.videoThumbPath?.trim();
+      if (existing != null && existing.isNotEmpty) {
+        try {
+          if (await File(existing).exists()) {
+            result[record.id] = existing;
+            continue;
+          }
+        } catch (_) {}
+      }
+      final localPath = _extractLocalMediaPath(record.localPath);
+      result[record.id] = localPath == null
+          ? null
+          : await _resolveSparkJoyVideoThumb(localPath);
+    }
+    return result;
+  }
+
   bool _intakeRecordIsApplicable(SparkIntakeFileRecord record) {
     if (record.isDocument) return record.isUploaded;
     return switch (record.aiSection) {
@@ -164,13 +222,9 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
     };
   }
 
-  bool _intakeItemExists(List<UploadedItem> files, UploadedItem candidate) {
-    return files.any(
-      (item) =>
-          item.id == candidate.id ||
-          item.dataUrl.trim() == candidate.dataUrl.trim(),
-    );
-  }
+  bool _intakeItemMatches(UploadedItem item, UploadedItem candidate) =>
+      item.id == candidate.id ||
+      item.dataUrl.trim() == candidate.dataUrl.trim();
 
   DocScanAiResult? _intakeDocResult(String rawJson) {
     if (rawJson.trim().isEmpty) return null;

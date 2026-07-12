@@ -292,6 +292,9 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
       return {
         'id': e.id,
         'name': e.name,
+        'originalName': e.originalName,
+        'displayName': e.displayName,
+        if (e.remoteName.isNotEmpty) 'remoteName': e.remoteName,
         'mimeType': e.mimeType,
         'dataUrl': e.dataUrl,
         'inspection': e.inspection.toJson(),
@@ -315,6 +318,10 @@ extension _SparkJoyMediaAssets on _SparkJoyCreateReportScreenState {
     if (lower.endsWith('.doc')) return 'application/msword';
     if (lower.endsWith('.docx')) {
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    }
+    if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (lower.endsWith('.xlsx')) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     }
     if (lower.endsWith('.mp3')) return 'audio/mpeg';
     if (lower.endsWith('.m4a')) return 'audio/mp4';

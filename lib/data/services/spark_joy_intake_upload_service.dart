@@ -53,6 +53,8 @@ abstract final class SparkIntakeFileStatus {
 class SparkIntakeFileRecord {
   final String id;
   final String name;
+  final String originalName;
+  final String displayName;
   final String mimeType;
 
   /// file://-URI в Documents/spark_joy_media (native) или data:-URL (web).
@@ -105,6 +107,8 @@ class SparkIntakeFileRecord {
   SparkIntakeFileRecord({
     required this.id,
     required this.name,
+    String? originalName,
+    String? displayName,
     required this.mimeType,
     required this.localPath,
     required this.sizeBytes,
@@ -127,7 +131,8 @@ class SparkIntakeFileRecord {
     this.aiGroup = '',
     this.aiElement = '',
     this.aiDocJson = '',
-  });
+  }) : originalName = originalName ?? name,
+       displayName = displayName ?? name;
 
   bool get isImage => mimeType.startsWith('image/');
   bool get isVideo => mimeType.startsWith('video/');
@@ -153,6 +158,8 @@ class SparkIntakeFileRecord {
     return <String, dynamic>{
       'id': id,
       'name': name,
+      'originalName': originalName,
+      'displayName': displayName,
       'mimeType': mimeType,
       'localPath': localPath,
       'sizeBytes': sizeBytes,
@@ -193,6 +200,9 @@ class SparkIntakeFileRecord {
     return SparkIntakeFileRecord(
       id: id,
       name: m['name']?.toString() ?? '',
+      originalName:
+          m['originalName']?.toString() ?? m['name']?.toString() ?? '',
+      displayName: m['displayName']?.toString() ?? m['name']?.toString() ?? '',
       mimeType: m['mimeType']?.toString() ?? 'application/octet-stream',
       localPath: localPath,
       sizeBytes: m['sizeBytes'] is int
@@ -932,7 +942,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       if (record.remoteName.isEmpty) {
         record.remoteName = sparkIntakeRemoteName(
           mimeType: record.mimeType,
-          originalName: record.name,
+          originalName: record.originalName,
           compressed:
               record.compressedPath != null || (kIsWeb && record.isImage),
         );
@@ -1044,7 +1054,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
         children.add(
           SparkIntakeFileRecord(
             id: '${record.id}_frame_${frame.index}',
-            name: '${record.name} · кадр ${frame.index + 1}',
+            name: '${record.displayName} · кадр ${frame.index + 1}',
+            originalName: '${record.originalName} · кадр ${frame.index + 1}',
+            displayName: '${record.displayName} · кадр ${frame.index + 1}',
             mimeType: 'image/jpeg',
             localPath: frameUri,
             sizeBytes: frame.sizeBytes,
@@ -1604,18 +1616,25 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
         final taskId = record.taskId;
         if (taskId == null) continue;
         final lookup = await _transfer.lookupTask(taskId);
-        if (lookup == SparkIntakeTaskLookup.complete) {
-          record.status = SparkIntakeFileStatus.uploaded;
-          if (record.uploadedAtIso.isEmpty) {
-            // Задача долетела, пока Dart был мёртв — точный момент неизвестен.
-            record.uploadedAtIso = DateTime.now().toIso8601String();
-          }
-        } else {
-          // Зомби (running/enqueued из прошлой жизни процесса) — судьба
-          // непредсказуема: отменяем и перезальём с нуля.
-          unawaited(_transfer.cancel(taskId));
-          record.taskId = null;
-          record.status = SparkIntakeFileStatus.staged;
+        switch (lookup) {
+          case SparkIntakeTaskLookup.complete:
+            record.status = SparkIntakeFileStatus.uploaded;
+            if (record.uploadedAtIso.isEmpty) {
+              // Задача долетела, пока Dart был мёртв — точный момент неизвестен.
+              record.uploadedAtIso = DateTime.now().toIso8601String();
+            }
+          case SparkIntakeTaskLookup.active:
+            // URLSession/WorkManager либо нативный retry всё ещё владеет
+            // задачей. Сохраняем taskId и не создаём конкурирующий PUT.
+            if (record.status != SparkIntakeFileStatus.uploading) {
+              record.status = SparkIntakeFileStatus.enqueued;
+            }
+          case SparkIntakeTaskLookup.missingOrDead:
+            // Только действительно отсутствующую/терминальную задачу
+            // выставляем повторно со свежим presigned URL.
+            unawaited(_transfer.cancel(taskId));
+            record.taskId = null;
+            record.status = SparkIntakeFileStatus.staged;
         }
       }
       state.emit();
@@ -1703,12 +1722,11 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     if (state != AppLifecycleState.resumed) return;
     for (final draftState in _states.values) {
       if (!draftState.uploadRequested) continue;
-      final hasWork = draftState.files.any(
-        (r) => _isPipelineCandidate(draftState, r),
-      );
-      if (hasWork) {
-        unawaited(_runPipeline(draftState));
-      }
+      // За время suspension нативная очередь могла завершить несколько PUT,
+      // а обычный Dart-listener не обязан получить события немедленно.
+      // Сверка БД сама обновит статусы, поставит только потерянный хвост и
+      // запустит классификацию без дополнительного действия пользователя.
+      unawaited(_reconcileAndResume(draftState));
     }
   }
 

@@ -43,97 +43,182 @@ Widget _buildSparkJoyLegalFilesCard(
           const SizedBox(height: SparkSpace.md),
           ...List.generate(s._legalFiles.length, (index) {
             final file = s._legalFiles[index];
+            final displayName = sparkJoyReadableStoredName(
+              rawName: file.displayName,
+              mimeType: file.mimeType,
+              ordinal: index,
+            );
+            final openMode = sparkJoyAttachmentOpenMode(
+              mimeType: file.mimeType,
+              displayName: displayName,
+            );
+            final canPreview = openMode == SparkJoyAttachmentOpenMode.media;
+            final isPdf = openMode == SparkJoyAttachmentOpenMode.pdf;
             return Padding(
               padding: const EdgeInsets.only(bottom: SparkSpace.sm),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.lg,
-                  vertical: SparkSpace.md,
-                ),
-                decoration: BoxDecoration(
-                  color: kInputBgColor,
+              child: Material(
+                color: kInputBgColor,
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(SparkRadius.md),
-                  border: Border.all(color: kBorderColor),
+                  side: const BorderSide(color: kBorderColor),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.insert_drive_file_outlined,
-                      size: SparkTextSize.title,
-                      color: kSecondaryColor,
-                    ),
-                    const SizedBox(width: SparkSpace.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          MyText(
-                            text: file.name,
-                            size: SparkTextSize.caption,
-                            maxLines: 1,
-                            color: kTertiaryColor,
-                          ),
-                          const SizedBox(height: SparkSpace.xxs),
-                          // Per-file status pill. Files are persisted
-                          // locally in the draft; the green «Готово к
-                          // отправке» badge confirms they're queued for
-                          // server upload at submit time.
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: SparkSpace.sm,
-                              vertical: SparkSpace.xxxs,
-                            ),
-                            decoration: BoxDecoration(
-                              color: kGreenColor.withValues(alpha: 0.12),
-                              borderRadius:
-                                  BorderRadius.circular(SparkRadius.pill),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Icon(
-                                  Icons.check_circle_outline_rounded,
-                                  size: SparkTextSize.label,
-                                  color: kGreenColor,
-                                ),
-                                const SizedBox(width: SparkSpace.xxs),
-                                const MyText(
-                                  text: 'Готово к отправке',
-                                  size: SparkTextSize.chip,
-                                  color: kGreenColor,
-                                  weight: FontWeight.w700,
-                                ),
-                              ],
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () {
+                    if (isPdf) {
+                      unawaited(
+                        Navigator.of(s.context).push<void>(
+                          MaterialPageRoute<void>(
+                            builder: (_) => SparkJoyPdfViewerScreen(
+                              source: file.dataUrl,
+                              title: displayName,
                             ),
                           ),
-                        ],
+                        ),
+                      );
+                      return;
+                    }
+                    if (!canPreview) {
+                      unawaited(
+                        openSparkJoyExternalDocument(
+                          s.context,
+                          source: file.dataUrl,
+                          mimeType: file.mimeType,
+                        ),
+                      );
+                      return;
+                    }
+                    final mediaFiles = s._legalFiles
+                        .where((item) => item.isImage || item.isVideo)
+                        .toList(growable: false);
+                    final initialIndex = mediaFiles.indexWhere(
+                      (item) => item.id == file.id,
+                    );
+                    if (initialIndex < 0) return;
+                    unawaited(
+                      s._openFlatMediaLightbox(
+                        files: mediaFiles,
+                        groupKeyPerFile: List<String>.filled(
+                          mediaFiles.length,
+                          'legal',
+                        ),
+                        initialIndex: initialIndex,
                       ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.lg,
+                      vertical: SparkSpace.md,
                     ),
-                    InkWell(
-                      onTap: () {
-                        setStateFn(() {
-                          final next = [...s._legalFiles]..removeAt(index);
-                          s._legalFiles = next;
-                        });
-                        s._markDraftDirty();
-                      },
-                      borderRadius: BorderRadius.circular(SparkRadius.pill),
-                      child: Container(
-                        width: SparkSize.iconXxl,
-                        height: SparkSize.iconXxl,
-                        decoration: BoxDecoration(
-                          color: kWhiteColor,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: SparkSize.icon4xl,
+                          height: SparkSize.icon4xl,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(SparkRadius.sm),
+                            child: ColoredBox(
+                              color: kWhiteColor,
+                              child: canPreview
+                                  ? s._uploadedMediaThumbWidget(
+                                      file,
+                                      cacheWidth: 160,
+                                      cacheHeight: 160,
+                                    )
+                                  : Icon(
+                                      isPdf
+                                          ? Icons.picture_as_pdf_outlined
+                                          : Icons.insert_drive_file_outlined,
+                                      size: SparkTextSize.title,
+                                      color: kSecondaryColor,
+                                    ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: SparkSpace.md),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              MyText(
+                                text: displayName,
+                                size: SparkTextSize.caption,
+                                maxLines: 1,
+                                color: kTertiaryColor,
+                              ),
+                              const SizedBox(height: SparkSpace.xxs),
+                              const MyText(
+                                text: 'Нажмите, чтобы открыть',
+                                size: SparkTextSize.chip,
+                                color: kGreyColor,
+                              ),
+                              const SizedBox(height: SparkSpace.xxs),
+                              // Per-file status pill. Files are persisted
+                              // locally in the draft; the green «Готово к
+                              // отправке» badge confirms they're queued for
+                              // server upload at submit time.
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: SparkSpace.sm,
+                                  vertical: SparkSpace.xxxs,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: kGreenColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(
+                                    SparkRadius.pill,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(
+                                      Icons.check_circle_outline_rounded,
+                                      size: SparkTextSize.label,
+                                      color: kGreenColor,
+                                    ),
+                                    const SizedBox(width: SparkSpace.xxs),
+                                    const MyText(
+                                      text: 'Готово к отправке',
+                                      size: SparkTextSize.chip,
+                                      color: kGreenColor,
+                                      weight: FontWeight.w700,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        InkWell(
+                          onTap: () {
+                            setStateFn(() {
+                              final next = [...s._legalFiles]..removeAt(index);
+                              s._legalFiles = next;
+                            });
+                            s._markDraftDirty();
+                          },
                           borderRadius: BorderRadius.circular(SparkRadius.pill),
-                          border: Border.all(color: kBorderColor),
+                          child: Container(
+                            width: SparkSize.iconXxl,
+                            height: SparkSize.iconXxl,
+                            decoration: BoxDecoration(
+                              color: kWhiteColor,
+                              borderRadius: BorderRadius.circular(
+                                SparkRadius.pill,
+                              ),
+                              border: Border.all(color: kBorderColor),
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: SparkTextSize.label,
+                              color: kGreyColor,
+                            ),
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          size: SparkTextSize.label,
-                          color: kGreyColor,
-                        ),
-                      ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
             );
@@ -205,7 +290,9 @@ String _legalNormalizedToText(dynamic normalized) {
   final count = countRaw is int ? countRaw : int.tryParse('${countRaw ?? ''}');
   if (found == true) {
     final base = message.isNotEmpty ? message : 'Обнаружено';
-    return (count != null && count > 0) ? '⚠️ $base (записей: $count)' : '⚠️ $base';
+    return (count != null && count > 0)
+        ? '⚠️ $base (записей: $count)'
+        : '⚠️ $base';
   }
   if (found == false) {
     // Статус-строка уже сообщает «не найдено»; добавляем текст, только если
@@ -323,7 +410,9 @@ List<Widget> _gostCertDetailRows(Map<String, dynamic> cert) {
         '',
   );
   if (cc != null && cc > 0) {
-    rows.add(_gostRow('Объём двигателя:', '${(cc / 1000).toStringAsFixed(1)} л'));
+    rows.add(
+      _gostRow('Объём двигателя:', '${(cc / 1000).toStringAsFixed(1)} л'),
+    );
   }
   if (_gostHas(f('enginepetrol'))) {
     rows.add(_gostRow('Топливо:', f('enginepetrol')));
@@ -362,7 +451,9 @@ List<Widget> _legalDetailScaffoldRows(String type, dynamic normalized) {
       if (pledgee.isNotEmpty) rows.add(_gostRow('Залогодержатель:', pledgee));
       if (date.isNotEmpty) rows.add(_gostRow('Дата:', date));
       if (regNum.isNotEmpty) rows.add(_gostRow('№ записи:', regNum));
-      if (i < items.length - 1) rows.add(const SizedBox(height: SparkSpace.xxs));
+      if (i < items.length - 1) {
+        rows.add(const SizedBox(height: SparkSpace.xxs));
+      }
     }
     return rows;
   }
@@ -371,7 +462,9 @@ List<Widget> _legalDetailScaffoldRows(String type, dynamic normalized) {
     if (permit == null) return const [];
     String f(String k) => (permit[k] ?? '').toString().trim();
     final rows = <Widget>[];
-    if (f('number').isNotEmpty) rows.add(_gostRow('№ разрешения:', f('number')));
+    if (f('number').isNotEmpty) {
+      rows.add(_gostRow('№ разрешения:', f('number')));
+    }
     if (f('status').isNotEmpty) {
       rows.add(_gostRow('Статус разрешения:', f('status')));
     }
@@ -564,9 +657,8 @@ Widget _buildSparkJoyStepLegal(
             await s._startLegalDictation();
           }
         },
-        // Real AiQueue call — bakes attached file names into the cliche
-        // so the model can reference them. Replaces the old local
-        // regex-based reflow which wasn't actually AI.
+        // Real AiQueue call over the legal-check facts and typed comment.
+        // Attached file contents/names are intentionally not sent here.
         onAiFormat: () => unawaited(s._generateLegalCommentWithAi()),
       ),
     ],

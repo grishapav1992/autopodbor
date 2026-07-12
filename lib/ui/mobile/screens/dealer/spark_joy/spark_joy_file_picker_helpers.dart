@@ -18,8 +18,11 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
     final items = <UploadedItem>[];
     var skippedBecauseNotPersisted = false;
     for (final file in result.files) {
-      final fileName = file.name.trim().isEmpty ? 'picked_file' : file.name;
-      final mimeType = _guessMimeType(fileName);
+      final originalName = file.name.trim();
+      final fileName = sparkJoySafeDisplayName(
+        originalName.isEmpty ? 'picked_file' : originalName,
+      );
+      final mimeType = _guessMimeType(originalName);
       String? storedSource;
 
       if (!kIsWeb && file.path != null && file.path!.trim().isNotEmpty) {
@@ -56,6 +59,8 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
         UploadedItem(
           id: _nextUploadedItemId(prefix: 'picked'),
           name: fileName,
+          originalName: originalName,
+          displayName: fileName,
           mimeType: mimeType,
           dataUrl: storedSource!,
         ),
@@ -137,9 +142,20 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
   }) async {
     final items = <UploadedItem>[];
     var skippedBecauseNotPersisted = false;
-    for (final file in files) {
-      final fileName = file.name.trim().isEmpty ? 'media_file' : file.name;
-      final mimeType = _guessMimeType(fileName);
+    final pickedAt = DateTime.now();
+    for (var index = 0; index < files.length; index++) {
+      final file = files[index];
+      final rawName = file.name.trim();
+      final mimeType = sparkJoyPreferredPickerMimeType(
+        declaredMimeType: file.mimeType,
+        fallbackMimeType: _guessMimeType(rawName),
+      );
+      final fileName = sparkJoyUserFacingPickedName(
+        rawName: rawName,
+        mimeType: mimeType,
+        pickedAt: pickedAt,
+        sequence: index,
+      );
       String? storedSource = await _persistXFileToAppStorage(
         file,
         fileName: fileName,
@@ -170,6 +186,8 @@ extension _SparkJoyFilePickerHelpers on _SparkJoyCreateReportScreenState {
         UploadedItem(
           id: _nextUploadedItemId(prefix: prefix),
           name: fileName,
+          originalName: rawName,
+          displayName: fileName,
           mimeType: mimeType,
           dataUrl: storedSource!,
         ),

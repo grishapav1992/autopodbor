@@ -123,6 +123,9 @@ extension _SparkJoyDataParsers on _SparkJoyCreateReportScreenState {
         UploadedItem(
           id: id,
           name: name,
+          originalName: _read(map, 'originalName', fallback: name),
+          displayName: _read(map, 'displayName', fallback: name),
+          remoteName: _read(map, 'remoteName'),
           mimeType: _read(
             map,
             'mimeType',

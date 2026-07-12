@@ -524,6 +524,11 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     if (normalized.contains('audio/mp4')) return 'm4a';
     if (normalized.contains('audio/aac')) return 'aac';
     if (normalized.contains('audio/ogg')) return 'ogg';
+    if (normalized.contains('application/pdf')) return 'pdf';
+    if (normalized.contains('application/msword')) return 'doc';
+    if (normalized.contains('wordprocessingml.document')) return 'docx';
+    if (normalized.contains('application/vnd.ms-excel')) return 'xls';
+    if (normalized.contains('spreadsheetml.sheet')) return 'xlsx';
     return 'bin';
   }
 
@@ -948,6 +953,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     int index, {
     String? contextPrefix,
   }) {
+    final persistedRemoteName = item.remoteName.trim();
+    if (persistedRemoteName.isNotEmpty) return persistedRemoteName;
     final original = item.name.trim();
     final resolvedContext = (contextPrefix ?? _uploadItemContextPrefix(item))
         .trim();

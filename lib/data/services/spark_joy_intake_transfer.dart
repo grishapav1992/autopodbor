@@ -50,7 +50,17 @@ class SparkIntakeTransferUpdate {
 enum SparkIntakeTransferUpdateKind { progress, complete, failed, canceled }
 
 /// Результат сверки задачи с персистентной БД транспорта после перезапуска.
-enum SparkIntakeTaskLookup { complete, missingOrDead }
+enum SparkIntakeTaskLookup {
+  /// Задача успешно завершилась, пока основной Dart-isolate был заморожен.
+  complete,
+
+  /// Задача всё ещё принадлежит нативной очереди (включая retry/backoff).
+  /// Такую задачу нельзя отменять и выставлять повторно при reconcile.
+  active,
+
+  /// Задачи нет либо она завершилась терминальной ошибкой.
+  missingOrDead,
+}
 
 /// Источник байтов: на native — путь к файлу (заливка без чтения байтов в
 /// Dart-память), на web — сами байты (файловой системы нет).
@@ -93,7 +103,7 @@ abstract class SparkIntakeTransfer {
 
 /// IO-бэкенд: background_downloader.
 class SparkIntakeTransferIo implements SparkIntakeTransfer {
-  bool _initialized = false;
+  Future<void>? _initialization;
   final _updates = StreamController<SparkIntakeTransferUpdate>.broadcast();
 
   @override
@@ -101,8 +111,29 @@ class SparkIntakeTransferIo implements SparkIntakeTransfer {
 
   @override
   Future<void> ensureInitialized() async {
-    if (_initialized) return;
-    _initialized = true;
+    final existing = _initialization;
+    if (existing != null) return existing;
+    final pending = _initialize();
+    _initialization = pending;
+    try {
+      await pending;
+    } catch (_) {
+      // Не оставляем транспорт навсегда «инициализированным», если первый
+      // вызов пришёлся на временную ошибку платформенного канала.
+      if (identical(_initialization, pending)) _initialization = null;
+      rethrow;
+    }
+  }
+
+  Future<void> _initialize() async {
+    // Ограничение живёт на нативной стороне. Уже подготовленные задачи будут
+    // выходить из очереди и при замороженном Dart-isolate.
+    await FileDownloader().configure(
+      globalConfig: (Config.holdingQueue, (3, 2, 2)),
+      // iOS по умолчанию завершает resource timeout через 4 часа. Длинный
+      // офлайн-период не должен превращать валидную загрузку в terminal fail.
+      iOSConfig: (Config.resourceTimeout, const Duration(hours: 24)),
+    );
     await FileDownloader().trackTasksInGroup(kSparkIntakeTaskGroup);
     FileDownloader().updates.listen(_onUpdate);
     // Доносит статусы/прогресс задач, завершившихся, пока Dart был мёртв
@@ -122,39 +153,48 @@ class SparkIntakeTransferIo implements SparkIntakeTransfer {
         // Отрицательные значения — служебные маркеры bgd (fail/cancel),
         // статусные события придут отдельно.
         if (update.progress >= 0) {
-          _emit(SparkIntakeTransferUpdate(
-            draftId: draftId,
-            recordId: recordId,
-            kind: SparkIntakeTransferUpdateKind.progress,
-            progress: update.progress.clamp(0.0, 1.0),
-          ));
+          _emit(
+            SparkIntakeTransferUpdate(
+              draftId: draftId,
+              recordId: recordId,
+              kind: SparkIntakeTransferUpdateKind.progress,
+              progress: update.progress.clamp(0.0, 1.0),
+            ),
+          );
         }
       case TaskStatusUpdate():
         switch (update.status) {
           case TaskStatus.complete:
-            _emit(SparkIntakeTransferUpdate(
-              draftId: draftId,
-              recordId: recordId,
-              kind: SparkIntakeTransferUpdateKind.complete,
-            ));
+            _emit(
+              SparkIntakeTransferUpdate(
+                draftId: draftId,
+                recordId: recordId,
+                kind: SparkIntakeTransferUpdateKind.complete,
+              ),
+            );
           case TaskStatus.failed || TaskStatus.notFound:
             final exception = update.exception;
-            _emit(SparkIntakeTransferUpdate(
-              draftId: draftId,
-              recordId: recordId,
-              kind: SparkIntakeTransferUpdateKind.failed,
-              httpStatusCode: update.responseStatusCode ??
-                  (exception is TaskHttpException
-                      ? exception.httpResponseCode
-                      : null),
-              error: exception?.description ?? 'Загрузка не удалась',
-            ));
+            _emit(
+              SparkIntakeTransferUpdate(
+                draftId: draftId,
+                recordId: recordId,
+                kind: SparkIntakeTransferUpdateKind.failed,
+                httpStatusCode:
+                    update.responseStatusCode ??
+                    (exception is TaskHttpException
+                        ? exception.httpResponseCode
+                        : null),
+                error: exception?.description ?? 'Загрузка не удалась',
+              ),
+            );
           case TaskStatus.canceled:
-            _emit(SparkIntakeTransferUpdate(
-              draftId: draftId,
-              recordId: recordId,
-              kind: SparkIntakeTransferUpdateKind.canceled,
-            ));
+            _emit(
+              SparkIntakeTransferUpdate(
+                draftId: draftId,
+                recordId: recordId,
+                kind: SparkIntakeTransferUpdateKind.canceled,
+              ),
+            );
           // enqueued/running/waitingToRetry/paused — промежуточные, статус
           // записи двигают события прогресса и терминальные исходы.
           default:
@@ -185,7 +225,9 @@ class SparkIntakeTransferIo implements SparkIntakeTransfer {
       updates: Updates.statusAndProgress,
       // Ретраи с backoff на уровне ОС покрывают короткие обрывы сети;
       // длинные покрывает retry-цикл сервиса поверх терминального failed.
-      retries: 3,
+      // Максимум, поддерживаемый background_downloader. Ретраи выполняются
+      // нативно и поэтому не зависят от Timer в замороженном приложении.
+      retries: 10,
       metaData: payload.metaData,
     );
     final ok = await FileDownloader().enqueue(task);
@@ -205,15 +247,19 @@ class SparkIntakeTransferIo implements SparkIntakeTransfer {
   Future<SparkIntakeTaskLookup> lookupTask(String taskId) async {
     try {
       final record = await FileDownloader().database.recordForId(taskId);
-      if (record != null && record.status == TaskStatus.complete) {
-        return SparkIntakeTaskLookup.complete;
+      if (record != null) {
+        if (record.status == TaskStatus.complete) {
+          return SparkIntakeTaskLookup.complete;
+        }
+        if (!record.status.isFinalState ||
+            record.status == TaskStatus.waitingToRetry ||
+            record.status == TaskStatus.paused) {
+          return SparkIntakeTaskLookup.active;
+        }
       }
     } catch (_) {
       // Битая БД задач = «неизвестно» — перезальём файл, это безопасно.
     }
-    // running/enqueued после перезапуска приложения — зомби с непредсказуемой
-    // судьбой (URLSession мог умереть вместе с процессом): честнее отменить
-    // и перезалить, чем ждать событие, которое не придёт.
     return SparkIntakeTaskLookup.missingOrDead;
   }
 }
@@ -264,12 +310,14 @@ class SparkIntakeTransferWeb implements SparkIntakeTransfer {
             timeout: const Duration(minutes: 10),
             onProgress: (sent, total) {
               if (total <= 0 || _updates.isClosed) return;
-              _updates.add(SparkIntakeTransferUpdate(
-                draftId: payload.draftId,
-                recordId: payload.recordId,
-                kind: SparkIntakeTransferUpdateKind.progress,
-                progress: (sent / total).clamp(0.0, 1.0),
-              ));
+              _updates.add(
+                SparkIntakeTransferUpdate(
+                  draftId: payload.draftId,
+                  recordId: payload.recordId,
+                  kind: SparkIntakeTransferUpdateKind.progress,
+                  progress: (sent / total).clamp(0.0, 1.0),
+                ),
+              );
             },
           );
           if (_canceled.remove(taskId)) continue;
@@ -294,12 +342,14 @@ class SparkIntakeTransferWeb implements SparkIntakeTransfer {
     String? error,
   }) {
     if (_updates.isClosed) return;
-    _updates.add(SparkIntakeTransferUpdate(
-      draftId: payload.draftId,
-      recordId: payload.recordId,
-      kind: kind,
-      error: error,
-    ));
+    _updates.add(
+      SparkIntakeTransferUpdate(
+        draftId: payload.draftId,
+        recordId: payload.recordId,
+        kind: kind,
+        error: error,
+      ),
+    );
   }
 
   @override

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_request_detail_ui.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_request_status.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _wrap(Widget child) {
@@ -92,6 +93,39 @@ void main() {
     expect(find.text('Заявка №169959'), findsOneWidget);
     expect(find.text('27.05.2026 · срок до 03.06'), findsOneWidget);
     expect(find.text('Завершена'), findsOneWidget);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('request_status_chip'))).height,
+      lessThan(40),
+    );
+  });
+
+  testWidgets('длинный статус не ломает узкий экран и крупный шрифт', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: MaterialApp(
+          home: Scaffold(
+            appBar: SparkRequestDetailAppBar(
+              title: 'Заявка №169959',
+              badge: requestHistoryStatusBadge('specialist_reassigned'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+    expect(
+      tester.getSize(find.byKey(const ValueKey('request_status_chip'))).width,
+      lessThanOrEqualTo(134.5),
+    );
   });
 
   testWidgets('таймлайн истории: статус, роль с датой и комментарий в плашке', (
@@ -157,6 +191,7 @@ void main() {
     expect(find.text('Телефон клиента'), findsOneWidget);
     expect(find.text('+7 946 494-66-46'), findsOneWidget);
     expect(find.byIcon(Icons.call_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.phone_outlined), findsNothing);
   });
 
   testWidgets('карточка авто без телефона и ссылки — без блока контактов', (
