@@ -22,6 +22,7 @@ class _CarPickerSelection {
   final String restyling;
   final String frames;
   final String photoUrl;
+
   /// Server id of the first `RestylingItem.frames[].id` entry (or null
   /// when the catalog didn't carry one, e.g. local fallback data).
   /// Used by the completed-report hydrator to restore brand/model/photo
@@ -85,6 +86,7 @@ class _CarCatalogRestyling {
   final String years;
   final String frames;
   final String photoUrl;
+
   /// Server ids for every frame under this restyling (at least one when
   /// sourced from `Storage.GetModelGeneration`). The first id is what
   /// we use for persistence keyed on `modelGenerationRestylingFrameId`.
@@ -610,13 +612,27 @@ class UploadedItem {
     required this.name,
     required this.mimeType,
     required this.dataUrl,
+    String? originalName,
+    String? displayName,
+    this.remoteName = '',
     this.inspection = const MediaInspection(),
     this.videoThumbPath,
     this.videoThumbUrl,
-  });
+  }) : originalName = originalName ?? name,
+       displayName = displayName ?? name;
 
   final String id;
+
+  /// Legacy filename field kept for draft/back-end compatibility. New code
+  /// must use [originalName] for source identity and [displayName] for UI.
   final String name;
+  final String originalName;
+  final String displayName;
+
+  /// Optional already-resolved permanent object name. Most report uploads
+  /// derive it deterministically from item id + section at upload time; temp
+  /// intake records own their separate remoteName in the intake service.
+  final String remoteName;
   final String mimeType;
   final String dataUrl;
   final MediaInspection inspection;
@@ -638,6 +654,9 @@ class UploadedItem {
   UploadedItem copyWith({
     String? id,
     String? name,
+    String? originalName,
+    String? displayName,
+    String? remoteName,
     String? mimeType,
     String? dataUrl,
     MediaInspection? inspection,
@@ -647,6 +666,9 @@ class UploadedItem {
     return UploadedItem(
       id: id ?? this.id,
       name: name ?? this.name,
+      originalName: originalName ?? this.originalName,
+      displayName: displayName ?? this.displayName,
+      remoteName: remoteName ?? this.remoteName,
       mimeType: mimeType ?? this.mimeType,
       dataUrl: dataUrl ?? this.dataUrl,
       inspection: inspection ?? this.inspection,

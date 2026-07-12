@@ -60,7 +60,7 @@ String _shortDueDate(String createdIso, String dueIso) {
 // ── Шапка ─────────────────────────────────────────────────────────────
 
 /// AppBar детального экрана заявки: номер крупно, под ним «дата · срок»,
-/// справа — статус-чип с точкой. Заменяет прежнюю пару «плоский AppBar +
+/// справа — компактный статус-чип. Заменяет прежнюю пару «плоский AppBar +
 /// header-карточка со статусом в скролле».
 class SparkRequestDetailAppBar extends StatelessWidget
     implements PreferredSizeWidget {
@@ -124,12 +124,36 @@ class SparkRequestDetailAppBar extends StatelessWidget
         if (chip != null)
           Padding(
             padding: const EdgeInsets.only(right: SparkSpace.xxxl),
-            child: SparkChip(
-              text: chip.label,
-              background: chip.bg,
-              color: chip.fg,
-              icon: Icons.circle,
-              iconSize: 8,
+            // AppBar stretches action children to the toolbar height. Without
+            // Center the pill becomes a 64px-high oval that looks like a huge
+            // circle, especially for short statuses.
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: (MediaQuery.sizeOf(context).width * 0.42)
+                      .clamp(96.0, 160.0)
+                      .toDouble(),
+                ),
+                child: Container(
+                  key: const ValueKey('request_status_chip'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.xs,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                    color: chip.bg,
+                  ),
+                  child: MyText(
+                    text: chip.label,
+                    size: SparkTextSize.chip,
+                    weight: FontWeight.w700,
+                    color: chip.fg,
+                    maxLines: 1,
+                    textOverflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             ),
           ),
       ],
@@ -293,10 +317,10 @@ class SparkRequestCarBlock extends StatelessWidget {
           final name = (r['restyling'] ?? '').toString().trim();
           final ys = r['yearStart'];
           final ye = r['yearEnd'];
-          final years = [ys, ye]
-              .where((y) => y != null)
-              .map((y) => y.toString())
-              .join('–');
+          final years = [
+            ys,
+            ye,
+          ].where((y) => y != null).map((y) => y.toString()).join('–');
           if (name.isEmpty && years.isEmpty) return 'Без рестайлинга';
           if (years.isEmpty) return name;
           if (name.isEmpty) return years;
@@ -394,12 +418,6 @@ class SparkRequestCarBlock extends StatelessWidget {
           if (phone.isNotEmpty)
             Row(
               children: [
-                const Icon(
-                  Icons.phone_outlined,
-                  color: kGreyColor,
-                  size: SparkSize.iconMd,
-                ),
-                const SizedBox(width: SparkSpace.xl),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -473,7 +491,7 @@ class _SparkTimelineEntry extends StatelessWidget {
     final role = (entry['changedByRole'] ?? '').toString();
     final reason = requestHistoryReason((entry['reason'] ?? '').toString());
     final createdAt = (entry['createdAt'] ?? '').toString();
-    final badge = requestStatusBadge(newStatus);
+    final badge = requestHistoryStatusBadge(newStatus);
     final roleLabel = requestRoleLabel(role);
     final meta = [
       if (roleLabel.isNotEmpty) roleLabel,
@@ -497,7 +515,7 @@ class _SparkTimelineEntry extends StatelessWidget {
                   ),
                   alignment: Alignment.center,
                   child: Icon(
-                    requestStatusIcon(newStatus),
+                    requestHistoryStatusIcon(newStatus),
                     color: badge.fg,
                     size: SparkSize.iconSm,
                   ),

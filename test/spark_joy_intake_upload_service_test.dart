@@ -7,6 +7,7 @@ import 'package:flutter_application_1/data/services/spark_joy_intake_upload_serv
 import 'package:flutter_application_1/data/services/spark_joy_intake_video_prep.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
+import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -283,6 +284,62 @@ void main() {
     final restored = service.snapshotOf(draftId).files.single;
     expect(restored.uploadedAtIso, isNotEmpty);
   });
+
+  test(
+    'reconcile: активная фоновая задача не отменяется и не дублируется',
+    () async {
+      transfer.lookups['task_active'] = SparkIntakeTaskLookup.active;
+      final record = await makeDocRecord('a');
+      service.hydrateFromDraft(
+        draftId: draftId,
+        rawPhotoIntake: <String, dynamic>{
+          'uploadRequested': true,
+          'files': [
+            <String, dynamic>{
+              ...record.toJson(),
+              'taskId': 'task_active',
+              'status': SparkIntakeFileStatus.uploading,
+            },
+          ],
+        },
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(transfer.cancelled, isEmpty);
+      expect(transfer.enqueued, isEmpty);
+      final restored = service.snapshotOf(draftId).files.single;
+      expect(restored.taskId, 'task_active');
+      expect(restored.status, SparkIntakeFileStatus.enqueued);
+    },
+  );
+
+  test(
+    'resume сверяет завершившуюся в фоне задачу без действия пользователя',
+    () async {
+      transfer.lookups['task_background'] = SparkIntakeTaskLookup.active;
+      final record = await makeDocRecord('a');
+      service.hydrateFromDraft(
+        draftId: draftId,
+        rawPhotoIntake: <String, dynamic>{
+          'uploadRequested': true,
+          'files': [
+            <String, dynamic>{
+              ...record.toJson(),
+              'taskId': 'task_background',
+              'status': SparkIntakeFileStatus.enqueued,
+            },
+          ],
+        },
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      transfer.lookups['task_background'] = SparkIntakeTaskLookup.complete;
+
+      service.didChangeAppLifecycleState(AppLifecycleState.resumed);
+
+      await _waitFor(() => service.snapshotOf(draftId).files.single.isUploaded);
+      expect(transfer.cancelled, isEmpty);
+      expect(transfer.enqueued, isEmpty);
+    },
+  );
 
   test('reconcile: зомби-задача отменяется и файл перезаливается', () async {
     final record = await makeDocRecord('a');

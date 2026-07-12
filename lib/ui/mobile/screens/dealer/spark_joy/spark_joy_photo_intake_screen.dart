@@ -1,6 +1,6 @@
 part of 'spark_joy_create_report_screen.dart';
 
-/// Экран интейка «Фото автомобиля» (макет «Отчёт - разделы - редизайн»,
+/// Экран интейка «Материалы автомобиля» (макет «Отчёт - разделы - редизайн»,
 /// экран 2a): массовое добавление фото/видео/документов, группировка по
 /// формату, мультивыбор с удалением, внизу — «Распределить файлы» (сейчас
 /// = фоновая заливка кадров/фото в облако и ИИ-раскладка оригиналов).
@@ -27,11 +27,11 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
   PreferredSizeWidget _photoIntakeAppBar() {
     final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
     return sparkAppBar(
-      title: 'Фото автомобиля',
+      title: 'Материалы автомобиля',
       subtitle: snapshot.total == 0
-          ? 'ИИ разложит файлы по разделу «Осмотр»'
+          ? 'ИИ распределит файлы по разделам отчёта'
           : '${sparkIntakeFilesCountLabel(snapshot.total)} · '
-                'ИИ разложит по разделу «Осмотр»',
+                'ИИ распределит по разделам отчёта',
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded),
         onPressed: _closePhotoIntake,
@@ -91,6 +91,8 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
         SparkIntakeFileRecord(
           id: item.id,
           name: item.name,
+          originalName: item.originalName,
+          displayName: item.displayName,
           mimeType: item.mimeType,
           localPath: item.dataUrl,
           sizeBytes: await _intakeSourceSizeBytes(item.dataUrl),
@@ -189,7 +191,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                 Expanded(
                   child: _sparkIntakeDashedButton(
                     icon: Icons.add_photo_alternate_outlined,
-                    label: 'Загрузить фото',
+                    label: 'Фото и видео',
                     vertical: true,
                     onTap: () => unawaited(_runIntakePickPhotos()),
                   ),
@@ -198,7 +200,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                 Expanded(
                   child: _sparkIntakeDashedButton(
                     icon: Icons.upload_file_rounded,
-                    label: 'Загрузить файлы',
+                    label: 'Документы',
                     vertical: true,
                     onTap: () => unawaited(_runIntakePickFiles()),
                   ),
@@ -209,8 +211,8 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
               const SizedBox(height: SparkSpace.section),
               const MyText(
                 text:
-                    'Добавьте фото осмотра, видео и документы — после '
-                    'загрузки ИИ разложит их по разделу «Осмотр»',
+                    'Добавьте фото, видео и документы — после '
+                    'загрузки ИИ распределит их по разделам отчёта',
                 size: SparkTextSize.body,
                 color: kGreyColor,
                 lineHeight: 1.4,
@@ -495,7 +497,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
     final selected = _intakeSelectedIds.contains(record.id);
     final isPdf =
         record.mimeType == 'application/pdf' ||
-        record.name.toLowerCase().endsWith('.pdf');
+        record.displayName.toLowerCase().endsWith('.pdf');
     return InkWell(
       onTap: () => _toggleIntakeSelection(record.id),
       child: Padding(
@@ -529,7 +531,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   MyText(
-                    text: record.name.isEmpty ? 'Документ' : record.name,
+                    text: record.displayName.isEmpty
+                        ? 'Документ'
+                        : record.displayName,
                     size: SparkTextSize.label,
                     weight: FontWeight.w600,
                     color: kTertiaryColor,
@@ -599,6 +603,8 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
     return UploadedItem(
       id: record.id,
       name: record.name,
+      originalName: record.originalName,
+      displayName: record.displayName,
       mimeType: record.mimeType,
       dataUrl: record.localPath,
       videoThumbPath: record.videoThumbPath,

@@ -81,6 +81,8 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
           final item = UploadedItem(
             id: record.id,
             name: record.name,
+            originalName: record.originalName,
+            displayName: record.displayName,
             mimeType: record.mimeType,
             dataUrl: record.localPath,
             videoThumbPath: videoThumbPath,

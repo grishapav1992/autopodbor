@@ -6,7 +6,9 @@ void main() {
     test('round-trip сохраняет все поля', () {
       final record = SparkIntakeFileRecord(
         id: 'intake_1',
-        name: 'IMG_0001.jpg',
+        name: 'Фото 1.jpg',
+        originalName: 'image_picker_AABBCCDD.jpg',
+        displayName: 'Фото 1.jpg',
         mimeType: 'image/jpeg',
         localPath: 'file:///docs/spark_joy_media/IMG_0001.jpg',
         sizeBytes: 12345,
@@ -28,7 +30,9 @@ void main() {
       final restored = SparkIntakeFileRecord.tryFromJson(record.toJson());
       expect(restored, isNotNull);
       expect(restored!.id, 'intake_1');
-      expect(restored.name, 'IMG_0001.jpg');
+      expect(restored.name, 'Фото 1.jpg');
+      expect(restored.originalName, 'image_picker_AABBCCDD.jpg');
+      expect(restored.displayName, 'Фото 1.jpg');
       expect(restored.mimeType, 'image/jpeg');
       expect(restored.localPath, record.localPath);
       expect(restored.sizeBytes, 12345);
