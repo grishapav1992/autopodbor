@@ -336,7 +336,8 @@ class _SparkJoyCompanyCreateRequestScreenState
   }
 
   /// «19.07.2026 · через 7 дней» — value для тап-строки срока.
-  String get _dueValueLabel => '${_formatRuDate(_dueAt)} · ${_dueRelativeLabel(_dueAt)}';
+  String get _dueValueLabel =>
+      '${_formatRuDate(_dueAt)} · ${_dueRelativeLabel(_dueAt)}';
 
   // ─── Submit ─────────────────────────────────────────────────────────
 
@@ -547,7 +548,7 @@ class _SparkJoyCompanyCreateRequestScreenState
                   onTapOutside: (_) =>
                       FocusManager.instance.primaryFocus?.unfocus(),
                   decoration: sparkInputDecoration(
-                    'auto.ru, avito.ru, drive.google.com/…',
+                    'auto.ru, avito.ru/…',
                     dense: true,
                   ),
                 ),
@@ -901,7 +902,15 @@ class _SparkJoyCompanyCreateRequestScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _CarPhotoBanner(url: _carPhotoUrl.trim()),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xxl,
+              SparkSpace.xxl,
+              SparkSpace.xxl,
+              0,
+            ),
+            child: _CarPhotoBanner(url: _carPhotoUrl.trim()),
+          ),
           Padding(
             padding: const EdgeInsets.all(SparkSpace.xxl),
             child: Row(
@@ -1010,14 +1019,8 @@ class _FieldLabel extends StatelessWidget {
 
 // ── Redesign primitives ──────────────────────────────────────────────
 
-/// Подложка фото-баннера каталога (совпадает с fallback-фоном макета).
-const Color _kCarPhotoBg = Color(0xFFEDF1F6);
-
 /// Трек прогресс-бара в шапке.
 const Color _kProgressTrack = Color(0xFFE1E6EC);
-
-/// Высота фото-баннера авто (по макету).
-const double _kCarPhotoHeight = 158;
 
 /// Тень карточки (совпадает с SparkCard.elevated).
 const List<BoxShadow> _kCardShadow = [
@@ -1151,7 +1154,7 @@ class _CreateRequestAppBar extends StatelessWidget
   }
 }
 
-/// Скруглённый прогресс-бар с брендовым сине-градиентным заполнением.
+/// Скруглённый прогресс-бар с тем же градиентом, что у основной кнопки.
 class _GradientProgressBar extends StatelessWidget {
   const _GradientProgressBar({required this.value});
 
@@ -1172,8 +1175,13 @@ class _GradientProgressBar extends StatelessWidget {
             widthFactor: value.clamp(0.0, 1.0),
             heightFactor: 1,
             child: const DecoratedBox(
+              key: ValueKey('company-request-progress-fill'),
               decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [kAccentColor, kAccentGlow]),
+                gradient: LinearGradient(
+                  colors: [kSecondaryColor, kBlueColor],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
               ),
             ),
           ),
@@ -1183,9 +1191,9 @@ class _GradientProgressBar extends StatelessWidget {
   }
 }
 
-/// Фото-баннер выбранного авто. Показывает картинку каталога ЦЕЛИКОМ
-/// (BoxFit.contain на подложке) — раньше BoxFit.cover обрезал широкие
-/// рендеры. При отсутствии/ошибке — аккуратный fallback как в макете.
+/// Фото выбранного авто — тот же рендер, что в шаге «Автомобиль» отчёта:
+/// ширина карточки + естественное соотношение сторон через BoxFit.fitWidth.
+/// Фиксированный баннер 158 px давал большие пустые поля и искажал композицию.
 class _CarPhotoBanner extends StatelessWidget {
   const _CarPhotoBanner({required this.url});
 
@@ -1193,24 +1201,23 @@ class _CarPhotoBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: _kCarPhotoHeight,
-      width: double.infinity,
-      color: _kCarPhotoBg,
-      alignment: Alignment.center,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(SparkRadius.sm),
       child: url.isEmpty
           ? const _CarPhotoFallback()
           : CachedNetworkImage(
               imageUrl: url,
               width: double.infinity,
-              height: _kCarPhotoHeight,
-              fit: BoxFit.contain,
+              fit: BoxFit.fitWidth,
               errorWidget: (context, _, _) => const _CarPhotoFallback(),
-              placeholder: (context, _) => const Center(
-                child: SizedBox(
-                  width: SparkSize.spinner,
-                  height: SparkSize.spinner,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+              placeholder: (context, _) => const SizedBox(
+                height: SparkSize.mediaCardThumb,
+                child: Center(
+                  child: SizedBox(
+                    width: SparkSize.spinner,
+                    height: SparkSize.spinner,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ),
               ),
             ),
@@ -1223,38 +1230,16 @@ class _CarPhotoFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: SparkSize.icon6xl,
-          height: SparkSize.icon6xl,
-          decoration: const BoxDecoration(
-            color: kWhiteColor,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: kShadowColor,
-                blurRadius: 10,
-                offset: Offset(0, 3),
-                spreadRadius: -2,
-              ),
-            ],
-          ),
-          alignment: Alignment.center,
-          child: const Icon(
-            Icons.directions_car_outlined,
-            size: SparkSize.iconXxl,
-            color: kGreyColor,
-          ),
-        ),
-        const SizedBox(height: SparkSpace.lg),
-        const MyText(
-          text: 'Фото из каталога недоступно',
-          size: SparkTextSize.body,
-          color: kGreyColor,
-        ),
-      ],
+    return Container(
+      width: double.infinity,
+      height: SparkSize.mediaCardThumb,
+      color: kLightGreyColor,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.directions_car_outlined,
+        size: SparkSize.iconXxl,
+        color: kGreyColor,
+      ),
     );
   }
 }
@@ -1289,7 +1274,9 @@ class _DueDatePickerSheetState extends State<_DueDatePickerSheet> {
 
   void _applyPreset(int days) {
     setState(() {
-      _controller.text = _formatRuDate(_todayMidnight().add(Duration(days: days)));
+      _controller.text = _formatRuDate(
+        _todayMidnight().add(Duration(days: days)),
+      );
       _error = null;
     });
   }
@@ -1337,7 +1324,10 @@ class _DueDatePickerSheetState extends State<_DueDatePickerSheet> {
             spacing: SparkSpace.md,
             runSpacing: SparkSpace.md,
             children: [
-              _DuePresetChip(label: 'Через 3 дня', onTap: () => _applyPreset(3)),
+              _DuePresetChip(
+                label: 'Через 3 дня',
+                onTap: () => _applyPreset(3),
+              ),
               _DuePresetChip(label: 'Неделя', onTap: () => _applyPreset(7)),
               _DuePresetChip(label: '2 недели', onTap: () => _applyPreset(14)),
               _DuePresetChip(label: 'Месяц', onTap: () => _applyPreset(30)),

@@ -76,6 +76,7 @@ void main() {
       'storage ещё не тронут', (tester) async {
     await _pumpScreen(tester);
     expect(find.text(_draftTitle), findsOneWidget);
+    expect(find.textContaining('Осталось:'), findsNothing);
     // Иконки корзины на карточке больше нет.
     expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);
 
@@ -84,6 +85,10 @@ void main() {
     expect(find.text(_draftTitle), findsNothing);
     expect(find.text('Черновик удалён'), findsOneWidget);
     expect(find.text('Отменить'), findsOneWidget);
+    final undoAction = tester.widget<SnackBarAction>(
+      find.byType(SnackBarAction),
+    );
+    expect(undoAction.textColor, Colors.white);
     // Диалог подтверждения не появлялся.
     expect(find.text('Удалить черновик?'), findsNothing);
     // Реальное удаление отложено до конца окна отмены.

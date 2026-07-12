@@ -612,6 +612,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
         persist: false,
         action: SnackBarAction(
           label: 'Отменить',
+          textColor: kWhiteColor,
           onPressed: () => _undoDraftDeletion(id),
         ),
       ),
@@ -868,11 +869,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final sections = _computeDraftCompletion(draft);
     final filled = sections.where((s) => s.filled).length;
     final total = sections.length;
-    final remaining = sections
-        .where((s) => !s.filled)
-        .map((s) => s.label.toLowerCase())
-        .toList();
-
     final id = sjRead(draft, 'id');
 
     // Each draft card carries a shadow + a rounded clip (Stage 2 A+ token
@@ -944,10 +940,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                     ),
                   ),
                   const SizedBox(width: SparkSpace.sm),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    color: kBorderColor,
-                  ),
+                  const Icon(Icons.chevron_right_rounded, color: kBorderColor),
                 ],
               ),
               const SizedBox(height: SparkSpace.xxl),
@@ -975,14 +968,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                   ],
                 ),
               ),
-              if (remaining.isNotEmpty) ...[
-                const SizedBox(height: SparkSpace.md),
-                MyText(
-                  text: 'Осталось: ${remaining.join(', ')}',
-                  size: SparkTextSize.caption,
-                  color: kGreyColor,
-                ),
-              ],
             ],
           ),
         ),
