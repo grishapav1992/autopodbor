@@ -362,6 +362,48 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     return sparkJoyRoleLabel(_role);
   }
 
+  /// Чип роли в AppBar по макету: белый pill с рамкой, ведущий значок
+  /// (дом — компания/ИП, человек — специалист) + подпись роли. Тап
+  /// открывает объяснение роли (`_showRoleInfoSheet`).
+  Widget _buildRoleChip(BuildContext context, bool isSpecialist) {
+    return Material(
+      color: kWhiteColor,
+      borderRadius: BorderRadius.circular(SparkRadius.pill),
+      child: InkWell(
+        onTap: () => _showRoleInfoSheet(context),
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xl,
+            vertical: SparkSpace.sm,
+          ),
+          decoration: BoxDecoration(
+            color: kWhiteColor,
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSpecialist ? Icons.person_rounded : Icons.home_rounded,
+                size: SparkSize.iconSm,
+                color: kSecondaryColor,
+              ),
+              const SizedBox(width: SparkSpace.xs),
+              MyText(
+                text: _roleBadgeLabel(),
+                size: SparkTextSize.body,
+                weight: FontWeight.w600,
+                color: kSecondaryColor,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Tap по role-чипу в AppBar открывает короткое объяснение: какая
   /// сейчас роль, чем company отличается от specialist, как сменить.
   /// Реальный role-switch — через «Профиль → Проверка компании» (ввод
@@ -496,27 +538,34 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           if (!(isSpecialist ? index == 2 : index == 3))
             Padding(
               padding: const EdgeInsets.only(right: SparkSpace.md),
-              child: Center(
-                child: InkWell(
-                  onTap: () => _showRoleInfoSheet(context),
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  child: SparkChip(
-                    text: _roleBadgeLabel(),
-                    background: kSecondaryColor.withValues(alpha: 0.08),
-                    color: kSecondaryColor,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: SparkSpace.xl,
-                      vertical: SparkSpace.sm,
+              child: Center(child: _buildRoleChip(context, isSpecialist)),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(right: SparkSpace.md),
+            child: Center(
+              child: Tooltip(
+                message: 'Уведомления',
+                child: Material(
+                  color: kWhiteColor,
+                  borderRadius: BorderRadius.circular(SparkRadius.md),
+                  child: InkWell(
+                    onTap: () => _openNotifications(context),
+                    borderRadius: BorderRadius.circular(SparkRadius.md),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(SparkRadius.md),
+                        border: Border.all(color: kBorderColor),
+                      ),
+                      child: const _NotificationNavIcon(
+                        icon: Icons.notifications_none_rounded,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          IconButton(
-            tooltip: 'Уведомления',
-            onPressed: () => _openNotifications(context),
-            icon: const _NotificationNavIcon(
-              icon: Icons.notifications_none_rounded,
             ),
           ),
           // Logout-кнопка раньше жила прямо в AppBar — самый «легко

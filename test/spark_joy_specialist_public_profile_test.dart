@@ -68,6 +68,29 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('фото сотрудника открывается на весь экран', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          const SparkJoySpecialistPublicProfileScreen(
+            initialProfile: {
+              'name': 'Мария Осмотрова',
+              'urlAvatar': 'https://example.com/avatar.jpg',
+            },
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const ValueKey('specialist-avatar-preview')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Фото сотрудника'), findsOneWidget);
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+
+      await tester.tap(find.byType(CloseButton));
+      await tester.pumpAndSettle();
+      expect(find.text('Профиль специалиста'), findsOneWidget);
+    });
   });
 
   group('SparkInfoRow.onTap', () {

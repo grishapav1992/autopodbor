@@ -51,6 +51,13 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   late final _SparkJoyReportsListController _controller;
   final Set<String> _sharingReportKeys = <String>{};
 
+  // Черновики, смахнутые влево и ждущие коммита удаления: карточка уже
+  // скрыта из списка, но данные остаются в storage, пока не истечёт окно
+  // отмены (см. _onDraftSwiped).
+  final Set<String> _pendingDraftDeletionIds = <String>{};
+  final Map<String, Timer> _pendingDraftDeletionTimers = <String, Timer>{};
+  static const Duration _draftUndoWindow = Duration(seconds: 5);
+
   // Completed-report tap is async (we fetch the full payload via
   // Storage.ViewSpecialistReport before opening). Track the identity keys
   // currently loading so the completed card can show a spinner and block
@@ -78,6 +85,12 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
   @override
   void dispose() {
+    // Уходим с экрана — коммитим отложенные удаления сразу (fire-and-forget,
+    // storage-операции переживают dispose), иначе смахнутые карточки
+    // воскреснут при следующем входе.
+    for (final id in _pendingDraftDeletionTimers.keys.toList()) {
+      unawaited(_commitDraftDeletion(id));
+    }
     widget.tabRequest?.removeListener(_handleExternalTabRequest);
     _controller.dispose();
     super.dispose();
@@ -157,19 +170,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     ).trim();
     final inviteLink = sjRead(draft, 'staffInviteLink').trim();
     return assigneeId.isNotEmpty || inviteLink.isNotEmpty;
-  }
-
-  bool _isIncomingDraft(Map<String, dynamic> draft) =>
-      sjRead(draft, 'source') == kSparkDraftSourceIncoming;
-
-  /// Chip text for incoming drafts. Falls through `incomingFromName` →
-  /// `incomingFromPhone` → "Получено извне" so the chip is never empty.
-  String _incomingChipLabel(Map<String, dynamic> draft) {
-    final name = sjRead(draft, 'incomingFromName').trim();
-    if (name.isNotEmpty) return 'Получено от $name';
-    final phone = sjRead(draft, 'incomingFromPhone').trim();
-    if (phone.isNotEmpty) return 'Получено от $phone';
-    return 'Получено извне';
   }
 
   Widget _statusPill({required String label, IconData? icon}) {
@@ -571,6 +571,12 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       ),
     );
     if (confirmed != true) return;
+    await _performDraftDeletion(id);
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _performDraftDeletion(String id) async {
     // Сначала гасим фоновую заливку интейка и её локальные копии — после
     // deleteDraft ссылок на файлы уже не будет и их подобрал бы только GC.
     await SparkJoyIntakeUploadService.instance.dropDraft(
@@ -578,8 +584,133 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       deleteLocalFiles: true,
     );
     await SparkJoyStorage.deleteDraft(id);
+  }
+
+  /// Полный свайп-влево по карточке черновика. Вместо диалога подтверждения —
+  /// отложенный коммит: карточка сразу прячется (id попадает в
+  /// [_pendingDraftDeletionIds]), но в storage черновик живёт ещё
+  /// [_draftUndoWindow] — пока открыт снекбар с «Отменить». Отмена = просто
+  /// снова показать карточку, откатывать нечего.
+  ///
+  /// Коммит привязан к собственному таймеру, а не к `closed`-future
+  /// снекбара: жизненный цикл снекбара (persist-поведение, замещение
+  /// следующим, ручной dismiss) не должен управлять безвозвратным
+  /// удалением данных.
+  void _onDraftSwiped(String id) {
+    setState(() => _pendingDraftDeletionIds.add(id));
+    final messenger = ScaffoldMessenger.of(context);
+    // Серия свайпов не должна копить очередь снекбаров: показываем только
+    // последний, у предыдущих продолжают тикать их таймеры коммита.
+    messenger.removeCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('Черновик удалён'),
+        duration: _draftUndoWindow,
+        // Со Flutter 3.41 снекбар с action по умолчанию persist == true и
+        // не закрывается по таймауту — а окно отмены должно совпадать со
+        // временем жизни снекбара.
+        persist: false,
+        action: SnackBarAction(
+          label: 'Отменить',
+          onPressed: () => _undoDraftDeletion(id),
+        ),
+      ),
+    );
+    _pendingDraftDeletionTimers[id] = Timer(
+      _draftUndoWindow,
+      () => _commitDraftDeletion(id),
+    );
+  }
+
+  void _undoDraftDeletion(String id) {
+    _pendingDraftDeletionTimers.remove(id)?.cancel();
+    _pendingDraftDeletionIds.remove(id);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _commitDraftDeletion(String id) async {
+    _pendingDraftDeletionTimers.remove(id)?.cancel();
+    // Уже отменили — коммитить нечего.
+    if (!_pendingDraftDeletionIds.contains(id)) return;
+    // Коммитим независимо от mounted: пользователь мог уйти с экрана,
+    // но смахнутый черновик обязан удалиться.
+    await _performDraftDeletion(id);
+    _pendingDraftDeletionIds.remove(id);
     if (!mounted) return;
     await _load();
+  }
+
+  // ————— Redesign helpers (макет «Отчёты - редизайн») —————
+
+  /// Русская форма множественного числа: 1 черновик / 2 черновика / 5 черновиков.
+  String _pluralRu(int n, String one, String few, String many) {
+    final mod10 = n % 10;
+    final mod100 = n % 100;
+    if (mod10 == 1 && mod100 != 11) return one;
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
+    return many;
+  }
+
+  /// 54×54 плитка со значком слева от карточки, тон — по акцентному цвету.
+  Widget _leadingTile({required IconData icon, required Color accent}) {
+    return Container(
+      width: 54,
+      height: 54,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+      ),
+      child: Icon(icon, size: SparkSize.iconXxl, color: accent),
+    );
+  }
+
+  /// Сегментированный прогресс-бар: [total] равных сегментов, первые [filled]
+  /// закрашены navy, остальные — бледные.
+  Widget _segmentedProgress(int filled, int total) {
+    return Row(
+      children: [
+        for (var i = 0; i < total; i++) ...[
+          if (i > 0) const SizedBox(width: SparkSpace.xs),
+          Expanded(
+            child: Container(
+              height: SparkSize.progressThin,
+              decoration: BoxDecoration(
+                color: i < filled
+                    ? kSecondaryColor
+                    : kSecondaryColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(SparkRadius.pill),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 36×36 квадратная кнопка с рамкой (например, «Поделиться»).
+  Widget _squareIconButton({
+    required Widget child,
+    required VoidCallback? onTap,
+  }) {
+    return Material(
+      color: kWhiteColor,
+      borderRadius: BorderRadius.circular(SparkRadius.sm),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+        child: Container(
+          width: 36,
+          height: 36,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SparkRadius.sm),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: child,
+        ),
+      ),
+    );
   }
 
   /// Computes real per-section completion for a draft. Returns the ordered
@@ -727,8 +858,9 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
     // Assigned drafts in company mode get a different card shape: no
     // progress bar (not the company's work to track progress on), a
-    // status chip instead, and no inline delete (moved into the
-    // status sheet). Tap opens the sheet via _openDraft.
+    // status chip instead, and no swipe-to-delete (deletion lives in
+    // the status sheet with a confirm dialog). Tap opens the sheet via
+    // _openDraft.
     if (_isAssignedCompanyDraft(draft)) {
       return _buildAssignedDraftCard(draft, title);
     }
@@ -736,130 +868,123 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final sections = _computeDraftCompletion(draft);
     final filled = sections.where((s) => s.filled).length;
     final total = sections.length;
-    final progress = total == 0 ? 0.0 : filled / total;
+    final remaining = sections
+        .where((s) => !s.filled)
+        .map((s) => s.label.toLowerCase())
+        .toList();
+
+    final id = sjRead(draft, 'id');
 
     // Each draft card carries a shadow + a rounded clip (Stage 2 A+ token
     // bump), both of which otherwise force the whole list layer to repaint
     // on every scroll frame. The RepaintBoundary isolates each card into
     // its own raster cache — scrolled cards stay static and only newly
     // revealed ones actually get painted.
-    return RepaintBoundary(
-      child: SparkListCard(
-        onTap: () => _openDraft(draft),
-        padding: const EdgeInsets.symmetric(
-          horizontal: SparkSpace.xl,
-          vertical: SparkSpace.lg,
+    //
+    // Удаление — полный свайп влево. Порог 0.7 ширины: короткий случайный
+    // свайп возвращает карточку на место, диалога подтверждения нет —
+    // страховка от промаха живёт в undo-снекбаре (_onDraftSwiped).
+    return Dismissible(
+      key: ValueKey('draft-$id'),
+      direction: DismissDirection.endToStart,
+      dismissThresholds: const {DismissDirection.endToStart: 0.7},
+      background: Padding(
+        // Повторяет нижний зазор SparkListCard, чтобы красная подложка не
+        // светилась в промежутке между карточками.
+        padding: const EdgeInsets.only(bottom: SparkSpace.lg),
+        child: Container(
+          decoration: BoxDecoration(
+            color: kRedColor,
+            borderRadius: BorderRadius.circular(SparkRadius.lg),
+          ),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: SparkSpace.xl),
+          child: const Icon(Icons.delete_outline_rounded, color: kWhiteColor),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 1) Title (left) + 3) icon-only delete button (top-right).
-            //
-            // Placement follows Material 3 ListTile.trailing + iOS cell
-            // accessory conventions: secondary destructive action sits in
-            // the top-right corner, well away from the primary "continue"
-            // tap target that covers the rest of the card. IconButton
-            // renders a 48×48 logical-px tap area by default, so the icon
-            // can stay visually small (22 pt) without shrinking the hit
-            // zone.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Padding(
-                    // Nudge the title down so it visually aligns with the
-                    // centre of the 48-pt IconButton on the right.
-                    padding: const EdgeInsets.only(top: SparkSpace.xs),
-                    child: MyText(
-                      text: title,
-                      size: SparkTextSize.title,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.sm),
-                IconButton(
-                  onPressed: () => _deleteDraft(sjRead(draft, 'id')),
-                  tooltip: 'Удалить черновик',
-                  icon: const Icon(Icons.delete_outline_rounded),
-                  color: kRedColor,
-                  iconSize: 22,
-                  visualDensity: VisualDensity.compact,
-                  // Keep the IconButton tight to the card edge so it
-                  // doesn't steal vertical height but still has the
-                  // Material 48×48 minimum tap area via the default
-                  // constraints.
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 40,
-                    minHeight: 40,
-                  ),
-                ),
-              ],
-            ),
-            // 2) Last-modified date as a subtitle under the title.
-            MyText(
-              text: 'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-              paddingTop: SparkSpace.xxs,
-            ),
-            if (_isIncomingDraft(draft)) ...[
-              const SizedBox(height: SparkSpace.sm),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: _statusPill(
-                  label: _incomingChipLabel(draft),
-                  icon: Icons.inbox_rounded,
-                ),
-              ),
-            ],
-            const SizedBox(height: SparkSpace.md),
-            // Single-colour progress bar — just "filled / total" sections with
-            // no required/optional distinction.
-            //
-            // Wrapped in Semantics so VoiceOver / TalkBack announce the
-            // progress as a single coherent node ("Прогресс заполнения,
-            // заполнено X из Y, Z процентов") instead of reading the bare
-            // counter text next to a silent progress bar. `container: true`
-            // promotes this into its own a11y element; `excludeSemantics`
-            // on the children prevents the MyText counter from being read
-            // a second time.
-            Semantics(
-              container: true,
-              label: 'Прогресс заполнения отчёта',
-              value: 'Заполнено $filled из $total',
-              excludeSemantics: true,
-              child: Row(
+      ),
+      onDismissed: (_) => _onDraftSwiped(id),
+      child: RepaintBoundary(
+        child: SparkListCard(
+          onTap: () => _openDraft(draft),
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.xl,
+            vertical: SparkSpace.lg,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
                 children: [
+                  _leadingTile(
+                    icon: Icons.edit_outlined,
+                    accent: kSecondaryColor,
+                  ),
+                  const SizedBox(width: SparkSpace.xl),
                   Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(SparkRadius.pill),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 6,
-                        backgroundColor: kSecondaryColor.withValues(
-                          alpha: 0.12,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        MyText(
+                          text: title,
+                          size: SparkTextSize.title,
+                          weight: FontWeight.w700,
+                          maxLines: 1,
+                          textOverflow: TextOverflow.ellipsis,
                         ),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          filled == total ? kGreenColor : kSecondaryColor,
+                        MyText(
+                          text:
+                              'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                          paddingTop: SparkSpace.xxs,
                         ),
-                      ),
+                      ],
                     ),
                   ),
-                  const SizedBox(width: SparkSpace.md),
-                  MyText(
-                    text: 'Заполнено $filled из $total',
-                    size: SparkTextSize.chip,
-                    color: kGreyColor,
-                    weight: FontWeight.w600,
-                    tabularFigures: true,
+                  const SizedBox(width: SparkSpace.sm),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: kBorderColor,
                   ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(height: SparkSpace.xxl),
+              // Сегментированный прогресс — filled / total секций.
+              //
+              // Обёрнут в Semantics, чтобы VoiceOver / TalkBack озвучивали
+              // прогресс единым узлом ("Прогресс заполнения, заполнено X из Y")
+              // вместо чтения голого счётчика рядом с немой полосой.
+              Semantics(
+                container: true,
+                label: 'Прогресс заполнения отчёта',
+                value: 'Заполнено $filled из $total',
+                excludeSemantics: true,
+                child: Row(
+                  children: [
+                    Expanded(child: _segmentedProgress(filled, total)),
+                    const SizedBox(width: SparkSpace.md),
+                    MyText(
+                      text: '$filled из $total',
+                      size: SparkTextSize.body,
+                      color: kGreyColor,
+                      weight: FontWeight.w700,
+                      tabularFigures: true,
+                    ),
+                  ],
+                ),
+              ),
+              if (remaining.isNotEmpty) ...[
+                const SizedBox(height: SparkSpace.md),
+                MyText(
+                  text: 'Осталось: ${remaining.join(', ')}',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                ),
+              ],
+            ],
+          ),
         ),
       ),
     );
@@ -867,8 +992,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
   /// Card for drafts assigned to someone else (company view). Shows
   /// the current status in place of the "Заполнено X из Y" progress
-  /// row, and swaps the inline delete button for a chevron — the
-  /// delete + unassign actions live in the detail sheet.
+  /// row and a chevron instead of swipe-to-delete — the delete +
+  /// unassign actions live in the detail sheet.
   Widget _buildAssignedDraftCard(Map<String, dynamic> draft, String title) {
     final statusLabel = _assignedStatusLabel(draft);
     return RepaintBoundary(
@@ -883,26 +1008,39 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                _leadingTile(
+                  icon: Icons.assignment_ind_outlined,
+                  accent: kSecondaryColor,
+                ),
+                const SizedBox(width: SparkSpace.xl),
                 Expanded(
-                  child: MyText(
-                    text: title,
-                    size: SparkTextSize.title,
-                    weight: FontWeight.w700,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MyText(
+                        text: title,
+                        size: SparkTextSize.title,
+                        weight: FontWeight.w700,
+                        maxLines: 1,
+                        textOverflow: TextOverflow.ellipsis,
+                      ),
+                      MyText(
+                        text:
+                            'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        paddingTop: SparkSpace.xxs,
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: SparkSpace.sm),
-                const Icon(Icons.chevron_right_rounded, color: kGreyColor),
+                const Icon(Icons.chevron_right_rounded, color: kBorderColor),
               ],
             ),
-            MyText(
-              text: 'Изменён ${sjFormatDate(sjRead(draft, 'updatedAt'))}',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-              paddingTop: SparkSpace.xxs,
-            ),
-            const SizedBox(height: SparkSpace.md),
+            const SizedBox(height: SparkSpace.xxl),
             Align(
               alignment: Alignment.centerLeft,
               child: _statusPill(label: statusLabel),
@@ -915,35 +1053,41 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
   Widget _buildCompletedCard(Map<String, dynamic> report) {
     final requestContext = sparkJoyReportRequestContext(report);
+    const carFallback = 'Отчёт';
     final car = [
       sjRead(report, 'car'),
       [
         sjRead(report, 'make'),
         sjRead(report, 'model'),
       ].where((e) => e.isNotEmpty).join(' '),
-    ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => 'Отчёт');
+    ].firstWhere((e) => e.trim().isNotEmpty, orElse: () => carFallback);
 
     final title = sjRead(report, 'reportName', fallback: car);
+    // Имя авто — первично в заголовке (как в макете); reportName только как
+    // фолбэк, когда данных об авто нет.
+    final displayTitle = car != carFallback ? car : title;
+    // «Номер уже в заголовке» считаем по РЕАЛЬНО показываемому заголовку
+    // (displayTitle), а не по reportName: иначе, когда номер сидит в
+    // reportName, а в заголовке отображается имя авто, строку-источник
+    // скрыли бы — и номер заявки исчез бы с карточки вовсе.
     final requestNumberInTitle =
         requestContext.requestNumber.trim().isNotEmpty &&
-        title.toLowerCase().contains(
+        displayTitle.toLowerCase().contains(
           requestContext.requestNumber.trim().toLowerCase(),
         );
-    final verdict = sjRead(report, 'verdict');
-    final score = sjRead(report, 'score');
     final reportKey = _reportIdentityKey(report);
     final shareLoading =
         reportKey.isNotEmpty && _sharingReportKeys.contains(reportKey);
     final openLoading =
         reportKey.isNotEmpty && _openingReportKeys.contains(reportKey);
 
-    final metaParts = <String>[
-      if (_reportNumber(report).isNotEmpty) 'Отчёт №${_reportNumber(report)}',
-      if (car != title && car.isNotEmpty) car,
-      if (sjRead(report, 'vin').isNotEmpty) sjRead(report, 'vin'),
-      if (sjRead(report, 'mileage').isNotEmpty)
-        sjFormatMileage(sjRead(report, 'mileage')),
-    ];
+    final reportNumber = _reportNumber(report);
+    final vin = sjRead(report, 'vin');
+    final createdDate = sjFormatDate(sjRead(report, 'createdAt'));
+    final metaLine = [
+      if (reportNumber.isNotEmpty) 'Отчёт №$reportNumber',
+      if (createdDate.isNotEmpty) createdDate,
+    ].join(' · ');
 
     // Same RepaintBoundary reasoning as _buildDraftCard — keeps scrolled
     // completed cards out of the repaint queue.
@@ -958,24 +1102,39 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header: title + meta on the left, date on the right.
+            // Плитка + авто/№/дата/VIN слева, кнопка «Поделиться» справа.
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                _leadingTile(
+                  icon: Icons.directions_car_rounded,
+                  accent: kSecondaryColor,
+                ),
+                const SizedBox(width: SparkSpace.xl),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       MyText(
-                        text: title,
-                        size: SparkTextSize.bodyLg,
+                        text: displayTitle,
+                        size: SparkTextSize.title,
                         weight: FontWeight.w700,
+                        maxLines: 1,
+                        textOverflow: TextOverflow.ellipsis,
                       ),
-                      if (metaParts.isNotEmpty)
+                      if (metaLine.isNotEmpty)
                         MyText(
-                          text: metaParts.join(' · '),
+                          text: metaLine,
                           size: SparkTextSize.caption,
                           color: kGreyColor,
+                          paddingTop: SparkSpace.xxs,
+                        ),
+                      if (vin.isNotEmpty)
+                        MyText(
+                          text: 'VIN · $vin',
+                          size: SparkTextSize.caption,
+                          color: kGreyColor,
+                          tabularFigures: true,
                           paddingTop: SparkSpace.xxs,
                         ),
                     ],
@@ -989,71 +1148,32 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 else
-                  MyText(
-                    text: sjFormatDate(sjRead(report, 'createdAt')),
-                    size: SparkTextSize.chip,
-                    color: kGreyColor,
-                  ),
-              ],
-            ),
-            if (requestContext.hasAny &&
-                !(requestNumberInTitle && !requestContext.hasSpecialist)) ...[
-              const SizedBox(height: SparkSpace.md),
-              _buildCompletedRequestContext(
-                requestContext,
-                hideRequestLabel: requestNumberInTitle,
-              ),
-            ],
-            const SizedBox(height: SparkSpace.md),
-            // Verdict + score chips on the left, share button on the right.
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Expanded(
-                  child: Wrap(
-                    spacing: SparkSpace.sm,
-                    runSpacing: SparkSpace.xs,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      SparkChip(
-                        text: sparkVerdictLabel(verdict),
-                        background: sparkVerdictColor(
-                          verdict,
-                        ).withValues(alpha: 0.12),
-                        color: sparkVerdictColor(verdict),
-                      ),
-                      if (score.isNotEmpty && score != '—')
-                        SparkChip(
-                          text: score,
-                          background: kSecondaryColor.withValues(alpha: 0.08),
-                          color: kSecondaryColor,
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.md),
-                InkWell(
-                  onTap: shareLoading
-                      ? null
-                      : () => _createAndCopyReportShareLink(report),
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  child: Padding(
-                    padding: const EdgeInsets.all(SparkSpace.sm),
+                  _squareIconButton(
+                    onTap: shareLoading
+                        ? null
+                        : () => _createAndCopyReportShareLink(report),
                     child: shareLoading
                         ? const SizedBox(
                             width: SparkSize.iconSm,
                             height: SparkSize.iconSm,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Icon(
+                        : const Icon(
                             Icons.share_outlined,
                             size: SparkSize.iconMd,
                             color: kSecondaryColor,
                           ),
                   ),
-                ),
               ],
             ),
+            if (requestContext.hasAny &&
+                !(requestNumberInTitle && !requestContext.hasSpecialist)) ...[
+              const SizedBox(height: SparkSpace.xl),
+              _buildCompletedRequestContext(
+                requestContext,
+                hideRequestLabel: requestNumberInTitle,
+              ),
+            ],
           ],
         ),
       ),
@@ -1176,13 +1296,45 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, _) {
-        final drafts = _controller.filteredDrafts;
+        // Смахнутые черновики, ждущие коммита удаления, скрываем сразу —
+        // Dismissible требует, чтобы dismissed-виджет ушёл из дерева на
+        // первом же ребилде (данные при этом ещё в storage — см.
+        // _onDraftSwiped). Счётчик вкладки тоже считается без них.
+        final drafts = _controller.filteredDrafts
+            .where((d) => !_pendingDraftDeletionIds.contains(sjRead(d, 'id')))
+            .toList();
         final completed = _controller.filteredCompleted;
+
+        // Подзаголовок-счётчик под заголовком «Отчёты». Пока идёт первичная
+        // загрузка завершённых (список ещё пуст) — показываем только черновики,
+        // чтобы не мигать «0 завершённых».
+        final draftsCount = drafts.length;
+        final completedUnknown =
+            _controller.completedLoading && completed.isEmpty;
+        final completedCount = completed.length;
+        final draftsLabel =
+            '$draftsCount ${_pluralRu(draftsCount, 'черновик', 'черновика', 'черновиков')}';
+        final completedLabel =
+            '$completedCount ${_pluralRu(completedCount, 'завершённый', 'завершённых', 'завершённых')}';
+        final countsSummary = completedUnknown
+            ? draftsLabel
+            : '$draftsLabel · $completedLabel';
 
         return SparkScreenList(
           bottomInset: 56,
           onRefresh: _load,
           children: [
+            Padding(
+              padding: const EdgeInsets.only(
+                left: SparkSpace.xxs,
+                bottom: SparkSpace.md,
+              ),
+              child: MyText(
+                text: countsSummary,
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+              ),
+            ),
             SparkPrimaryActionButton(
               label: 'Создать новый отчёт',
               onTap: _openNewReport,
@@ -1558,7 +1710,6 @@ class _SparkJoyReportsListController extends ChangeNotifier {
 class _DraftSectionStatus {
   const _DraftSectionStatus({required this.label, required this.filled});
 
-  // ignore: unused_field
   final String label;
   final bool filled;
 }

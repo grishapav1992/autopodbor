@@ -226,6 +226,7 @@ class _SparkJoySpecialistRequestsScreenState
       children: [
         SparkJoyRequestFilterBar(
           value: _statusFilter,
+          searchHint: 'Номер или авто',
           onQueryChanged: (query) => setState(() => _query = query.trim()),
           onChanged: (filter) {
             if (filter == _statusFilter) return;

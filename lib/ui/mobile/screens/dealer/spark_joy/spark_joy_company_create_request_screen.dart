@@ -66,8 +66,10 @@ class _SparkJoyCompanyCreateRequestScreenState
   // Specialist
   SelectedAssignee? _assignee;
 
-  // Due date
-  final _dueAtController = TextEditingController();
+  // Due date (tap-to-pick; default +7 дней). В черновике хранится как
+  // RU-строка ДД.ММ.ГГГГ — обратная совместимость со старым форматом,
+  // когда срок был текстовым полем.
+  DateTime _dueAt = DateTime.now().add(const Duration(days: 7));
 
   // Note
   final _noteController = TextEditingController();
@@ -85,8 +87,6 @@ class _SparkJoyCompanyCreateRequestScreenState
   @override
   void initState() {
     super.initState();
-    final defaultDue = DateTime.now().add(const Duration(days: 7));
-    _dueAtController.text = _formatRuDate(defaultDue);
     _addDraftListeners();
     unawaited(_loadDraft());
     // Страховочный пинок фонового синка каталога (идемпотентный): если
@@ -109,7 +109,6 @@ class _SparkJoyCompanyCreateRequestScreenState
     _budgetToController.dispose();
     _maxMileageController.dispose();
     _ownersCountController.dispose();
-    _dueAtController.dispose();
     _noteController.dispose();
     super.dispose();
   }
@@ -133,7 +132,6 @@ class _SparkJoyCompanyCreateRequestScreenState
     _budgetToController,
     _maxMileageController,
     _ownersCountController,
-    _dueAtController,
     _noteController,
   ];
 
@@ -163,9 +161,9 @@ class _SparkJoyCompanyCreateRequestScreenState
       _budgetToController.text = _draftString(draft['budgetTo']);
       _maxMileageController.text = _draftString(draft['maxMileage']);
       _ownersCountController.text = _draftString(draft['ownersCount']);
-      final dueAt = _draftString(draft['dueAt']);
-      if (dueAt.isNotEmpty) {
-        _dueAtController.text = dueAt;
+      final dueAt = _parseRuDate(_draftString(draft['dueAt']));
+      if (dueAt != null) {
+        _dueAt = dueAt;
       }
       _noteController.text = _draftString(draft['note']);
     });
@@ -201,7 +199,7 @@ class _SparkJoyCompanyCreateRequestScreenState
       'budgetTo': _budgetToController.text,
       'maxMileage': _maxMileageController.text,
       'ownersCount': _ownersCountController.text,
-      'dueAt': _dueAtController.text,
+      'dueAt': _formatRuDate(_dueAt),
       'note': _noteController.text,
       'assignee': _assigneeToDraft(_assignee),
     };
@@ -279,15 +277,6 @@ class _SparkJoyCompanyCreateRequestScreenState
     return '${_brandLabel(_brand!)} ${_modelLabel(_model!)}';
   }
 
-  String get _carName {
-    final parts = <String>[
-      if (_brand != null) _brandLabel(_brand!),
-      if (_model != null) _modelLabel(_model!),
-      if (_generation != null) _generation!.generation.toString(),
-    ];
-    return parts.where((value) => value.trim().isNotEmpty).join(' ');
-  }
-
   String get _carMetaLabel {
     final parts = <String>[
       if (_generation != null) 'Поколение ${_generation!.yearRangeOrNumber}',
@@ -333,6 +322,22 @@ class _SparkJoyCompanyCreateRequestScreenState
     _scheduleDraftAutosave();
   }
 
+  // ─── Due date ───────────────────────────────────────────────────────
+
+  Future<void> _pickDueDate() async {
+    final picked = await showAppAdaptiveBottomSheet<DateTime>(
+      context: context,
+      extent: AppBottomSheetExtent.content,
+      builder: (context) => _DueDatePickerSheet(initial: _dueAt),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _dueAt = picked);
+    _scheduleDraftAutosave();
+  }
+
+  /// «19.07.2026 · через 7 дней» — value для тап-строки срока.
+  String get _dueValueLabel => '${_formatRuDate(_dueAt)} · ${_dueRelativeLabel(_dueAt)}';
+
   // ─── Submit ─────────────────────────────────────────────────────────
 
   Future<void> _submit() async {
@@ -349,11 +354,7 @@ class _SparkJoyCompanyCreateRequestScreenState
       return;
     }
 
-    final dueAt = _parseRuDate(_dueAtController.text);
-    if (dueAt == null) {
-      _setSubmitValidationError('Срок: формат ДД.ММ.ГГГГ');
-      return;
-    }
+    final dueAt = _dueAt;
     if (dueAt.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
       _setSubmitValidationError('Срок не может быть в прошлом');
       return;
@@ -460,17 +461,66 @@ class _SparkJoyCompanyCreateRequestScreenState
 
   @override
   Widget build(BuildContext context) {
+    final progress = _ProgressState.from(
+      carDone: _restyling != null,
+      specialistDone: _assignee != null,
+      dueDone: !_dueAt.isBefore(_todayMidnight()),
+    );
     return Scaffold(
       backgroundColor: kPrimaryColor,
-      appBar: sparkAppBar(title: 'Создать заявку'),
+      appBar: _CreateRequestAppBar(
+        progress: progress.fraction,
+        rightLabel: progress.rightLabel,
+        hint: progress.hint,
+      ),
+      bottomNavigationBar: SafeArea(top: false, child: _submitFooter()),
       body: SparkScreenList(
-        bottomInset: 24,
+        bottomInset: SparkSize.pageBottomInset,
         children: [
-          // ── Автомобиль ───────────────────────────────────────────────
-          const SparkSectionTitle('Автомобиль'),
-          _carSelectionCard(),
-          const SizedBox(height: SparkSpace.md),
-          SparkCard(
+          // ── Автомобиль (required) ────────────────────────────────────
+          _carCard(),
+          const SizedBox(height: SparkSpace.lg),
+
+          // ── Специалист (required) ────────────────────────────────────
+          _tapRowCard(
+            icon: Icons.person_outline_rounded,
+            label: 'Специалист',
+            value: _assignee == null
+                ? 'Выбрать исполнителя'
+                : _assignee!.displayName,
+            placeholder: _assignee == null,
+            required: true,
+            onTap: _pickAssignee,
+            trailing: _assignee == null
+                ? null
+                : IconButton(
+                    onPressed: _clearAssignee,
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      size: SparkSize.iconMd,
+                      color: kGreyColor,
+                    ),
+                    tooltip: 'Очистить',
+                    visualDensity: VisualDensity.compact,
+                  ),
+          ),
+          const SizedBox(height: SparkSpace.lg),
+
+          // ── Срок (required) ──────────────────────────────────────────
+          _tapRowCard(
+            icon: Icons.event_rounded,
+            label: 'Срок исполнения',
+            value: _dueValueLabel,
+            placeholder: false,
+            required: true,
+            onTap: _pickDueDate,
+          ),
+          const SizedBox(height: SparkSpace.lg),
+
+          // ── Контакты продавца ────────────────────────────────────────
+          _sectionCard(
+            icon: Icons.call_outlined,
+            title: 'Контакты продавца',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -481,11 +531,14 @@ class _SparkJoyCompanyCreateRequestScreenState
                   inputFormatters: [RuPhoneFormatter()],
                   onTapOutside: (_) =>
                       FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: sparkInputDecoration('+7-___-___-__-__'),
+                  decoration: sparkInputDecoration(
+                    '+7-___-___-__-__',
+                    dense: true,
+                  ),
                 ),
                 const SizedBox(height: SparkSpace.lg),
                 const _FieldLabel(
-                  text: 'Ссылка на сторонний ресурс',
+                  text: 'Ссылка на объявление',
                   required: false,
                 ),
                 TextField(
@@ -494,19 +547,19 @@ class _SparkJoyCompanyCreateRequestScreenState
                   onTapOutside: (_) =>
                       FocusManager.instance.primaryFocus?.unfocus(),
                   decoration: sparkInputDecoration(
-                    'auto.ru, avito.ru, drive.google.com/...',
+                    'auto.ru, avito.ru, drive.google.com/…',
+                    dense: true,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(height: SparkSpace.lg),
 
           // ── Заметка ──────────────────────────────────────────────────
-          // Подняли сразу под «Автомобиль» — заметка про авто (VIN,
-          // госномер, инструкции) логически ближе к car-блоку чем к
-          // параметрам подбора / специалисту.
-          const SparkSectionTitle('Заметка', top: SparkSpace.xxl),
-          SparkCard(
+          _sectionCard(
+            icon: Icons.sticky_note_2_outlined,
+            title: 'Заметка для специалиста',
             child: TextField(
               controller: _noteController,
               maxLines: 5,
@@ -526,147 +579,91 @@ class _SparkJoyCompanyCreateRequestScreenState
               ),
             ),
           ),
+          const SizedBox(height: SparkSpace.lg),
 
           // ── Параметры подбора ────────────────────────────────────────
-          const SparkSectionTitle('Параметры подбора', top: SparkSpace.xxl),
-          SparkCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.md,
-              vertical: SparkSpace.sm,
-            ),
-            child: SparkProfileRow(
-              icon: Icons.location_on_outlined,
-              label: 'Город',
-              value: _city.isEmpty ? 'Не указан' : _city,
-              valueIsPlaceholder: _city.isEmpty,
-              onTap: _pickCity,
-            ),
-          ),
-          const SizedBox(height: SparkSpace.md),
-          SparkCard(
+          _sectionCard(
+            icon: Icons.tune_rounded,
+            title: 'Параметры подбора',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                _cityRow(),
+                const SizedBox(height: SparkSpace.lg),
                 Row(
                   children: [
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _FieldLabel(text: 'Бюджет от', required: false),
-                          TextField(
-                            controller: _budgetFromController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              // 9 digits (макс. 999_999_999 ₽) — sane
-                              // максимум для авто, помещается в int32 на
-                              // случай если бэк не 64-bit.
-                              LengthLimitingTextInputFormatter(9),
-                            ],
-                            onTapOutside: (_) =>
-                                FocusManager.instance.primaryFocus?.unfocus(),
-                            decoration: sparkInputDecoration('₽'),
-                          ),
+                      child: TextField(
+                        controller: _budgetFromController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          // 9 digits (макс. 999_999_999 ₽) — sane максимум
+                          // для авто, помещается в int32 на случай если бэк
+                          // не 64-bit.
+                          LengthLimitingTextInputFormatter(9),
                         ],
+                        onTapOutside: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        decoration: sparkInputDecoration(
+                          'Бюджет от, ₽',
+                          dense: true,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: SparkSpace.md),
+                    const SizedBox(width: SparkSpace.lg),
                     Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const _FieldLabel(text: 'Бюджет до', required: false),
-                          TextField(
-                            controller: _budgetToController,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(9),
-                            ],
-                            onTapOutside: (_) =>
-                                FocusManager.instance.primaryFocus?.unfocus(),
-                            decoration: sparkInputDecoration('₽'),
-                          ),
+                      child: TextField(
+                        controller: _budgetToController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(9),
                         ],
+                        onTapOutside: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        decoration: sparkInputDecoration('до, ₽', dense: true),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: SparkSpace.lg),
-                const _FieldLabel(text: 'Макс. пробег, км', required: false),
-                TextField(
-                  controller: _maxMileageController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(7),
-                  ],
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: sparkInputDecoration('например, 150000'),
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                const _FieldLabel(
-                  text: 'Макс. число владельцев',
-                  required: false,
-                ),
-                TextField(
-                  controller: _ownersCountController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(2),
-                  ],
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: sparkInputDecoration('например, 2'),
-                ),
-              ],
-            ),
-          ),
-
-          // ── Специалист ───────────────────────────────────────────────
-          const SparkSectionTitle('Специалист', top: SparkSpace.xxl),
-          SparkCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.md,
-              vertical: SparkSpace.sm,
-            ),
-            child: SparkProfileRow(
-              icon: Icons.person_outline,
-              label: 'Назначен',
-              value: _assignee == null ? 'Не выбран' : _assignee!.displayName,
-              valueIsPlaceholder: _assignee == null,
-              trailing: _assignee == null
-                  ? null
-                  : IconButton(
-                      onPressed: _clearAssignee,
-                      icon: const Icon(
-                        Icons.close_rounded,
-                        size: SparkSize.iconMd,
-                        color: kGreyColor,
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _maxMileageController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(7),
+                        ],
+                        onTapOutside: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        decoration: sparkInputDecoration(
+                          'Пробег до, км',
+                          dense: true,
+                        ),
                       ),
-                      tooltip: 'Очистить',
                     ),
-              onTap: _pickAssignee,
-            ),
-          ),
-
-          // ── Срок ─────────────────────────────────────────────────────
-          const SparkSectionTitle('Срок', top: SparkSpace.xxl),
-          SparkCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const _FieldLabel(text: 'Срок исполнения', required: true),
-                TextField(
-                  controller: _dueAtController,
-                  keyboardType: TextInputType.datetime,
-                  inputFormatters: [_RuDateFormatter()],
-                  onTapOutside: (_) =>
-                      FocusManager.instance.primaryFocus?.unfocus(),
-                  decoration: sparkInputDecoration('ДД.ММ.ГГГГ'),
+                    const SizedBox(width: SparkSpace.lg),
+                    Expanded(
+                      child: TextField(
+                        controller: _ownersCountController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(2),
+                        ],
+                        onTapOutside: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        decoration: sparkInputDecoration(
+                          'Владельцев',
+                          dense: true,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -684,122 +681,287 @@ class _SparkJoyCompanyCreateRequestScreenState
               topPadding: 0,
             ),
           ],
-
-          const SizedBox(height: SparkSpace.xxl),
-          SparkPrimaryActionButton(
-            label: _submitting ? 'Отправляем...' : 'Отправить',
-            icon: Icons.send_rounded,
-            busy: _submitting,
-            onTap: _submit,
-          ),
-          const SizedBox(height: SparkSpace.lg),
         ],
       ),
     );
   }
 
-  Widget _carSelectionCard() {
-    final carButtonTitle = _carButtonName;
-    final carTitle = _carName;
-    final carMeta = _carMetaLabel;
-    final carPhotoUrl = _carPhotoUrl;
-    final showDetails =
-        carPhotoUrl.trim().isNotEmpty ||
-        carTitle != carButtonTitle ||
-        carMeta.isNotEmpty;
+  // ─── UI helpers ─────────────────────────────────────────────────────
 
-    return SparkCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  /// Sticky-footer с основной кнопкой отправки (белая подложка + верхняя
+  /// граница, как в макете). Оборачивается в SafeArea выше по дереву.
+  Widget _submitFooter() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: kWhiteColor,
+        border: Border(top: BorderSide(color: kBorderColor)),
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xxxl,
+        SparkSpace.xl,
+        SparkSpace.xxxl,
+        SparkSpace.xxxl,
+      ),
+      child: SparkPrimaryActionButton(
+        label: _submitting ? 'Отправляем…' : 'Отправить заявку',
+        icon: Icons.send_rounded,
+        busy: _submitting,
+        onTap: _submit,
+      ),
+    );
+  }
+
+  /// 44×44 скруглённый квадрат с иконкой — leading-акцент tap-строк.
+  Widget _iconSquare(IconData icon) {
+    return Container(
+      width: SparkSize.icon5xl,
+      height: SparkSize.icon5xl,
+      decoration: BoxDecoration(
+        color: kSurfaceTint,
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: SparkSize.iconLg, color: kSecondaryColor),
+    );
+  }
+
+  /// Caption-label над value в tap-строке; с красной `*` для обязательных.
+  Widget _rowLabel(String text, bool required) {
+    if (!required) {
+      return MyText(text: text, size: SparkTextSize.body, color: kGreyColor);
+    }
+    return RichText(
+      text: TextSpan(
         children: [
-          InkWell(
-            onTap: _openCarPickerDialog,
-            borderRadius: BorderRadius.circular(SparkRadius.lg),
-            child: Container(
-              height: SparkSize.inputHeightLg,
-              padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
-              decoration: BoxDecoration(
-                border: Border.all(color: kBorderColor),
-                borderRadius: BorderRadius.circular(SparkRadius.lg),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: MyText(
-                      text: _restyling == null
-                          ? 'Выбрать автомобиль'
-                          : carButtonTitle,
-                      size: SparkTextSize.bodyLg,
-                      color: _restyling == null ? kGreyColor : kTertiaryColor,
-                      maxLines: 1,
-                    ),
-                  ),
-                  const Icon(Icons.chevron_right_rounded, color: kGreyColor),
-                ],
-              ),
+          TextSpan(
+            text: text,
+            style: const TextStyle(
+              fontSize: SparkTextSize.body,
+              color: kGreyColor,
             ),
           ),
-          if (showDetails) ...[
-            const SizedBox(height: SparkSpace.md),
-            SparkCard(
-              padding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.lg,
-                vertical: SparkSpace.md,
+          const TextSpan(
+            text: ' *',
+            style: TextStyle(
+              fontSize: SparkTextSize.body,
+              color: kRedColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Тапабельная карточка-строка (иконка-квадрат + label/value + шеврон).
+  /// Используется для «Специалист» и «Срок».
+  Widget _tapRowCard({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool placeholder,
+    required VoidCallback onTap,
+    bool required = false,
+    Widget? trailing,
+  }) {
+    return SparkCard(
+      onTap: onTap,
+      padding: const EdgeInsets.all(SparkSpace.xxl),
+      child: Row(
+        children: [
+          _iconSquare(icon),
+          const SizedBox(width: SparkSpace.xl),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _rowLabel(label, required),
+                const SizedBox(height: SparkSpace.xxs),
+                MyText(
+                  text: value,
+                  size: SparkTextSize.label,
+                  weight: placeholder ? FontWeight.w500 : FontWeight.w600,
+                  color: placeholder ? kGreyColor : kTertiaryColor,
+                  maxLines: 1,
+                  textOverflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) ...[
+            const SizedBox(width: SparkSpace.sm),
+            trailing,
+          ],
+          const SizedBox(width: SparkSpace.xs),
+          const Icon(
+            Icons.chevron_right_rounded,
+            size: SparkSize.iconLg,
+            color: kGreyColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Карточка-секция с header-строкой (иконка + заголовок) и телом.
+  Widget _sectionCard({
+    required IconData icon,
+    required String title,
+    required Widget child,
+  }) {
+    return SparkCard(
+      padding: const EdgeInsets.all(SparkSpace.xxl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: SparkSize.iconLg, color: kSecondaryColor),
+              const SizedBox(width: SparkSpace.xl),
+              Expanded(
+                child: MyText(
+                  text: title,
+                  size: SparkTextSize.label,
+                  weight: FontWeight.w700,
+                  color: kTertiaryColor,
+                ),
               ),
-              elevated: false,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (carPhotoUrl.trim().isNotEmpty) ...[
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(SparkRadius.sm),
-                            child: CachedNetworkImage(
-                              imageUrl: carPhotoUrl.trim(),
-                              width: double.infinity,
-                              height: SparkSize.mediaCardThumb,
-                              fit: BoxFit.cover,
-                              errorWidget: (context, url, error) {
-                                return Container(
-                                  width: double.infinity,
-                                  height: SparkSize.mediaCardThumb,
-                                  color: kLightGreyColor,
-                                  alignment: Alignment.center,
-                                  child: const Icon(
-                                    Icons.directions_car_outlined,
-                                    color: kGreyColor,
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                          if (carTitle != carButtonTitle || carMeta.isNotEmpty)
-                            const SizedBox(height: SparkSpace.md),
-                        ],
-                        if (carTitle != carButtonTitle && carTitle.isNotEmpty)
-                          MyText(
-                            text: carTitle,
-                            size: SparkTextSize.body,
-                            weight: FontWeight.w700,
-                          ),
-                        if (carMeta.isNotEmpty) ...[
-                          if (carTitle != carButtonTitle && carTitle.isNotEmpty)
-                            const SizedBox(height: SparkSpace.xxs),
-                          MyText(
-                            text: carMeta,
-                            size: SparkTextSize.caption,
-                            color: kGreyColor,
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
+            ],
+          ),
+          const SizedBox(height: SparkSpace.xl),
+          child,
+        ],
+      ),
+    );
+  }
+
+  /// Строка выбора города внутри «Параметры подбора».
+  Widget _cityRow() {
+    return InkWell(
+      onTap: _pickCity,
+      borderRadius: BorderRadius.circular(SparkRadius.md),
+      child: Container(
+        height: SparkSize.inputHeight,
+        padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
+        decoration: BoxDecoration(
+          border: Border.all(color: kBorderColor),
+          borderRadius: BorderRadius.circular(SparkRadius.md),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.location_on_outlined,
+              size: SparkSize.iconMd,
+              color: kGreyColor,
+            ),
+            const SizedBox(width: SparkSpace.md),
+            Expanded(
+              child: MyText(
+                text: _city.isEmpty ? 'Город подбора' : _city,
+                size: SparkTextSize.bodyLg,
+                color: _city.isEmpty ? kGreyColor : kTertiaryColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
               ),
             ),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: SparkSize.iconMd,
+              color: kGreyColor,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Карточка автомобиля. Пусто — тапабельная строка-приглашение; выбрано —
+  /// фото-баннер каталога (целиком, без обрезки) + название + «Изменить».
+  Widget _carCard() {
+    if (_restyling == null) {
+      return _tapRowCard(
+        icon: Icons.directions_car_outlined,
+        label: 'Автомобиль',
+        value: 'Выбрать из каталога',
+        placeholder: true,
+        required: true,
+        onTap: _openCarPickerDialog,
+      );
+    }
+    final meta = _carMetaLabel;
+    return Container(
+      decoration: BoxDecoration(
+        color: kWhiteColor,
+        borderRadius: BorderRadius.circular(SparkRadius.lg),
+        border: Border.all(color: kBorderColor),
+        boxShadow: _kCardShadow,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _CarPhotoBanner(url: _carPhotoUrl.trim()),
+          Padding(
+            padding: const EdgeInsets.all(SparkSpace.xxl),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const MyText(
+                        text: 'Автомобиль',
+                        size: SparkTextSize.body,
+                        color: kGreyColor,
+                      ),
+                      const SizedBox(height: SparkSpace.xxs),
+                      MyText(
+                        text: _carButtonName,
+                        size: SparkTextSize.sectionTitle,
+                        weight: FontWeight.w700,
+                        color: kTertiaryColor,
+                        maxLines: 1,
+                        textOverflow: TextOverflow.ellipsis,
+                      ),
+                      if (meta.isNotEmpty) ...[
+                        const SizedBox(height: SparkSpace.xxs),
+                        MyText(
+                          text: meta,
+                          size: SparkTextSize.body,
+                          color: kGreyColor,
+                          maxLines: 2,
+                          textOverflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(width: SparkSpace.xl),
+                OutlinedButton(
+                  onPressed: _openCarPickerDialog,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: kSecondaryColor,
+                    backgroundColor: kWhiteColor,
+                    side: const BorderSide(color: kBorderColor),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: SparkSpace.xl,
+                    ),
+                    minimumSize: const Size(0, SparkSize.actionCompactHeight),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SparkRadius.sm),
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: SparkTextSize.body,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  child: const Text('Изменить'),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -844,6 +1006,434 @@ class _FieldLabel extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Redesign primitives ──────────────────────────────────────────────
+
+/// Подложка фото-баннера каталога (совпадает с fallback-фоном макета).
+const Color _kCarPhotoBg = Color(0xFFEDF1F6);
+
+/// Трек прогресс-бара в шапке.
+const Color _kProgressTrack = Color(0xFFE1E6EC);
+
+/// Высота фото-баннера авто (по макету).
+const double _kCarPhotoHeight = 158;
+
+/// Тень карточки (совпадает с SparkCard.elevated).
+const List<BoxShadow> _kCardShadow = [
+  BoxShadow(
+    color: kShadowColor,
+    blurRadius: 24,
+    offset: Offset(0, 8),
+    spreadRadius: -4,
+  ),
+];
+
+/// Производное состояние прогресса заполнения обязательных полей
+/// (авто / специалист / срок). Питает прогресс-бар и подсказку в шапке.
+class _ProgressState {
+  const _ProgressState({
+    required this.fraction,
+    required this.rightLabel,
+    required this.hint,
+  });
+
+  final double fraction;
+  final String rightLabel;
+  final String hint;
+
+  factory _ProgressState.from({
+    required bool carDone,
+    required bool specialistDone,
+    required bool dueDone,
+  }) {
+    final done = [carDone, specialistDone, dueDone].where((e) => e).length;
+    final fraction = done / 3;
+    String? next;
+    if (!carDone) {
+      next = 'выбрать автомобиль';
+    } else if (!specialistDone) {
+      next = 'назначить специалиста';
+    } else if (!dueDone) {
+      next = 'указать срок';
+    }
+    return _ProgressState(
+      fraction: fraction,
+      rightLabel: next == null ? 'Готово' : '${(fraction * 100).round()}%',
+      hint: next == null ? 'Можно отправлять заявку' : 'Осталось: $next',
+    );
+  }
+}
+
+/// Шапка экрана: «Назад» + заголовок + прогресс-бар и подсказка снизу.
+class _CreateRequestAppBar extends StatelessWidget
+    implements PreferredSizeWidget {
+  const _CreateRequestAppBar({
+    required this.progress,
+    required this.rightLabel,
+    required this.hint,
+  });
+
+  final double progress;
+  final String rightLabel;
+  final String hint;
+
+  static const double _titleHeight = 52;
+  static const double _progressHeight = 58;
+
+  @override
+  Size get preferredSize =>
+      const Size.fromHeight(_titleHeight + _progressHeight);
+
+  @override
+  Widget build(BuildContext context) {
+    final complete = progress >= 1;
+    return AppBar(
+      backgroundColor: kPrimaryColor,
+      foregroundColor: kSecondaryColor,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      toolbarHeight: _titleHeight,
+      titleSpacing: 0,
+      leading: IconButton(
+        onPressed: () => Navigator.of(context).maybePop(),
+        icon: const Icon(Icons.arrow_back_rounded),
+      ),
+      title: const MyText(
+        text: 'Создать заявку',
+        size: SparkTextSize.titleLg,
+        weight: FontWeight.w800,
+        color: kSecondaryColor,
+      ),
+      shape: const Border(
+        bottom: BorderSide(color: kBorderColor, width: SparkSpace.hairline),
+      ),
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(_progressHeight),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.section,
+            SparkSpace.xs,
+            SparkSpace.section,
+            SparkSpace.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: _GradientProgressBar(value: progress)),
+                  const SizedBox(width: SparkSpace.lg),
+                  MyText(
+                    text: rightLabel,
+                    size: SparkTextSize.body,
+                    weight: FontWeight.w700,
+                    color: complete ? kGreenColor : kSecondaryColor,
+                    tabularFigures: true,
+                  ),
+                ],
+              ),
+              const SizedBox(height: SparkSpace.sm),
+              MyText(
+                text: hint,
+                size: SparkTextSize.body,
+                color: kGreyColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Скруглённый прогресс-бар с брендовым сине-градиентным заполнением.
+class _GradientProgressBar extends StatelessWidget {
+  const _GradientProgressBar({required this.value});
+
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(SparkRadius.pill),
+      child: SizedBox(
+        height: SparkSize.progressThin,
+        child: ColoredBox(
+          color: _kProgressTrack,
+          child: AnimatedFractionallySizedBox(
+            duration: SparkMotion.regular,
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.centerLeft,
+            widthFactor: value.clamp(0.0, 1.0),
+            heightFactor: 1,
+            child: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [kAccentColor, kAccentGlow]),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Фото-баннер выбранного авто. Показывает картинку каталога ЦЕЛИКОМ
+/// (BoxFit.contain на подложке) — раньше BoxFit.cover обрезал широкие
+/// рендеры. При отсутствии/ошибке — аккуратный fallback как в макете.
+class _CarPhotoBanner extends StatelessWidget {
+  const _CarPhotoBanner({required this.url});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: _kCarPhotoHeight,
+      width: double.infinity,
+      color: _kCarPhotoBg,
+      alignment: Alignment.center,
+      child: url.isEmpty
+          ? const _CarPhotoFallback()
+          : CachedNetworkImage(
+              imageUrl: url,
+              width: double.infinity,
+              height: _kCarPhotoHeight,
+              fit: BoxFit.contain,
+              errorWidget: (context, _, _) => const _CarPhotoFallback(),
+              placeholder: (context, _) => const Center(
+                child: SizedBox(
+                  width: SparkSize.spinner,
+                  height: SparkSize.spinner,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class _CarPhotoFallback extends StatelessWidget {
+  const _CarPhotoFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: SparkSize.icon6xl,
+          height: SparkSize.icon6xl,
+          decoration: const BoxDecoration(
+            color: kWhiteColor,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: kShadowColor,
+                blurRadius: 10,
+                offset: Offset(0, 3),
+                spreadRadius: -2,
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.directions_car_outlined,
+            size: SparkSize.iconXxl,
+            color: kGreyColor,
+          ),
+        ),
+        const SizedBox(height: SparkSpace.lg),
+        const MyText(
+          text: 'Фото из каталога недоступно',
+          size: SparkTextSize.body,
+          color: kGreyColor,
+        ),
+      ],
+    );
+  }
+}
+
+/// Bottom-sheet выбора срока: быстрые пресеты + ручной RU-ввод. Заменяет
+/// нативный showDatePicker (в приложении нет flutter_localizations — он
+/// был бы англоязычным).
+class _DueDatePickerSheet extends StatefulWidget {
+  const _DueDatePickerSheet({required this.initial});
+
+  final DateTime initial;
+
+  @override
+  State<_DueDatePickerSheet> createState() => _DueDatePickerSheetState();
+}
+
+class _DueDatePickerSheetState extends State<_DueDatePickerSheet> {
+  late final TextEditingController _controller;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _formatRuDate(widget.initial));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _applyPreset(int days) {
+    setState(() {
+      _controller.text = _formatRuDate(_todayMidnight().add(Duration(days: days)));
+      _error = null;
+    });
+  }
+
+  void _confirm() {
+    final parsed = _parseRuDate(_controller.text);
+    if (parsed == null) {
+      setState(() => _error = 'Формат даты: ДД.ММ.ГГГГ');
+      return;
+    }
+    if (parsed.isBefore(_todayMidnight())) {
+      setState(() => _error = 'Срок не может быть в прошлом');
+      return;
+    }
+    HapticFeedback.selectionClick();
+    Navigator.of(context).pop(parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.section,
+        0,
+        SparkSpace.section,
+        SparkSpace.section,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const MyText(
+            text: 'Срок исполнения',
+            size: SparkTextSize.modalTitle,
+            weight: FontWeight.w800,
+          ),
+          const SizedBox(height: SparkSpace.xs),
+          const MyText(
+            text: 'Когда специалист должен выполнить заявку',
+            size: SparkTextSize.body,
+            color: kGreyColor,
+          ),
+          const SizedBox(height: SparkSpace.xl),
+          Wrap(
+            spacing: SparkSpace.md,
+            runSpacing: SparkSpace.md,
+            children: [
+              _DuePresetChip(label: 'Через 3 дня', onTap: () => _applyPreset(3)),
+              _DuePresetChip(label: 'Неделя', onTap: () => _applyPreset(7)),
+              _DuePresetChip(label: '2 недели', onTap: () => _applyPreset(14)),
+              _DuePresetChip(label: 'Месяц', onTap: () => _applyPreset(30)),
+            ],
+          ),
+          const SizedBox(height: SparkSpace.xl),
+          TextField(
+            controller: _controller,
+            keyboardType: TextInputType.datetime,
+            inputFormatters: [_RuDateFormatter()],
+            onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            onChanged: (_) {
+              if (_error != null) setState(() => _error = null);
+            },
+            decoration: sparkInputDecoration(
+              'ДД.ММ.ГГГГ',
+              prefixIcon: const Icon(Icons.event_rounded, color: kGreyColor),
+              errorText: _error,
+            ),
+          ),
+          const SizedBox(height: SparkSpace.xl),
+          SparkPrimaryActionButton(
+            label: 'Готово',
+            icon: Icons.check_rounded,
+            onTap: _confirm,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DuePresetChip extends StatelessWidget {
+  const _DuePresetChip({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap();
+        },
+        borderRadius: BorderRadius.circular(SparkRadius.pill),
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.chipX,
+            vertical: SparkSpace.lg,
+          ),
+          decoration: BoxDecoration(
+            color: kSurfaceTint,
+            borderRadius: BorderRadius.circular(SparkRadius.pill),
+            border: Border.all(color: kBorderColor),
+          ),
+          child: MyText(
+            text: label,
+            size: SparkTextSize.label,
+            weight: FontWeight.w700,
+            color: kSecondaryColor,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Сегодняшняя дата в полночь (для сравнения сроков без времени).
+DateTime _todayMidnight() {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month, now.day);
+}
+
+/// «сегодня» / «завтра» / «через N дней» / «просрочен» для строки срока.
+String _dueRelativeLabel(DateTime due) {
+  final diff = DateTime(
+    due.year,
+    due.month,
+    due.day,
+  ).difference(_todayMidnight()).inDays;
+  if (diff < 0) return 'просрочен';
+  if (diff == 0) return 'сегодня';
+  if (diff == 1) return 'завтра';
+  return 'через $diff ${_pluralDays(diff)}';
+}
+
+String _pluralDays(int n) {
+  final mod100 = n % 100;
+  final mod10 = n % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'дней';
+  if (mod10 == 1) return 'день';
+  if (mod10 >= 2 && mod10 <= 4) return 'дня';
+  return 'дней';
 }
 
 // ── Car picker dialog ────────────────────────────────────────────────

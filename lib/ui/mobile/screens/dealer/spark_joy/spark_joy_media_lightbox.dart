@@ -484,8 +484,25 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                             videoController != null &&
                             videoController!.value.isInitialized &&
                             videoSourceUrl == item.dataUrl) ...[
-                          _SparkJoyLightboxVideoScrubber(
-                            controller: videoController!,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _SparkJoyLightboxVideoScrubber(
+                                  controller: videoController!,
+                                ),
+                              ),
+                              const SizedBox(width: SparkSpace.sm),
+                              IconButton(
+                                onPressed: () =>
+                                    _openFullscreenVideo(videoController!),
+                                tooltip: 'На весь экран',
+                                icon: const Icon(
+                                  Icons.fullscreen_rounded,
+                                  color: kWhiteColor,
+                                  size: SparkTextSize.titleLg,
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: SparkSpace.md),
                         ],
@@ -614,6 +631,156 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     // ever non-null in group mode — safe to route back to the editor.
     if (editIndex == null || isFlatMode || !mounted) return;
     await _openMediaInspectionEditor(groupKey: groupKey, index: editIndex);
+  }
+
+  /// Разворачивает уже инициализированный ролик во весь экран поверх
+  /// лайтбокса. Контроллер переиспользуется — позиция воспроизведения
+  /// сохраняется в обе стороны, повторной загрузки с S3 нет.
+  Future<void> _openFullscreenVideo(VideoPlayerController controller) async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => _SparkJoyFullscreenVideoScreen(controller: controller),
+      ),
+    );
+  }
+}
+
+/// Полноэкранный просмотр видео: временно разрешает landscape и immersive,
+/// восстанавливая портретную блокировку приложения при выходе. Тот же
+/// [VideoPlayerController], что и в лайтбоксе, — без повторной инициализации.
+class _SparkJoyFullscreenVideoScreen extends StatefulWidget {
+  const _SparkJoyFullscreenVideoScreen({required this.controller});
+
+  final VideoPlayerController controller;
+
+  @override
+  State<_SparkJoyFullscreenVideoScreen> createState() =>
+      _SparkJoyFullscreenVideoScreenState();
+}
+
+class _SparkJoyFullscreenVideoScreenState
+    extends State<_SparkJoyFullscreenVideoScreen> {
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+      DeviceOrientation.landscapeLeft,
+      DeviceOrientation.landscapeRight,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    // Возвращаем приложение к его глобальной портретной блокировке и
+    // штатному системному UI.
+    SystemChrome.setPreferredOrientations(const [
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ]);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () async {
+                if (controller.value.isPlaying) {
+                  await controller.pause();
+                } else {
+                  await controller.play();
+                }
+                if (mounted) setState(() {});
+              },
+              child: Center(
+                child: ValueListenableBuilder<VideoPlayerValue>(
+                  valueListenable: controller,
+                  builder: (_, value, _) {
+                    final ratio = value.aspectRatio;
+                    return Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        AspectRatio(
+                          aspectRatio: ratio <= 0 ? 16 / 9 : ratio,
+                          child: VideoPlayer(controller),
+                        ),
+                        AnimatedOpacity(
+                          opacity: value.isPlaying ? 0 : 1,
+                          duration: const Duration(milliseconds: 140),
+                          child: Container(
+                            width: SparkSize.mediaLightboxFab,
+                            height: SparkSize.mediaLightboxFab,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.45),
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.play_arrow_rounded,
+                              color: kWhiteColor,
+                              size: SparkSize.icon3xl,
+                            ),
+                          ),
+                        ),
+                        if (value.isInitialized &&
+                            value.isPlaying &&
+                            value.isBuffering)
+                          const CircularProgressIndicator(color: kWhiteColor),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          // Полоса перемотки поверх видео у нижней кромки.
+          Positioned(
+            left: SparkSpace.xxl,
+            right: SparkSpace.xxl,
+            bottom: SparkSpace.xxl,
+            child: SafeArea(
+              top: false,
+              child: _SparkJoyLightboxVideoScrubber(controller: controller),
+            ),
+          ),
+          Positioned(
+            top: SparkSpace.sm,
+            right: SparkSpace.sm,
+            child: SafeArea(
+              child: IconButton(
+                onPressed: () => Navigator.of(context).pop(),
+                tooltip: 'Свернуть',
+                icon: Container(
+                  width: SparkSize.mediaLightboxFab,
+                  height: SparkSize.mediaLightboxFab,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.fullscreen_exit_rounded,
+                    color: kWhiteColor,
+                    size: SparkSize.icon3xl,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

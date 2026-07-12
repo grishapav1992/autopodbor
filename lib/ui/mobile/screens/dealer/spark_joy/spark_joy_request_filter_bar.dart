@@ -12,12 +12,14 @@ class SparkJoyRequestFilterBar extends StatefulWidget {
     required this.onChanged,
     this.filters,
     this.onQueryChanged,
+    this.searchHint = 'Номер, авто или специалист',
   });
 
   final RequestStatusFilter value;
   final ValueChanged<RequestStatusFilter> onChanged;
   final List<RequestStatusFilter>? filters;
   final ValueChanged<String>? onQueryChanged;
+  final String searchHint;
 
   @override
   State<SparkJoyRequestFilterBar> createState() =>
@@ -171,7 +173,7 @@ class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
               onChanged: widget.onQueryChanged,
               textInputAction: TextInputAction.search,
               decoration: InputDecoration(
-                hintText: 'Номер, авто или специалист',
+                hintText: widget.searchHint,
                 isDense: true,
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _searchController.text.isEmpty
