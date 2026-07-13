@@ -71,18 +71,21 @@ void main() {
       ),
     );
 
-    // В покое шапка читается как текст: поля нет, есть заголовок и карандаш.
-    expect(find.byType(TextField), findsNothing);
-    expect(find.text('Старое название'), findsOneWidget);
-    expect(find.byIcon(Icons.edit_rounded), findsOneWidget);
-
-    await tester.tap(find.byIcon(Icons.edit_rounded));
-    await tester.pump();
-    await tester.pump();
+    // Название всегда остаётся безрамочным полем: визуально это заголовок,
+    // а для правки достаточно нажать непосредственно на текст.
     final titleField = find.byType(TextField);
     expect(titleField, findsOneWidget);
+    expect(find.text('Старое название'), findsOneWidget);
+    expect(find.byIcon(Icons.edit_rounded), findsNothing);
+    expect(find.text('Готово'), findsNothing);
+    final field = tester.widget<TextField>(titleField);
+    expect(field.decoration?.border, InputBorder.none);
+    expect(field.decoration?.enabledBorder, InputBorder.none);
+    expect(field.decoration?.focusedBorder, InputBorder.none);
+
+    await tester.tap(find.text('Старое название'));
+    await tester.pump();
     expect(focusNode.hasFocus, isTrue);
-    expect(find.text('Готово'), findsOneWidget);
 
     await tester.enterText(titleField, 'Новое название');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -90,9 +93,9 @@ void main() {
 
     expect(controller.text, 'Новое название');
     expect(focusNode.hasFocus, isFalse);
-    expect(find.byType(TextField), findsNothing);
+    expect(find.byType(TextField), findsOneWidget);
     expect(find.text('Новое название'), findsOneWidget);
-    expect(find.byIcon(Icons.edit_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.edit_rounded), findsNothing);
 
     // Пилюля автосейва прижата к правому краю шапки и висит по центру
     // блока «заголовок + мета» (макет 2026-07-11).

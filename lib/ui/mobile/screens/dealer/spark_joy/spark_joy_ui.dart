@@ -1290,11 +1290,11 @@ class SparkReportEditorAppBar extends StatelessWidget
   }
 }
 
-/// Название черновика в шапке: в покое — обычный однострочный заголовок
-/// с карандашом (тап по любому из них включает правку), в правке — поле
-/// с кнопкой «Готово». Поле не живёт в дереве постоянно, чтобы шапка
-/// читалась как заголовок, а не как форма (макет 2026-07-11).
-class _SparkEditableReportTitle extends StatefulWidget {
+/// Название черновика в шапке выглядит как обычный однострочный заголовок,
+/// но редактируется сразу по нажатию. Отдельные карандаш, рамка и кнопка
+/// подтверждения не нужны: потеря фокуса или action «Готово» на клавиатуре
+/// фиксируют введённое значение через общий listener экрана.
+class _SparkEditableReportTitle extends StatelessWidget {
   const _SparkEditableReportTitle({
     required this.controller,
     required this.focusNode,
@@ -1304,100 +1304,14 @@ class _SparkEditableReportTitle extends StatefulWidget {
   final FocusNode focusNode;
 
   @override
-  State<_SparkEditableReportTitle> createState() =>
-      _SparkEditableReportTitleState();
-}
-
-class _SparkEditableReportTitleState extends State<_SparkEditableReportTitle> {
-  bool _editing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.focusNode.addListener(_handleFocusChange);
-  }
-
-  @override
-  void didUpdateWidget(covariant _SparkEditableReportTitle oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.focusNode != widget.focusNode) {
-      oldWidget.focusNode.removeListener(_handleFocusChange);
-      widget.focusNode.addListener(_handleFocusChange);
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.focusNode.removeListener(_handleFocusChange);
-    super.dispose();
-  }
-
-  // Правка живёт ровно столько, сколько фокус: «Готово», сабмит или тап
-  // мимо поля снимают фокус — и заголовок схлопывается обратно в текст.
-  void _handleFocusChange() {
-    if (!widget.focusNode.hasFocus && _editing) {
-      setState(() => _editing = false);
-    }
-  }
-
-  void _startEditing() {
-    setState(() => _editing = true);
-    // Поле появится только после rebuild — фокус запрашиваем пост-фреймом.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _editing) {
-        widget.focusNode.requestFocus();
-      }
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (!_editing) {
-      return ListenableBuilder(
-        listenable: widget.controller,
-        builder: (context, _) {
-          final text = widget.controller.text.trim();
-          return GestureDetector(
-            onTap: _startEditing,
-            behavior: HitTestBehavior.opaque,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Flexible(
-                  child: MyText(
-                    text: text.isEmpty ? 'Новый отчёт' : text,
-                    size: SparkTextSize.title,
-                    weight: FontWeight.w700,
-                    lineHeight: 1.15,
-                    color: text.isEmpty ? kGreyColor : null,
-                    maxLines: 1,
-                    textOverflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: SparkSpace.md),
-                const Icon(
-                  Icons.edit_rounded,
-                  size: SparkSize.iconSm,
-                  color: kGreyColor,
-                ),
-              ],
-            ),
-          );
-        },
-      );
-    }
-
-    final border = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(SparkRadius.md),
-      borderSide: const BorderSide(color: kBorderColor),
-    );
     return TextField(
-      controller: widget.controller,
-      focusNode: widget.focusNode,
+      controller: controller,
+      focusNode: focusNode,
       textInputAction: TextInputAction.done,
       maxLines: 1,
-      onSubmitted: (_) => widget.focusNode.unfocus(),
-      onTapOutside: (_) => widget.focusNode.unfocus(),
+      onSubmitted: (_) => focusNode.unfocus(),
+      onTapOutside: (_) => focusNode.unfocus(),
       style: TextStyle(
         fontSize: AppResponsive.sp(context, SparkTextSize.title),
         fontWeight: FontWeight.w700,
@@ -1414,31 +1328,17 @@ class _SparkEditableReportTitleState extends State<_SparkEditableReportTitle> {
       ),
       decoration: InputDecoration(
         hintText: 'Новый отчёт',
-        isDense: true,
-        filled: true,
-        fillColor: kInputBgColor,
-        contentPadding: const EdgeInsets.fromLTRB(10, 7, 2, 7),
-        border: border,
-        enabledBorder: border,
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(SparkRadius.md),
-          borderSide: const BorderSide(color: kSecondaryColor, width: 1.5),
+        hintStyle: TextStyle(
+          color: kGreyColor,
+          fontSize: AppResponsive.sp(context, SparkTextSize.title),
+          fontWeight: FontWeight.w700,
+          height: 1.15,
         ),
-        suffixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-        suffixIcon: TextButton(
-          onPressed: widget.focusNode.unfocus,
-          style: TextButton.styleFrom(
-            foregroundColor: kSecondaryColor,
-            visualDensity: VisualDensity.compact,
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.md,
-              vertical: SparkSpace.xs,
-            ),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          ),
-          child: const Text('Готово'),
-        ),
+        isCollapsed: true,
+        contentPadding: EdgeInsets.zero,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
       ),
     );
   }

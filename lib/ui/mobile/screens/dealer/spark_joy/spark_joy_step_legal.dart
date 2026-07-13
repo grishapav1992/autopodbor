@@ -485,11 +485,6 @@ Widget _buildSparkJoyStepLegal(
   // (guard внутри метода; setState только после await, не во время build).
   unawaited(s._ensureLegalReviewMeta());
 
-  final statusColor = s._legalLoading
-      ? kSecondaryColor
-      : (s._legalLoaded
-            ? kGreenColor
-            : (s._legalTimedOut ? kSecondaryColor : kGreyColor));
   final statusSubtitle = s._legalLoading
       ? _legalLoadingSubtitle(s._legalCheckResults)
       : (s._legalLoaded
@@ -506,27 +501,6 @@ Widget _buildSparkJoyStepLegal(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: MyText(
-                    text: 'Автопроверки ApiCloud',
-                    size: SparkTextSize.caption,
-                    color: kTertiaryColor,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                Container(
-                  width: SparkSize.iconSm,
-                  height: SparkSize.iconSm,
-                  decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.16),
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: SparkSpace.sm),
             MyText(
               text: statusSubtitle,
               size: SparkTextSize.caption,

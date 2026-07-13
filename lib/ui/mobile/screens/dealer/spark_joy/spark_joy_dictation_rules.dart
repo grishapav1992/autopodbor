@@ -293,8 +293,8 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
   /// Авто-резолв идентификации (марка/модель/год) по полному VIN через платный
   /// конвертер `_runConverterDeduped` (ungated/дедуп/кэш — НЕ зависит от права
   /// run_legal_review, в отличие от кнопочного `_runVinPlateConverter`). Only-empty:
-  /// трогаем, ТОЛЬКО если марка И модель пусты (иначе уважаем ручной ввод и не
-  /// платим). Дедуп по VIN, busy-гард, тихо. Строгий каталог: результат
+  /// трогаем только недостающие поля; когда заполнены И марка, И модель — не
+  /// платим. Дедуп по VIN, busy-гард, тихо. Строгий каталог: результат
   /// конвертера резолвим в каталог и пишем ТОЛЬКО канон+ID
   /// (`_selectedBrandId`/`_selectedModelCarId`); не совпало — оставляем пусто,
   /// сырой текст в поля НЕ пишем. Год → `_resolvedVinYear` (грунтовка ИИ).
@@ -312,7 +312,11 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     // (current == записанному нами), чтобы новый VIN пере-резолвился. Ручной
     // ввод и каталожный выбор не трогаем. Год прежнего VIN недействителен в
     // любом случае (в т.ч. когда map пуст — резолв без записей полей).
-    if (_vinAutoIdentityValues.isNotEmpty || _resolvedVinYear.isNotEmpty) {
+    final hasPriorAutoIdentity =
+        _vinAutoIdentityValues.isNotEmpty ||
+        (_lastVinIdentityResolved.isNotEmpty &&
+            _lastVinIdentityResolved != vin);
+    if (hasPriorAutoIdentity) {
       final stale = staleVinAutofillKeys(_vinAutoIdentityValues, {
         'brand': _brandController.text,
         'model': _modelController.text,
@@ -334,9 +338,11 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       });
     }
 
-    // Only-empty гейт: марка ИЛИ модель уже заполнены (вручную/каталог/
-    // кнопочный конвертер) → уважаем, не платим; грунтовка для params есть.
-    if (_brandController.text.trim().isNotEmpty ||
+    // Only-empty гейт: обе части идентичности уже заполнены (вручную/каталог/
+    // скан документа) → уважаем их и не платим. Если не хватает хотя бы одной
+    // части, конвертер нужен как fallback: типичный кейс — СТС дало VIN и
+    // марку, а написание модели не совпало с каталогом.
+    if (_brandController.text.trim().isNotEmpty &&
         _modelController.text.trim().isNotEmpty) {
       return true;
     }
@@ -344,7 +350,9 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     _lastVinIdentityResolved = vin; // дедуп ДО await
     _setStateSafely(() => _identityResolveBusy = true);
     try {
-      final r = await _runConverterDeduped(vin: vin); // чёрный ящик (WIP), ungated
+      final r = await _runConverterDeduped(
+        vin: vin,
+      ); // чёрный ящик (WIP), ungated
       if (!mounted) return false;
       if (_sanitizeVin(_vinController.text) != vin) {
         // VIN сменили за время await — результат про прежнюю машину, не пишем.
@@ -372,7 +380,10 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
       // Тихо, без снека «выберите вручную»: авто-триггер на ввод VIN спамить нельзя.
       CatalogCarMatch? match;
       if (plan.brand.isNotEmpty || plan.model.isNotEmpty) {
-        match = await CarCatalogRepository.instance.resolveCar(r.brand, r.model);
+        match = await CarCatalogRepository.instance.resolveCar(
+          r.brand,
+          r.model,
+        );
         if (!mounted) return false;
         if (_sanitizeVin(_vinController.text) != vin) {
           _lastVinIdentityResolved = ''; // VIN сменили за резолв → не пишем
@@ -380,20 +391,34 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         }
       }
       _setStateSafely(() {
-        if (match != null &&
-            _brandController.text.trim().isEmpty &&
-            _selectedBrandId == null) {
-          _brandController.text = match.brand.name;
-          _selectedBrandId = match.brand.id;
-          _vinAutoIdentityValues['brand'] = match.brand.name;
+        if (match != null) {
+          final brandWasEmpty = _brandController.text.trim().isEmpty;
+          if (brandWasEmpty && _selectedBrandId == null) {
+            _brandController.text = match.brand.name;
+            _selectedBrandId = match.brand.id;
+            _vinAutoIdentityValues['brand'] = match.brand.name;
+          }
+
+          // Модель можно дозаполнить и при уже известной марке (например,
+          // марку скан СТС сопоставил, а модель — нет). Но только если текущая
+          // марка привязана к той же записи каталога: модель другой марки сюда
+          // попасть не должна.
           final m = match.model;
-          if (m != null && _modelController.text.trim().isEmpty) {
+          final sameCatalogBrand = _selectedBrandId == match.brand.id;
+          if (m != null &&
+              sameCatalogBrand &&
+              _modelController.text.trim().isEmpty &&
+              _selectedModelCarId == null) {
             _modelController.text = m.model;
             _selectedModelCarId = m.id;
             _vinAutoIdentityValues['model'] = m.model;
           }
         }
-        _resolvedVinYear = (r.found && r.year != null) ? '${r.year}' : '';
+        // Год с документа авторитетнее fallback-конвертера. Конвертер лишь
+        // дозаполняет его, когда скан ничего не прочитал.
+        if (_resolvedVinYear.isEmpty && r.found && r.year != null) {
+          _resolvedVinYear = '${r.year}';
+        }
       });
       // Записи .text= метят черновик dirty через autosave-listener.
       return true; // терминально (found / not_found) → params можно грунтовать
@@ -843,6 +868,7 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         final v = value.trim();
         if (v.isNotEmpty) idLines.add('$label: $v');
       }
+
       addId('Автомобиль', _carName());
       if (_vinUnreadable) {
         idLines.add('VIN: не читается');

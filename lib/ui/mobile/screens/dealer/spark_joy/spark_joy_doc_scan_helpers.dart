@@ -34,10 +34,10 @@ Uint8List _sparkPrepareDocScanPhoto(Uint8List bytes) {
 /// only-empty автозаполнение «Автомобиля» и «Параметров».
 ///
 /// Экономика ApiCloud и взаимодействие с VIN-конвейером:
-///   • когда скан дал марку И модель, дедуп-флаг `_lastVinIdentityResolved`
-///     сидируется распознанным VIN — `_maybeAutoResolveIdentityFromVin`
-///     выходит по нему ДО stale-блока, поэтому платный конвертер не
-///     запускается, а `_resolvedVinYear` (год из документа) не затирается;
+///   • когда скан привязал марку И модель к каталогу, дедуп-флаг
+///     `_lastVinIdentityResolved` сидируется распознанным VIN — повторный
+///     конвертер не запускается; при частичном/неудачном матче VIN-конвейер
+///     дозаполняет недостающую идентичность, не затирая год из документа;
 ///   • `_startLegalLoading` дёргает конвертер только при пустом VIN — после
 ///     скана VIN заполнен, конверсия госномер→VIN не оплачивается;
 ///   • значения документа пишутся БЕЗ `_vinAutofilledValues`-трекинга (как
@@ -559,7 +559,6 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     final filled = <String>[];
     final unmatched = <String>[];
     var identityWritten = false;
-    var vinWrittenFromScan = false;
     _setStateSafely(() {
       final brandWasEmpty = _brandController.text.trim().isEmpty;
       final modelWasEmpty = _modelController.text.trim().isEmpty;
@@ -603,7 +602,6 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       if (r.vin.isNotEmpty && _sanitizeVin(_vinController.text).isEmpty) {
         _vinUnreadable = false;
         _vinController.text = r.vin;
-        vinWrittenFromScan = true;
         filled.add('VIN');
       }
       if (r.gosNumber.isNotEmpty && _plateController.text.trim().isEmpty) {
@@ -620,19 +618,26 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       }
     });
     final vinNow = _sanitizeVin(_vinController.text);
-    final brandNow = _brandController.text.trim();
-    // Блокируем автоматический VIN-резолвер (_maybeAutoResolveIdentityFromVin),
-    // сидируя его дедуп-флаг записанным VIN, если идентичность уже известна:
-    //   • марка легла в поле (каталог совпал) — иначе год из документа сотрёт
-    //     stale-блок резолвера ДО чтения его only-empty гейтом; ЛИБО
-    //   • VIN проставлен этим сканом И документ сам дал марку (даже когда
-    //     каталог промахнулся) — платный конвертер лишь re-derive'нул бы ту же
-    //     марку (тоже вне каталога), т.е. чистое списание за то, что уже есть;
-    //     пользователю показан снек «выберите вручную», это и есть развязка.
-    // Порядок записи полей ни при чём — гейт читает контроллеры через 600мс.
-    if (vinNow.length == 17 &&
-        (brandNow.isNotEmpty || (vinWrittenFromScan && r.brand.isNotEmpty))) {
+    final hasCompleteCatalogIdentity =
+        _brandController.text.trim().isNotEmpty &&
+        _modelController.text.trim().isNotEmpty &&
+        _selectedBrandId != null &&
+        _selectedModelCarId != null;
+    // Блокируем автоматический VIN-резолвер только при ПОЛНОЙ каталожной
+    // идентичности. Раньше достаточно было одной распознанной марки (даже не
+    // совпавшей с каталогом), поэтому VIN заполнялся, а марка/модель оставались
+    // пустыми и fallback по VIN уже не запускался.
+    if (vinNow.length == 17 && hasCompleteCatalogIdentity) {
       _lastVinIdentityResolved = vinNow;
+    } else if (vinNow.length == 17) {
+      // VIN мог уже находиться в форме до применения результата интейка, и
+      // тогда listener контроллера не сработает. Явно запускаем единый
+      // debounce-конвейер для дозаполнения недостающей марки/модели. Если этот
+      // VIN ранее завершился лишь частичным матчем, снимаем локальный дедуп —
+      // сетевой слой всё равно вернёт сохранённый результат без повторной
+      // оплаты.
+      _lastVinIdentityResolved = '';
+      _maybeResolveFromVin();
     }
     _markDraftDirty();
     if (mounted && showFeedback) {

@@ -4,6 +4,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_request_detail_screen.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_profile_photo_viewer.dart';
 import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
@@ -190,11 +191,14 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              SparkInitialsAvatar(
+              SparkJoyProfilePhotoAvatar(
+                tapKey: const ValueKey('staff-avatar-preview'),
                 name: staffName,
+                imageUrl: avatarUrl,
+                photoTitle: 'Фото сотрудника',
+                semanticLabel: 'Открыть фото сотрудника',
                 size: SparkSize.icon6xl,
                 textSize: SparkTextSize.modalTitle,
-                imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
               ),
               const SizedBox(width: SparkSpace.lg),
               Expanded(

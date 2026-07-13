@@ -5,6 +5,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_profile_photo_viewer.dart';
 import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -137,56 +138,6 @@ class _SparkJoySpecialistPublicProfileScreenState
     return '';
   }
 
-  Future<void> _openAvatarPreview(String avatarUrl) async {
-    if (avatarUrl.isEmpty) return;
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        fullscreenDialog: true,
-        builder: (context) => Scaffold(
-          backgroundColor: kBlackColor,
-          appBar: AppBar(
-            backgroundColor: kBlackColor,
-            foregroundColor: kWhiteColor,
-            elevation: 0,
-            title: const Text('Фото сотрудника'),
-          ),
-          body: SafeArea(
-            child: Center(
-              child: InteractiveViewer(
-                minScale: 0.8,
-                maxScale: 4,
-                child: Image.network(
-                  avatarUrl,
-                  fit: BoxFit.contain,
-                  errorBuilder: (_, _, _) => const Padding(
-                    padding: EdgeInsets.all(SparkSpace.xl),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.broken_image_outlined,
-                          size: 72,
-                          color: kWhiteColor,
-                        ),
-                        SizedBox(height: SparkSpace.md),
-                        MyText(
-                          text: 'Не удалось загрузить фото',
-                          size: SparkTextSize.body,
-                          color: kWhiteColor,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final profile = _profile;
@@ -266,36 +217,15 @@ class _SparkJoySpecialistPublicProfileScreenState
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (avatarUrl.isEmpty)
-                  SparkInitialsAvatar(
-                    name: name,
-                    size: SparkSize.icon6xl,
-                    textSize: SparkTextSize.modalTitle,
-                  )
-                else
-                  Semantics(
-                    button: true,
-                    label: 'Открыть фото сотрудника',
-                    child: Tooltip(
-                      message: 'Открыть фото',
-                      child: Material(
-                        color: Colors.transparent,
-                        shape: const CircleBorder(),
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          key: const ValueKey('specialist-avatar-preview'),
-                          customBorder: const CircleBorder(),
-                          onTap: () => _openAvatarPreview(avatarUrl),
-                          child: SparkInitialsAvatar(
-                            name: name,
-                            size: SparkSize.icon6xl,
-                            textSize: SparkTextSize.modalTitle,
-                            imageUrl: avatarUrl,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
+                SparkJoyProfilePhotoAvatar(
+                  tapKey: const ValueKey('specialist-avatar-preview'),
+                  name: name,
+                  imageUrl: avatarUrl,
+                  photoTitle: 'Фото сотрудника',
+                  semanticLabel: 'Открыть фото сотрудника',
+                  size: SparkSize.icon6xl,
+                  textSize: SparkTextSize.modalTitle,
+                ),
                 const SizedBox(width: SparkSpace.xl),
                 Expanded(
                   child: Column(

@@ -5,6 +5,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
+import 'spark_joy_profile_photo_viewer.dart';
 import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -259,11 +260,14 @@ class _SparkJoyCompanyPublicProfileScreenState
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                SparkInitialsAvatar(
+                SparkJoyProfilePhotoAvatar(
+                  tapKey: const ValueKey('company-avatar-preview'),
                   name: name,
+                  imageUrl: avatarUrl,
+                  photoTitle: 'Фото компании',
+                  semanticLabel: 'Открыть фото компании',
                   size: SparkSize.icon6xl,
                   textSize: SparkTextSize.modalTitle,
-                  imageUrl: avatarUrl.isEmpty ? null : avatarUrl,
                 ),
                 const SizedBox(width: SparkSpace.xl),
                 Expanded(
