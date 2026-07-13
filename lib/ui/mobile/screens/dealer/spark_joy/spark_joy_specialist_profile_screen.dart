@@ -37,6 +37,10 @@ class SparkJoySpecialistProfileScreen extends StatefulWidget {
     super.key,
     this.onBusinessStatusChanged,
     this.onLogout,
+    this.deleteProfileAvatar,
+    this.fetchRemoteProfile = true,
+    this.initialProfile,
+    this.initialAvatarBase64,
   });
 
   final ValueChanged<String?>? onBusinessStatusChanged;
@@ -46,6 +50,22 @@ class SparkJoySpecialistProfileScreen extends StatefulWidget {
   /// правом-верхнем углу AppBar была destructive-action на самом
   /// доступном месте — случайный тап на ней выкидывал из аккаунта.
   final Future<void> Function()? onLogout;
+
+  /// Test seam for the destructive avatar request. Production uses
+  /// [storage_api.StorageApi.deleteProfileAvatar].
+  @visibleForTesting
+  final Future<void> Function()? deleteProfileAvatar;
+
+  /// Keeps widget tests deterministic while production still performs the
+  /// normal cache-as-seed followed by an authoritative server refresh.
+  @visibleForTesting
+  final bool fetchRemoteProfile;
+
+  @visibleForTesting
+  final Map<String, dynamic>? initialProfile;
+
+  @visibleForTesting
+  final String? initialAvatarBase64;
 
   @override
   State<SparkJoySpecialistProfileScreen> createState() =>
@@ -84,7 +104,11 @@ class _SparkJoySpecialistProfileScreenState
 
   bool _isVerifying = false;
   bool _isSavingProfile = false;
+  bool _isDeletingAvatar = false;
   bool _isAccountDeletionRequesting = false;
+  bool _showAllServices = false;
+  static const int _servicePreviewCount = 6;
+  static const int _maxServiceChips = 24;
   // Generation counter для invalidation in-flight _fetchServerProfile.
   // Каждый запрос захватывает myGen в начале и проверяет перед apply.
   // Если кто-то bumped (например _resetBusinessStatus) — fetch больше
@@ -168,7 +192,25 @@ class _SparkJoySpecialistProfileScreenState
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    final initialProfile = widget.initialProfile;
+    if (initialProfile == null) {
+      _loadProfile();
+    } else {
+      final merged = <String, dynamic>{
+        ..._fallbackSpecialist(),
+        ...initialProfile,
+      };
+      _applyProfileToControllers(merged);
+      _specialistProfile = merged;
+      final initialAvatar = widget.initialAvatarBase64;
+      _avatarBase64 =
+          initialAvatar != null &&
+              initialAvatar.isNotEmpty &&
+              _isValidAvatarBase64(initialAvatar)
+          ? initialAvatar
+          : null;
+      if (widget.fetchRemoteProfile) unawaited(_fetchServerProfile());
+    }
     _loadBusinessStatus();
     // Refresh when the profile changes elsewhere — e.g. accepting a staff
     // invite from a notification links a company that must show up here
@@ -179,7 +221,7 @@ class _SparkJoySpecialistProfileScreenState
 
   void _onProfileRefreshRequested() {
     if (!mounted) return;
-    unawaited(_fetchServerProfile());
+    if (widget.fetchRemoteProfile) unawaited(_fetchServerProfile());
     unawaited(_loadBusinessStatus());
   }
 
@@ -306,7 +348,24 @@ class _SparkJoySpecialistProfileScreenState
     // свежий server snapshot через _fetchServerProfile().
     final cached = await SparkJoyStorage.loadSpecialistProfileOrNull();
     final pending = await UserSimplePreferences.getPendingEmailVerify();
-    final avatar = await UserSimplePreferences.getAvatarBase64();
+    final storedAvatar = await UserSimplePreferences.getAvatarBase64();
+    final avatar = storedAvatar == null || storedAvatar.isEmpty
+        ? null
+        : await compute(_isValidAvatarBase64, storedAvatar)
+        ? storedAvatar
+        : null;
+    if (storedAvatar != null && storedAvatar.isNotEmpty && avatar == null) {
+      // Повреждённый local fallback не должен превращать аватар в кнопку,
+      // которая молча ничего не делает. Чистим только локальный кэш;
+      // server urlAvatar по-прежнему придёт через _fetchServerProfile.
+      try {
+        await UserSimplePreferences.clearAvatar();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[avatar] Failed to clear invalid local avatar: $e');
+        }
+      }
+    }
     if (!mounted) return;
     if (cached != null) {
       // Мерджим cache поверх mock base — base даёт metadata
@@ -351,7 +410,7 @@ class _SparkJoySpecialistProfileScreenState
         _avatarPresetIndex = null;
       });
     }
-    unawaited(_fetchServerProfile());
+    if (widget.fetchRemoteProfile) unawaited(_fetchServerProfile());
   }
 
   /// Тянет профиль с сервера и перезаписывает контроллеры —
@@ -1654,9 +1713,7 @@ class _SparkJoySpecialistProfileScreenState
               ),
               const SizedBox(height: SparkSpace.xxs),
               MyText(
-                text: inn.isEmpty
-                    ? 'Вы состоите в штате компании'
-                    : 'ИНН $inn',
+                text: inn.isEmpty ? 'Вы состоите в штате компании' : 'ИНН $inn',
                 size: SparkTextSize.caption,
                 color: kGreyColor,
               ),
@@ -2003,23 +2060,24 @@ class _SparkJoySpecialistProfileScreenState
   List<String> _parseServiceTags(String description) {
     return description
         .split('\n')
-        .map(
-          (line) => line.replaceFirst(RegExp(r'^\s*[•\-–—]+\s*'), '').trim(),
-        )
+        .map((line) => line.replaceFirst(RegExp(r'^\s*[•\-–—]+\s*'), '').trim())
         .where((line) => line.isNotEmpty)
         .toList(growable: false);
   }
 
-  /// Ряд «Услуги»: короткие пункты рендерим чипами (как в макете),
-  /// длинный free-text — 3-строчным превью. Тап всегда открывает
-  /// полноценный редактор описания.
+  /// Ряд «Услуги»: сначала показываем компактное превью из шести пунктов
+  /// или строк, а полный список раскрываем явно. Чипы используем только
+  /// для разумного количества коротких пунктов: экстремально дробное
+  /// описание остаётся одним Text и не создаёт сотни layout-виджетов.
   Widget _buildServicesRow(Map<String, dynamic> specialist) {
     final description = _specializationController.text.trim().isNotEmpty
         ? _specializationController.text.trim()
         : sjRead(specialist, 'specialization').trim();
     final tags = _parseServiceTags(description);
     final asChips =
-        tags.isNotEmpty && tags.length <= 8 && tags.every((t) => t.length <= 36);
+        tags.isNotEmpty &&
+        tags.length <= _maxServiceChips &&
+        tags.every((t) => t.length <= 36);
 
     final Widget valueWidget;
     if (description.isEmpty) {
@@ -2030,19 +2088,46 @@ class _SparkJoySpecialistProfileScreenState
         lineHeight: 1.30,
       );
     } else if (asChips) {
-      valueWidget = Wrap(
-        spacing: SparkSpace.sm,
-        runSpacing: SparkSpace.sm,
-        children: [for (final tag in tags) _serviceChip(tag)],
+      final visibleTags = _showAllServices
+          ? tags
+          : tags.take(_servicePreviewCount).toList(growable: false);
+      final hiddenCount = tags.length - visibleTags.length;
+      valueWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: SparkSpace.sm,
+            runSpacing: SparkSpace.sm,
+            children: [for (final tag in visibleTags) _serviceChip(tag)],
+          ),
+          if (tags.length > _servicePreviewCount)
+            _servicesExpandButton(
+              expanded: _showAllServices,
+              hiddenCount: hiddenCount,
+            ),
+        ],
       );
     } else {
-      valueWidget = MyText(
-        text: description,
-        size: SparkTextSize.bodyLg,
-        weight: FontWeight.w600,
-        lineHeight: 1.30,
-        maxLines: 3,
-        textOverflow: TextOverflow.ellipsis,
+      final canExpand =
+          tags.length > _servicePreviewCount || description.length > 240;
+      valueWidget = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          MyText(
+            text: description,
+            size: SparkTextSize.bodyLg,
+            weight: FontWeight.w600,
+            lineHeight: 1.30,
+            maxLines: _showAllServices ? null : _servicePreviewCount,
+            textOverflow: _showAllServices ? null : TextOverflow.ellipsis,
+          ),
+          if (canExpand)
+            _servicesExpandButton(
+              expanded: _showAllServices,
+              hiddenCount: math.max(0, tags.length - _servicePreviewCount),
+              fullText: true,
+            ),
+        ],
       );
     }
 
@@ -2089,6 +2174,40 @@ class _SparkJoySpecialistProfileScreenState
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _servicesExpandButton({
+    required bool expanded,
+    required int hiddenCount,
+    bool fullText = false,
+  }) {
+    final label = expanded
+        ? 'Свернуть'
+        : fullText || hiddenCount == 0
+        ? 'Показать полностью'
+        : 'Показать все (ещё $hiddenCount)';
+    return Padding(
+      padding: const EdgeInsets.only(top: SparkSpace.sm),
+      child: TextButton.icon(
+        key: const ValueKey('services-expand-button'),
+        onPressed: () {
+          setState(() => _showAllServices = !_showAllServices);
+        },
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.sm,
+            vertical: SparkSpace.xs,
+          ),
+          minimumSize: const Size(0, SparkSize.actionHeight),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        icon: Icon(
+          expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+          size: SparkSize.iconMd,
+        ),
+        label: Text(label),
       ),
     );
   }
@@ -2177,6 +2296,98 @@ class _SparkJoySpecialistProfileScreenState
   // Сохранить/Отмена. Sheets держат локальные TextEditingController —
   // фоновые fetch'и не перезатирают введённое; на Save переносим в
   // screen-level controllers и зовём _saveProfile (диф-payload).
+
+  /// Единая точка редактирования identity-части профиля. Сам аватар
+  /// больше не смешивает просмотр с редактированием: все изменения
+  /// собраны за карандашом.
+  Future<void> _openProfileEditorSheet() async {
+    final hasAvatar = _hasProfilePhoto();
+    final action = await showAppAdaptiveBottomSheet<String>(
+      context: context,
+      extent: AppBottomSheetExtent.content,
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.xl,
+              SparkSpace.lg,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                    vertical: SparkSpace.sm,
+                  ),
+                  child: MyText(
+                    text: 'Редактировать профиль',
+                    size: SparkTextSize.modalTitle,
+                    weight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: SparkSpace.md),
+                _SheetActionRow(
+                  icon: Icons.person_outline_rounded,
+                  label: 'Изменить ФИО',
+                  onTap: () => Navigator.of(ctx).pop('name'),
+                ),
+                _sheetRowDivider(),
+                _SheetActionRow(
+                  icon: Icons.photo_camera_outlined,
+                  label: hasAvatar ? 'Изменить фото' : 'Добавить фото',
+                  onTap: () => Navigator.of(ctx).pop('photo'),
+                ),
+                if (hasAvatar) ...[
+                  _sheetRowDivider(),
+                  _SheetActionRow(
+                    icon: Icons.delete_outline_rounded,
+                    label: 'Удалить фото',
+                    color: kRedColor,
+                    onTap: () => Navigator.of(ctx).pop('delete'),
+                  ),
+                ],
+                const SizedBox(height: SparkSpace.xxl),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.md,
+                  ),
+                  child: SizedBox(
+                    height: SparkSize.actionHeight,
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(SparkRadius.lg),
+                        ),
+                      ),
+                      child: const Text('Отмена'),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (action == null || !mounted) return;
+    switch (action) {
+      case 'name':
+        await _editFullNameSheet();
+        return;
+      case 'photo':
+        await _openAvatarPickerSheet();
+        return;
+      case 'delete':
+        await _confirmDeleteAvatar();
+        return;
+    }
+  }
 
   /// Action-sheet выбора аватара. Опции: Камера / Галерея / Удалить.
   /// Picked-image → base64 → S3. Side-effects (snackbar / setState)
@@ -2339,7 +2550,7 @@ class _SparkJoySpecialistProfileScreenState
     );
     if (action == null || !mounted) return;
     if (action == 'delete') {
-      await _deleteAvatar();
+      await _confirmDeleteAvatar();
       return;
     }
     if (action == 'preview') {
@@ -2434,16 +2645,10 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   Future<void> _openAvatarPreview() async {
-    if (!_hasProfilePhoto()) {
-      await _openAvatarPickerSheet();
-      return;
-    }
+    if (!_hasProfilePhoto()) return;
     final avatarUrl = (_urlAvatar ?? '').trim();
     final avatarBytes = _avatarPreviewBytes();
-    if (avatarUrl.isEmpty && avatarBytes == null) {
-      await _openAvatarPickerSheet();
-      return;
-    }
+    if (avatarUrl.isEmpty && avatarBytes == null) return;
 
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -2471,23 +2676,6 @@ class _SparkJoySpecialistProfileScreenState
               foregroundColor: kWhiteColor,
               elevation: 0,
               title: const Text('Фото профиля'),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) unawaited(_openAvatarPickerSheet());
-                    });
-                  },
-                  child: const Text(
-                    'Изменить',
-                    style: TextStyle(
-                      color: kWhiteColor,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
             ),
             body: SafeArea(
               child: Center(
@@ -2629,22 +2817,76 @@ class _SparkJoySpecialistProfileScreenState
     }
   }
 
+  Future<void> _confirmDeleteAvatar() async {
+    if (_isDeletingAvatar || !_hasProfilePhoto()) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить фото профиля?'),
+        content: const Text(
+          'Фото исчезнет из вашего профиля. Это действие нельзя отменить.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            key: const ValueKey('confirm-delete-profile-photo'),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: kRedColor),
+            child: const Text('Удалить'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) await _deleteAvatar();
+  }
+
   Future<void> _deleteAvatar() async {
+    if (_isDeletingAvatar || _isUploadingAvatar || !_hasProfilePhoto()) return;
     // Инвалидируем in-flight _fetchServerProfile — иначе запрос, улетевший
     // до удаления, вернёт старый urlAvatar и восстановит аватарку на экране.
     ++_fetchGeneration;
+    setState(() => _isDeletingAvatar = true);
     try {
-      await storage_api.StorageApi.deleteProfileAvatar();
-    } catch (_) {
-      // Продолжаем даже при ошибке — UI чистим локально.
+      final deleteOverride = widget.deleteProfileAvatar;
+      if (deleteOverride != null) {
+        await deleteOverride();
+      } else {
+        await storage_api.StorageApi.deleteProfileAvatar();
+      }
+      try {
+        await UserSimplePreferences.clearAvatar();
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[avatar] Failed to clear local avatar cache: $e');
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _urlAvatar = null;
+        _avatarBase64 = null;
+        _avatarPresetIndex = null;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Фото профиля удалено')));
+    } on storage_api.SessionExpiredException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Сессия истекла — войдите заново')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showSparkJoyErrorSnackBar(
+        context,
+        e,
+        fallback: 'Не удалось удалить фото. Попробуйте ещё раз.',
+      );
+    } finally {
+      if (mounted) setState(() => _isDeletingAvatar = false);
     }
-    await UserSimplePreferences.clearAvatar();
-    if (!mounted) return;
-    setState(() {
-      _urlAvatar = null;
-      _avatarBase64 = null;
-      _avatarPresetIndex = null;
-    });
   }
 
   Future<void> _editFullNameSheet() async {
@@ -2785,6 +3027,7 @@ class _SparkJoySpecialistProfileScreenState
     if (saved == null || !mounted) return;
     if (saved.trim() == _specializationController.text.trim()) return;
     _specializationController.text = saved;
+    setState(() => _showAllServices = false);
     await _saveProfile();
   }
 
@@ -2887,8 +3130,8 @@ class _SparkJoySpecialistProfileScreenState
 
   /// Тёмная hero-«шапка» профиля (макет 1a): аватар с камера-бейджем,
   /// имя+фамилия крупно, отчество отдельной строкой, пилюля
-  /// «роль · город». Зоны тапа независимые: аватар → управление фото,
-  /// имя/карандаш → редактор ФИО, пилюля → выбор города.
+  /// «роль · город». Зоны тапа независимые: аватар → полноэкранный просмотр,
+  /// имя/карандаш → общий редактор фото и ФИО, пилюля → выбор города.
   Widget _buildHeroCard(Map<String, dynamic> specialist, String profileName) {
     final first = _firstNameController.text.trim();
     final last = _lastNameController.text.trim();
@@ -2906,7 +3149,7 @@ class _SparkJoySpecialistProfileScreenState
         ? '$roleLabel · Указать город'
         : '$roleLabel · $city';
     final blocked = sjRead(specialist, 'status') != 'active';
-    final busy = _isSavingProfile || _isUploadingAvatar;
+    final busy = _isSavingProfile || _isUploadingAvatar || _isDeletingAvatar;
 
     return Container(
       padding: const EdgeInsets.all(SparkSpace.section),
@@ -2926,8 +3169,9 @@ class _SparkJoySpecialistProfileScreenState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GestureDetector(
+            key: const ValueKey('profile-avatar-preview'),
             behavior: HitTestBehavior.opaque,
-            onTap: busy ? null : _openAvatarPickerSheet,
+            onTap: busy || !_hasProfilePhoto() ? null : _openAvatarPreview,
             child: Stack(
               clipBehavior: Clip.none,
               children: [
@@ -2951,7 +3195,7 @@ class _SparkJoySpecialistProfileScreenState
                     presetIndex: _avatarPresetIndex,
                   ),
                 ),
-                if (_isUploadingAvatar)
+                if (_isUploadingAvatar || _isDeletingAvatar)
                   Positioned.fill(
                     child: ClipOval(
                       child: ColoredBox(
@@ -2969,27 +3213,28 @@ class _SparkJoySpecialistProfileScreenState
                       ),
                     ),
                   ),
-                Positioned(
-                  left: -2,
-                  bottom: -2,
-                  child: Container(
-                    width: 28,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: kWhiteColor,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: kSecondaryColor.withValues(alpha: 0.18),
+                if (_hasProfilePhoto())
+                  Positioned(
+                    left: -2,
+                    bottom: -2,
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: kWhiteColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: kSecondaryColor.withValues(alpha: 0.18),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.fullscreen_rounded,
+                        size: 14,
+                        color: kSecondaryColor,
                       ),
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.photo_camera_rounded,
-                      size: 14,
-                      color: kSecondaryColor,
-                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -2997,7 +3242,7 @@ class _SparkJoySpecialistProfileScreenState
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: _isSavingProfile ? null : _editFullNameSheet,
+              onTap: busy ? null : _openProfileEditorSheet,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -3028,9 +3273,7 @@ class _SparkJoySpecialistProfileScreenState
                         ),
                         decoration: BoxDecoration(
                           color: kWhiteColor.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(
-                            SparkRadius.pill,
-                          ),
+                          borderRadius: BorderRadius.circular(SparkRadius.pill),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
@@ -3075,7 +3318,8 @@ class _SparkJoySpecialistProfileScreenState
           Material(
             color: Colors.transparent,
             child: InkWell(
-              onTap: _isSavingProfile ? null : _editFullNameSheet,
+              key: const ValueKey('profile-edit-button'),
+              onTap: busy ? null : _openProfileEditorSheet,
               customBorder: const CircleBorder(),
               child: Padding(
                 padding: const EdgeInsets.all(SparkSpace.sm),
@@ -3145,8 +3389,9 @@ class _SparkJoySpecialistProfileScreenState
             );
           },
         ),
-        // Тёмная hero-«шапка» владеет identity: аватар (тап → управление
-        // фото), имя+карандаш (тап → редактор ФИО), бейдж «роль · город»
+        // Тёмная hero-«шапка» владеет identity: аватар (тап →
+        // полноэкранный просмотр), имя+карандаш (тап → общий редактор
+        // фото и ФИО), бейдж «роль · город»
         // (тап → выбор города). Роль в бейдже заменяет чип из AppBar.
         _buildHeroCard(specialist, profileName),
         const SparkSectionTitle('Контакты', top: SparkSpace.section),
@@ -3252,8 +3497,10 @@ class _SparkJoySpecialistProfileScreenState
         height: SparkSize.inputHeightLg,
         child: OutlinedButton.icon(
           onPressed: deleteBusy ? null : _confirmAccountDeactivation,
-          icon: const Icon(Icons.delete_outline_rounded,
-              size: SparkSize.iconMd),
+          icon: const Icon(
+            Icons.delete_outline_rounded,
+            size: SparkSize.iconMd,
+          ),
           label: Text(deleteBusy ? 'Удаляем аккаунт...' : 'Удалить аккаунт'),
           style: OutlinedButton.styleFrom(
             backgroundColor: kWhiteColor,
@@ -3404,19 +3651,13 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   void _openPrivacyPolicy() {
-    Navigator.of(
-      context,
-    ).push(
-      MaterialPageRoute(
-        builder: (_) => const PrivacyPolicy(sparkHeader: true),
-      ),
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PrivacyPolicy(sparkHeader: true)),
     );
   }
 
   void _openPersonalDataConsent() {
-    Navigator.of(
-      context,
-    ).push(
+    Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const PersonalDataConsent(sparkHeader: true),
       ),
@@ -3426,9 +3667,7 @@ class _SparkJoySpecialistProfileScreenState
   void _openTerms() {
     Navigator.of(
       context,
-    ).push(
-      MaterialPageRoute(builder: (_) => const Terms(sparkHeader: true)),
-    );
+    ).push(MaterialPageRoute(builder: (_) => const Terms(sparkHeader: true)));
   }
 
   Future<void> _confirmAccountDeactivation() async {
@@ -3988,6 +4227,16 @@ Uint8List _normalizeAvatarJpegBytes(Uint8List bytes) {
       : cropped;
 
   return Uint8List.fromList(img.encodeJpg(resized, quality: 90));
+}
+
+bool _isValidAvatarBase64(String raw) {
+  try {
+    final bytes = base64Decode(raw);
+    final decoded = img.decodeImage(bytes);
+    return decoded != null && decoded.width > 0 && decoded.height > 0;
+  } catch (_) {
+    return false;
+  }
 }
 
 /// Лейбл сверху + TextField снизу — единый стиль для всех полей

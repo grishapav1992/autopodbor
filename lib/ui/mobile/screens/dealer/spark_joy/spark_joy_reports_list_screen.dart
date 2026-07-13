@@ -643,15 +643,6 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
   // ————— Redesign helpers (макет «Отчёты - редизайн») —————
 
-  /// Русская форма множественного числа: 1 черновик / 2 черновика / 5 черновиков.
-  String _pluralRu(int n, String one, String few, String many) {
-    final mod10 = n % 10;
-    final mod100 = n % 100;
-    if (mod10 == 1 && mod100 != 11) return one;
-    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return few;
-    return many;
-  }
-
   /// 54×54 плитка со значком слева от карточки, тон — по акцентному цвету.
   Widget _leadingTile({required IconData icon, required Color accent}) {
     return Container(
@@ -1290,36 +1281,10 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             .toList();
         final completed = _controller.filteredCompleted;
 
-        // Подзаголовок-счётчик под заголовком «Отчёты». Пока идёт первичная
-        // загрузка завершённых (список ещё пуст) — показываем только черновики,
-        // чтобы не мигать «0 завершённых».
-        final draftsCount = drafts.length;
-        final completedUnknown =
-            _controller.completedLoading && completed.isEmpty;
-        final completedCount = completed.length;
-        final draftsLabel =
-            '$draftsCount ${_pluralRu(draftsCount, 'черновик', 'черновика', 'черновиков')}';
-        final completedLabel =
-            '$completedCount ${_pluralRu(completedCount, 'завершённый', 'завершённых', 'завершённых')}';
-        final countsSummary = completedUnknown
-            ? draftsLabel
-            : '$draftsLabel · $completedLabel';
-
         return SparkScreenList(
           bottomInset: 56,
           onRefresh: _load,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(
-                left: SparkSpace.xxs,
-                bottom: SparkSpace.md,
-              ),
-              child: MyText(
-                text: countsSummary,
-                size: SparkTextSize.caption,
-                color: kGreyColor,
-              ),
-            ),
             SparkPrimaryActionButton(
               label: 'Создать новый отчёт',
               onTap: _openNewReport,

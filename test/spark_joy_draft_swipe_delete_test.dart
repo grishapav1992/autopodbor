@@ -76,6 +76,7 @@ void main() {
       'storage ещё не тронут', (tester) async {
     await _pumpScreen(tester);
     expect(find.text(_draftTitle), findsOneWidget);
+    expect(find.textContaining('1 черновик'), findsNothing);
     expect(find.textContaining('Осталось:'), findsNothing);
     // Иконки корзины на карточке больше нет.
     expect(find.byIcon(Icons.delete_outline_rounded), findsNothing);

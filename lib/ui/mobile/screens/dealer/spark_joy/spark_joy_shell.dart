@@ -31,6 +31,12 @@ import 'spark_joy_i18n.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
+typedef _SparkJoyNavDestination = ({
+  IconData icon,
+  IconData selectedIcon,
+  String label,
+});
+
 class SparkJoyShell extends StatefulWidget {
   const SparkJoyShell({super.key});
 
@@ -286,45 +292,45 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     }
   }
 
-  List<NavigationDestination> _navDestinations() {
+  List<_SparkJoyNavDestination> _navDestinations() {
     if (_role == SparkJoyRole.specialist) {
       return const [
-        NavigationDestination(
-          icon: Icon(Icons.description_outlined),
-          selectedIcon: Icon(Icons.description_rounded),
+        (
+          icon: Icons.description_outlined,
+          selectedIcon: Icons.description_rounded,
           label: 'Отчёты',
         ),
-        NavigationDestination(
-          icon: Icon(Icons.assignment_ind_outlined),
-          selectedIcon: Icon(Icons.assignment_ind_rounded),
+        (
+          icon: Icons.assignment_ind_outlined,
+          selectedIcon: Icons.assignment_ind_rounded,
           label: 'Заявки',
         ),
-        NavigationDestination(
-          icon: Icon(Icons.person_outline),
-          selectedIcon: Icon(Icons.person_rounded),
+        (
+          icon: Icons.person_outline,
+          selectedIcon: Icons.person_rounded,
           label: 'Профиль',
         ),
       ];
     }
     return const [
-      NavigationDestination(
-        icon: Icon(Icons.description_outlined),
-        selectedIcon: Icon(Icons.description_rounded),
+      (
+        icon: Icons.description_outlined,
+        selectedIcon: Icons.description_rounded,
         label: 'Отчёты',
       ),
-      NavigationDestination(
-        icon: Icon(Icons.groups_outlined),
-        selectedIcon: Icon(Icons.groups_rounded),
+      (
+        icon: Icons.groups_outlined,
+        selectedIcon: Icons.groups_rounded,
         label: 'Сотрудники',
       ),
-      NavigationDestination(
-        icon: Icon(Icons.assignment_outlined),
-        selectedIcon: Icon(Icons.assignment_rounded),
+      (
+        icon: Icons.assignment_outlined,
+        selectedIcon: Icons.assignment_rounded,
         label: 'Заявки',
       ),
-      NavigationDestination(
-        icon: Icon(Icons.person_outline),
-        selectedIcon: Icon(Icons.person_rounded),
+      (
+        icon: Icons.person_outline,
+        selectedIcon: Icons.person_rounded,
         label: 'Профиль',
       ),
     ];
@@ -512,12 +518,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
           ];
     final destinations = _navDestinations();
 
-    // Progressive trim: 72 → 60 → 56 (89f65dd icon-only-inactive) →
-    // 64 here. User asked the inactive labels back; with always-show
-    // labels Material needs more vertical room, so bumped up 8px to
-    // 64 — still noticeably tighter than the original 72.
-    const navHeight = 64.0;
-    const navContentOffset = SparkSpace.xxxs;
+    // У каждой вкладки — строго одинаковая ширина и одинаковые зоны под
+    // иконку/подпись. Это особенно важно в company-режиме: длинная подпись
+    // «Сотрудники» больше не растягивает и визуально не сдвигает соседей.
+    const navHeight = 66.0;
 
     return Scaffold(
       // Keep extendBody for the frosted BottomNav (it floats over the
@@ -600,56 +604,140 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
                 ),
               ),
             ),
-            child: NavigationBarTheme(
-              data: NavigationBarThemeData(
-                backgroundColor: kWhiteColor.withValues(alpha: 0.78),
-                surfaceTintColor: Colors.transparent,
-                shadowColor: Colors.transparent,
-                height: navHeight - navContentOffset,
-                labelTextStyle: WidgetStateProperty.resolveWith((states) {
-                  final selected = states.contains(WidgetState.selected);
-                  return TextStyle(
-                    // Bumped caption → body so labels are legible at
-                    // arm's length; weight pops for the selected item.
-                    fontSize: SparkTextSize.body,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                    color: selected ? kSecondaryColor : kGreyColor,
-                  );
-                }),
-                iconTheme: WidgetStateProperty.resolveWith((states) {
-                  final selected = states.contains(WidgetState.selected);
-                  return IconThemeData(
-                    // Bumped iconSm (16) → iconLg (20). Matches
-                    // standard Material NavigationBar metrics; the old
-                    // 16 looked "tiny" against the bar's width.
-                    size: SparkSize.iconLg,
-                    color: selected ? kSecondaryColor : kGreyColor,
-                  );
-                }),
-                indicatorColor: kSecondaryColor.withValues(alpha: 0.12),
+            child: ColoredBox(
+              color: kWhiteColor.withValues(alpha: 0.78),
+              child: _SparkJoyBottomNavigationBar(
+                destinations: destinations,
+                selectedIndex: index,
+                height: navHeight,
+                onDestinationSelected: (value) {
+                  if (value != index) {
+                    HapticFeedback.selectionClick();
+                  }
+                  setState(() => _index = value);
+                  if (value == 0) {
+                    _requestedReportsTab.value = 'drafts';
+                  }
+                  _maybeShowTabOnboarding(value);
+                },
               ),
-              child: Padding(
-                padding: const EdgeInsets.only(top: navContentOffset),
-                child: NavigationBar(
-                  selectedIndex: index,
-                  // Labels always visible — pulling them from inactive
-                  // destinations read as mystery-meat icons. Height was
-                  // bumped to compensate.
-                  labelBehavior:
-                      NavigationDestinationLabelBehavior.alwaysShow,
-                  onDestinationSelected: (value) {
-                    if (value != index) {
-                      HapticFeedback.selectionClick();
-                    }
-                    setState(() => _index = value);
-                    if (value == 0) {
-                      _requestedReportsTab.value = 'drafts';
-                    }
-                    _maybeShowTabOnboarding(value);
-                  },
-                  destinations: destinations,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SparkJoyBottomNavigationBar extends StatelessWidget {
+  const _SparkJoyBottomNavigationBar({
+    required this.destinations,
+    required this.selectedIndex,
+    required this.height,
+    required this.onDestinationSelected,
+  });
+
+  final List<_SparkJoyNavDestination> destinations;
+  final int selectedIndex;
+  final double height;
+  final ValueChanged<int> onDestinationSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        height: height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (var index = 0; index < destinations.length; index++)
+              Expanded(
+                child: _SparkJoyBottomNavigationItem(
+                  destination: destinations[index],
+                  selected: index == selectedIndex,
+                  onTap: () => onDestinationSelected(index),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SparkJoyBottomNavigationItem extends StatelessWidget {
+  const _SparkJoyBottomNavigationItem({
+    required this.destination,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _SparkJoyNavDestination destination;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = selected ? kSecondaryColor : kGreyColor;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: destination.label,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: ValueKey('shell-nav-${destination.label}'),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xs,
+              SparkSpace.xs,
+              SparkSpace.xs,
+              SparkSpace.xxs,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: SparkMotion.fast,
+                  curve: Curves.easeOut,
+                  width: 44,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? kSecondaryColor.withValues(alpha: 0.12)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(SparkRadius.pill),
+                  ),
+                  child: Icon(
+                    selected ? destination.selectedIcon : destination.icon,
+                    size: SparkSize.iconLg,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(height: SparkSpace.xxxs),
+                SizedBox(
+                  width: double.infinity,
+                  height: 16,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      destination.label,
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: SparkTextSize.caption,
+                        height: 1,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),

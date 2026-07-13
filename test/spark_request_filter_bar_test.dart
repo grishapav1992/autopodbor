@@ -31,14 +31,20 @@ void main() {
     await tester.tap(find.byIcon(Icons.tune_rounded));
     await tester.pumpAndSettle();
 
-    expect(find.text('Фильтры'), findsOneWidget);
+    expect(find.text('Фильтр заявок'), findsOneWidget);
+    expect(find.text('Выберите статус для списка'), findsOneWidget);
     expect(find.text('Новые'), findsOneWidget);
     expect(find.text('В работе'), findsOneWidget);
     expect(find.text('Завершены'), findsOneWidget);
     expect(find.byType(SingleChildScrollView), findsOneWidget);
+    expect(find.byType(ChoiceChip), findsNothing);
+    expect(
+      find.byKey(const ValueKey('request-filter-inProgress')),
+      findsOneWidget,
+    );
 
-    await tester.tap(find.text('В работе'));
-    await tester.tap(find.text('Показать заявки'));
+    await tester.tap(find.byKey(const ValueKey('request-filter-inProgress')));
+    await tester.tap(find.text('Применить'));
     await tester.pumpAndSettle();
 
     expect(selected, RequestStatusFilter.inProgress);

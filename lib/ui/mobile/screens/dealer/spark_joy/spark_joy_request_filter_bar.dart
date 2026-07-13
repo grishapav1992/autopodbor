@@ -29,6 +29,16 @@ class SparkJoyRequestFilterBar extends StatefulWidget {
 class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
   final _searchController = TextEditingController();
 
+  IconData _filterIcon(RequestStatusFilter filter) => switch (filter) {
+    RequestStatusFilter.all => Icons.view_list_rounded,
+    RequestStatusFilter.draft => Icons.edit_note_rounded,
+    RequestStatusFilter.newRequests => Icons.fiber_new_rounded,
+    RequestStatusFilter.inProgress => Icons.pending_actions_rounded,
+    RequestStatusFilter.done => Icons.task_alt_rounded,
+    RequestStatusFilter.canceled => Icons.block_rounded,
+    RequestStatusFilter.failed => Icons.error_outline_rounded,
+  };
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -46,7 +56,7 @@ class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.fromLTRB(
               SparkSpace.xl,
-              SparkSpace.md,
+              SparkSpace.xxs,
               SparkSpace.xl,
               SparkSpace.xl,
             ),
@@ -55,93 +65,135 @@ class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    const Expanded(
-                      child: Text(
-                        'Фильтры',
-                        style: TextStyle(
-                          fontSize: SparkTextSize.title,
-                          fontWeight: FontWeight.w800,
-                          color: kTertiaryColor,
-                        ),
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: kSecondaryColor.withValues(alpha: 0.10),
+                        borderRadius: BorderRadius.circular(SparkRadius.md),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.tune_rounded,
+                        color: kSecondaryColor,
+                        size: SparkSize.iconXl,
                       ),
                     ),
+                    const SizedBox(width: SparkSpace.md),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Фильтр заявок',
+                            style: TextStyle(
+                              fontSize: SparkTextSize.title,
+                              fontWeight: FontWeight.w800,
+                              color: kTertiaryColor,
+                            ),
+                          ),
+                          SizedBox(height: SparkSpace.xxxs),
+                          Text(
+                            'Выберите статус для списка',
+                            style: TextStyle(
+                              fontSize: SparkTextSize.caption,
+                              fontWeight: FontWeight.w500,
+                              color: kGreyColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Закрыть',
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      style: IconButton.styleFrom(
+                        foregroundColor: kGreyColor,
+                        backgroundColor: kWhiteColor,
+                        side: const BorderSide(color: kBorderColor),
+                      ),
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: SparkSpace.xl),
+                Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: kWhiteColor,
+                    borderRadius: BorderRadius.circular(SparkRadius.lg),
+                    border: Border.all(color: kBorderColor),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (
+                        var index = 0;
+                        index < available.length;
+                        index++
+                      ) ...[
+                        if (index > 0)
+                          const Divider(
+                            height: 1,
+                            thickness: 1,
+                            indent: 58,
+                            color: kBorderColor,
+                          ),
+                        _RequestStatusFilterRow(
+                          key: ValueKey(
+                            'request-filter-${available[index].name}',
+                          ),
+                          label: available[index].label,
+                          icon: _filterIcon(available[index]),
+                          selected: pending == available[index],
+                          onTap: () =>
+                              setSheetState(() => pending = available[index]),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: SparkSpace.xl),
+                Row(
+                  children: [
                     TextButton(
-                      onPressed: () => setSheetState(
-                        () => pending = RequestStatusFilter.all,
+                      onPressed: pending == RequestStatusFilter.all
+                          ? null
+                          : () => setSheetState(
+                              () => pending = RequestStatusFilter.all,
+                            ),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(92, SparkSize.actionHeight),
                       ),
                       child: const Text('Сбросить'),
                     ),
-                  ],
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                const Text(
-                  'СТАТУС',
-                  style: TextStyle(
-                    fontSize: SparkTextSize.caption,
-                    fontWeight: FontWeight.w700,
-                    color: kGreyColor,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: SparkSpace.md),
-                Wrap(
-                  spacing: SparkSpace.sm,
-                  runSpacing: SparkSpace.sm,
-                  children: [
-                    for (final filter in available)
-                      ChoiceChip(
-                        selected: pending == filter,
-                        onSelected: (_) =>
-                            setSheetState(() => pending = filter),
-                        avatar: pending == filter
-                            ? const Icon(Icons.check_rounded, size: 18)
-                            : null,
-                        label: Text(filter.label),
-                        showCheckmark: false,
-                        selectedColor: kSecondaryColor,
-                        backgroundColor: kWhiteColor,
-                        side: BorderSide(
-                          color: pending == filter
-                              ? kSecondaryColor
-                              : kBorderColor,
+                    const SizedBox(width: SparkSpace.md),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(ctx).pop(pending),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: kSecondaryColor,
+                          foregroundColor: kWhiteColor,
+                          minimumSize: const Size(
+                            double.infinity,
+                            SparkSize.actionHeight,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(SparkRadius.lg),
+                          ),
                         ),
-                        labelStyle: TextStyle(
-                          color: pending == filter
-                              ? kWhiteColor
-                              : kTertiaryColor,
-                          fontSize: SparkTextSize.body,
-                          fontWeight: FontWeight.w700,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(
-                            SparkRadius.pill,
+                        child: const Text(
+                          'Применить',
+                          style: TextStyle(
+                            fontSize: SparkTextSize.body,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
+                    ),
                   ],
-                ),
-                const SizedBox(height: SparkSpace.xxl),
-                FilledButton(
-                  onPressed: () => Navigator.of(ctx).pop(pending),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kSecondaryColor,
-                    foregroundColor: kWhiteColor,
-                    minimumSize: const Size(
-                      double.infinity,
-                      SparkSize.actionHeight,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SparkRadius.lg),
-                    ),
-                  ),
-                  child: const Text(
-                    'Показать заявки',
-                    style: TextStyle(
-                      fontSize: SparkTextSize.body,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -252,6 +304,84 @@ class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _RequestStatusFilterRow extends StatelessWidget {
+  const _RequestStatusFilterRow({
+    super.key,
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: selected
+          ? kSecondaryColor.withValues(alpha: 0.07)
+          : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.lg,
+            vertical: SparkSpace.md,
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: Icon(
+                  icon,
+                  size: SparkSize.iconLg,
+                  color: selected ? kSecondaryColor : kGreyColor,
+                ),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: SparkTextSize.body,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                    color: selected ? kSecondaryColor : kTertiaryColor,
+                  ),
+                ),
+              ),
+              AnimatedContainer(
+                duration: SparkMotion.fast,
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: selected ? kSecondaryColor : Colors.transparent,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: selected ? kSecondaryColor : kBorderColor,
+                    width: selected ? 0 : 1.5,
+                  ),
+                ),
+                child: selected
+                    ? const Icon(
+                        Icons.check_rounded,
+                        size: 16,
+                        color: kWhiteColor,
+                      )
+                    : null,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
