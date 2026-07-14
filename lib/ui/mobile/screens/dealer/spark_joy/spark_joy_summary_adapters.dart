@@ -1,10 +1,6 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoySummaryAdapters on _SparkJoyCreateReportScreenState {
-  Widget _summaryHeaderCard() {
-    return _buildSparkSummaryHeaderCard(this);
-  }
-
   Color _summaryDetailSeverityColor(String severity) {
     return _sparkSummaryDetailSeverityColor(severity);
   }

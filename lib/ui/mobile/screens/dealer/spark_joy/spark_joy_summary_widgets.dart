@@ -352,59 +352,6 @@ Widget _buildSparkSummaryRequiredMissingActionsCard(
   return _buildSparkSummaryMissingActionsCard(s, items);
 }
 
-Widget _buildSparkSummaryHeaderCard(_SparkJoyCreateReportScreenState s) {
-  final reportName = s._reportTitle().trim();
-  final reportMeta = sjFormatReportMeta(s._currentReportCode(), s._createdAt);
-
-  return s._card(
-    padding: const EdgeInsets.fromLTRB(
-      SparkSpace.xxl,
-      SparkSpace.xxl,
-      SparkSpace.xxl,
-      SparkSpace.xl,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SparkCard(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xl,
-            vertical: SparkSpace.xl,
-          ),
-          backgroundColor: kInputBgColor,
-          child: MyText(
-            text: reportName.isEmpty ? 'Без названия' : reportName,
-            size: SparkTextSize.titleLg,
-            weight: FontWeight.w800,
-            lineHeight: 1.30,
-            tracking: true,
-            maxLines: 2,
-            textOverflow: TextOverflow.ellipsis,
-          ),
-        ),
-        const SizedBox(height: SparkSpace.lg),
-        Row(
-          children: [
-            const Icon(
-              Icons.schedule_rounded,
-              size: SparkSize.iconXs,
-              color: kGreyColor,
-            ),
-            const SizedBox(width: SparkSpace.sm),
-            Expanded(
-              child: MyText(
-                text: reportMeta,
-                size: SparkTextSize.bodyLg,
-                color: kGreyColor,
-              ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
 Widget _buildSparkSummarySectionMediaPreview(
   _SparkJoyCreateReportScreenState s,
   String title,

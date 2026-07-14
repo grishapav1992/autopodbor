@@ -64,8 +64,6 @@ Widget _buildSparkJoyStepSummary(_SparkJoyCreateReportScreenState s) {
 
   return Column(
     children: [
-      s._summaryHeaderCard(),
-      const SizedBox(height: SparkSpace.lg),
       s._summaryNoDamageMediaCard(),
       if (s._mediaState.values.any(
         (state) => state.files.any((file) => !s._mediaItemHasIssue(file)),

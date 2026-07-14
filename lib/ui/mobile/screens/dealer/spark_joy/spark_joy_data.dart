@@ -2,15 +2,6 @@ import 'dart:convert';
 
 enum SparkJoyRole { company, specialist }
 
-String sparkJoyRoleLabel(SparkJoyRole role) {
-  switch (role) {
-    case SparkJoyRole.company:
-      return 'Компания';
-    case SparkJoyRole.specialist:
-      return 'Специалист';
-  }
-}
-
 String sparkJoyRoleKey(SparkJoyRole role) {
   return role == SparkJoyRole.company ? 'company' : 'specialist';
 }

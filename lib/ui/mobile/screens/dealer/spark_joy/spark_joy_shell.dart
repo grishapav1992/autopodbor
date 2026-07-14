@@ -11,7 +11,6 @@ import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/ai_queue_offline_runner.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
-import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 import 'package:get/get.dart';
 
 import 'spark_joy_company_requests_screen.dart';
@@ -48,7 +47,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   bool _loading = true;
   bool _loggedIn = false;
   SparkJoyRole _role = SparkJoyRole.specialist;
-  String? _businessType;
   int _index = 0;
 
   // Lets other tabs ask the reports screen to switch its inner segmented
@@ -141,12 +139,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
       await SparkJoyStorage.syncRoleFromServer();
     }
     final role = await SparkJoyStorage.currentRole();
-    final businessType = await SparkJoyStorage.currentBusinessType();
     if (!mounted) return;
     setState(() {
       _loggedIn = loggedIn;
       _role = role;
-      _businessType = businessType;
       _loading = false;
       _index = 0;
     });
@@ -155,12 +151,10 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
   Future<void> _login() async {
     final role = await SparkJoyStorage.currentRole();
     await SparkJoyStorage.login(role);
-    final businessType = await SparkJoyStorage.currentBusinessType();
     if (!mounted) return;
     setState(() {
       _loggedIn = true;
       _role = role;
-      _businessType = businessType;
       _index = 0;
     });
   }
@@ -202,7 +196,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     }
     setState(() {
       _role = newRole;
-      _businessType = businessType;
       _index = nextIndex;
     });
   }
@@ -361,115 +354,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
     }
   }
 
-  String _roleBadgeLabel() {
-    if (_role == SparkJoyRole.company && _businessType == 'ip') {
-      return 'ИП';
-    }
-    return sparkJoyRoleLabel(_role);
-  }
-
-  /// Чип роли в AppBar по макету: белый pill с рамкой, ведущий значок
-  /// (дом — компания/ИП, человек — специалист) + подпись роли. Тап
-  /// открывает объяснение роли (`_showRoleInfoSheet`).
-  Widget _buildRoleChip(BuildContext context, bool isSpecialist) {
-    return Material(
-      color: kWhiteColor,
-      borderRadius: BorderRadius.circular(SparkRadius.pill),
-      child: InkWell(
-        onTap: () => _showRoleInfoSheet(context),
-        borderRadius: BorderRadius.circular(SparkRadius.pill),
-        child: Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xl,
-            vertical: SparkSpace.sm,
-          ),
-          decoration: BoxDecoration(
-            color: kWhiteColor,
-            borderRadius: BorderRadius.circular(SparkRadius.pill),
-            border: Border.all(color: kBorderColor),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isSpecialist ? Icons.person_rounded : Icons.home_rounded,
-                size: SparkSize.iconSm,
-                color: kSecondaryColor,
-              ),
-              const SizedBox(width: SparkSpace.xs),
-              MyText(
-                text: _roleBadgeLabel(),
-                size: SparkTextSize.body,
-                weight: FontWeight.w600,
-                color: kSecondaryColor,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Tap по role-чипу в AppBar открывает короткое объяснение: какая
-  /// сейчас роль, чем company отличается от specialist, как сменить.
-  /// Реальный role-switch — через «Профиль → Проверка компании» (ввод
-  /// ИНН / сброс статуса), здесь только nav-hint, чтобы юзер не
-  /// тапал чип и не ожидал dropdown.
-  void _showRoleInfoSheet(BuildContext context) {
-    final isCompany = _role == SparkJoyRole.company;
-    final label = _roleBadgeLabel();
-    showAppAdaptiveBottomSheet<void>(
-      context: context,
-      extent: AppBottomSheetExtent.content,
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.all(SparkSpace.xxxl),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isCompany ? Icons.business_rounded : Icons.person_rounded,
-                      size: SparkSize.iconLg,
-                      color: kSecondaryColor,
-                    ),
-                    const SizedBox(width: SparkSpace.md),
-                    MyText(
-                      text: 'Роль: $label',
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w800,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                MyText(
-                  text: isCompany
-                      ? 'Аккаунт оформлен как ${_businessType == 'ip' ? 'ИП' : 'юридическое лицо'}. Отчёты публикуются от имени компании, доступен раздел «Сотрудники».'
-                      : 'Индивидуальный профиль автоподборщика. Чтобы переключиться на работу от лица компании или ИП, укажите ИНН в «Профиль → Проверка компании».',
-                  size: SparkTextSize.body,
-                  color: kGreyColor,
-                  lineHeight: 1.40,
-                ),
-                const SizedBox(height: SparkSpace.lg),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => Navigator.of(ctx).pop(),
-                    child: const Text('Понятно'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -537,13 +421,6 @@ class _SparkJoyShellState extends State<SparkJoyShell> {
         title: _currentTabTitle(),
         automaticallyImplyLeading: false,
         actions: [
-          // На вкладке «Профиль» чип роли скрыт — роль показана в бейдже
-          // hero-шапки профиля, дублировать её в AppBar незачем.
-          if (!(isSpecialist ? index == 2 : index == 3))
-            Padding(
-              padding: const EdgeInsets.only(right: SparkSpace.md),
-              child: Center(child: _buildRoleChip(context, isSpecialist)),
-            ),
           Padding(
             padding: const EdgeInsets.only(right: SparkSpace.md),
             child: Center(
