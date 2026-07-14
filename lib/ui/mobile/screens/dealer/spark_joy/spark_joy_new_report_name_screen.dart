@@ -57,41 +57,6 @@ class _SparkJoyNewReportNameScreenState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SparkCard(
-                padding: const EdgeInsets.all(SparkSpace.xl),
-                radius: SparkRadius.md,
-                backgroundColor: kWhiteColor,
-                child: Row(
-                  children: [
-                    Container(
-                      width: SparkSize.navStepBadge,
-                      height: SparkSize.navStepBadge,
-                      decoration: BoxDecoration(
-                        color: kSecondaryColor.withValues(alpha: 0.08),
-                        borderRadius: BorderRadius.circular(SparkRadius.sm),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.description_outlined,
-                        color: kSecondaryColor,
-                        size: SparkSize.iconSm,
-                      ),
-                    ),
-                    const SizedBox(width: SparkSpace.md),
-                    Expanded(
-                      child: MyText(
-                        text: widget.companyMode
-                            ? 'Создайте отчёт и начните осмотр. Назначить '
-                                  'исполнителя можно через раздел «Заявки».'
-                            : 'Введите название и начните осмотр',
-                        size: SparkTextSize.body,
-                        color: kGreyColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: SparkSpace.xl),
-              SparkCard(
                 padding: const EdgeInsets.fromLTRB(
                   SparkSpace.xl,
                   SparkSpace.xl,
@@ -102,12 +67,6 @@ class _SparkJoyNewReportNameScreenState
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const MyText(
-                      text: 'Название отчёта',
-                      size: SparkTextSize.title,
-                      weight: FontWeight.w700,
-                    ),
-                    const SizedBox(height: SparkSpace.md),
                     TextFormField(
                       controller: _controller,
                       onTapOutside: (_) =>
@@ -127,8 +86,12 @@ class _SparkJoyNewReportNameScreenState
                       ),
                     ),
                     const SizedBox(height: SparkSpace.sm),
-                    const MyText(
-                      text: 'Название поможет быстро найти отчёт в списке',
+                    MyText(
+                      text: widget.companyMode
+                          ? 'Название поможет быстро найти отчёт в списке. '
+                                'Назначить исполнителя можно через раздел '
+                                '«Заявки».'
+                          : 'Название поможет быстро найти отчёт в списке',
                       size: SparkTextSize.caption,
                       color: kGreyColor,
                     ),
