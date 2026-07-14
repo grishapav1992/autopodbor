@@ -1233,41 +1233,43 @@ class SparkReportEditorAppBar extends StatelessWidget
         icon: const Icon(Icons.arrow_back_rounded),
       ),
       titleSpacing: 0,
-      // Пилюля автосейва прижата к правому краю шапки (макет 2026-07-11),
-      // а не стоит вплотную к подзаголовку — так «☁ 09:36» читается как
-      // системный индикатор, а не как продолжение меты.
+      // Пилюля автосейва живёт в строке меты (замечание 2026-07-14): в строке
+      // заголовка она отъедала ширину и длинные названия обрезались раньше
+      // времени. Заголовок получает всю ширину бара, пилюля прижата к правому
+      // краю строки даты.
       title: Padding(
         padding: EdgeInsets.only(right: onShare == null ? SparkSpace.xl : 0),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (titleController != null && titleFocusNode != null)
-                    _SparkEditableReportTitle(
-                      controller: titleController!,
-                      focusNode: titleFocusNode!,
-                    )
-                  else
-                    _SparkReportTitle(title: title),
-                  const SizedBox(height: SparkSpace.xs),
-                  MyText(
+            if (titleController != null && titleFocusNode != null)
+              _SparkEditableReportTitle(
+                controller: titleController!,
+                focusNode: titleFocusNode!,
+              )
+            else
+              _SparkReportTitle(title: title),
+            const SizedBox(height: SparkSpace.xs),
+            Row(
+              children: [
+                Expanded(
+                  child: MyText(
                     text: meta,
                     size: SparkTextSize.body,
                     color: kGreyColor,
                     maxLines: 1,
                     textOverflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(width: SparkSpace.md),
-            _SparkDraftSaveBadge(
-              text: draftStatus,
-              color: draftStatusColor,
-              icon: draftStatusIcon,
-              saving: draftSaving,
+                ),
+                const SizedBox(width: SparkSpace.md),
+                _SparkDraftSaveBadge(
+                  text: draftStatus,
+                  color: draftStatusColor,
+                  icon: draftStatusIcon,
+                  saving: draftSaving,
+                ),
+              ],
             ),
           ],
         ),
@@ -1294,7 +1296,14 @@ class SparkReportEditorAppBar extends StatelessWidget
 /// но редактируется сразу по нажатию. Отдельные карандаш, рамка и кнопка
 /// подтверждения не нужны: потеря фокуса или action «Готово» на клавиатуре
 /// фиксируют введённое значение через общий listener экрана.
-class _SparkEditableReportTitle extends StatelessWidget {
+///
+/// Вне редактирования рендерится текст с многоточием ([TextField] в одну
+/// строку не умеет «…» — длинное имя просто обрезалось по краю); тап по
+/// строке подменяет текст на настоящее поле ввода и передаёт ему фокус.
+/// Флаг редактирования — локальный стейт, а не `focusNode.hasFocus`:
+/// пока поле не построено, нода не привязана к дереву фокуса и
+/// `requestFocus` на ней не уведомляет слушателей.
+class _SparkEditableReportTitle extends StatefulWidget {
   const _SparkEditableReportTitle({
     required this.controller,
     required this.focusNode,
@@ -1304,14 +1313,81 @@ class _SparkEditableReportTitle extends StatelessWidget {
   final FocusNode focusNode;
 
   @override
+  State<_SparkEditableReportTitle> createState() =>
+      _SparkEditableReportTitleState();
+}
+
+class _SparkEditableReportTitleState extends State<_SparkEditableReportTitle> {
+  late bool _editing = widget.focusNode.hasFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.focusNode.addListener(_handleFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SparkEditableReportTitle oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.focusNode != widget.focusNode) {
+      oldWidget.focusNode.removeListener(_handleFocusChange);
+      widget.focusNode.addListener(_handleFocusChange);
+      _editing = widget.focusNode.hasFocus;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.focusNode.removeListener(_handleFocusChange);
+    super.dispose();
+  }
+
+  void _handleFocusChange() {
+    if (!mounted || widget.focusNode.hasFocus == _editing) return;
+    setState(() => _editing = widget.focusNode.hasFocus);
+  }
+
+  void _startEditing() {
+    setState(() => _editing = true);
+    // Нода привяжется к дереву при билде TextField и подхватит отложенный
+    // запрос фокуса (_requestFocusWhenReparented).
+    widget.focusNode.requestFocus();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (!_editing) {
+      return ListenableBuilder(
+        listenable: widget.controller,
+        builder: (context, _) {
+          final text = widget.controller.text;
+          final isEmpty = text.trim().isEmpty;
+          return GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _startEditing,
+            child: SizedBox(
+              width: double.infinity,
+              child: MyText(
+                text: isEmpty ? 'Новый отчёт' : text,
+                size: SparkTextSize.title,
+                weight: FontWeight.w700,
+                lineHeight: 1.15,
+                color: isEmpty ? kGreyColor : null,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+            ),
+          );
+        },
+      );
+    }
     return TextField(
-      controller: controller,
-      focusNode: focusNode,
+      controller: widget.controller,
+      focusNode: widget.focusNode,
       textInputAction: TextInputAction.done,
       maxLines: 1,
-      onSubmitted: (_) => focusNode.unfocus(),
-      onTapOutside: (_) => focusNode.unfocus(),
+      onSubmitted: (_) => widget.focusNode.unfocus(),
+      onTapOutside: (_) => widget.focusNode.unfocus(),
       style: TextStyle(
         fontSize: AppResponsive.sp(context, SparkTextSize.title),
         fontWeight: FontWeight.w700,
@@ -1433,13 +1509,13 @@ void _showFullReportTitle(BuildContext context, String title) {
   );
 }
 
-/// Compact pill rendered under the report title in the editor AppBar.
+/// Compact pill rendered in the meta row of the editor AppBar, right of the
+/// «Отчёт от …» date.
 ///
 /// Reads autosave state at a glance: a small spinner replaces the leading
 /// icon while a save is in flight, the pill tint matches the semantic
-/// state colour (green / yellow / red / secondary), and the chip is sized
-/// so it sits comfortably inside the two-line AppBar title without
-/// pushing the edit button off-screen.
+/// state colour (green / yellow / red / secondary), and the text matches
+/// the meta font size so the row reads as one line.
 class _SparkDraftSaveBadge extends StatelessWidget {
   const _SparkDraftSaveBadge({
     required this.text,
@@ -1457,8 +1533,8 @@ class _SparkDraftSaveBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final Widget leading = saving
         ? SizedBox(
-            width: SparkTextSize.chip,
-            height: SparkTextSize.chip,
+            width: SparkTextSize.body,
+            height: SparkTextSize.body,
             child: CircularProgressIndicator(
               strokeWidth: 2,
               valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -1481,7 +1557,7 @@ class _SparkDraftSaveBadge extends StatelessWidget {
           const SizedBox(width: SparkSpace.xs),
           MyText(
             text: text,
-            size: SparkTextSize.chip,
+            size: SparkTextSize.body,
             weight: FontWeight.w700,
             color: color,
             tabularFigures: true,

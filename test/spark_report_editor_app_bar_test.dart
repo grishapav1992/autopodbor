@@ -71,21 +71,24 @@ void main() {
       ),
     );
 
-    // Название всегда остаётся безрамочным полем: визуально это заголовок,
-    // а для правки достаточно нажать непосредственно на текст.
-    final titleField = find.byType(TextField);
-    expect(titleField, findsOneWidget);
+    // Вне фокуса название — обычный однострочный заголовок с «…» (длинное
+    // имя не обрезается по краю без многоточия); поле ввода появляется
+    // по тапу на текст.
+    expect(find.byType(TextField), findsNothing);
     expect(find.text('Старое название'), findsOneWidget);
     expect(find.byIcon(Icons.edit_rounded), findsNothing);
     expect(find.text('Готово'), findsNothing);
-    final field = tester.widget<TextField>(titleField);
-    expect(field.decoration?.border, InputBorder.none);
-    expect(field.decoration?.enabledBorder, InputBorder.none);
-    expect(field.decoration?.focusedBorder, InputBorder.none);
 
     await tester.tap(find.text('Старое название'));
     await tester.pump();
     expect(focusNode.hasFocus, isTrue);
+
+    final titleField = find.byType(TextField);
+    expect(titleField, findsOneWidget);
+    final field = tester.widget<TextField>(titleField);
+    expect(field.decoration?.border, InputBorder.none);
+    expect(field.decoration?.enabledBorder, InputBorder.none);
+    expect(field.decoration?.focusedBorder, InputBorder.none);
 
     await tester.enterText(titleField, 'Новое название');
     await tester.testTextInput.receiveAction(TextInputAction.done);
@@ -93,18 +96,19 @@ void main() {
 
     expect(controller.text, 'Новое название');
     expect(focusNode.hasFocus, isFalse);
-    expect(find.byType(TextField), findsOneWidget);
+    expect(find.byType(TextField), findsNothing);
     expect(find.text('Новое название'), findsOneWidget);
     expect(find.byIcon(Icons.edit_rounded), findsNothing);
 
-    // Пилюля автосейва прижата к правому краю шапки и висит по центру
-    // блока «заголовок + мета» (макет 2026-07-11).
+    // Пилюля автосейва живёт в строке меты (замечание 2026-07-14): справа,
+    // на одной линии с датой и ниже заголовка — строку названия она
+    // больше не сжимает.
     final titleCenter = tester.getCenter(find.text('Новое название'));
     final metaCenter = tester.getCenter(find.text('Черновик'));
     final statusCenter = tester.getCenter(find.text('Сохранено'));
     expect(statusCenter.dx, greaterThan(600));
-    expect(statusCenter.dy, greaterThan(titleCenter.dy - 1));
-    expect(statusCenter.dy, lessThan(metaCenter.dy + 1));
+    expect(statusCenter.dy, greaterThan(titleCenter.dy));
+    expect(statusCenter.dy, closeTo(metaCenter.dy, 1));
   });
 
   testWidgets('completed report title stays read-only', (tester) async {
