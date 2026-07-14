@@ -127,7 +127,7 @@ PODS:
     - Flutter
     - FlutterMacOS
   - PromisesObjC (2.4.0)
-  - record_ios (1.2.0):
+  - record_ios (1.2.1):
     - Flutter
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
@@ -276,7 +276,7 @@ SPEC CHECKSUMS:
   open_filex: 432f3cd11432da3e39f47fcc0df2b1603854eff1
   pdfium_flutter: e5a6e881af0b182d5b0465ebad23a8a20caa28d4
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  record_ios: 412daca2350b228e698fffcd08f1f94ceb1e3844
+  record_ios: 980fd386a97a35987d0fce3dfda4b26a38c90f4c
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
