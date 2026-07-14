@@ -134,6 +134,36 @@ class SparkIntakeTransferIo implements SparkIntakeTransfer {
       // офлайн-период не должен превращать валидную загрузку в terminal fail.
       iOSConfig: (Config.resourceTimeout, const Duration(hours: 24)),
     );
+    // Android 13+: WorkManager-заливка без видимой нотификации не имеет
+    // foreground-приоритета — Doze охотно убивает задачи при свёрнутом
+    // приложении, и пользователь не видит прогресс. Одна групповая
+    // нотификация на всю пачку фото. iOS не трогаем: там фон держит
+    // URLSession и системный диалог разрешения нотификаций приложение
+    // никогда не показывало.
+    if (Platform.isAndroid) {
+      FileDownloader().configureNotificationForGroup(
+        kSparkIntakeTaskGroup,
+        running: const TaskNotification(
+          'Загрузка фото автомобиля',
+          'Загружено {numFinished} из {numTotal}',
+        ),
+        complete: const TaskNotification(
+          'Фото автомобиля загружены',
+          'Все файлы отправлены',
+        ),
+        error: const TaskNotification(
+          'Загрузка не завершена',
+          'Часть файлов не отправлена — откройте приложение',
+        ),
+        progressBar: true,
+        groupNotificationId: kSparkIntakeTaskGroup,
+      );
+      final permissions = FileDownloader().permissions;
+      if (await permissions.status(PermissionType.notifications) ==
+          PermissionStatus.undetermined) {
+        await permissions.request(PermissionType.notifications);
+      }
+    }
     await FileDownloader().trackTasksInGroup(kSparkIntakeTaskGroup);
     FileDownloader().updates.listen(_onUpdate);
     // Доносит статусы/прогресс задач, завершившихся, пока Dart был мёртв

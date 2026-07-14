@@ -45,8 +45,8 @@ Widget _buildSparkJoyValidationHint(String text) {
       horizontal: SparkSpace.xl,
       vertical: SparkSpace.lg,
     ),
-    borderColor: kRedColor2.withValues(alpha: 0.35),
-    backgroundColor: kRedColor2.withValues(alpha: 0.06),
+    borderColor: kRedColor.withValues(alpha: 0.35),
+    backgroundColor: kRedColor.withValues(alpha: 0.06),
     radius: SparkRadius.md,
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -261,8 +261,8 @@ Widget _buildSparkJoyUploadErrorHint(
       horizontal: SparkSpace.xl,
       vertical: SparkSpace.lg,
     ),
-    borderColor: kRedColor2.withValues(alpha: 0.35),
-    backgroundColor: kRedColor2.withValues(alpha: 0.06),
+    borderColor: kRedColor.withValues(alpha: 0.35),
+    backgroundColor: kRedColor.withValues(alpha: 0.06),
     radius: SparkRadius.md,
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -329,7 +329,7 @@ Widget _buildSparkJoyUploadErrorHint(
           child: OutlinedButton.icon(
             onPressed: () => s._finishReport(),
             style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: kRedColor2),
+              side: const BorderSide(color: kRedColor),
               foregroundColor: kRedColor,
               backgroundColor: kWhiteColor.withValues(alpha: 0.75),
               shape: RoundedRectangleBorder(

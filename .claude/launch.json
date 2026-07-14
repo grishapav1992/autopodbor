@@ -20,6 +20,12 @@
       "port": 8085
     },
     {
+      "name": "autopodbor-flutter-dev",
+      "runtimeExecutable": "/Users/grigory_pavlenko/flutter/bin/flutter",
+      "runtimeArgs": ["run", "-d", "web-server", "--web-port=5202"],
+      "port": 5202
+    },
+    {
       "name": "autopodbor-web-current",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["-y", "serve", "-p", "5201", "-s", "/Users/grigory_pavlenko/Documents/autopodbor/build/web"],

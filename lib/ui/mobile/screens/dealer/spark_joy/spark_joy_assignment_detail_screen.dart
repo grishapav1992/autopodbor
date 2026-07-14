@@ -192,7 +192,7 @@ class SparkJoyAssignmentDetailScreen extends StatelessWidget {
               },
               style: OutlinedButton.styleFrom(
                 foregroundColor: kRedColor,
-                side: const BorderSide(color: kRedColor2),
+                side: const BorderSide(color: kRedColor),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(SparkRadius.sm),
                 ),

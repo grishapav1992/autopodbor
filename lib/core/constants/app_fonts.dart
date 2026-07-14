@@ -12,9 +12,6 @@ class AppFonts {
     }
   }
 
-  // ignore: non_constant_identifier_names
-  static Null get GLACIAL_INDIFFERENCE => null;
-
   /// Моноширинный шрифт для полей VIN / госномера. В отличие от системного
   /// San Francisco (в котором цифры по дизайну ниже заглавных букв, из-за
   /// чего КАПС-VIN выглядит «буквы больше цифр»), в моноширинных цифры и

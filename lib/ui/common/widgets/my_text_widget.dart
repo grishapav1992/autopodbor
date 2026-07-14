@@ -134,6 +134,17 @@ class MyText extends StatelessWidget {
             maxLines: maxLines,
             overflow: textOverflow,
           );
+    // Без onTap лишний GestureDetector не нужен; с onTap — Semantics(button),
+    // чтобы скринридеры объявляли тапабельный текст как кнопку.
+    final Widget interactive = onTap == null
+        ? child
+        : Semantics(
+            button: true,
+            child: GestureDetector(
+              onTap: onTap,
+              child: child,
+            ),
+          );
     return Padding(
       padding: EdgeInsets.only(
         top: scaledTop,
@@ -141,10 +152,7 @@ class MyText extends StatelessWidget {
         right: scaledRight,
         bottom: scaledBottom,
       ),
-      child: GestureDetector(
-        onTap: onTap,
-        child: child,
-      ),
+      child: interactive,
     );
   }
 }

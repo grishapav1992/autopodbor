@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'vin_ocr_types.dart';
 
@@ -59,7 +60,10 @@ Future<VinOcrResult> scanVinFromImageBytes(Uint8List bytes) async {
   }
 
   final fileName = 'vin_ocr_${DateTime.now().microsecondsSinceEpoch}.jpg';
-  final imageFile = File('${Directory.systemTemp.path}/$fileName');
+  // Не Directory.systemTemp: на Android он указывает в корневой /tmp-путь
+  // вне песочницы приложения — запись падает, и OCR умирал бы на первом шаге.
+  final tempDir = await getTemporaryDirectory();
+  final imageFile = File('${tempDir.path}/$fileName');
   final recognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   try {

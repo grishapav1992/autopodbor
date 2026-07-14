@@ -354,6 +354,11 @@ class UserSimplePreferences {
     iOptions: IOSOptions(
       accessibility: KeychainAccessibility.first_unlock_this_device,
     ),
+    // Jetpack EncryptedSharedPreferences вместо самодельной RSA/AES-обвязки
+    // плагина: устойчивее к порче Keystore-ключа (частый источник исключений,
+    // роняющих _writeToken в plaintext-фолбэк). Включено ДО первого
+    // Android-релиза: сменить бэкенд позже = потерять сохранённые токены.
+    aOptions: AndroidOptions(encryptedSharedPreferences: true),
   );
 
   /// Writes a token to secure storage; on failure falls back to plain

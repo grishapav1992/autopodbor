@@ -261,7 +261,7 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
                   : Text(
                       region,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12,
                         color: kGreyColor,
                         height: 1.2,
                       ),

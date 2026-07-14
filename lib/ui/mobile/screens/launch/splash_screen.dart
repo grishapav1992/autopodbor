@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_application_1/core/constants/app_colors.dart';
-import 'package:flutter_application_1/core/constants/app_fonts.dart';
 import 'package:flutter_application_1/core/localization/localization_controller/localization_controller.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart';
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
@@ -77,7 +76,6 @@ class _SplashScreenState extends State<SplashScreen> {
             text: 'АВТОХАБ',
             size: 48,
             color: kPrimaryColor,
-            fontFamily: AppFonts.GLACIAL_INDIFFERENCE,
             weight: FontWeight.w700,
             textAlign: TextAlign.center,
           ),
@@ -86,7 +84,6 @@ class _SplashScreenState extends State<SplashScreen> {
                 .toUpperCase(),
             size: 16,
             color: kPrimaryColor,
-            fontFamily: AppFonts.GLACIAL_INDIFFERENCE,
             textAlign: TextAlign.center,
             weight: FontWeight.w500,
           ),
@@ -99,7 +96,6 @@ class _SplashScreenState extends State<SplashScreen> {
             size: 10,
             weight: FontWeight.w600,
             color: kPrimaryColor,
-            fontFamily: AppFonts.GLACIAL_INDIFFERENCE,
           ),
         ],
       ),

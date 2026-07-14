@@ -2441,8 +2441,8 @@ class SparkErrorState extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.only(top: topPadding),
       child: SparkCard(
-        borderColor: kRedColor2.withValues(alpha: 0.5),
-        backgroundColor: kRedColor2.withValues(alpha: 0.06),
+        borderColor: kRedColor.withValues(alpha: 0.5),
+        backgroundColor: kRedColor.withValues(alpha: 0.06),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
