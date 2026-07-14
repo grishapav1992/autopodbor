@@ -1308,17 +1308,7 @@ class _DueDatePickerSheetState extends State<_DueDatePickerSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const MyText(
-            text: 'Срок исполнения',
-            size: SparkTextSize.modalTitle,
-            weight: FontWeight.w800,
-          ),
-          const SizedBox(height: SparkSpace.xs),
-          const MyText(
-            text: 'Когда специалист должен выполнить заявку',
-            size: SparkTextSize.body,
-            color: kGreyColor,
-          ),
+          const AppBottomSheetHeader(title: 'Срок исполнения'),
           const SizedBox(height: SparkSpace.xl),
           Wrap(
             spacing: SparkSpace.md,
@@ -1656,38 +1646,22 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
       ),
       child: Column(
         children: [
-          Row(
-            children: [
-              IconButton(
-                onPressed: _goBack,
-                icon: const Icon(Icons.arrow_back_rounded),
-                splashRadius: 20,
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MyText(
-                      text: _titleForStep,
-                      size: SparkTextSize.title,
-                      weight: FontWeight.w700,
-                    ),
-                    if (_breadcrumb.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: SparkSpace.xxs),
-                        child: MyText(
-                          text: _breadcrumb,
-                          size: SparkTextSize.body,
-                          color: kGreyColor,
-                          maxLines: 1,
-                          textOverflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ],
+          AppBottomSheetHeader(
+            title: _titleForStep,
+            // На корневом шаге «назад» некуда — закрытие на крестике.
+            onBack: _step == _RequestCarPickerStep.brand ? null : _goBack,
           ),
+          if (_breadcrumb.isNotEmpty)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: MyText(
+                text: _breadcrumb,
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+                maxLines: 1,
+                textOverflow: TextOverflow.ellipsis,
+              ),
+            ),
           const SizedBox(height: SparkSpace.md),
           if (showSearch) ...[
             TextField(
@@ -1706,14 +1680,6 @@ class _RequestCarPickerDialogState extends State<_RequestCarPickerDialog> {
             const SizedBox(height: SparkSpace.md),
           ],
           Expanded(child: _listContent()),
-          const SizedBox(height: SparkSpace.sm),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Отмена'),
-            ),
-          ),
         ],
       ),
     );

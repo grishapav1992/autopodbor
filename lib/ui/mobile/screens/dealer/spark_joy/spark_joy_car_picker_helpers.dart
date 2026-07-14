@@ -761,40 +761,22 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
               ),
               child: Column(
                 children: [
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: goBack,
-                        icon: const Icon(Icons.arrow_back_rounded),
-                        splashRadius: 20,
-                      ),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            MyText(
-                              text: titleForStep(step),
-                              size: SparkTextSize.title,
-                              weight: FontWeight.w700,
-                            ),
-                            if (currentBreadcrumb.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(
-                                  top: SparkSpace.xxs,
-                                ),
-                                child: MyText(
-                                  text: currentBreadcrumb,
-                                  size: SparkTextSize.body,
-                                  color: kGreyColor,
-                                  maxLines: 1,
-                                  textOverflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
+                  AppBottomSheetHeader(
+                    title: titleForStep(step),
+                    // На корневом шаге «назад» некуда — закрытие на крестике.
+                    onBack: step == _CarPickerStep.brand ? null : goBack,
                   ),
+                  if (currentBreadcrumb.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: MyText(
+                        text: currentBreadcrumb,
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                        maxLines: 1,
+                        textOverflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   const SizedBox(height: SparkSpace.md),
                   if (showSearch) ...[
                     TextField(

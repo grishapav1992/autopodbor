@@ -1839,21 +1839,17 @@ class _SparkJoySpecialistProfileScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
+                AppBottomSheetHeader(
+                  title: displayName,
                   padding: const EdgeInsets.symmetric(
                     horizontal: SparkSpace.md,
-                    vertical: SparkSpace.sm,
                   ),
-                  child: MyText(
-                    text: displayName,
-                    size: SparkTextSize.modalTitle,
-                    weight: FontWeight.w800,
-                  ),
+                  onClose: () => Navigator.of(ctx).pop(),
                 ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(
                     SparkSpace.md,
-                    0,
+                    SparkSpace.sm,
                     SparkSpace.md,
                     SparkSpace.lg,
                   ),
@@ -2246,20 +2242,9 @@ class _SparkJoySpecialistProfileScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: const [
-                    Icon(
-                      Icons.phone_outlined,
-                      size: SparkSize.iconLg,
-                      color: kSecondaryColor,
-                    ),
-                    SizedBox(width: SparkSpace.md),
-                    MyText(
-                      text: 'Телефон изменить нельзя',
-                      size: SparkTextSize.titleLg,
-                      weight: FontWeight.w800,
-                    ),
-                  ],
+                AppBottomSheetHeader(
+                  title: 'Телефон изменить нельзя',
+                  onClose: () => Navigator.of(ctx).pop(),
                 ),
                 const SizedBox(height: SparkSpace.lg),
                 const MyText(
@@ -2319,16 +2304,12 @@ class _SparkJoySpecialistProfileScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(
+                AppBottomSheetHeader(
+                  title: 'Редактировать профиль',
+                  padding: const EdgeInsets.symmetric(
                     horizontal: SparkSpace.md,
-                    vertical: SparkSpace.sm,
                   ),
-                  child: MyText(
-                    text: 'Редактировать профиль',
-                    size: SparkTextSize.modalTitle,
-                    weight: FontWeight.w800,
-                  ),
+                  onClose: () => Navigator.of(ctx).pop(),
                 ),
                 const SizedBox(height: SparkSpace.md),
                 _SheetActionRow(
@@ -2417,21 +2398,17 @@ class _SparkJoySpecialistProfileScreenState
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
+                  AppBottomSheetHeader(
+                    title: 'Фото профиля',
+                    padding: const EdgeInsets.symmetric(
                       horizontal: SparkSpace.md,
-                      vertical: SparkSpace.sm,
                     ),
-                    child: MyText(
-                      text: 'Фото профиля',
-                      size: SparkTextSize.modalTitle,
-                      weight: FontWeight.w800,
-                    ),
+                    onClose: () => Navigator.of(ctx).pop(),
                   ),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(
                       SparkSpace.md,
-                      0,
+                      SparkSpace.sm,
                       SparkSpace.md,
                       SparkSpace.lg,
                     ),
@@ -3560,17 +3537,14 @@ class _SparkJoySpecialistProfileScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Padding(
-                  padding: EdgeInsets.symmetric(
+                AppBottomSheetHeader(
+                  title: 'Согласие и условия',
+                  padding: const EdgeInsets.symmetric(
                     horizontal: SparkSpace.md,
-                    vertical: SparkSpace.sm,
                   ),
-                  child: MyText(
-                    text: 'Согласие и условия',
-                    size: SparkTextSize.modalTitle,
-                    weight: FontWeight.w800,
-                  ),
+                  onClose: () => Navigator.of(ctx).pop(),
                 ),
+                const SizedBox(height: SparkSpace.sm),
                 _SheetActionRow(
                   icon: Icons.fact_check_outlined,
                   label: 'Согласие на обработку персональных данных',
@@ -3827,22 +3801,7 @@ class _SheetScaffold extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: MyText(
-                    text: title,
-                    size: SparkTextSize.modalTitle,
-                    weight: FontWeight.w800,
-                  ),
-                ),
-                IconButton(
-                  onPressed: onCancel,
-                  icon: const Icon(Icons.close_rounded),
-                  tooltip: 'Отмена',
-                ),
-              ],
-            ),
+            AppBottomSheetHeader(title: title, onClose: onCancel),
             if (subtitle != null)
               MyText(
                 text: subtitle!,

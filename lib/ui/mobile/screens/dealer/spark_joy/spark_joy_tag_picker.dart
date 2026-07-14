@@ -338,46 +338,34 @@ class _SparkJoyTagPickerSheetState extends State<_SparkJoyTagPickerSheet> {
 
     return Column(
       children: [
-        Padding(
+        // «Готово» живёт в фиксированном bottom action bar — иначе
+        // пользователь, создавая новый тег, мог тапнуть «Готово» вместо
+        // «Добавить» (которые сидели рядом) и потерять введённый текст.
+        AppBottomSheetHeader(
+          title: widget.title,
           padding: const EdgeInsets.fromLTRB(
             SparkSpace.xl,
             SparkSpace.xs,
-            SparkSpace.xs,
+            SparkSpace.xl,
             SparkSpace.sm,
           ),
-          // В шапке оставлены только заголовок sheet'а и
-          // шестерёнка. «Готово» переехало в фиксированный
-          // bottom action bar — иначе пользователь, создавая
-          // новый тег, мог тапнуть «Готово» вместо «Добавить»
-          // (которые сидели рядом) и потерять введённый текст.
-          child: Row(
-            children: [
-              Expanded(
-                child: MyText(
-                  text: widget.title,
-                  size: SparkTextSize.titleLg,
-                  weight: FontWeight.w800,
-                ),
-              ),
-              IconButton(
-                icon: Icon(
-                  _settingsMode ? Icons.check_rounded : Icons.tune_rounded,
-                  color: _settingsMode ? kSecondaryColor : kGreyColor,
-                ),
-                tooltip: _settingsMode ? 'Завершить настройку' : 'Настройки',
-                onPressed: _busy
-                    ? null
-                    : () {
-                        setState(() {
-                          _settingsMode = !_settingsMode;
-                          if (!_settingsMode) {
-                            _addInputOpen = false;
-                            _addController.clear();
-                          }
-                        });
-                      },
-              ),
-            ],
+          trailing: IconButton(
+            icon: Icon(
+              _settingsMode ? Icons.check_rounded : Icons.tune_rounded,
+              color: _settingsMode ? kSecondaryColor : kGreyColor,
+            ),
+            tooltip: _settingsMode ? 'Завершить настройку' : 'Настройки',
+            onPressed: _busy
+                ? null
+                : () {
+                    setState(() {
+                      _settingsMode = !_settingsMode;
+                      if (!_settingsMode) {
+                        _addInputOpen = false;
+                        _addController.clear();
+                      }
+                    });
+                  },
           ),
         ),
         const Divider(height: 1),

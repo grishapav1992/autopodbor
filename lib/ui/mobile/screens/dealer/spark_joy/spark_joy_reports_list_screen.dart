@@ -296,11 +296,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              MyText(
-                text: title,
-                size: SparkTextSize.title,
-                weight: FontWeight.w700,
-              ),
+              AppBottomSheetHeader(title: title),
               const SizedBox(height: SparkSpace.md),
               Align(
                 alignment: Alignment.centerLeft,

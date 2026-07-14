@@ -64,59 +64,9 @@ class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: kSecondaryColor.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(SparkRadius.md),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.tune_rounded,
-                        color: kSecondaryColor,
-                        size: SparkSize.iconXl,
-                      ),
-                    ),
-                    const SizedBox(width: SparkSpace.md),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Фильтр заявок',
-                            style: TextStyle(
-                              fontSize: SparkTextSize.title,
-                              fontWeight: FontWeight.w800,
-                              color: kTertiaryColor,
-                            ),
-                          ),
-                          SizedBox(height: SparkSpace.xxxs),
-                          Text(
-                            'Выберите статус для списка',
-                            style: TextStyle(
-                              fontSize: SparkTextSize.caption,
-                              fontWeight: FontWeight.w500,
-                              color: kGreyColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Закрыть',
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      style: IconButton.styleFrom(
-                        foregroundColor: kGreyColor,
-                        backgroundColor: kWhiteColor,
-                        side: const BorderSide(color: kBorderColor),
-                      ),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+                AppBottomSheetHeader(
+                  title: 'Фильтр заявок',
+                  onClose: () => Navigator.of(ctx).pop(),
                 ),
                 const SizedBox(height: SparkSpace.xl),
                 Container(

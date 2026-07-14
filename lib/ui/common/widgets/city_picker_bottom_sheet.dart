@@ -101,19 +101,9 @@ class _CityPickerSheetState extends State<_CityPickerSheet> {
   }
 
   Widget _buildHeader() {
-    return const Padding(
+    return const AppBottomSheetHeader(
+      title: 'Выберите город',
       padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          'Выберите город',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: kTertiaryColor,
-          ),
-        ),
-      ),
     );
   }
 

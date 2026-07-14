@@ -212,11 +212,7 @@ class _SparkJoyCompanyRequestDetailScreenState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const MyText(
-                  text: 'Ссылка на отчёт',
-                  size: SparkTextSize.title,
-                  weight: FontWeight.w700,
-                ),
+                const AppBottomSheetHeader(title: 'Ссылка на отчёт'),
                 const SizedBox(height: SparkSpace.md),
                 SparkHintCard(text: url, icon: Icons.link_rounded),
                 const SizedBox(height: SparkSpace.xl),

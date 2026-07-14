@@ -1250,23 +1250,15 @@ class _AssigneePickerSheetState extends State<_AssigneePickerSheet> {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xl),
-          child: Row(
-            children: [
-              const Expanded(
-                child: MyText(
-                  text: 'Назначить исполнителя',
-                  size: SparkTextSize.title,
-                  weight: FontWeight.w700,
-                ),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(null),
-                child: const Text('Отмена'),
-              ),
-            ],
+        AppBottomSheetHeader(
+          title: 'Назначить исполнителя',
+          padding: const EdgeInsets.fromLTRB(
+            SparkSpace.xl,
+            0,
+            SparkSpace.xl,
+            SparkSpace.sm,
           ),
+          onClose: () => Navigator.of(context).pop(null),
         ),
         const Divider(height: 1),
         Expanded(

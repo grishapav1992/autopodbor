@@ -91,21 +91,7 @@ class _SpecialistPickerSheetState extends State<_SpecialistPickerSheet>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Expanded(
-                child: MyText(
-                  text: 'Выбрать специалиста',
-                  size: SparkTextSize.titleLg,
-                  weight: FontWeight.w800,
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded),
-              ),
-            ],
-          ),
+          const AppBottomSheetHeader(title: 'Выбрать специалиста'),
           const SizedBox(height: SparkSpace.md),
           TabBar(
             controller: _tabController,

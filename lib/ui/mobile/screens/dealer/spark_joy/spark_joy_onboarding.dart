@@ -102,12 +102,7 @@ class _SparkJoyOnboardingSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          MyText(
-            text: title,
-            size: SparkTextSize.modalTitle,
-            weight: FontWeight.w700,
-            color: kBlackColor,
-          ),
+          AppBottomSheetHeader(title: title, onClose: onDismiss),
           const SizedBox(height: SparkSpace.lg),
           ...bullets.map(
             (bullet) => Padding(

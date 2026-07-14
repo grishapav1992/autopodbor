@@ -32,7 +32,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Фильтр заявок'), findsOneWidget);
-    expect(find.text('Выберите статус для списка'), findsOneWidget);
+    // Подзаголовок ушёл вместе с иконкой-квадратом: канон шапки шита —
+    // только заголовок + крестик (AppBottomSheetHeader).
+    expect(find.text('Выберите статус для списка'), findsNothing);
     expect(find.text('Новые'), findsOneWidget);
     expect(find.text('В работе'), findsOneWidget);
     expect(find.text('Завершены'), findsOneWidget);

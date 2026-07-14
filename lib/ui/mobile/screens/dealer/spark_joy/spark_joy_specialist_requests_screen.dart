@@ -1209,20 +1209,9 @@ Future<String?> _showNoteSheet(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: MyText(
-                        text: title,
-                        size: SparkTextSize.titleLg,
-                        weight: FontWeight.w800,
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
+                AppBottomSheetHeader(
+                  title: title,
+                  onClose: () => Navigator.of(ctx).pop(),
                 ),
                 const SizedBox(height: SparkSpace.md),
                 TextField(
