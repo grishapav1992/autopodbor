@@ -419,6 +419,16 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
   ValueListenable<SparkIntakeSnapshot>? _intakeListenable;
   bool _intakeApplyRunning = false;
+  // Локальный OCR-поиск VIN по фото интейка: guard одного прохода за раз +
+  // записи, уже прогнанные через MLKit в этой сессии (рескан бесплатен, но
+  // незачем гонять распознавание на каждый эмит сервиса).
+  bool _intakeVinSweepRunning = false;
+  final Set<String> _intakeVinSweepScanned = <String>{};
+  // Кандидат VIN от локального OCR (второй приоритет после vision-скана СТС)
+  // и VIN, который интейк сам записал в поле («владение» — по нему решается
+  // автозапуск проверок при повторных проходах применения).
+  String _intakeOcrVinCandidate = '';
+  String _intakeVinAutoFilled = '';
   bool _intakeApplyRequested = false;
 
   final ScrollController _pageScrollController = ScrollController();

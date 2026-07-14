@@ -38,7 +38,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
       ),
       actions: [
         TextButton(
-          onPressed: _closePhotoIntake,
+          onPressed: () => unawaited(_onIntakeCancelPressed()),
           child: const MyText(
             text: 'Отмена',
             size: SparkTextSize.label,
@@ -48,6 +48,65 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
         ),
         const SizedBox(width: SparkSpace.md),
       ],
+    );
+  }
+
+  /// «Отмена» в шапке интейка. Пока идёт работа (заливка, ИИ-раскладка или
+  /// авторетраи после ошибок) — прерывает её после подтверждения; иначе
+  /// просто закрывает экран, как раньше.
+  Future<void> _onIntakeCancelPressed() async {
+    final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
+    final busy =
+        snapshot.uploadRequested &&
+        (snapshot.phase == SparkIntakePhase.uploading ||
+            snapshot.phase == SparkIntakePhase.classifying ||
+            snapshot.phase == SparkIntakePhase.failed);
+    if (!busy) {
+      _closePhotoIntake();
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(SparkRadius.lg),
+        ),
+        title: const Text('Прервать загрузку?'),
+        content: const Text(
+          'Фоновая загрузка и ИИ-распределение остановятся. Уже загруженные '
+          'файлы сохранятся, остальные можно будет отправить снова кнопкой '
+          '«Распределить файлы».',
+        ),
+        actionsPadding: const EdgeInsets.fromLTRB(
+          SparkSpace.md,
+          0,
+          SparkSpace.md,
+          SparkSpace.md,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(foregroundColor: kGreyColor),
+            child: const Text('Продолжить загрузку'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(
+              foregroundColor: kRedColor,
+              textStyle: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            child: const Text('Прервать'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await SparkJoyIntakeUploadService.instance.cancelUpload(_draftId);
+    if (!mounted) return;
+    _markDraftDirty();
+    _setStateSafely(() {});
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Загрузка остановлена')),
     );
   }
 
@@ -618,7 +677,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
       valueListenable: SparkJoyIntakeUploadService.instance.watch(_draftId),
       builder: (context, snapshot, _) {
         final selectedCount = _intakeSelectedIds.length;
-        final hasPending = snapshot.files.any((r) => !r.isUploaded);
+        // После ошибок кнопка честно называется повтором — заливка уже была
+        // запрошена, и нажатие лишь возвращает failed-файлы в очередь.
+        final retryMode = snapshot.uploadRequested && snapshot.failedCount > 0;
         return Container(
           decoration: const BoxDecoration(
             color: kPrimaryColor,
@@ -698,7 +759,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
               SizedBox(
                 height: 50,
                 child: FilledButton.icon(
-                  onPressed: snapshot.files.isEmpty || !hasPending
+                  onPressed: !sparkIntakeCanRequestUpload(snapshot)
                       ? null
                       : () => unawaited(_runStartIntakeUpload()),
                   style: FilledButton.styleFrom(
@@ -716,8 +777,13 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  icon: const Icon(Icons.auto_awesome, size: SparkSize.iconLg),
-                  label: const Text('Распределить файлы'),
+                  icon: Icon(
+                    retryMode ? Icons.refresh_rounded : Icons.auto_awesome,
+                    size: SparkSize.iconLg,
+                  ),
+                  label: Text(
+                    retryMode ? 'Повторить загрузку' : 'Распределить файлы',
+                  ),
                 ),
               ),
             ],

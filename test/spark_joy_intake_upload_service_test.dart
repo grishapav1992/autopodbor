@@ -67,6 +67,16 @@ class _FakeTransfer implements SparkIntakeTransfer {
     );
   }
 
+  void emitCanceled(String draftId, String recordId) {
+    _updates.add(
+      SparkIntakeTransferUpdate(
+        draftId: draftId,
+        recordId: recordId,
+        kind: SparkIntakeTransferUpdateKind.canceled,
+      ),
+    );
+  }
+
   void emitProgress(String draftId, String recordId, double progress) {
     _updates.add(
       SparkIntakeTransferUpdate(
@@ -242,6 +252,106 @@ void main() {
     expect(record.status, SparkIntakeFileStatus.failed);
     expect(record.error, 'boom');
   });
+
+  test(
+    'cancelUpload: живая задача отменяется, незалитое в staged, '
+    'uploadRequested снят, повторный запуск дозаливает остаток',
+    () async {
+      await service.stageFiles(draftId, [
+        await makeDocRecord('a'),
+        await makeDocRecord('b'),
+        await makeDocRecord('c'),
+      ]);
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 3);
+      // b долетела, c упала терминально, a осталась в полёте.
+      transfer.emitComplete(draftId, 'b');
+      transfer.emitFailed(draftId, 'c');
+      await _waitFor(
+        () =>
+            service
+                .snapshotOf(draftId)
+                .files
+                .firstWhere((r) => r.id == 'c')
+                .isFailed &&
+            service
+                .snapshotOf(draftId)
+                .files
+                .firstWhere((r) => r.id == 'b')
+                .isUploaded,
+      );
+
+      await service.cancelUpload(draftId);
+
+      final snapshot = service.snapshotOf(draftId);
+      expect(snapshot.uploadRequested, isFalse);
+      expect(snapshot.phase, SparkIntakePhase.staged);
+      final byId = {for (final r in snapshot.files) r.id: r};
+      expect(byId['a']!.status, SparkIntakeFileStatus.staged);
+      expect(byId['b']!.status, SparkIntakeFileStatus.uploaded);
+      expect(byId['c']!.status, SparkIntakeFileStatus.staged);
+      expect(byId['c']!.error, isNull);
+      // Отменена только живая задача «a» (терминальным отменять нечего).
+      expect(transfer.cancelled, ['task_0']);
+      final persisted = await persistedIntake();
+      expect(persisted!['uploadRequested'], isFalse);
+
+      // Повторный «Распределить файлы» продолжает с места остановки:
+      // b уже загружена — едут только a и c.
+      transfer.enqueued.clear();
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 2);
+      expect(
+        transfer.enqueued.map((p) => p.recordId).toSet(),
+        {'a', 'c'},
+      );
+    },
+  );
+
+  test(
+    'canceled-событие при живом uploadRequested возвращает запись в очередь '
+    'и пайплайн немедленно её подхватывает (гонка cancel→рестарт)',
+    () async {
+      await service.stageFiles(draftId, [await makeDocRecord('a')]);
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 1);
+      // Симулируем late-cancel старой задачи: запись не терминальна, заливка
+      // всё ещё запрошена — без кика пайплайна файл завис бы в staged до
+      // resume/перезапуска приложения.
+      transfer.emitCanceled(draftId, 'a');
+      await _waitFor(() => transfer.enqueued.length == 2);
+      expect(presignCalls, 2, reason: 'повторный enqueue со свежим URL');
+    },
+  );
+
+  test(
+    'C1: после cancelUpload при полностью залитых файлах CTA снова доступна '
+    'и повторный запуск возобновляет раскладку без перезаливки',
+    () async {
+      await service.stageFiles(draftId, [await makeDocRecord('a')]);
+      await service.startUpload(draftId);
+      await _waitFor(() => transfer.enqueued.length == 1);
+      transfer.emitComplete(draftId, 'a');
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+      );
+      // Всё залито, заливка запрошена — перезапуск не нужен, CTA выключена.
+      expect(sparkIntakeCanRequestUpload(service.snapshotOf(draftId)), isFalse);
+
+      await service.cancelUpload(draftId);
+      final canceled = service.snapshotOf(draftId);
+      expect(canceled.phase, SparkIntakePhase.staged);
+      expect(canceled.files.single.isUploaded, isTrue);
+      // Незалитого нет, но перезапуск ИИ-раскладки обязан быть доступен.
+      expect(sparkIntakeCanRequestUpload(canceled), isTrue);
+
+      await service.startUpload(draftId);
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.classified,
+      );
+      expect(transfer.enqueued.length, 1, reason: 'файл не перезаливается');
+    },
+  );
 
   test(
     'HTTP 403 (протухший URL) → одно бесплатное перевыставление задачи',

@@ -797,6 +797,35 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     unawaited(_runPipeline(state));
   }
 
+  /// «Отмена» на экране интейка: прерывает фоновую заливку и ИИ-раскладку.
+  /// Уже загруженное остаётся uploaded (перезаливать не придётся), живые
+  /// задачи транспорта отменяются, остальные записи откатываются в staged.
+  /// uploadRequested снимается — retry-цикл и классификация не продолжатся.
+  /// Повторный «Распределить файлы» продолжит с места остановки.
+  Future<void> cancelUpload(String draftId) async {
+    final state = _states[draftId];
+    if (state == null) return;
+    state.uploadRequested = false;
+    for (final record in state.files) {
+      final taskId = record.taskId;
+      if (taskId != null && !record.isTerminal) {
+        unawaited(_transfer.cancel(taskId));
+      }
+      // Транзиентные ошибки сбрасываем тоже — после осознанной отмены список
+      // не должен пестрить «Ошибка загрузки». Файлы-призраки (noAutoRetry)
+      // остаются failed: их не вылечит и перезапуск.
+      if (!record.isUploaded && !state.noAutoRetry.contains(record.id)) {
+        record.status = SparkIntakeFileStatus.staged;
+        record.taskId = null;
+        record.error = null;
+      }
+    }
+    state.progressById.clear();
+    state.emit();
+    await _persist(state);
+    _maybeStopTimers();
+  }
+
   /// Чистит состояние черновика; [deleteLocalFiles] — вместе с локальными
   /// копиями (удаление черновика). S3-копии не трогаем — temp/ сам умрёт
   /// через сутки, метода удаления в API всё равно нет.
@@ -936,6 +965,14 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
           _failNoRetry(state, record, 'Файл недоступен на устройстве');
           return;
         }
+      }
+
+      // Отмена могла прийти за время сжатия — не выпускаем presigned URL и
+      // не ставим задачу: запись честно возвращается в staged.
+      if (!state.uploadRequested) {
+        record.status = SparkIntakeFileStatus.staged;
+        state.emit();
+        return;
       }
 
       // 3. Presigned URL — непосредственно перед enqueue (ссылки протухают).
@@ -1153,6 +1190,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       }
 
       while (true) {
+        // «Отмена» сняла uploadRequested — не жжём платные vision-вызовы;
+        // недоклассифицированное дождётся повторного «Распределить файлы».
+        if (!state.uploadRequested) return;
         SparkIntakeFileRecord? pendingVideo;
         var videoDirty = false;
         for (final r in state.files) {
@@ -1441,6 +1481,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     // Снимок защищает итерацию от будущих изменений списка после завершения
     // классификации и применения результатов экраном.
     for (final r in List<SparkIntakeFileRecord>.of(state.files)) {
+      if (!state.uploadRequested) return; // отменили — доскан не жжём
       if (r.aiSection != SparkIntakeAiSection.materials ||
           r.aiDocumentKind != SparkIntakeDocumentKind.vehicleDoc) {
         continue;
@@ -1449,6 +1490,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       final attemptKey = 'doc:${r.id}';
       while (r.aiDocJson.isEmpty &&
           (state.aiAttemptsById[attemptKey] ?? 0) < _kIntakeAiMaxAttempts) {
+        // Отмена между попытками (внутри — паузы 5-10с): выходим БЕЗ
+        // терминального '{}' — после перезапуска доскан честно повторится.
+        if (!state.uploadRequested) return;
         try {
           var sourceRemoteName = r.remoteName;
           if (r.isVideo) {
@@ -1498,6 +1542,8 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
           }
         }
       }
+      // Отмена в полёте последней попытки: тоже без терминального маркера.
+      if (!state.uploadRequested) return;
       // Даже без считанных полей оригинал документа должен попасть в
       // «Материалы проверки»; '{}' — терминальный маркер only-no-data.
       if (r.aiDocJson.isEmpty) r.aiDocJson = '{}';
@@ -1600,6 +1646,14 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
           record.status = SparkIntakeFileStatus.staged;
           record.taskId = null;
           state.emit();
+          // Гонка «cancelUpload → мгновенный рестарт»: canceled-событие
+          // старой задачи может прийти уже ПОСЛЕ повторного startUpload и
+          // сбросить пере-выставленную запись в staged. Без кика её никто не
+          // подберёт до resume/перезапуска — пайплайн сам разберётся
+          // (нет кандидатов → no-op).
+          if (state.uploadRequested) {
+            unawaited(_runPipeline(state));
+          }
         }
     }
     _maybeStartClassification(state);
@@ -1887,6 +1941,16 @@ String sparkIntakeRemoteName({
       ? 'jpg'
       : _sparkIntakeExtension(mimeType: mimeType, originalName: originalName);
   return 'intake_${DateTime.now().millisecondsSinceEpoch}_$hex.$ext';
+}
+
+/// CTA «Распределить файлы» активна: есть файлы И (есть незалитое ИЛИ заливка
+/// сейчас не запрошена). Вторая ветка критична после «Прервать» при полностью
+/// залитых файлах: uploadRequested снят, незалитого нет, но перезапуск должен
+/// быть доступен — иначе ИИ-раскладку не возобновить из UI.
+bool sparkIntakeCanRequestUpload(SparkIntakeSnapshot snapshot) {
+  if (snapshot.files.isEmpty) return false;
+  if (!snapshot.uploadRequested) return true;
+  return snapshot.files.any((r) => !r.isUploaded);
 }
 
 /// Русские плюралы для счётчика файлов: 1 файл / 2 файла / 5 файлов.

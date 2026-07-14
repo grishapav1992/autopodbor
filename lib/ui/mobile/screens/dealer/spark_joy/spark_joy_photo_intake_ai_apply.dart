@@ -44,11 +44,25 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
 
   void _onPhotoIntakeStateChanged() {
     if (!mounted) return;
+    final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
+    // Локальный OCR-поиск VIN стартует вместе с заливкой (эмит startUpload)
+    // и после рестарта приложения (hydrate доводит снапшот до uploadRequested).
+    // Сам метод дёшево выходит, если VIN уже есть или всё просканировано.
+    if (snapshot.uploadRequested && snapshot.files.isNotEmpty) {
+      unawaited(_runIntakeVinOcrSweep());
+    }
+    // OCR-кандидат VIN применяется по исходу vision-пути: done — СТС VIN
+    // не дал (сеть доказана заливкой, автопроверки уместны), failed —
+    // офлайн-сценарий (заполняем поле, проверки подождут сеть).
+    if (snapshot.phase == SparkIntakePhase.failed) {
+      unawaited(_maybeApplyIntakeOcrVin(allowChecks: false));
+    } else if (snapshot.phase == SparkIntakePhase.done) {
+      unawaited(_maybeApplyIntakeOcrVin(allowChecks: true));
+    }
     if (_intakeApplyRunning) {
       _intakeApplyRequested = true;
       return;
     }
-    final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
     if (snapshot.phase != SparkIntakePhase.classified) return;
     unawaited(_applyClassifiedPhotoIntake());
   }
@@ -64,6 +78,7 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
       final records = snapshot.files.where(_intakeRecordIsApplicable).toList();
       if (records.isEmpty) return;
 
+      final vinBeforeApply = _sanitizeVin(_vinController.text);
       final docResults = <DocScanAiResult>[];
       final appliedIds = <String>{};
       final videoThumbs = await _resolveIntakeVideoThumbs(records);
@@ -159,6 +174,15 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
           showFeedback: false,
         );
       }
+      // VIN из СТС/ПТС — целевой источник. Если он только что заполнил
+      // пустое поле, «владение» переходит интейку (нужно автопроверкам в
+      // повторных проходах). Кандидат локального OCR — второй приоритет:
+      // применится, только если поле всё ещё пусто.
+      final vinAfterDocs = _sanitizeVin(_vinController.text);
+      if (vinBeforeApply.isEmpty && vinAfterDocs.isNotEmpty) {
+        _intakeVinAutoFilled = vinAfterDocs;
+      }
+      await _maybeApplyIntakeOcrVin(allowChecks: false);
       if (!mounted || appliedIds.isEmpty) return;
       _markDraftDirty(scheduleAutosave: false);
       await _saveDraft(showToast: false);
@@ -175,6 +199,18 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
             ),
           ),
         );
+      }
+      // Автопроверки: только когда VIN принадлежит интейку — заполнен им в
+      // этом проходе (СТС/кандидат) или раньше (офлайн-заполнение кандидатом,
+      // после которого вернулась сеть). Ручной VIN автозапуск не трогает.
+      final vinIntakeOwned =
+          vinBeforeApply.isEmpty ||
+          (_intakeVinAutoFilled.isNotEmpty &&
+              vinBeforeApply == _intakeVinAutoFilled);
+      if (mounted &&
+          vinIntakeOwned &&
+          _sanitizeVin(_vinController.text).length == 17) {
+        await _maybeAutoStartIntakeChecks();
       }
     } finally {
       _intakeApplyRunning = false;
@@ -245,4 +281,156 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
       return null;
     }
   }
+
+  // ── VIN из фото интейка ────────────────────────────────────────────────
+
+  /// Локальный OCR-проход по фото интейка (MLKit на устройстве, бесплатно и
+  /// офлайн): стартует с «Распределить файлы», ищет VIN на снимках (лобовое
+  /// стекло, шильдик, СТС), но НЕ применяет находку сразу. Целевой источник
+  /// VIN — vision-скан СТС/ПТС (он видит весь документ), а он приезжает
+  /// после заливки и раскладки. Первый строгий VIN здесь — только кандидат
+  /// ([_intakeOcrVinCandidate]), который применяется:
+  ///  • сразу — когда заливка упала (офлайн-сценарий: OCR и нужен без сети);
+  ///    без автопроверок — сети всё равно нет, их запустит apply после
+  ///    восстановления (VIN числится за интейком);
+  ///  • после раскладки (apply/done) — когда СТС в пачке не нашлось или VIN
+  ///    с него не прочитался: «лобовое» — второй приоритет, сеть доказана
+  ///    заливкой, автопроверки уместны;
+  ///  • никогда — когда СТС уже дал VIN или поле заполнено вручную
+  ///    (only-empty, ручной ввод неприкосновенен).
+  Future<void> _runIntakeVinOcrSweep() async {
+    if (!vinOcrSupported || widget.readOnly || _intakeVinSweepRunning) return;
+    if (_sanitizeVin(_vinController.text).length == 17) return;
+    _intakeVinSweepRunning = true;
+    try {
+      final files = SparkJoyIntakeUploadService.instance
+          .snapshotOf(_draftId)
+          .files;
+      for (final record in files) {
+        if (!mounted) return;
+        // «Прервать» снимает uploadRequested — после явной отмены не гоняем
+        // OCR дальше и тем более не запускаем платные операции.
+        if (!SparkJoyIntakeUploadService.instance
+            .snapshotOf(_draftId)
+            .uploadRequested) {
+          return;
+        }
+        if (_sanitizeVin(_vinController.text).length == 17) return;
+        if (!record.isImage) continue;
+        // Каждую запись гоняем через MLKit один раз за сессию — набор
+        // переживает проход и защищает от рескана на каждом эмите сервиса.
+        if (!_intakeVinSweepScanned.add(record.id)) continue;
+        final localPath = _extractLocalMediaPath(record.localPath);
+        if (localPath == null) continue;
+        Uint8List bytes;
+        try {
+          bytes = await File(localPath).readAsBytes();
+        } catch (_) {
+          continue;
+        }
+        if (bytes.isEmpty) continue;
+        String vin;
+        try {
+          final ocr = await scanVinFromImageBytes(bytes);
+          vin = _extractVinFromOcrResult(ocr);
+        } catch (_) {
+          continue;
+        }
+        if (vin.isEmpty || !_isStrictVin(vin)) continue;
+        if (!mounted) return;
+        // Отмена могла прийти за время OCR этого фото.
+        if (!SparkJoyIntakeUploadService.instance
+            .snapshotOf(_draftId)
+            .uploadRequested) {
+          return;
+        }
+        _intakeOcrVinCandidate = vin;
+        // СТС — целевой источник: пока заливка/раскладка живы, ждём его
+        // вердикта. Кандидат применяется сразу, только если vision-путь
+        // уже закончился (done) или сломался (failed = офлайн).
+        final phase = SparkJoyIntakeUploadService.instance
+            .snapshotOf(_draftId)
+            .phase;
+        if (phase == SparkIntakePhase.failed) {
+          await _maybeApplyIntakeOcrVin(allowChecks: false);
+        } else if (phase == SparkIntakePhase.done) {
+          await _maybeApplyIntakeOcrVin(allowChecks: true);
+        }
+        return;
+      }
+    } finally {
+      _intakeVinSweepRunning = false;
+    }
+  }
+
+  /// Применяет OCR-кандидата VIN (второй приоритет после СТС, см.
+  /// [_runIntakeVinOcrSweep]). Only-empty: ручной ввод и VIN из СТС
+  /// неприкосновенны. [allowChecks] == false в офлайн-ветке (фаза failed):
+  /// сети нет и платный батч всё равно не уйдёт; когда заливка доедет,
+  /// автопроверки запустит apply — VIN числится за интейком через
+  /// [_intakeVinAutoFilled].
+  Future<void> _maybeApplyIntakeOcrVin({required bool allowChecks}) async {
+    if (widget.readOnly || !mounted) return;
+    final candidate = _intakeOcrVinCandidate;
+    if (candidate.isEmpty) return;
+    if (_sanitizeVin(_vinController.text).isNotEmpty) return;
+    _setStateSafely(() {
+      _vinUnreadable = false;
+      _vinController.text = candidate;
+    });
+    _intakeVinAutoFilled = candidate;
+    // Listener контроллера дёрнет конвейер VIN→марка/модель/параметры сам,
+    // но явный вызов страхует сценарии без подписки (как в
+    // _applyDocScanResult).
+    _maybeResolveFromVin();
+    _markDraftDirty();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('VIN распознан с фото: $candidate')),
+    );
+    if (allowChecks) {
+      await _maybeAutoStartIntakeChecks();
+    }
+  }
+
+  /// Автозапуск платных проверок после того, как интейк сам добыл VIN
+  /// (локальный OCR или vision-скан СТС/ПТС). Согласием считается нажатие
+  /// «Распределить файлы» — задумка фичи: материалы проверки подтягиваются
+  /// по найденному VIN автоматически. Гарды повторяют чекбокс ручного скана:
+  /// проверки ещё не запускались, право run_legal_review есть, VIN строгий.
+  Future<void> _maybeAutoStartIntakeChecks() async {
+    if (widget.readOnly || !mounted) return;
+    final vin = _sanitizeVin(_vinController.text);
+    if (vin.length != 17 || !_isStrictVin(vin)) return;
+    if (_intakeChecksAlreadyStarted) return;
+    // Право и каталог типов грузятся лениво из шагов и могли быть в полёте
+    // (in-flight-гард _ensureLegalReviewMeta выходит мгновенно, кулдаун 3с) —
+    // несколько терпеливых заходов вместо молчаливой потери автозапуска.
+    for (var attempt = 0; ; attempt++) {
+      await _ensureLegalReviewMeta();
+      if (!mounted || _intakeChecksAlreadyStarted) return;
+      if (_sanitizeVin(_vinController.text) != vin) return;
+      if (_legalCanRunReview && _legalAvailableCheckTypes.isNotEmpty) break;
+      if (attempt >= 2) {
+        // Права так и нет — молчим: у роли его может не быть вовсе, снек был
+        // бы шумом. Право есть, но каталог не доехал — дальше честный снек
+        // скажет _autoStartLegalChecksAfterDocScan.
+        if (!_legalCanRunReview) return;
+        break;
+      }
+      await Future<void>.delayed(const Duration(seconds: 3));
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Запускаю проверки по распознанному VIN')),
+    );
+    _autoStartLegalChecksAfterDocScan();
+  }
+
+  /// Проверки уже когда-то стартовали (куплены/идут/загружены) — автозапуску
+  /// делать нечего.
+  bool get _intakeChecksAlreadyStarted =>
+      _legalPurchased ||
+      _legalLoading ||
+      _legalLoaded ||
+      (_legalBatchNumber ?? '').trim().isNotEmpty;
 }
