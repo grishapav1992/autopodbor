@@ -107,6 +107,57 @@ void main() {
     });
   });
 
+  group('ФГИС Такси', () {
+    test('латинские двойники переводятся в кириллицу', () {
+      expect(canonicalizeFgisTaxiPlate('P 123 PC-77'), 'Р123РС77');
+      expect(isValidFgisTaxiPlate('Р123РС77'), isTrue);
+    });
+
+    test('кириллический номер остаётся без изменений', () {
+      expect(canonicalizeFgisTaxiPlate('О016ХН193'), 'О016ХН193');
+      expect(isValidFgisTaxiPlate('О016ХН193'), isTrue);
+    });
+
+    test('непохожие латинские буквы не маскируются и блокируются', () {
+      final plate = canonicalizeFgisTaxiPlate('D123FF77');
+      expect(plate, 'D123FF77');
+      expect(isValidFgisTaxiPlate(plate), isFalse);
+    });
+
+    test('полный VIN имеет приоритет, госномер не отправляется', () {
+      final identifiers = prepareFgisTaxiIdentifiers(
+        vin: 'XW7BF4FK10S012345',
+        gosNumber: 'P123PC77',
+      );
+
+      expect(identifiers.vin, 'XW7BF4FK10S012345');
+      expect(identifiers.gosNumber, isEmpty);
+      expect(identifiers.error, isNull);
+    });
+
+    test('без VIN используется нормализованный госномер', () {
+      final identifiers = prepareFgisTaxiIdentifiers(
+        vin: '',
+        gosNumber: 'P 123 PC-77',
+      );
+
+      expect(identifiers.vin, isEmpty);
+      expect(identifiers.gosNumber, 'Р123РС77');
+      expect(identifiers.error, isNull);
+    });
+
+    test('без корректного VIN и госномера возвращается понятная ошибка', () {
+      final identifiers = prepareFgisTaxiIdentifiers(
+        vin: 'INVALID',
+        gosNumber: 'D123FF77',
+      );
+
+      expect(identifiers.vin, isEmpty);
+      expect(identifiers.gosNumber, isEmpty);
+      expect(identifiers.error, contains('VIN или госномер'));
+    });
+  });
+
   group('normalizePlateAutomatically', () {
     test('определяет РФ и возвращает форматированный номер', () {
       final result = normalizePlateAutomatically('а 123 ве 77');

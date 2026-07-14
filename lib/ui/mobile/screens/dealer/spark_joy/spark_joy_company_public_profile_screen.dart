@@ -15,10 +15,14 @@ class SparkJoyCompanyPublicProfileScreen extends StatefulWidget {
     super.key,
     this.companyId,
     this.initialProfile,
+    this.profileLoader,
   });
 
   final int? companyId;
   final Map<String, dynamic>? initialProfile;
+
+  /// Test seam for the authoritative server refresh.
+  final Future<Map<String, dynamic>> Function(int companyId)? profileLoader;
 
   @override
   State<SparkJoyCompanyPublicProfileScreen> createState() =>
@@ -37,7 +41,7 @@ class _SparkJoyCompanyPublicProfileScreenState
     _profile = widget.initialProfile == null
         ? null
         : Map<String, dynamic>.from(widget.initialProfile!);
-    if (_profile == null && widget.companyId != null) {
+    if (widget.companyId != null) {
       _load();
     }
   }
@@ -50,23 +54,35 @@ class _SparkJoyCompanyPublicProfileScreenState
       _error = null;
     });
     try {
-      final profile = await storage_api.StorageApi.getCompanyProfile(
-        companyId: companyId,
-      );
+      final loader = widget.profileLoader;
+      final fetched = loader == null
+          ? await storage_api.StorageApi.getCompanyProfile(companyId: companyId)
+          : await loader(companyId);
       if (!mounted) return;
       setState(() {
-        _profile = profile.isEmpty ? null : profile;
         _loading = false;
-        _error = profile.isEmpty ? 'Компания не найдена' : null;
+        if (fetched.isNotEmpty) {
+          // This RPC owns the complete public company profile. Replace the
+          // navigation snapshot even when individual values are null/empty,
+          // otherwise deleted information remains visible indefinitely.
+          _profile = Map<String, dynamic>.from(fetched);
+        } else {
+          _profile = null;
+          _error = 'Компания не найдена';
+        }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = sparkJoyReadableErrorText(
-          e,
-          fallback: 'Не удалось загрузить профиль компании',
-        );
+        // If navigation supplied a compact company card, keep showing it
+        // offline. A load error is only blocking when there is no fallback.
+        if (_profile == null) {
+          _error = sparkJoyReadableErrorText(
+            e,
+            fallback: 'Не удалось загрузить профиль компании',
+          );
+        }
       });
     }
   }
@@ -128,7 +144,11 @@ class _SparkJoyCompanyPublicProfileScreenState
     final profile = _profile;
     final name = _companyName();
     final city = _read('city');
-    final description = _read('description');
+    final description = _readAny([
+      'description',
+      'about',
+      'servicesDescription',
+    ]);
     final inn = _companyInn();
     final avatarUrl = _avatarUrl();
     // Surface whatever else the backend returns — naming varies, so probe
@@ -302,22 +322,16 @@ class _SparkJoyCompanyPublicProfileScreenState
               ],
             ),
           ),
-          const SparkSectionTitle('Информация', top: SparkSpace.xl),
-          SparkCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.md,
-              vertical: SparkSpace.sm,
+          if (infoRows.isNotEmpty) ...[
+            const SparkSectionTitle('Информация', top: SparkSpace.xl),
+            SparkCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SparkSpace.md,
+                vertical: SparkSpace.sm,
+              ),
+              child: Column(children: infoRows),
             ),
-            child: Column(
-              children: infoRows.isEmpty
-                  ? const [
-                      SparkHintCard(
-                        text: 'Компания пока не заполнила публичную информацию',
-                      ),
-                    ]
-                  : infoRows,
-            ),
-          ),
+          ],
         ],
       ],
     );

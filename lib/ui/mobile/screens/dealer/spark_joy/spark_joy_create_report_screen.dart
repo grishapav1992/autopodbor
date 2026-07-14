@@ -135,6 +135,7 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
     this.assignment,
     this.readOnly = false,
     this.initialStepIndex,
+    this.intakeMediaPicker,
   });
 
   final String? initialReportName;
@@ -155,6 +156,11 @@ class SparkJoyCreateReportScreen extends StatefulWidget {
   /// summary step so the completed report opens directly at the recap
   /// layout. Otherwise the usual "first unfilled step" flow applies.
   final int? initialStepIndex;
+
+  /// Test seam for the slow gallery-import path. Production uses the native
+  /// image picker; tests can hold this future open and assert the loading UI.
+  @visibleForTesting
+  final Future<List<UploadedItem>> Function()? intakeMediaPicker;
 
   @override
   State<SparkJoyCreateReportScreen> createState() =>
@@ -224,6 +230,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   // Дебаунс — общий _vinParamsAutofillDebounce (один таймер на весь конвейер).
   bool _identityResolveBusy = false;
   String _lastVinIdentityResolved = '';
+  // VIN, для которых уже был один бесплатный повтор привязки к каталогу.
+  // Сам результат платного конвертера кэшируется, повторяет только чтение
+  // каталога после транзиентного сетевого сбоя/холодного старта.
+  final Set<String> _vinIdentityCatalogRetried = <String>{};
   // Что авто-конвертер записал в марку/модель ('brand'/'model') — чтобы при смене
   // VIN чистить только НЕтронутое пользователем (staleVinAutofillKeys).
   final Map<String, String> _vinAutoIdentityValues = {};
@@ -416,6 +426,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
 
   /// Свёрнутый грид фото (первые 7 + тайл «Ещё N») раскрыт до закрытия.
   bool _intakePhotosExpanded = false;
+
+  /// The native picker returns before selected media has been copied into the
+  /// app's persistent storage. Keep explicit UI feedback visible throughout
+  /// that preparation window, which is noticeable for large selections.
+  bool _intakeImportInProgress = false;
 
   ValueListenable<SparkIntakeSnapshot>? _intakeListenable;
   bool _intakeApplyRunning = false;

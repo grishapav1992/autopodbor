@@ -111,6 +111,26 @@ Widget _buildSparkJoyStepVehicle(
                 color: kRedColor,
               ),
             ],
+            if (s._identityResolveBusy) ...[
+              const SizedBox(height: SparkSpace.sm),
+              const Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: SparkSpace.sm),
+                  Expanded(
+                    child: MyText(
+                      text: 'Определяем марку и модель…',
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                  ),
+                ],
+              ),
+            ],
             // Поле госномера идёт сразу за VIN — без разделителя «или» и
             // без лейбла (2026-07-10). Страна определяется автоматически,
             // справа показывается её флаг без ручного выбора.

@@ -1,24 +1,94 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_application_1/core/constants/app_colors.dart';
+import 'package:flutter_application_1/data/api/storage_api.dart' as storage_api;
 import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 
 import 'spark_joy_company_request_detail_screen.dart';
+import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
 import 'spark_joy_profile_photo_viewer.dart';
+import 'spark_joy_public_profile_merge.dart';
 import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_request_status.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
 
-class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
+class SparkJoyCompanyStaffDetailScreen extends StatefulWidget {
   const SparkJoyCompanyStaffDetailScreen({
     super.key,
     required this.specialist,
     required this.requests,
+    this.profileLoader,
   });
 
   final Map<String, dynamic> specialist;
   final List<Map<String, dynamic>> requests;
+
+  /// Test seam for loading the expanded public specialist profile.
+  final Future<Map<String, dynamic>> Function(int specialistId)? profileLoader;
+
+  @override
+  State<SparkJoyCompanyStaffDetailScreen> createState() =>
+      _SparkJoyCompanyStaffDetailScreenState();
+}
+
+class _SparkJoyCompanyStaffDetailScreenState
+    extends State<SparkJoyCompanyStaffDetailScreen> {
+  late Map<String, dynamic> _profile;
+  bool _profileLoading = false;
+  String? _profileLoadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = Map<String, dynamic>.from(widget.specialist);
+    final specialistId = _intValue(_profile, 'id');
+    if (specialistId > 0) {
+      _profileLoading = true;
+      _loadFullProfile(specialistId);
+    }
+  }
+
+  Future<void> _loadFullProfile(int specialistId) async {
+    try {
+      final loader = widget.profileLoader;
+      final fetched = loader == null
+          ? await storage_api.StorageApi.getSpecialistProfile(
+              specialistId: specialistId,
+            )
+          : await loader(specialistId);
+      if (!mounted) return;
+      setState(() {
+        _profileLoading = false;
+        if (fetched.isEmpty) {
+          _profileLoadError = 'Полный профиль сотрудника не найден';
+        } else {
+          _profile = mergeSparkJoySpecialistPublicProfile(_profile, fetched);
+          _profileLoadError = null;
+        }
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _profileLoading = false;
+        _profileLoadError = sparkJoyReadableErrorText(
+          error,
+          fallback: 'Не удалось загрузить полные данные сотрудника',
+        );
+      });
+    }
+  }
+
+  Future<void> _retryFullProfile() async {
+    if (_profileLoading) return;
+    final specialistId = _intValue(_profile, 'id');
+    if (specialistId <= 0) return;
+    setState(() {
+      _profileLoading = true;
+      _profileLoadError = null;
+    });
+    await _loadFullProfile(specialistId);
+  }
 
   Future<void> _openRequest(
     BuildContext context,
@@ -46,6 +116,14 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
     final value = data[key];
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _readAny(Map<String, dynamic> data, List<String> keys) {
+    for (final key in keys) {
+      final value = _str(data, key).trim();
+      if (value.isNotEmpty) return value;
+    }
+    return '';
   }
 
   String _requestTitle(Map<String, dynamic> request) {
@@ -150,15 +228,23 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final staffName = sjRead(specialist, 'name', fallback: 'Сотрудник');
-    final specialization = sjRead(specialist, 'specialization');
-    final phone = sjRead(specialist, 'phone');
-    final email = sjRead(specialist, 'email');
-    final city = sjRead(specialist, 'city');
-    final avatarUrl = sjRead(specialist, 'urlAvatar');
-    final rating = _doubleValue(specialist, 'rating');
-    final likeUp = _intValue(specialist, 'likeUp');
-    final likeDown = _intValue(specialist, 'likeDown');
+    final staffName = sjRead(_profile, 'name', fallback: 'Сотрудник');
+    final specialization = _readAny(_profile, [
+      'description',
+      'specialization',
+      'about',
+    ]);
+    final phone = sjRead(_profile, 'phone');
+    final email = sjRead(_profile, 'email');
+    final city = sjRead(_profile, 'city');
+    final avatarUrl = _readAny(_profile, [
+      'urlAvatar',
+      'avatarUrl',
+      'photoUrl',
+    ]);
+    final rating = _doubleValue(_profile, 'rating');
+    final likeUp = _intValue(_profile, 'likeUp');
+    final likeDown = _intValue(_profile, 'likeDown');
     final hasProfileInfo =
         specialization.isNotEmpty ||
         phone.isNotEmpty ||
@@ -168,11 +254,11 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
         likeUp > 0 ||
         likeDown > 0;
     // At-a-glance workload for the company viewing this staff member (B10).
-    final totalRequests = requests.length;
-    final completedRequests = requests
+    final totalRequests = widget.requests.length;
+    final completedRequests = widget.requests
         .where((r) => normalizeRequestStatus(_str(r, 'status')) == 'done')
         .length;
-    final activeRequests = requests.where((r) {
+    final activeRequests = widget.requests.where((r) {
       final s = normalizeRequestStatus(_str(r, 'status'));
       return s == 'in_work' || s == 'paid_escrow';
     }).length;
@@ -228,6 +314,21 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
             ],
           ),
         ),
+        if (_profileLoading)
+          const SparkHintCard(
+            text: 'Обновляем полные данные сотрудника…',
+            icon: Icons.sync_rounded,
+          )
+        else if (_profileLoadError != null)
+          SparkHintCard(
+            text: _profileLoadError!,
+            icon: Icons.warning_amber_rounded,
+            textColor: kRedColor,
+            trailing: TextButton(
+              onPressed: _retryFullProfile,
+              child: const Text('Повторить'),
+            ),
+          ),
         if (hasProfileInfo) ...[
           const SparkSectionTitle('Данные профиля', top: SparkSpace.xl),
           SparkCard(
@@ -326,10 +427,10 @@ class SparkJoyCompanyStaffDetailScreen extends StatelessWidget {
         ),
         const SizedBox(height: SparkSpace.xl),
         const SparkSectionTitle('Назначенные заявки'),
-        if (requests.isEmpty)
+        if (widget.requests.isEmpty)
           const SparkHintCard(text: 'Назначенных заявок пока нет')
         else
-          ...requests.map((request) => _requestCard(context, request)),
+          ...widget.requests.map((request) => _requestCard(context, request)),
       ],
     );
   }

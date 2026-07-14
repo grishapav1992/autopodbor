@@ -2,18 +2,26 @@ part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// Поллит `GetBatchLegalReviewResults` пока все проверки не выйдут из
-  /// pending (или пока не упрёмся в потолок попыток → `_legalTimedOut`).
+  /// pending (или пока не упрёмся в потолок времени/попыток →
+  /// `_legalTimedOut`).
   /// [token] отсекает устаревший прогон; выходим, если экран закрыт или
   /// стартовал новый прогон.
   Future<void> _pollLegalBatchResults(int token, String batchNumber) async {
     const interval = Duration(seconds: 3);
-    // ~180s потолок: live ApiCloud-проверки идут десятки секунд, но отдельные
-    // (zalog_notary) доходили до ~104с — берём запас, чтобы не таймаутить почти
-    // готовое. Недозавершённые к таймауту не теряются — hydrator подтянет их
-    // по batches при повторном открытии завершённого отчёта.
+    // Реальный wall-clock потолок. Один только maxAttempts не ограничивает
+    // ожидание: каждый GetBatchLegalReviewResults сам может ждать сетевой
+    // timeout, и 60 попыток превращались почти в 20 минут «вечной» загрузки.
+    // Недозавершённые результаты не теряются — batch сохранён в черновике и
+    // будет дочитан при следующем открытии.
+    const maxWait = Duration(minutes: 3);
     const maxAttempts = 60;
+    final stopwatch = Stopwatch()..start();
     var emptyStreak = 0;
-    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+    for (
+      var attempt = 0;
+      attempt < maxAttempts && stopwatch.elapsed < maxWait;
+      attempt++
+    ) {
       await Future<void>.delayed(interval);
       if (!mounted || token != _legalLoadToken) return;
       Map<String, dynamic> result;
@@ -34,7 +42,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
           : <Map<String, dynamic>>[];
       if (checks.isEmpty) {
         // Пустой ответ: бэкенд ещё не зарегистрировал проверки или batch пуст.
-        // Несколько коротких попыток вместо траты всего ~120с потолка.
+        // Несколько коротких попыток вместо траты всего окна поллинга.
         if (++emptyStreak >= 3) break;
         continue;
       }
@@ -75,6 +83,62 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         ),
       );
     }
+  }
+
+  /// Возобновляет бесплатное чтение уже оплаченного ApiCloud batch после
+  /// повторного открытия черновика. Раньше draft восстанавливал
+  /// `legalLoading=true`, но Future поллинга уже погибал вместе с закрытым
+  /// экраном — UI оставался со спиннером навсегда, хотя ответы были готовы.
+  Future<void> _resumeLegalBatchAfterDraftLoad() async {
+    if (widget.readOnly) return;
+    final batchNumber = (_legalBatchNumber ?? '').trim();
+
+    if (batchNumber.isEmpty) {
+      // Legacy/повреждённый draft не может продолжить запрос без batch id.
+      // Не оставляем восстановленный loading без владельца.
+      if (_legalLoading) {
+        _setStateSafely(() {
+          _legalLoading = false;
+          _legalTimedOut = true;
+        });
+        _markDraftDirty();
+      }
+      return;
+    }
+
+    final hasTerminalResults =
+        _legalCheckResults.isNotEmpty &&
+        !storage_api.legalReviewBatchPending(_legalCheckResults);
+    if (hasTerminalResults) {
+      // Autosave мог успеть записать terminal checks до следующего изменения
+      // флагов. Нормализуем противоречивый draft локально, без сети.
+      if (!_legalLoaded || _legalLoading || _legalTimedOut) {
+        _setStateSafely(() {
+          _legalLoading = false;
+          _legalLoaded = true;
+          _legalTimedOut = false;
+        });
+        _markDraftDirty();
+        _autofillParamsFromGostCert();
+      }
+      return;
+    }
+
+    // Batch имеет смысл дочитать, если прошлый запуск был прерван/таймаутнул
+    // или куплен, но терминальный результат ещё не попал в draft.
+    if (!_legalLoading &&
+        !_legalTimedOut &&
+        !(_legalPurchased && !_legalLoaded)) {
+      return;
+    }
+
+    final token = _legalLoadToken + 1;
+    _setStateSafely(() {
+      _legalLoadToken = token;
+      _legalLoading = true;
+      _legalTimedOut = false;
+    });
+    await _pollLegalBatchResults(token, batchNumber);
   }
 
   /// Однократно подгружает мета-данные шага «Материалы проверки»:
@@ -507,6 +571,36 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       }
       return;
     }
+    var vin = _sanitizeVin(_vinController.text);
+    var plate = _sanitizePlate(_plateController.text.trim());
+    if (checkTypes.contains('api_cloud_fgis_taxi_search')) {
+      final identifiers = prepareFgisTaxiIdentifiers(
+        vin: vin,
+        gosNumber: plate,
+      );
+      final identifierError = identifiers.error;
+      if (identifierError != null) {
+        if (mounted) {
+          showSparkJoyErrorSnackBar(
+            context,
+            Exception(identifierError),
+            fallback: identifierError,
+          );
+        }
+        return;
+      }
+      vin = identifiers.vin;
+      final fgisPlate = identifiers.gosNumber;
+      if (fgisPlate.isEmpty) {
+        // ФГИС принимает VIN ИЛИ госномер. При полном VIN второй идентификатор
+        // не отправляем: иначе ApiCloud может выбрать ошибочный латинский plate.
+        plate = '';
+      } else if (fgisPlate != plate) {
+        plate = fgisPlate;
+        _setStateSafely(() => _applyDetectedPlate(plate));
+        _markDraftDirty();
+      }
+    }
     final token = _legalLoadToken + 1;
     _setStateSafely(() {
       _legalLoadToken = token;
@@ -518,8 +612,6 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     });
     _markDraftDirty();
 
-    var vin = _vinController.text.trim();
-    final plate = _sanitizePlate(_plateController.text.trim());
     try {
       // Проверки ApiCloud ищут по VIN (подтверждено бэком). Если VIN ещё нет,
       // но есть госномер — сперва конвертируем госномер→VIN (флоу «2 запроса»),

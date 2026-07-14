@@ -242,6 +242,78 @@ void main() {
       expect(match.model!.model, 'Octavia');
     });
 
+    test('пунктуация в марке не ломает VIN-резолв', () async {
+      final mercedes = BrandItem(
+        id: 3,
+        name: 'Mercedes-Benz',
+        nameRus: 'Мерседес-Бенц',
+      );
+      final cClass = ModelItem(
+        id: 31,
+        brandId: 3,
+        model: 'C-Class',
+        modelRus: 'С-Класс',
+      );
+      store.brandsEntry = CarCatalogStoreEntry(
+        items: [mercedes],
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      store.modelsEntries[3] = CarCatalogStoreEntry(
+        items: [cClass],
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      CarCatalogRepository.resetSingletonForTest();
+      repo = CarCatalogRepository.instance..store = store;
+
+      final match = await repo.resolveCar('Mercedes Benz', 'C Class');
+
+      expect(match, isNotNull);
+      expect(match!.full, isTrue);
+      expect(match.model!.id, 31);
+    });
+
+    test('модель с префиксом марки и поколением сопоставляется', () async {
+      final match = await repo.resolveCar('Skoda', 'SKODA Octavia A7');
+
+      expect(match, isNotNull);
+      expect(match!.full, isTrue);
+      expect(match.model!.id, 11);
+    });
+
+    test('неоднозначный префикс модели не угадывается', () async {
+      final octaviaTour = ModelItem(
+        id: 13,
+        brandId: 1,
+        model: 'Octavia Tour',
+        modelRus: '',
+      );
+      store.modelsEntries[1] = CarCatalogStoreEntry(
+        items: [_octavia, octaviaTour],
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+      repo.modelsFetcher = (_) async => [_octavia, octaviaTour];
+
+      final match = await repo.resolveCar('Skoda', 'Octavia Tour Edition');
+
+      expect(match, isNotNull);
+      expect(match!.full, isFalse);
+      expect(match.model, isNull);
+    });
+
+    test('на промахе старого кэша повторяет по свежему каталогу', () async {
+      store.brandsEntry = CarCatalogStoreEntry(
+        items: [_lada],
+        savedAtMs: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      final match = await repo.resolveCar('Skoda', 'Octavia');
+
+      expect(brandsFetches, 1);
+      expect(match, isNotNull);
+      expect(match!.full, isTrue);
+      expect(match.model!.id, 11);
+    });
+
     test('ё→е фолдинг', () async {
       store.brandsEntry = CarCatalogStoreEntry(
         items: [BrandItem(id: 3, name: 'Citroen', nameRus: 'Ситроён')],

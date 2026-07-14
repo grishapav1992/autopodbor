@@ -30,6 +30,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_application_1/data/api/ai_queue_api.dart';
 import 'package:flutter_application_1/data/api/storage_api.dart'
     show StorageApi, SessionExpiredException;
+import 'package:flutter_application_1/data/services/app_background_time.dart';
 import 'package:flutter_application_1/data/services/ai_queue_cliche_builder.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_transfer.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_video_prep.dart';
@@ -346,6 +347,13 @@ class _IntakeDraftState {
   bool uploadRequested = false;
   bool pipelineRunning = false;
   bool classifyRunning = false;
+  bool precompressRunning = false;
+
+  /// In-flight сжатие per-record: пре-сжатие после добавления файлов и
+  /// пайплайн заливки могут сойтись на одном файле — второй вызывающий
+  /// получает тот же Future вместо второго изолята с тем же декодом.
+  final Map<String, Future<({String? path, String? failReason})>>
+  compressionInFlight = <String, Future<({String? path, String? failReason})>>{};
 
   /// Конфиг ИИ-раскладки (клише + таксономия). In-memory: экран отчёта
   /// передаёт его при инициализации черновика; без него классификация
@@ -703,9 +711,13 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     state.files.addAll(records);
     state.emit();
     await _persist(state);
-    // Если заливка уже была запрошена — новые файлы едут сразу же.
+    // Если заливка уже была запрошена — новые файлы едут сразу же (пайплайн
+    // сам и сожмёт); иначе тихо жмём заранее, чтобы «Распределить файлы»
+    // отправлял пачку в транспорт за секунды.
     if (state.uploadRequested) {
       unawaited(_runPipeline(state));
+    } else {
+      _kickPrecompression(state);
     }
   }
 
@@ -824,6 +836,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     state.emit();
     await _persist(state);
     _maybeStopTimers();
+    _syncBackgroundHold();
   }
 
   /// Чистит состояние черновика; [deleteLocalFiles] — вместе с локальными
@@ -846,6 +859,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
     state.notifier.dispose();
     _maybeStopTimers();
+    _syncBackgroundHold();
   }
 
   /// Разлогин: гасим память и таймеры, файлы и черновики не трогаем —
@@ -862,6 +876,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
     _states.clear();
     _maybeStopTimers();
+    _syncBackgroundHold();
   }
 
   // ── Пайплайн ──────────────────────────────────────────────────────────
@@ -880,6 +895,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   Future<void> _runPipeline(_IntakeDraftState state) async {
     if (state.pipelineRunning) return;
     state.pipelineRunning = true;
+    _syncBackgroundHold();
     try {
       await _transfer.ensureInitialized();
       _ensureTransferSubscription();
@@ -904,6 +920,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       state.emit();
       _scheduleRetryTimerIfNeeded();
       _maybeStartClassification(state);
+      _syncBackgroundHold();
     }
   }
 
@@ -918,33 +935,28 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       }
       Uint8List? webBytes;
       // 1. Сжатие фото (требование: «перед отправкой в S3 надо сжатие»).
+      // На native обычно уже готово: пре-сжатие стартует сразу после
+      // добавления файлов, здесь остаётся подхватить результат (или дожать
+      // хвост, если пользователь нажал «Распределить файлы» раньше).
       if (record.isImage && record.compressedPath == null) {
         record.status = SparkIntakeFileStatus.compressing;
         state.emit();
-        final original = await _readLocalBytes(record.localPath);
-        if (original == null || original.isEmpty) {
-          _failNoRetry(state, record, 'Файл недоступен на устройстве');
-          return;
-        }
-        // На web изолятов нет — жмём синхронно (короткая пауза под
-        // спиннером приемлемее незжатого аплоада; решение как в доскане).
-        final prepared = kIsWeb
-            ? sparkPrepareIntakePhoto(original)
-            : await compute(sparkPrepareIntakePhoto, original);
         if (kIsWeb) {
-          webBytes = prepared;
-        } else {
-          final path = await _writeCompressedCopy(record, prepared);
-          if (path == null) {
-            _failNoRetry(
-              state,
-              record,
-              'Не удалось сохранить сжатую копию изображения',
-            );
+          final original = await _readLocalBytes(record.localPath);
+          if (original == null || original.isEmpty) {
+            _failNoRetry(state, record, 'Файл недоступен на устройстве');
             return;
           }
-          record.compressedPath = path;
-          await _persist(state);
+          // На web изолятов нет — жмём синхронно (короткая пауза под
+          // спиннером приемлемее незжатого аплоада; решение как в доскане).
+          webBytes = sparkPrepareIntakePhoto(original);
+        } else {
+          final outcome = await _ensureCompressed(state, record);
+          final failReason = outcome.failReason;
+          if (failReason != null) {
+            _failNoRetry(state, record, failReason);
+            return;
+          }
         }
       } else if (kIsWeb) {
         webBytes = await _readLocalBytes(record.localPath);
@@ -1133,6 +1145,92 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     unawaited(_persist(state));
   }
 
+  // ── Пре-сжатие ────────────────────────────────────────────────────────
+  //
+  // Сжатие — самый долгий шаг конвейера (секунды на фото), а iOS
+  // замораживает Dart через считанные секунды после сворачивания. Поэтому
+  // жмём не в пайплайне заливки, а сразу после добавления файлов: к моменту
+  // «Распределить файлы» пачка уже готова, пайплайну остаются быстрые
+  // presigned URL + enqueue, и окно, в котором сворачивание оставляет файлы
+  // незалитыми, сжимается с минут до секунд.
+
+  /// Сжимает фото записи и заполняет [SparkIntakeFileRecord.compressedPath]
+  /// (только native). Повторный вызов для записи в полёте возвращает тот же
+  /// Future. FormatException исходника пробрасывается вызывающему —
+  /// пайплайн обрабатывает её своей веткой, пре-сжатие молчит.
+  Future<({String? path, String? failReason})> _ensureCompressed(
+    _IntakeDraftState state,
+    SparkIntakeFileRecord record,
+  ) {
+    final existing = record.compressedPath;
+    if (existing != null) {
+      return Future.value((path: existing, failReason: null));
+    }
+    return state.compressionInFlight.putIfAbsent(record.id, () async {
+      try {
+        final original = await _readLocalBytes(record.localPath);
+        if (original == null || original.isEmpty) {
+          return (path: null, failReason: 'Файл недоступен на устройстве');
+        }
+        final prepared = await compute(sparkPrepareIntakePhoto, original);
+        final path = await _writeCompressedCopy(record, prepared);
+        if (path == null) {
+          return (
+            path: null,
+            failReason: 'Не удалось сохранить сжатую копию изображения',
+          );
+        }
+        record.compressedPath = path;
+        await _persist(state);
+        return (path: path, failReason: null);
+      } finally {
+        state.compressionInFlight.remove(record.id);
+      }
+    });
+  }
+
+  /// Тихий последовательный обход staged-фото без сжатой копии. Статусы не
+  /// трогает: ошибки (битый формат, пропавший файл) всплывут в пайплайне
+  /// при заливке, как и раньше. При запрошенной заливке уступает пайплайну —
+  /// иначе два изолята держали бы по декодированному кадру одновременно.
+  void _kickPrecompression(_IntakeDraftState state) {
+    if (kIsWeb) return; // web жмёт в память в foreground-очереди
+    if (state.precompressRunning) return;
+    state.precompressRunning = true;
+    _syncBackgroundHold();
+    unawaited(() async {
+      final attempted = <String>{};
+      try {
+        // identical-гейт: dropDraft/resetAll могли выбросить state — не жмём
+        // файлы черновика, которого больше нет.
+        while (!state.uploadRequested &&
+            identical(_states[state.draftId], state)) {
+          SparkIntakeFileRecord? next;
+          for (final r in state.files) {
+            if (r.isImage &&
+                r.compressedPath == null &&
+                r.status == SparkIntakeFileStatus.staged &&
+                !attempted.contains(r.id) &&
+                !state.noAutoRetry.contains(r.id)) {
+              next = r;
+              break;
+            }
+          }
+          if (next == null) break;
+          attempted.add(next.id);
+          try {
+            await _ensureCompressed(state, next);
+          } catch (_) {
+            // Пайплайн покажет ошибку при заливке.
+          }
+        }
+      } finally {
+        state.precompressRunning = false;
+        _syncBackgroundHold();
+      }
+    }());
+  }
+
   // ── ИИ-классификация ──────────────────────────────────────────────────
   //
   // Стартует автоматически, когда заливка запрошена и все записи в
@@ -1161,6 +1259,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     final config = state.aiConfig;
     if (config == null || !_uploadsSettled(state)) return;
     state.classifyRunning = true;
+    _syncBackgroundHold();
     var consecutiveFailures = 0;
     try {
       // Протухшие temp-копии перезаливаем ДО классификации: вернёмся сюда
@@ -1352,6 +1451,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     } finally {
       state.classifyRunning = false;
       state.emit();
+      _syncBackgroundHold();
     }
   }
 
@@ -1657,6 +1757,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
         }
     }
     _maybeStartClassification(state);
+    // Терминальные исходы могли закрыть последнюю живую работу (или 403
+    // вернул запись в staged — снова есть что держать).
+    _syncBackgroundHold();
   }
 
   // ── Reconcile / авто-возобновление ────────────────────────────────────
@@ -1698,6 +1801,10 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
     }
     if (state.uploadRequested) {
       unawaited(_runPipeline(state));
+    } else {
+      // Гидрейт черновика, где кнопку ещё не нажимали: дожать пре-сжатие
+      // staged-файлов прошлой сессии.
+      _kickPrecompression(state);
     }
     _maybeStartClassification(state);
   }
@@ -1754,9 +1861,11 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
 
   // ── Жизненный цикл приложения ─────────────────────────────────────────
   //
-  // iOS замораживает Dart через ~30с после сворачивания: уже поставленные
-  // задачи продолжает URLSession, но пайплайн (сжатие следующих файлов)
-  // встаёт. На resume добиваем хвост.
+  // iOS замораживает Dart через считанные секунды после сворачивания: уже
+  // поставленные задачи продолжает URLSession, но Dart-конвейер (сжатие,
+  // presigned URL, vision-вызовы) встаёт. Пока есть живая работа, держим
+  // background task assertion (~30с форы после сворачивания, см.
+  // AppBackgroundTime); на resume добиваем хвост.
 
   void _attachLifecycle() {
     if (_lifecycleAttached || kIsWeb) return;
@@ -1774,6 +1883,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
+    // Истёкший в фоне assertion нативная сторона отпустила сама — перевзять,
+    // если работа ещё жива (иначе следующее сворачивание заморозит сразу).
+    _syncBackgroundHold();
     for (final draftState in _states.values) {
       if (!draftState.uploadRequested) continue;
       // За время suspension нативная очередь могла завершить несколько PUT,
@@ -1781,6 +1893,33 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       // Сверка БД сама обновит статусы, поставит только потерянный хвост и
       // запустит классификацию без дополнительного действия пользователя.
       unawaited(_reconcileAndResume(draftState));
+    }
+  }
+
+  /// Пока крутится конвейер (пре-сжатие/пайплайн/классификация) или заливка
+  /// запрошена и не вся терминальна — держим iOS background assertion, чтобы
+  /// короткое сворачивание не замораживало Dart мгновенно. Как только работы
+  /// не осталось — отпускаем: держать процесс ради 60-секундного retry-цикла
+  /// по мёртвой сети не нужно (failed — терминальный статус).
+  void _syncBackgroundHold() {
+    var busy = false;
+    for (final state in _states.values) {
+      if (state.pipelineRunning ||
+          state.classifyRunning ||
+          state.precompressRunning) {
+        busy = true;
+        break;
+      }
+      if (state.uploadRequested &&
+          state.files.any((record) => !record.isTerminal)) {
+        busy = true;
+        break;
+      }
+    }
+    if (busy) {
+      unawaited(AppBackgroundTime.hold());
+    } else {
+      unawaited(AppBackgroundTime.release());
     }
   }
 

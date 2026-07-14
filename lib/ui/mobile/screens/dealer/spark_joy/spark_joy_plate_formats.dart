@@ -128,6 +128,24 @@ const String _plateCyrAll = 'А-ЯЁ';
 /// input.
 const String _plateLatin = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
+/// Латинские двойники букв российского госномера. OCR, конвертеры и ручной
+/// ввод нередко дают визуально тот же номер в латинице (`P123PC77`), но ФГИС
+/// принимает в `gosNumber` только кириллицу и цифры.
+const Map<String, String> _plateLatinLookalikeToCyrillic = {
+  'A': 'А',
+  'B': 'В',
+  'E': 'Е',
+  'K': 'К',
+  'M': 'М',
+  'H': 'Н',
+  'O': 'О',
+  'P': 'Р',
+  'C': 'С',
+  'T': 'Т',
+  'Y': 'У',
+  'X': 'Х',
+};
+
 /// Заглушка-паттерн для форматов с [PlateFormat.skipValidation] = true:
 /// поле `pattern` обязательно в конструкторе, но ни sanitize, ни plateError
 /// его не используют. Назван `_unusedPattern` чтобы не путать читателя с
@@ -625,6 +643,47 @@ String sanitizePlatePermissive(String input) {
   final cleaned = upper.replaceAll(RegExp('[^$allowed]'), '');
   if (cleaned.length > 14) return cleaned.substring(0, 14);
   return cleaned;
+}
+
+/// Канонический вид номера для российского ФГИС Такси: без разделителей,
+/// латинские look-alike буквы переведены в кириллицу. Остальные символы не
+/// удаляем намеренно — [isValidFgisTaxiPlate] должен обнаружить их и не дать
+/// отправить некорректный платный запрос.
+String canonicalizeFgisTaxiPlate(String input) {
+  var value = input.toUpperCase().replaceAll(RegExp(r'[\s\-]'), '');
+  _plateLatinLookalikeToCyrillic.forEach(
+    (latin, cyrillic) => value = value.replaceAll(latin, cyrillic),
+  );
+  return value;
+}
+
+/// Контракт API Cloud ФГИС: `gosNumber` содержит только кириллицу и цифры.
+bool isValidFgisTaxiPlate(String input) {
+  final value = input.trim();
+  return value.isNotEmpty && RegExp(r'^[А-ЯЁ0-9]+$').hasMatch(value);
+}
+
+/// Готовит взаимоисключающие идентификаторы для запроса ФГИС Такси.
+/// Приоритет у полного VIN; госномер используется только когда валидного VIN
+/// нет. Так латинский/грязный номер не может испортить проверку по VIN.
+({String vin, String gosNumber, String? error}) prepareFgisTaxiIdentifiers({
+  required String vin,
+  required String gosNumber,
+}) {
+  final cleanVin = vin.trim().toUpperCase().replaceAll(RegExp(r'[\s\-]'), '');
+  if (RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(cleanVin)) {
+    return (vin: cleanVin, gosNumber: '', error: null);
+  }
+
+  final cleanPlate = canonicalizeFgisTaxiPlate(gosNumber);
+  if (isValidFgisTaxiPlate(cleanPlate)) {
+    return (vin: '', gosNumber: cleanPlate, error: null);
+  }
+  return (
+    vin: '',
+    gosNumber: '',
+    error: 'Для ФГИС укажите корректный VIN или госномер кириллицей и цифрами',
+  );
 }
 
 /// Прогоняет [input] через [kAutoDetectFormats] в порядке специфичности.

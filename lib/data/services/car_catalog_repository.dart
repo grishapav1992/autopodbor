@@ -413,12 +413,17 @@ class CarCatalogRepository {
     } catch (_) {
       return null;
     }
-    final qBrand = _fold(brand);
-    BrandItem? matchedBrand;
-    for (final b in brands) {
-      if (_fold(b.name) == qBrand || _fold(b.nameRus) == qBrand) {
-        matchedBrand = b;
-        break;
+    var matchedBrand = _matchIdentityBrand(brands, brand);
+    if (matchedBrand == null) {
+      // Cache-first может вернуть устаревший каталог и лишь запустить refresh
+      // в фоне. Для VIN-идентификации один раз дожидаемся свежего списка:
+      // иначе корректный ответ конвертера молча терялся до следующего ввода VIN.
+      try {
+        await refreshBrands();
+        brands = _brands ?? brands;
+        matchedBrand = _matchIdentityBrand(brands, brand);
+      } catch (_) {
+        // офлайн/транзиентный сбой → ниже вернём null, UI останется рабочим
       }
     }
     if (matchedBrand == null) return null;
@@ -426,17 +431,87 @@ class CarCatalogRepository {
       return (brand: matchedBrand, model: null, full: false);
     }
     try {
-      final models = await getModels(matchedBrand.id);
-      final qModel = _fold(model);
-      for (final m in models) {
-        if (_fold(m.model) == qModel || _fold(m.modelRus) == qModel) {
-          return (brand: matchedBrand, model: m, full: true);
-        }
+      var models = await getModels(matchedBrand.id);
+      var matchedModel = _matchIdentityModel(models, model, matchedBrand);
+      if (matchedModel == null) {
+        // Как и марки, модели могли приехать из старого/неполного кэша.
+        // Повтор безопасен: это чтение каталога, а не платный VIN-конвертер.
+        try {
+          await refreshModels(matchedBrand.id);
+          models = _modelsByBrandId[matchedBrand.id] ?? models;
+          matchedModel = _matchIdentityModel(models, model, matchedBrand);
+        } catch (_) {}
+      }
+      if (matchedModel != null) {
+        return (brand: matchedBrand, model: matchedModel, full: true);
       }
     } catch (_) {
       // модели недоступны → частичный матч (как раньше при падении GetModelCar)
     }
     return (brand: matchedBrand, model: null, full: false);
+  }
+
+  /// Конвертеры часто меняют только пунктуацию (`Mercedes-Benz` /
+  /// `Mercedes Benz`). Для идентификаторов это одно и то же значение.
+  static BrandItem? _matchIdentityBrand(List<BrandItem> brands, String query) {
+    final folded = _identityFold(query);
+    final compact = _identityCompact(query);
+    for (final brand in brands) {
+      for (final name in [brand.name, brand.nameRus]) {
+        if (name.isEmpty) continue;
+        if (_identityFold(name) == folded ||
+            _identityCompact(name) == compact) {
+          return brand;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Сначала ищем точное совпадение с нормализованной пунктуацией. Затем
+  /// разрешаем два безопасных формата ApiCloud: `Марка Модель` и
+  /// `Модель <поколение/модификация>`. Во втором случае матч принимается
+  /// только если кандидат один — чтобы не спутать, например, `Vesta` и
+  /// `Vesta SW`.
+  static ModelItem? _matchIdentityModel(
+    List<ModelItem> models,
+    String query,
+    BrandItem brand,
+  ) {
+    var folded = _identityFold(query);
+    var compact = _identityCompact(query);
+    final brandNames = [
+      brand.name,
+      brand.nameRus,
+    ].map(_identityFold).where((e) => e.isNotEmpty);
+    for (final brandName in brandNames) {
+      if (folded.startsWith('$brandName ')) {
+        folded = folded.substring(brandName.length + 1).trim();
+        compact = _identityCompact(folded);
+        break;
+      }
+    }
+
+    for (final item in models) {
+      for (final name in [item.model, item.modelRus]) {
+        if (name.isEmpty) continue;
+        if (_identityFold(name) == folded ||
+            _identityCompact(name) == compact) {
+          return item;
+        }
+      }
+    }
+
+    final prefixMatches = <ModelItem>{};
+    for (final item in models) {
+      for (final name in [item.model, item.modelRus]) {
+        final candidate = _identityFold(name);
+        if (candidate.length >= 3 && folded.startsWith('$candidate ')) {
+          prefixMatches.add(item);
+        }
+      }
+    }
+    return prefixMatches.length == 1 ? prefixMatches.single : null;
   }
 
   // ── «Недавние модели» для приоритета фонового синка ───────────────────
@@ -514,4 +589,12 @@ class CarCatalogRepository {
   }
 
   static String _fold(String s) => s.trim().toLowerCase().replaceAll('ё', 'е');
+
+  static String _identityFold(String s) => _fold(s)
+      .replaceAll(RegExp(r'[^a-z0-9а-я]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  static String _identityCompact(String s) =>
+      _identityFold(s).replaceAll(' ', '');
 }

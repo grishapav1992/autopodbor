@@ -420,6 +420,28 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
           _resolvedVinYear = '${r.year}';
         }
       });
+      final identityComplete =
+          _brandController.text.trim().isNotEmpty &&
+          _selectedBrandId != null &&
+          _modelController.text.trim().isNotEmpty &&
+          _selectedModelCarId != null;
+      if (identityComplete) {
+        _vinIdentityCatalogRetried.remove(vin);
+      } else if (r.found &&
+          (r.brand.trim().isNotEmpty || r.model.trim().isNotEmpty) &&
+          _vinIdentityCatalogRetried.add(vin)) {
+        // Конвертер уже ответил, но каталог мог быть недоступен на холодном
+        // старте. Один раз повторяем только бесплатную привязку: результат
+        // конвертера лежит в _runConverterDeduped, второго платного запуска нет.
+        _lastVinIdentityResolved = '';
+        unawaited(
+          Future<void>.delayed(const Duration(seconds: 3), () {
+            if (!mounted || _sanitizeVin(_vinController.text) != vin) return;
+            _maybeResolveFromVin();
+          }),
+        );
+        return false;
+      }
       // Записи .text= метят черновик dirty через autosave-listener.
       return true; // терминально (found / not_found) → params можно грунтовать
     } catch (e) {

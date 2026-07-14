@@ -1,5 +1,6 @@
 import 'spark_joy_vin_params_ai.dart' show extractJsonObject;
-import 'spark_joy_plate_formats.dart' show detectPlateCountry, PlateCountry;
+import 'spark_joy_plate_formats.dart'
+    show canonicalizeFgisTaxiPlate, detectPlateCountry, PlateCountry;
 
 /// Результат ИИ-распознавания фото СТС (AiQueue vision). Ровно 6 полей отчёта,
 /// которые извлекаем из документа (решение дева 2026-07-08): госномер, VIN,
@@ -61,29 +62,13 @@ String canonDocScanVin(dynamic raw) {
   return _strictVinRe.hasMatch(v) ? v : '';
 }
 
-// Латинские двойники → кириллица для РОССИЙСКОГО госномера (обратна _cyrToLat).
-// Vision часто транслитерирует «К254ТМ797» в латиницу «K254TM797», а
-// RU-детектор (spark_joy_plate_formats) требует кириллицу: иначе латинские
-// буквы вырезаются как «не из алфавита», номер не опознаётся как РФ (страна →
-// «Другая»), а латинский номер не матчится в ApiCloud (конвертер/проверки).
-// СТС — российский документ, номер всегда РФ-кириллица, поэтому маппинг
-// безопасен (буквы вне набора РФ-плат тут не встречаются).
-const Map<String, String> _latToPlateCyr = {
-  'A': 'А', 'B': 'В', 'E': 'Е', 'K': 'К', 'M': 'М', 'H': 'Н',
-  'O': 'О', 'P': 'Р', 'C': 'С', 'T': 'Т', 'Y': 'У', 'X': 'Х',
-};
-
 /// Канонизирует госномер из ответа модели: upper, без пробелов/дефисов,
-/// латинские двойники → кириллица (см. [_latToPlateCyr]) + позиционный фикс
+/// латинские двойники → кириллица + позиционный фикс
 /// О↔0 (см. [_coerceRuPlateOhZero]) — чтобы РФ-детектор опознал номер и он
 /// совпал с базами ApiCloud. Кап 16 символов.
 String canonDocScanPlate(dynamic raw) {
-  var v = (raw ?? '')
-      .toString()
-      .toUpperCase()
-      .replaceAll(RegExp(r'[\s\-]'), '');
+  var v = canonicalizeFgisTaxiPlate((raw ?? '').toString());
   if (v.isEmpty) return '';
-  _latToPlateCyr.forEach((lat, cyr) => v = v.replaceAll(lat, cyr));
   v = _coerceRuPlateOhZero(v);
   return v.length > 16 ? v.substring(0, 16) : v;
 }

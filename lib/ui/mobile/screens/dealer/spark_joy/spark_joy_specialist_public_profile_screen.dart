@@ -6,6 +6,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'spark_joy_error_snackbar.dart';
 import 'spark_joy_i18n.dart';
 import 'spark_joy_profile_photo_viewer.dart';
+import 'spark_joy_public_profile_merge.dart';
 import 'spark_joy_request_detail_ui.dart';
 import 'spark_joy_tokens.dart';
 import 'spark_joy_ui.dart';
@@ -15,17 +16,22 @@ import 'spark_joy_ui.dart';
 /// `initialProfile` (данные, уже пришедшие с заявкой/отчётом: имя, город,
 /// телефон, email, рейтинг, аватар) рендерится мгновенно; при наличии
 /// [specialistId] поверх подгружается `Storage.GetSpecialistProfile`.
-/// RPC контакты НЕ отдаёт (так спроектирован бэк), поэтому мерж накатывает
-/// только непустые поля ответа — телефон/email из initialProfile выживают.
+/// RPC контакты НЕ отдаёт (так спроектирован бэк), поэтому мерж сохраняет
+/// телефон/email из initialProfile, но полностью заменяет принадлежащие RPC
+/// поля — включая пустые значения для удалённого описания или аватара.
 class SparkJoySpecialistPublicProfileScreen extends StatefulWidget {
   const SparkJoySpecialistPublicProfileScreen({
     super.key,
     this.specialistId,
     this.initialProfile,
+    this.profileLoader,
   });
 
   final int? specialistId;
   final Map<String, dynamic>? initialProfile;
+
+  /// Test seam for the authoritative public-profile refresh.
+  final Future<Map<String, dynamic>> Function(int specialistId)? profileLoader;
 
   @override
   State<SparkJoySpecialistPublicProfileScreen> createState() =>
@@ -57,14 +63,17 @@ class _SparkJoySpecialistPublicProfileScreenState
       _error = null;
     });
     try {
-      final fetched = await storage_api.StorageApi.getSpecialistProfile(
-        specialistId: specialistId,
-      );
+      final loader = widget.profileLoader;
+      final fetched = loader == null
+          ? await storage_api.StorageApi.getSpecialistProfile(
+              specialistId: specialistId,
+            )
+          : await loader(specialistId);
       if (!mounted) return;
       setState(() {
         _loading = false;
         if (fetched.isNotEmpty) {
-          _profile = _merge(_profile, fetched);
+          _profile = mergeSparkJoySpecialistPublicProfile(_profile, fetched);
         } else if (_profile == null) {
           // Пустой result = удалён/не специалист. Если с заявкой уже
           // пришли данные — показываем их, ошибкой не пугаем.
@@ -84,22 +93,6 @@ class _SparkJoySpecialistPublicProfileScreenState
         }
       });
     }
-  }
-
-  /// Накатывает только непустые поля [fetched] поверх [base] — контакты и
-  /// рейтинг из initialProfile не должны затираться null'ами RPC.
-  static Map<String, dynamic> _merge(
-    Map<String, dynamic>? base,
-    Map<String, dynamic> fetched,
-  ) {
-    final merged = Map<String, dynamic>.from(base ?? const {});
-    for (final entry in fetched.entries) {
-      final value = entry.value;
-      if (value == null) continue;
-      if (value is String && value.trim().isEmpty) continue;
-      merged[entry.key] = value;
-    }
-    return merged;
   }
 
   String _read(String key, {String fallback = ''}) {
@@ -250,23 +243,16 @@ class _SparkJoySpecialistPublicProfileScreenState
               ],
             ),
           ),
-          const SparkSectionTitle('Информация', top: SparkSpace.xl),
-          SparkCard(
-            padding: const EdgeInsets.symmetric(
-              horizontal: SparkSpace.md,
-              vertical: SparkSpace.sm,
+          if (infoRows.isNotEmpty) ...[
+            const SparkSectionTitle('Информация', top: SparkSpace.xl),
+            SparkCard(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SparkSpace.md,
+                vertical: SparkSpace.sm,
+              ),
+              child: Column(children: infoRows),
             ),
-            child: Column(
-              children: infoRows.isEmpty
-                  ? const [
-                      SparkHintCard(
-                        text:
-                            'Специалист пока не заполнил публичную информацию',
-                      ),
-                    ]
-                  : infoRows,
-            ),
-          ),
+          ],
         ],
       ],
     );

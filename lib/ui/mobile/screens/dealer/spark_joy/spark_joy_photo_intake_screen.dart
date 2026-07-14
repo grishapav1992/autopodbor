@@ -17,6 +17,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
   }
 
   void _closePhotoIntake() {
+    if (_intakeImportInProgress) return;
     _setStateSafely(() {
       _intakeSelectedIds.clear();
       _intakePhotosExpanded = false;
@@ -34,11 +35,13 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                 'ИИ распределит по разделам отчёта',
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded),
-        onPressed: _closePhotoIntake,
+        onPressed: _intakeImportInProgress ? null : _closePhotoIntake,
       ),
       actions: [
         TextButton(
-          onPressed: () => unawaited(_onIntakeCancelPressed()),
+          onPressed: _intakeImportInProgress
+              ? null
+              : () => unawaited(_onIntakeCancelPressed()),
           child: const MyText(
             text: 'Отмена',
             size: SparkTextSize.label,
@@ -55,6 +58,7 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
   /// авторетраи после ошибок) — прерывает её после подтверждения; иначе
   /// просто закрывает экран, как раньше.
   Future<void> _onIntakeCancelPressed() async {
+    if (_intakeImportInProgress) return;
     final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
     final busy =
         snapshot.uploadRequested &&
@@ -105,41 +109,60 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
     if (!mounted) return;
     _markDraftDirty();
     _setStateSafely(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Загрузка остановлена')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Загрузка остановлена')));
   }
 
   // ── Добавление файлов ────────────────────────────────────────────────
 
   Future<void> _runIntakePickPhotos() async {
-    final items = await _pickMediaFromDeviceGallery();
-    await _stageIntakeItems(items);
+    await _runIntakeImport(
+      widget.intakeMediaPicker ?? _pickMediaFromDeviceGallery,
+    );
   }
 
   Future<void> _runIntakePickFiles() async {
-    final items = await _pickFiles(
-      type: FileType.custom,
-      // Тот же набор, что у «Материалов проверки» (_pickLegalFiles).
-      allowedExtensions: const [
-        'pdf',
-        'doc',
-        'docx',
-        'xls',
-        'xlsx',
-        'jpg',
-        'jpeg',
-        'png',
-        'webp',
-        'heic',
-        'heif',
-        'mp4',
-        'mov',
-        'm4v',
-        'webm',
-      ],
+    await _runIntakeImport(
+      () => _pickFiles(
+        type: FileType.custom,
+        // Тот же набор, что у «Материалов проверки» (_pickLegalFiles).
+        allowedExtensions: const [
+          'pdf',
+          'doc',
+          'docx',
+          'xls',
+          'xlsx',
+          'jpg',
+          'jpeg',
+          'png',
+          'webp',
+          'heic',
+          'heif',
+          'mp4',
+          'mov',
+          'm4v',
+          'webm',
+        ],
+      ),
     );
-    await _stageIntakeItems(items);
+  }
+
+  Future<void> _runIntakeImport(
+    Future<List<UploadedItem>> Function() pickItems,
+  ) async {
+    if (_intakeImportInProgress) return;
+    _setStateSafely(() => _intakeImportInProgress = true);
+    try {
+      final items = await pickItems();
+      await _stageIntakeItems(items);
+    } catch (_) {
+      if (mounted) {
+        _showErrorSnack('Не удалось добавить выбранные файлы');
+      }
+    } finally {
+      _setStateSafely(() => _intakeImportInProgress = false);
+    }
   }
 
   Future<void> _stageIntakeItems(List<UploadedItem> items) async {
@@ -299,6 +322,66 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
           ],
         );
       },
+    );
+  }
+
+  Widget _photoIntakeImportOverlay() {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          const ModalBarrier(dismissible: false, color: Colors.black38),
+          Center(
+            child: Semantics(
+              liveRegion: true,
+              label: 'Добавляем выбранные файлы',
+              child: Container(
+                key: const ValueKey('intake-import-progress'),
+                width: 286,
+                margin: const EdgeInsets.all(SparkSpace.section),
+                padding: const EdgeInsets.all(SparkSpace.xxl),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: kShadowColor,
+                      blurRadius: 24,
+                      offset: Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: const Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: SparkSize.iconXl,
+                      height: SparkSize.iconXl,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
+                    SizedBox(height: SparkSpace.xl),
+                    MyText(
+                      text: 'Добавляем выбранные файлы…',
+                      size: SparkTextSize.sectionTitle,
+                      weight: FontWeight.w700,
+                      color: kTertiaryColor,
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: SparkSpace.sm),
+                    MyText(
+                      text:
+                          'Большая подборка может обрабатываться несколько секунд',
+                      size: SparkTextSize.body,
+                      color: kGreyColor,
+                      lineHeight: 1.4,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -759,7 +842,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
               SizedBox(
                 height: 50,
                 child: FilledButton.icon(
-                  onPressed: !sparkIntakeCanRequestUpload(snapshot)
+                  onPressed:
+                      _intakeImportInProgress ||
+                          !sparkIntakeCanRequestUpload(snapshot)
                       ? null
                       : () => unawaited(_runStartIntakeUpload()),
                   style: FilledButton.styleFrom(

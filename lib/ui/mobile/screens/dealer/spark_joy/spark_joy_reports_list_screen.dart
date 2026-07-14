@@ -59,10 +59,10 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   static const Duration _draftUndoWindow = Duration(seconds: 5);
 
   // Completed-report tap is async (we fetch the full payload via
-  // Storage.ViewSpecialistReport before opening). Track the identity keys
-  // currently loading so the completed card can show a spinner and block
-  // duplicate taps — otherwise mashing the card spawns parallel RPCs.
-  final Set<String> _openingReportKeys = <String>{};
+  // Storage.ViewSpecialistReport before opening). Only one report may be
+  // loading at a time; the selected card shows a spinner while every other
+  // completed card is temporarily disabled.
+  String? _openingReportKey;
 
   @override
   void initState() {
@@ -387,8 +387,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
 
   Future<void> _openCompleted(Map<String, dynamic> report) async {
     final key = _reportIdentityKey(report);
-    if (key.isEmpty || _openingReportKeys.contains(key)) return;
-    setState(() => _openingReportKeys.add(key));
+    if (key.isEmpty || _openingReportKey != null) return;
+    setState(() => _openingReportKey = key);
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -415,8 +415,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     } catch (_) {
       fetched = null;
     } finally {
-      if (mounted) {
-        setState(() => _openingReportKeys.remove(key));
+      if (mounted && _openingReportKey == key) {
+        setState(() => _openingReportKey = null);
       }
     }
 
@@ -1050,8 +1050,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final reportKey = _reportIdentityKey(report);
     final shareLoading =
         reportKey.isNotEmpty && _sharingReportKeys.contains(reportKey);
-    final openLoading =
-        reportKey.isNotEmpty && _openingReportKeys.contains(reportKey);
+    final openLoading = reportKey.isNotEmpty && _openingReportKey == reportKey;
+    final reportOpening = _openingReportKey != null;
 
     final reportNumber = _reportNumber(report);
     final vin = sjRead(report, 'vin');
@@ -1065,7 +1065,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     // completed cards out of the repaint queue.
     return RepaintBoundary(
       child: SparkListCard(
-        onTap: openLoading ? null : () => _openCompleted(report),
+        onTap: reportOpening ? null : () => _openCompleted(report),
         padding: const EdgeInsets.symmetric(
           horizontal: SparkSpace.xl,
           vertical: SparkSpace.lg,

@@ -38,7 +38,6 @@ Widget _buildSparkJoyStepDocsCheck(
         s._sectionHeading(
           'Комментарий по расхождениям',
           icon: Icons.edit_note_rounded,
-          subtitle: 'Уточните, что именно не совпадает',
         ),
         // Без обёрточной `_card` — у `_commentInputPanel` свой
         // внутренний фон/decoration; внешняя рамка читалась как

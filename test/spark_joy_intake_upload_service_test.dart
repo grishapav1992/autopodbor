@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter_application_1/data/preferences/user_preferences.dart';
+import 'package:flutter_application_1/data/services/app_background_time.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_transfer.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_video_prep.dart';
@@ -10,6 +13,8 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter/widgets.dart' show AppLifecycleState;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _FakeTransfer implements SparkIntakeTransfer {
@@ -87,6 +92,18 @@ class _FakeTransfer implements SparkIntakeTransfer {
       ),
     );
   }
+}
+
+/// Перенаправляет path_provider во временный каталог теста —
+/// _writeCompressedCopy пишет сжатые копии в Documents/spark_joy_media.
+class _MockPathProvider extends PathProviderPlatform
+    with MockPlatformInterfaceMixin {
+  _MockPathProvider(this.docsDir);
+
+  final Directory docsDir;
+
+  @override
+  Future<String?> getApplicationDocumentsPath() async => docsDir.path;
 }
 
 Future<void> _waitFor(
@@ -811,4 +828,78 @@ void main() {
       expect(classified.aiDocJson, contains('XTA210990Y2765432'));
     },
   );
+
+  test('пре-сжатие: фото жмётся сразу после stageFiles, статус staged', () async {
+    final docsDir = await Directory('${tempDir.path}/docs').create();
+    final prevPathProvider = PathProviderPlatform.instance;
+    PathProviderPlatform.instance = _MockPathProvider(docsDir);
+    addTearDown(() => PathProviderPlatform.instance = prevPathProvider);
+
+    final image = img.Image(width: 64, height: 48);
+    img.fill(image, color: img.ColorRgb8(200, 100, 50));
+    final original = File('${tempDir.path}/raw.png');
+    await original.writeAsBytes(img.encodePng(image));
+    await service.stageFiles(draftId, [
+      SparkIntakeFileRecord(
+        id: 'raw',
+        name: 'raw.png',
+        mimeType: 'image/png',
+        localPath: original.path,
+        sizeBytes: await original.length(),
+      ),
+    ]);
+
+    // Сжатая копия появляется без «Распределить файлы», и ни статус, ни
+    // фаза не двигаются — пре-сжатие невидимо для UI.
+    await _waitFor(
+      () =>
+          service.snapshotOf(draftId).files.single.compressedPath != null,
+    );
+    final staged = service.snapshotOf(draftId).files.single;
+    expect(staged.status, SparkIntakeFileStatus.staged);
+    expect(staged.compressedPath, contains('intake_c_raw.jpg'));
+    expect(service.snapshotOf(draftId).phase, SparkIntakePhase.staged);
+
+    // Копия персистится — после перезапуска сжатие не повторяется.
+    final persisted = await persistedIntake();
+    final persistedRecord = (persisted!['files'] as List).single as Map;
+    expect(persistedRecord['compressedPath'], contains('intake_c_raw.jpg'));
+
+    // Пайплайн подхватывает готовую копию: сразу presign + enqueue.
+    await service.startUpload(draftId);
+    await _waitFor(() => transfer.enqueued.length == 1);
+    expect(transfer.enqueued.single.filePath, endsWith('intake_c_raw.jpg'));
+    expect(transfer.enqueued.single.mimeType, 'image/jpeg');
+  });
+
+  test('iOS assertion: hold пока конвейер жив, release после заливки', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(AppBackgroundTime.channel, (call) async {
+          calls.add(call.method);
+          return null;
+        });
+    addTearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(AppBackgroundTime.channel, null);
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    await service.stageFiles(draftId, [await makeDocRecord('a')]);
+    await service.startUpload(draftId);
+    await _waitFor(() => transfer.enqueued.length == 1);
+    // Файл в полёте (не терминален) — последний вызов канала держит фон.
+    await _waitFor(() => calls.isNotEmpty && calls.last == 'hold');
+
+    calls.clear();
+    transfer.emitComplete(draftId, 'a');
+    // Работы не осталось (uploaded терминален, классификация без конфига
+    // не стартует) — assertion отпущен.
+    await _waitFor(() => calls.isNotEmpty && calls.last == 'release');
+    expect(
+      service.snapshotOf(draftId).files.single.status,
+      SparkIntakeFileStatus.uploaded,
+    );
+  });
 }

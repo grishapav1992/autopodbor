@@ -127,9 +127,12 @@ class SparkIntakeTransferIo implements SparkIntakeTransfer {
 
   Future<void> _initialize() async {
     // Ограничение живёт на нативной стороне. Уже подготовленные задачи будут
-    // выходить из очереди и при замороженном Dart-isolate.
+    // выходить из очереди и при замороженном Dart-isolate — но продвижение
+    // очереди в фоне зависит от пробуждений процесса, поэтому лимиты не
+    // зажимаем: все PUT идут на один S3-хост, и byHost=2 давал бы максимум
+    // две живые задачи на волну пробуждения.
     await FileDownloader().configure(
-      globalConfig: (Config.holdingQueue, (3, 2, 2)),
+      globalConfig: (Config.holdingQueue, (5, 4, 4)),
       // iOS по умолчанию завершает resource timeout через 4 часа. Длинный
       // офлайн-период не должен превращать валидную загрузку в terminal fail.
       iOSConfig: (Config.resourceTimeout, const Duration(hours: 24)),

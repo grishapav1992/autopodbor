@@ -56,17 +56,67 @@ void main() {
       expect(find.text('Мария Осмотрова'), findsOneWidget);
     });
 
-    testWidgets('совсем без данных — заглушка, а не краш', (tester) async {
+    testWidgets('совсем без данных — информационный раздел скрыт', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         _wrap(const SparkJoySpecialistPublicProfileScreen()),
       );
       await tester.pumpAndSettle();
 
       expect(find.text('Специалист'), findsOneWidget);
-      expect(
-        find.text('Специалист пока не заполнил публичную информацию'),
-        findsOneWidget,
+      expect(find.text('ИНФОРМАЦИЯ'), findsNothing);
+      expect(find.text('Описание услуг'), findsNothing);
+    });
+
+    testWidgets('показывает заполненное описание услуг', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(800, 1600));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        _wrap(
+          const SparkJoySpecialistPublicProfileScreen(
+            initialProfile: {
+              'name': 'Мария Осмотрова',
+              'description': 'Выездная диагностика и подбор',
+            },
+          ),
+        ),
       );
+      await tester.pumpAndSettle();
+
+      expect(find.text('ИНФОРМАЦИЯ'), findsOneWidget);
+      expect(find.text('Описание услуг'), findsOneWidget);
+      expect(find.text('Выездная диагностика и подбор'), findsOneWidget);
+    });
+
+    testWidgets('сервер очищает описание, но сохраняет контакт заявки', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          SparkJoySpecialistPublicProfileScreen(
+            specialistId: 15,
+            initialProfile: const {
+              'name': 'Старое имя',
+              'phone': '+7 (900) 123-45-67',
+              'specialization': 'Устаревшее описание',
+            },
+            profileLoader: (_) async => const {
+              'id': 15,
+              'firstName': 'Мария',
+              'lastName': 'Осмотрова',
+              'description': null,
+              'urlAvatar': null,
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Осмотрова Мария'), findsOneWidget);
+      expect(find.text('+7 (900) 123-45-67'), findsOneWidget);
+      expect(find.text('Устаревшее описание'), findsNothing);
+      expect(find.text('Описание услуг'), findsNothing);
     });
 
     testWidgets('фото сотрудника открывается на весь экран', (tester) async {

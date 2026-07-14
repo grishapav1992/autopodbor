@@ -326,15 +326,7 @@ class _SparkJoyInviteByPhoneDialogState
     }
     final lookup = _lookup;
     if (lookup == null) {
-      return MyText(
-        text: _normalized.isEmpty
-            ? 'Введите полный номер телефона — специалист определится '
-                  'автоматически.'
-            : '',
-        size: SparkTextSize.caption,
-        color: kGreyColor,
-        lineHeight: 1.4,
-      );
+      return const SizedBox.shrink();
     }
     switch (lookup.status) {
       case InvitePhoneLookupStatus.notFound:

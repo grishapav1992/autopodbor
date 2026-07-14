@@ -192,7 +192,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(await UserSimplePreferences.getAvatarBase64(), isNull);
-    expect(find.byIcon(Icons.fullscreen_rounded), findsNothing);
+    // Без фото тап по аватару не должен открывать пустой просмотрщик.
+    await tester.tap(find.byKey(const ValueKey('profile-avatar-preview')));
+    await tester.pumpAndSettle();
+    expect(find.byType(InteractiveViewer), findsNothing);
     await _openProfileEditor(tester);
     expect(find.text('Добавить фото'), findsOneWidget);
     expect(find.text('Удалить фото'), findsNothing);

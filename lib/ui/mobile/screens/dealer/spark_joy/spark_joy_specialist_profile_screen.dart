@@ -3105,10 +3105,10 @@ class _SparkJoySpecialistProfileScreenState
     return 'Специалист';
   }
 
-  /// Тёмная hero-«шапка» профиля (макет 1a): аватар с камера-бейджем,
-  /// имя+фамилия крупно, отчество отдельной строкой, пилюля
-  /// «роль · город». Зоны тапа независимые: аватар → полноэкранный просмотр,
-  /// имя/карандаш → общий редактор фото и ФИО, пилюля → выбор города.
+  /// Тёмная hero-«шапка» профиля (макет 1a): аватар, имя+фамилия крупно,
+  /// отчество отдельной строкой, пилюля «роль · город». Зоны тапа
+  /// независимые: аватар → полноэкранный просмотр, имя/карандаш → общий
+  /// редактор фото и ФИО, пилюля → выбор города.
   Widget _buildHeroCard(Map<String, dynamic> specialist, String profileName) {
     final first = _firstNameController.text.trim();
     final last = _lastNameController.text.trim();
@@ -3150,7 +3150,6 @@ class _SparkJoySpecialistProfileScreenState
             behavior: HitTestBehavior.opaque,
             onTap: busy || !_hasProfilePhoto() ? null : _openAvatarPreview,
             child: Stack(
-              clipBehavior: Clip.none,
               children: [
                 Container(
                   padding: const EdgeInsets.all(SparkSpace.xxs),
@@ -3163,7 +3162,7 @@ class _SparkJoySpecialistProfileScreenState
                   ),
                   child: SparkInitialsAvatar(
                     name: displayName,
-                    size: 72,
+                    size: 80,
                     textSize: SparkTextSize.pageTitle,
                     backgroundColor: kWhiteColor.withValues(alpha: 0.14),
                     textColor: kWhiteColor,
@@ -3187,28 +3186,6 @@ class _SparkJoySpecialistProfileScreenState
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  ),
-                if (_hasProfilePhoto())
-                  Positioned(
-                    left: -2,
-                    bottom: -2,
-                    child: Container(
-                      width: 28,
-                      height: 28,
-                      decoration: BoxDecoration(
-                        color: kWhiteColor,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: kSecondaryColor.withValues(alpha: 0.18),
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(
-                        Icons.fullscreen_rounded,
-                        size: 14,
-                        color: kSecondaryColor,
                       ),
                     ),
                   ),

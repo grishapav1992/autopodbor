@@ -21,7 +21,9 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
       // несут ID и выходят из ре-байнда сразу.
       unawaited(_rebindCarFromCatalogIfNeeded());
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _maybeResolveFromVin();
+        if (!mounted) return;
+        _maybeResolveFromVin();
+        unawaited(_resumeLegalBatchAfterDraftLoad());
       });
     }
     // Audio recording / playback инфраструктура удалена; раньше здесь

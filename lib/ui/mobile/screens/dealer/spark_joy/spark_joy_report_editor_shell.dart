@@ -18,6 +18,7 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) return;
         if (_editingPhotoIntake) {
+          if (_intakeImportInProgress) return;
           _closePhotoIntake();
           return;
         }
@@ -25,52 +26,58 @@ extension _SparkJoyReportEditorShell on _SparkJoyCreateReportScreenState {
           await _handleSectionBack();
         }
       },
-      child: SparkPageScaffold(
-        appBar: editingPhotoIntake
-            ? _photoIntakeAppBar()
-            : SparkReportEditorAppBar(
-                title: reportTitle,
-                titleController: isReadOnly
-                    ? null
-                    : _inlineReportNameController,
-                titleFocusNode: isReadOnly ? null : _reportNameFocusNode,
-                meta: sjFormatReportMeta(_currentReportCode(), _createdAt),
-                // In read-only mode the save-status pill is meaningless
-                // (nothing to save), so we swap it for a neutral
-                // "Завершённый отчёт" pill that still explains what the
-                // user is looking at.
-                draftStatus: isReadOnly
-                    ? 'Завершённый отчёт'
-                    : _draftSaveStatusText(),
-                draftStatusColor: isReadOnly
-                    ? kGreenColor
-                    : _draftSaveStatusColor(),
-                draftStatusIcon: isReadOnly
-                    ? Icons.task_alt_rounded
-                    : _draftSaveStatusIcon(),
-                draftSaving: isReadOnly ? false : _draftSaveInProgress,
-                onBack: () => _handleEditorBack(context),
-                onShare: isReadOnly
-                    ? () => _shareCompletedReport(context)
-                    : null,
-                sharing: _shareInProgress,
-              ),
-        scrollController: editingPhotoIntake ? null : _pageScrollController,
-        padding: AppSizes.listPaddingWithBottomBar(),
-        bottomInset: 0,
-        bottomBar: editingPhotoIntake ? _photoIntakeBottomBar() : null,
+      child: Stack(
         children: [
-          // ReadOnly = просмотр завершённого отчёта; используем
-          // отдельный compact-вид (verdict-баннер не нужен, разделы
-          // — раскрывающиеся карточки). Edit-флоу не задет.
-          if (isReadOnly)
-            _buildSparkJoyCompletedReportView(this)
-          else if (editingPhotoIntake)
-            _photoIntakeEditor()
-          else if (_editingSection)
-            _sectionEditor()
-          else
-            _sectionsOverview(),
+          SparkPageScaffold(
+            appBar: editingPhotoIntake
+                ? _photoIntakeAppBar()
+                : SparkReportEditorAppBar(
+                    title: reportTitle,
+                    titleController: isReadOnly
+                        ? null
+                        : _inlineReportNameController,
+                    titleFocusNode: isReadOnly ? null : _reportNameFocusNode,
+                    meta: sjFormatReportMeta(_currentReportCode(), _createdAt),
+                    // In read-only mode the save-status pill is meaningless
+                    // (nothing to save), so we swap it for a neutral
+                    // "Завершённый отчёт" pill that still explains what the
+                    // user is looking at.
+                    draftStatus: isReadOnly
+                        ? 'Завершённый отчёт'
+                        : _draftSaveStatusText(),
+                    draftStatusColor: isReadOnly
+                        ? kGreenColor
+                        : _draftSaveStatusColor(),
+                    draftStatusIcon: isReadOnly
+                        ? Icons.task_alt_rounded
+                        : _draftSaveStatusIcon(),
+                    draftSaving: isReadOnly ? false : _draftSaveInProgress,
+                    onBack: () => _handleEditorBack(context),
+                    onShare: isReadOnly
+                        ? () => _shareCompletedReport(context)
+                        : null,
+                    sharing: _shareInProgress,
+                  ),
+            scrollController: editingPhotoIntake ? null : _pageScrollController,
+            padding: AppSizes.listPaddingWithBottomBar(),
+            bottomInset: 0,
+            bottomBar: editingPhotoIntake ? _photoIntakeBottomBar() : null,
+            children: [
+              // ReadOnly = просмотр завершённого отчёта; используем
+              // отдельный compact-вид (verdict-баннер не нужен, разделы
+              // — раскрывающиеся карточки). Edit-флоу не задет.
+              if (isReadOnly)
+                _buildSparkJoyCompletedReportView(this)
+              else if (editingPhotoIntake)
+                _photoIntakeEditor()
+              else if (_editingSection)
+                _sectionEditor()
+              else
+                _sectionsOverview(),
+            ],
+          ),
+          if (editingPhotoIntake && _intakeImportInProgress)
+            _photoIntakeImportOverlay(),
         ],
       ),
     );

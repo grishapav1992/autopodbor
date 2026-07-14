@@ -588,12 +588,6 @@ class _SparkJoyCompanyStaffScreenState
                         ),
                 ),
               ),
-              const SizedBox(width: SparkSpace.xs),
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: SparkSize.iconMd,
-                color: kGreyColor,
-              ),
             ],
           ),
         ],
