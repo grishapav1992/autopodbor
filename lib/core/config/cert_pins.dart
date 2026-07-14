@@ -49,23 +49,23 @@ class CertPins {
   /// pin set.
   static const Map<String, Set<String>> byHost = {
     'app.carreports.ru': {
-      // Current leaf — CN=app.carreports.ru, valid 2026-07-02 .. 2026-09-30.
-      // ⚠️ The server rotated EARLY (2026-07-02, ~2.5 months before the
-      // previous leaf's 2026-09-14 expiry) — rotation timing is not tied to
+      // Current leaf — CN=app.carreports.ru, valid 2026-07-12 .. 2026-10-10.
+      // ⚠️ The server rotated EARLY AGAIN (2026-07-12, ~2.5 months before the
+      // previous leaf's 2026-09-30 expiry) — rotation timing is not tied to
       // expiry dates, so pins must be re-checked before every release.
-      '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
-      // Previous leaf — CN=app.carreports.ru (rotated out 2026-07-02). Kept
+      '/ZlM+sBW9tJYg4s7EgdkvCcTkzt4J/inglgsXoeZuOw=',
+      // Previous leaf — CN=app.carreports.ru (rotated out 2026-07-12). Kept
       // for one cycle as a rollback safety net; remove after the next
       // rotation is confirmed stable in production.
-      'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
+      '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
     },
     'ai.carreports.ru': {
+      '/ZlM+sBW9tJYg4s7EgdkvCcTkzt4J/inglgsXoeZuOw=',
       '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
-      'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
     },
     'ws.carreports.ru': {
+      '/ZlM+sBW9tJYg4s7EgdkvCcTkzt4J/inglgsXoeZuOw=',
       '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=',
-      'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=',
     },
   };
 

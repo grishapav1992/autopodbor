@@ -46,7 +46,7 @@ void main() {
       // one cycle so a server-side rollback or a second renewal doesn't
       // break already-shipped release builds. Remove this assertion only
       // after a new pin is confirmed stable in production.
-      const previousLeaf = 'XCR1wYjnywKkDVarf6Y7NnE3T+AxpL4n+CqNfG3d5WE=';
+      const previousLeaf = '5Nj0yToNu+mb5QTbayVF5rpgZMnD/Qz6njRU9TLU1n8=';
       expect(CertPins.byHost['app.carreports.ru']!, contains(previousLeaf));
     });
 
