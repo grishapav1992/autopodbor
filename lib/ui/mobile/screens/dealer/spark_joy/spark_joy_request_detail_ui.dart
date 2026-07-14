@@ -312,20 +312,27 @@ class SparkRequestCarBlock extends StatelessWidget {
   }
 
   String get _restylingsLabel {
+    // Диапазон лет уже показан в подзаголовке поколения, поэтому строка
+    // полезна только когда у рестайлинга есть осмысленное имя. Legacy-payload
+    // кодирует «без рестайлинга» именем '0', а годы — полными ISO-датами.
+    String yearOf(Object? y) {
+      if (y == null) return '';
+      final s = y.toString().trim();
+      final match = RegExp(r'^(\d{4})-').firstMatch(s);
+      return match != null ? match.group(1)! : s;
+    }
+
     return _restylings
         .map((r) {
           final name = (r['restyling'] ?? '').toString().trim();
-          final ys = r['yearStart'];
-          final ye = r['yearEnd'];
-          final years = [
-            ys,
-            ye,
-          ].where((y) => y != null).map((y) => y.toString()).join('–');
-          if (name.isEmpty && years.isEmpty) return 'Без рестайлинга';
-          if (years.isEmpty) return name;
-          if (name.isEmpty) return years;
-          return '$name ($years)';
+          if (name.isEmpty || name == '0') return '';
+          final years = [r['yearStart'], r['yearEnd']]
+              .map(yearOf)
+              .where((y) => y.isNotEmpty)
+              .join('–');
+          return years.isEmpty ? name : '$name ($years)';
         })
+        .where((s) => s.isNotEmpty)
         .join(', ');
   }
 
@@ -431,7 +438,7 @@ class SparkRequestCarBlock extends StatelessWidget {
                       const SizedBox(height: SparkSpace.xxs),
                       MyText(
                         text: phone,
-                        size: SparkTextSize.title,
+                        size: SparkTextSize.label,
                         weight: FontWeight.w700,
                       ),
                     ],

@@ -36,17 +36,19 @@ abstract final class SparkRadius {
 }
 
 abstract final class SparkTextSize {
-  static const double chip = 10;
-  static const double caption = 11;
-  static const double body = 12;
-  static const double bodyLg = 13;
+  // Сжатая шкала: низ поднят (мелкое читаемее), верх укрощён — соседние
+  // ступени не должны конфликтовать в пределах одной карточки.
+  static const double chip = 11;
+  static const double caption = 12;
+  static const double body = 13;
+  static const double bodyLg = 14;
   static const double label = 14;
   static const double sectionTitle = 15;
   static const double title = 16;
-  static const double titleLg = 18;
-  static const double modalTitle = 20;
-  static const double pageTitle = 22;
-  static const double hero = 26;
+  static const double titleLg = 17;
+  static const double modalTitle = 18;
+  static const double pageTitle = 20;
+  static const double hero = 22;
 }
 
 abstract final class SparkSize {
