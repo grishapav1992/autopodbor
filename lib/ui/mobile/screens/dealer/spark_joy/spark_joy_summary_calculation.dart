@@ -133,6 +133,11 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         _markDraftDirty();
         _autofillParamsFromGostCert();
       }
+      // Снимок мог поймать гонку персиста на бэке: статус уже терминальный, а
+      // тело (responseNormalized) ещё не было записано — поллинг остановился,
+      // и черновик навсегда показывал бы пустые «Данные получены» без деталей,
+      // хотя ответ на сервере есть. Дочитываем батч один раз (бесплатно).
+      await _rehydrateLegalBodiesFromBatch(batchNumber);
       return;
     }
 
@@ -151,6 +156,39 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       _legalTimedOut = false;
     });
     await _pollLegalBatchResults(token, batchNumber);
+  }
+
+  /// Дочитывает тела проверок терминального снимка из батча. Меняет состояние,
+  /// только если сервер реально добавил тел (иначе снимок остаётся как есть);
+  /// сетевые сбои молча игнорирует — следующее открытие черновика повторит.
+  Future<void> _rehydrateLegalBodiesFromBatch(String batchNumber) async {
+    final missingBody = _legalCheckResults.any(
+      (c) => !storage_api.legalReviewCheckHasBody(c),
+    );
+    if (!missingBody) return;
+    try {
+      final result = await storage_api.StorageApi.getBatchLegalReviewResults(
+        batchNumber: batchNumber,
+      );
+      if (!mounted) return;
+      final rawChecks = result['checks'];
+      final checks = rawChecks is List
+          ? rawChecks
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList()
+          : <Map<String, dynamic>>[];
+      final gained =
+          checks.where(storage_api.legalReviewCheckHasBody).length >
+          _legalCheckResults.where(storage_api.legalReviewCheckHasBody).length;
+      if (checks.isNotEmpty && gained) {
+        _setStateSafely(() => _legalCheckResults = checks);
+        _markDraftDirty();
+        _autofillParamsFromGostCert();
+      }
+    } catch (_) {
+      // Офлайн/холодный бэк — не мешаем открытию черновика.
+    }
   }
 
   /// Однократно подгружает мета-данные шага «Материалы проверки»:

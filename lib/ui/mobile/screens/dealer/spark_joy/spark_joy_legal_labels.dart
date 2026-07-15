@@ -153,6 +153,33 @@ String? sparkJoyLegalFoundBanner(List<Map<String, dynamic>> results) {
   return head;
 }
 
+/// Компактная сводка ГОСТ-сертификата для подзаголовка строки проверки
+/// («VOLKSWAGEN TIGUAN · 2020 · 2.0 л») — как в макете. Универсальное
+/// «Обнаружено» для информационной проверки звучало как находка риска и не
+/// говорило ничего; полные поля сертификата остаются в раскрытии строки.
+/// Нечего показать → `''` (вызывающий падает на общий текст).
+String sparkJoyGostCertSummary(Map<String, dynamic> cert) {
+  String f(String k) {
+    final v = (cert[k] ?? '').toString().trim();
+    return v == '-' ? '' : v;
+  }
+
+  final parts = <String>[];
+  final markModel = [
+    f('product'),
+    f('tradename'),
+  ].where((s) => s.isNotEmpty).join(' ');
+  if (markModel.isNotEmpty) parts.add(markModel);
+  final year = f('yearofmanufacturing');
+  if (year.isNotEmpty) parts.add(year);
+  final cc = int.tryParse(
+    RegExp(r'\d+').firstMatch(f('enginecylindersusefulcapacity'))?.group(0) ??
+        '',
+  );
+  if (cc != null && cc > 0) parts.add('${(cc / 1000).toStringAsFixed(1)} л');
+  return parts.join(' · ');
+}
+
 /// «Проверено · 5 баз» — подпись под завершённым прогоном.
 String sparkJoyLegalCheckedSummary(int count) =>
     'Проверено · $count ${sparkJoyPluralBases(count)}';

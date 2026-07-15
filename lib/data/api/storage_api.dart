@@ -197,6 +197,32 @@ class CreateRequestPossiblyCommittedException implements Exception {
   String toString() => userMessage;
 }
 
+bool _legalReviewHasNormalizedResponse(dynamic normalized) {
+  return switch (normalized) {
+    null => false,
+    String value =>
+      value.trim().isNotEmpty &&
+          value.trim().toLowerCase() != 'null' &&
+          value.trim() != '{}',
+    Map value => value.isNotEmpty,
+    List _ => true, // [] is a valid terminal «nothing found» response.
+    _ => true,
+  };
+}
+
+/// True when the check carries an actual result body — a non-empty
+/// `responseNormalized` or an `errorMessage`. A terminal check WITHOUT a body
+/// is a persistence-race snapshot: backend flips `status`/`executedAt` before
+/// writing the response, and a poll landing in that gap captures a check that
+/// looks done but has nothing to show. Callers use this to re-read the batch
+/// instead of rendering an empty «Данные получены» row forever.
+bool legalReviewCheckHasBody(Map<String, dynamic> check) {
+  if (_legalReviewHasNormalizedResponse(check['responseNormalized'])) {
+    return true;
+  }
+  return (check['errorMessage'] ?? '').toString().trim().isNotEmpty;
+}
+
 /// True while a legal-review batch still has at least one check in a
 /// non-terminal state (or the list is empty — nothing settled yet). Drives
 /// the [StorageApi.getBatchLegalReviewResults] polling loop's stop condition.
@@ -208,19 +234,11 @@ bool legalReviewBatchPending(List<Map<String, dynamic>> checks) {
     // executedAt can appear one read before status leaves `pending`. Once a
     // real response exists, keeping the UI spinner alive on the stale status
     // is incorrect.
-    final normalized = c['responseNormalized'];
-    final hasNormalizedResponse = switch (normalized) {
-      null => false,
-      String value =>
-        value.trim().isNotEmpty &&
-            value.trim().toLowerCase() != 'null' &&
-            value.trim() != '{}',
-      Map value => value.isNotEmpty,
-      List _ => true, // [] is a valid terminal «nothing found» response.
-      _ => true,
-    };
     final executedAt = (c['executedAt'] ?? '').toString().trim();
-    if (hasNormalizedResponse || executedAt.isNotEmpty) return false;
+    if (_legalReviewHasNormalizedResponse(c['responseNormalized']) ||
+        executedAt.isNotEmpty) {
+      return false;
+    }
 
     final s = (c['status'] ?? '').toString().toLowerCase();
     return s.isEmpty ||

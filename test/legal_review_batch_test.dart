@@ -437,6 +437,81 @@ void main() {
     });
   });
 
+  group('legalReviewCheckHasBody (снимок гонки персиста)', () {
+    test('терминальный статус без тела — нет body', () {
+      // Живой кейс: поллинг застал status=success до записи responseNormalized;
+      // такой снимок уходит в черновик и должен быть дочитан из батча.
+      expect(
+        legalReviewCheckHasBody(const {
+          'checkType': 'api_cloud_gost_certificate',
+          'status': 'success',
+          'executedAt': '2026-06-25T19:28:11+00:00',
+        }),
+        isFalse,
+      );
+      expect(
+        legalReviewCheckHasBody(const {'status': 'success', 'responseNormalized': '{}'}),
+        isFalse,
+      );
+      expect(
+        legalReviewCheckHasBody(const {'status': 'success', 'responseNormalized': 'null'}),
+        isFalse,
+      );
+    });
+
+    test('responseNormalized или errorMessage — body есть', () {
+      expect(
+        legalReviewCheckHasBody(const {
+          'status': 'success',
+          'responseNormalized': '{"found": true}',
+        }),
+        isTrue,
+      );
+      expect(
+        legalReviewCheckHasBody(const {
+          'status': 'error',
+          'errorMessage': 'timeout',
+        }),
+        isTrue,
+      );
+    });
+  });
+
+  group('sparkJoyGostCertSummary (сводка сертификата в подзаголовке)', () {
+    test('живая форма ответа ApiCloud → «марка модель · год · объём»', () {
+      // Поля — из live-ответа батча LEG-A404259 (2026-06-25).
+      expect(
+        sparkJoyGostCertSummary(const {
+          'VIN': 'WVGZZZ5NZLW359215',
+          'product': 'VOLKSWAGEN',
+          'tradename': 'TIGUAN',
+          'yearofmanufacturing': '2020',
+          'enginecylindersusefulcapacity': '1968 куб.см',
+          'bodytype': 'универсал/5',
+        }),
+        'VOLKSWAGEN TIGUAN · 2020 · 2.0 л',
+      );
+    });
+
+    test('частичные данные — без пустых сегментов', () {
+      expect(
+        sparkJoyGostCertSummary(const {'product': 'TOYOTA'}),
+        'TOYOTA',
+      );
+      expect(
+        sparkJoyGostCertSummary(const {
+          'product': 'TOYOTA',
+          'yearofmanufacturing': '-',
+        }),
+        'TOYOTA',
+      );
+    });
+
+    test('пустой сертификат → пустая строка (фолбэк на общий текст)', () {
+      expect(sparkJoyGostCertSummary(const {}), '');
+    });
+  });
+
   group('sparkJoyPluralBases / sparkJoyLegalCheckedSummary', () {
     test('склонение по русским правилам', () {
       expect(sparkJoyPluralBases(1), 'база');

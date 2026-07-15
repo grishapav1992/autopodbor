@@ -309,6 +309,16 @@ String _legalNormalizedToText(dynamic normalized) {
 /// Подзаголовок завершённой строки: что именно ответила проверка. Пустой ответ
 /// бэка не оставляем немым — подставляем фразу по тону.
 String _legalRowSubtitle(Map<String, dynamic> check) {
+  // ГОСТ — сводка сертификата вместо генерик-текста: у информационной
+  // проверки found:true значит «данные получены», и «Обнаружено» здесь
+  // читалось как находка риска, не говоря при этом ничего о машине.
+  if ((check['checkType'] ?? '').toString() == 'api_cloud_gost_certificate') {
+    final cert = gostCertificateFields(check['responseNormalized']);
+    if (cert != null) {
+      final summary = sparkJoyGostCertSummary(cert);
+      if (summary.isNotEmpty) return summary;
+    }
+  }
   var text = _legalNormalizedToText(check['responseNormalized']);
   if (text.isEmpty) {
     // Упавший чек несёт текст только в errorMessage (responseNormalized бэк

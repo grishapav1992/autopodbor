@@ -133,6 +133,27 @@ void main() {
     expect(find.textContaining('2023-007-654321-001'), findsOneWidget);
   });
 
+  testWidgets('ГОСТ: сводка сертификата в подзаголовке, детали по тапу', (
+    tester,
+  ) async {
+    await _openLegalSection(
+      tester,
+      _draftWithChecks(loaded: true, checks: const [_gostData]),
+    );
+
+    // Вместо генерик-«Обнаружено» — сводка из сертификата.
+    expect(find.text('TOYOTA CAMRY · 2019'), findsOneWidget);
+    // Метка _gostRow несёт хвостовые пробелы ('$label  ') — ищем по вхождению.
+    expect(find.textContaining('Марка/модель:'), findsNothing);
+
+    await tester.tap(find.text('Сертификат ГОСТ'));
+    await tester.pumpAndSettle();
+    // Раскрытие показывает полные поля сертификата.
+    expect(find.textContaining('Марка/модель:'), findsOneWidget);
+    expect(find.text('TOYOTA CAMRY'), findsOneWidget);
+    expect(find.textContaining('Год выпуска:'), findsOneWidget);
+  });
+
   testWidgets('готово: детали сворачиваются тапом по строке', (tester) async {
     await _openLegalSection(
       tester,
