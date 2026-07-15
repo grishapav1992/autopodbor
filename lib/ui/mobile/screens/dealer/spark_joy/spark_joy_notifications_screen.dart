@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -45,18 +47,25 @@ class _SparkJoyNotificationsScreenState
   late final NotificationController _controller =
       Get.find<NotificationController>();
   late final ScrollController _scrollController;
+  late final StreamSubscription<List<BackendNotification>> _itemsSubscription;
   final Set<String> _expandedIds = <String>{};
-  final Set<String> _autoReadQueuedIds = <String>{};
-  String? _seenMarkerQueuedForId;
+  bool _autoReadRunning = false;
+  bool _autoReadQueued = false;
 
   @override
   void initState() {
     super.initState();
     _scrollController = ScrollController()..addListener(_onScroll);
+    // Observe controller state outside build(): every authoritative page
+    // update (initial reload, pull-to-refresh, websocket refetch) queues one
+    // deduplicated passive-read pass.
+    _itemsSubscription = _controller.items.stream.listen((_) {
+      _queueAutoMarkRead();
+    });
     // Fire-and-forget — the controller already has page 1 from
     // bootstrap; this just refreshes to pick up anything that arrived
     // while the screen was off-screen.
-    _controller.reload();
+    unawaited(_controller.reload());
   }
 
   @override
@@ -64,6 +73,7 @@ class _SparkJoyNotificationsScreenState
     _scrollController
       ..removeListener(_onScroll)
       ..dispose();
+    unawaited(_itemsSubscription.cancel());
     super.dispose();
   }
 
@@ -73,42 +83,23 @@ class _SparkJoyNotificationsScreenState
     _controller.loadMore();
   }
 
-  void _scheduleAutoMarkRead(List<BackendNotification> items) {
-    final ids = items
-        .where(
-          (n) =>
-              !n.type.isInteractive &&
-              n.status == NotificationStatus.pending &&
-              !_autoReadQueuedIds.contains(n.id),
-        )
-        .map((n) => n.id)
-        .toList(growable: false);
-    if (ids.isEmpty) return;
-    _autoReadQueuedIds.addAll(ids);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      for (final id in ids) {
-        _controller.markRead(id).catchError((_) {
-          _autoReadQueuedIds.remove(id);
-        });
-      }
-    });
+  void _queueAutoMarkRead() {
+    if (!mounted) return;
+    _autoReadQueued = true;
+    if (_autoReadRunning) return;
+    unawaited(_drainAutoMarkRead());
   }
 
-  void _scheduleMarkLatestSeen(List<BackendNotification> visibleItems) {
-    if (visibleItems.isEmpty) return;
-    final latest = visibleItems.first;
-    if (_seenMarkerQueuedForId == latest.id) return;
-    final latestId = latest.id;
-    _seenMarkerQueuedForId = latestId;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _controller.markLatestNotificationSeen().catchError((_) {
-        if (_seenMarkerQueuedForId == latestId) {
-          _seenMarkerQueuedForId = null;
-        }
-      });
-    });
+  Future<void> _drainAutoMarkRead() async {
+    _autoReadRunning = true;
+    try {
+      do {
+        _autoReadQueued = false;
+        await _controller.markLoadedPassiveRead();
+      } while (mounted && _autoReadQueued);
+    } finally {
+      _autoReadRunning = false;
+    }
   }
 
   void _toggleDetails(BackendNotification n) {
@@ -180,8 +171,6 @@ class _SparkJoyNotificationsScreenState
         );
       }
       final groups = _groupByDate(visible);
-      _scheduleAutoMarkRead(items.toList());
-      _scheduleMarkLatestSeen(visible);
       return SparkScreenList(
         controller: _scrollController,
         onRefresh: _controller.reload,
@@ -421,7 +410,10 @@ class _TypeAvatar extends StatelessWidget {
 _TypeStyle _styleForType(NotificationType type) {
   switch (type) {
     case NotificationType.task:
-      return _TypeStyle(icon: Icons.assignment_outlined, color: kSecondaryColor);
+      return _TypeStyle(
+        icon: Icons.assignment_outlined,
+        color: kSecondaryColor,
+      );
     case NotificationType.invitation:
       return _TypeStyle(icon: Icons.group_add_outlined, color: kBlueColor);
     case NotificationType.reminder:

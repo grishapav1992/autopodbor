@@ -10,6 +10,17 @@ import 'package:flutter_application_1/data/preferences/user_preferences.dart';
 import 'package:flutter_application_1/data/services/notification_websocket_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_request_refresh_bus.dart';
 
+typedef NotificationPageLoader =
+    Future<NotificationsPage> Function({
+      int? page,
+      int? limit,
+      NotificationStatus? status,
+      NotificationType? type,
+      String? cursor,
+    });
+
+typedef NotificationReadMarker = Future<void> Function(String notificationId);
+
 /// Singleton controller for the realtime + paginated notification feed.
 ///
 /// Lifecycle (orchestrated by `lib/app/main.dart`):
@@ -27,6 +38,12 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 /// `requiresFetch=true` is the norm. We debounce rapid bursts (e.g. a
 /// company sending 5 invitations in a row) to a single refetch.
 class NotificationController extends GetxController {
+  NotificationController({
+    NotificationPageLoader? pageLoader,
+    NotificationReadMarker? readMarker,
+  }) : _pageLoader = pageLoader ?? NotificationApi.getNotifications,
+       _readMarker = readMarker ?? NotificationApi.markRead;
+
   static const int _pageLimit = 20;
   static const Duration _refetchDebounce = Duration(milliseconds: 300);
 
@@ -46,17 +63,8 @@ class NotificationController extends GetxController {
   /// `accepted` / `rejected` / `expired` do not count.
   final RxInt unreadCount = 0.obs;
 
-  /// Number of loaded notifications that are newer than the latest
-  /// notification the user has actually seen in the notifications screen.
-  ///
-  /// This covers cold-start / stale-WS cases: if the backend returns a newer
-  /// item during HTTP reload, the bell still shows a badge even when no
-  /// realtime push was received.
-  final RxInt newSinceLastSeenCount = 0.obs;
-
-  /// Count used by the nav bell. It combines old pending notifications with
-  /// the "newer than last seen" marker without requiring widgets to know why
-  /// the badge is visible.
+  /// Count used by the nav bell. This intentionally has the same semantics as
+  /// the blue unread state in the feed: visible backend entries in `pending`.
   final RxInt badgeCount = 0.obs;
 
   /// Legacy bridge for widgets still watching
@@ -68,9 +76,13 @@ class NotificationController extends GetxController {
   Timer? _refetchTimer;
   DateTime? _lastPushReloadAt;
   bool _started = false;
-  bool _lastSeenLoaded = false;
-  String? _lastSeenNotificationId;
-  DateTime? _lastSeenNotificationCreatedAt;
+  final NotificationPageLoader _pageLoader;
+  final NotificationReadMarker _readMarker;
+
+  /// IDs optimistically or successfully marked read in this controller
+  /// session. A concurrent/stale `GetNotifications` response must not turn
+  /// them back to `pending` after `MarkRead` has already started/succeeded.
+  final Set<String> _locallyReadIds = <String>{};
 
   /// Set when a push arrives while [reload] is mid-flight. Without this
   /// flag the second push silently no-ops and the UI stays stale until
@@ -89,7 +101,6 @@ class NotificationController extends GetxController {
       _started = false;
       return;
     }
-    await _ensureLastSeenLoaded();
     _pushSub ??= NotificationWebsocketService.instance.stream.listen(
       handlePushEvent,
     );
@@ -120,15 +131,12 @@ class NotificationController extends GetxController {
     await NotificationWebsocketService.instance.stop();
     items.clear();
     unreadCount.value = 0;
-    newSinceLastSeenCount.value = 0;
     badgeCount.value = 0;
     nextCursor.value = null;
     errorMessage.value = null;
     _pendingReload = false;
     _lastPushReloadAt = null;
-    _lastSeenLoaded = false;
-    _lastSeenNotificationId = null;
-    _lastSeenNotificationCreatedAt = null;
+    _locallyReadIds.clear();
     _started = false;
     _bumpNotifier();
   }
@@ -146,12 +154,8 @@ class NotificationController extends GetxController {
     loading.value = true;
     errorMessage.value = null;
     try {
-      final page = await NotificationApi.getNotifications(
-        page: 1,
-        limit: _pageLimit,
-      );
-      await _ensureLastSeenLoaded();
-      items.assignAll(page.items);
+      final page = await _pageLoader(page: 1, limit: _pageLimit);
+      items.assignAll(page.items.map(_applyLocalRead));
       nextCursor.value = page.nextCursor;
       _recomputeBadgeState();
     } catch (e) {
@@ -176,12 +180,8 @@ class NotificationController extends GetxController {
     if (cursor == null || cursor.isEmpty || loading.value) return;
     loading.value = true;
     try {
-      final page = await NotificationApi.getNotifications(
-        limit: _pageLimit,
-        cursor: cursor,
-      );
-      await _ensureLastSeenLoaded();
-      items.addAll(page.items);
+      final page = await _pageLoader(limit: _pageLimit, cursor: cursor);
+      items.addAll(page.items.map(_applyLocalRead));
       nextCursor.value = page.nextCursor;
       _recomputeBadgeState();
     } catch (e) {
@@ -200,19 +200,73 @@ class NotificationController extends GetxController {
     if (index < 0) return;
     final original = items[index];
     if (original.status == NotificationStatus.read) return;
+    _locallyReadIds.add(notificationId);
     items[index] = original.copyWith(status: NotificationStatus.read);
     _recomputeBadgeState();
     _bumpNotifier();
     try {
-      await NotificationApi.markRead(notificationId);
+      await _readMarker(notificationId);
+      // A reload may have replaced the list while MarkRead was in flight.
+      // Re-apply by ID (never by the stale pre-await index).
+      final currentIndex = items.indexWhere((n) => n.id == notificationId);
+      if (currentIndex >= 0 &&
+          items[currentIndex].status == NotificationStatus.pending) {
+        items[currentIndex] = items[currentIndex].copyWith(
+          status: NotificationStatus.read,
+        );
+        _recomputeBadgeState();
+        _bumpNotifier();
+      }
     } catch (e) {
-      // Revert on failure.
-      items[index] = original;
+      _locallyReadIds.remove(notificationId);
+      // Revert by ID: a reload can reorder/replace the page while the request
+      // is in flight, so the old numeric index is unsafe here.
+      final currentIndex = items.indexWhere((n) => n.id == notificationId);
+      if (currentIndex >= 0 &&
+          items[currentIndex].status == NotificationStatus.read) {
+        items[currentIndex] = items[currentIndex].copyWith(
+          status: original.status,
+        );
+      }
       _recomputeBadgeState();
       _bumpNotifier();
       _log('markRead failed: $e');
       rethrow;
     }
+  }
+
+  /// Marks passive pending notifications from the currently loaded page as
+  /// read. Called once after the notifications screen's initial reload.
+  ///
+  /// The operation lives in the controller rather than `build()` so widget
+  /// rebuilds cannot start duplicate network mutations. Requests remain
+  /// parallel (the backend has no bulk endpoint), then one authoritative
+  /// reload reconciles the page. Local read overrides protect against replica
+  /// lag in that final response.
+  Future<({int marked, int failed})> markLoadedPassiveRead() async {
+    final ids = items
+        .where(
+          (n) =>
+              n.status == NotificationStatus.pending &&
+              !n.type.isInteractive &&
+              !n.isLegalConverter,
+        )
+        .map((n) => n.id)
+        .toSet();
+    if (ids.isEmpty) return (marked: 0, failed: 0);
+
+    var failed = 0;
+    await Future.wait(
+      ids.map((id) async {
+        try {
+          await markRead(id);
+        } catch (_) {
+          failed++;
+        }
+      }),
+    );
+    await reload();
+    return (marked: ids.length - failed, failed: failed);
   }
 
   /// Загруженные pending-оповещения пассивных типов (`reminder`/`system`, без
@@ -243,7 +297,7 @@ class NotificationController extends GetxController {
     String? cursor;
     var guard = 0;
     do {
-      final page = await NotificationApi.getNotifications(
+      final page = await _pageLoader(
         status: NotificationStatus.pending,
         limit: _pageLimit,
         cursor: cursor,
@@ -260,7 +314,8 @@ class NotificationController extends GetxController {
     var failed = 0;
     for (final id in ids) {
       try {
-        await NotificationApi.markRead(id);
+        await _readMarker(id);
+        _locallyReadIds.add(id);
       } catch (e) {
         failed++;
         _log('markAllRead: markRead $id failed: $e');
@@ -373,32 +428,6 @@ class NotificationController extends GetxController {
     _bumpNotifier();
   }
 
-  /// Persist the latest loaded notification as seen. Called by the
-  /// notifications screen once the feed is visible, so future HTTP reloads can
-  /// detect a newer backend item even if WebSocket was inactive.
-  Future<void> markLatestNotificationSeen() async {
-    await _ensureLastSeenLoaded();
-    final latest = _latestComparableNotification(items);
-    if (latest == null) return;
-    if (_lastSeenNotificationId == latest.id &&
-        _lastSeenNotificationCreatedAt?.toUtc() == latest.createdAt.toUtc()) {
-      if (newSinceLastSeenCount.value != 0) {
-        newSinceLastSeenCount.value = 0;
-        _recomputeBadgeState();
-        _bumpNotifier();
-      }
-      return;
-    }
-    _lastSeenNotificationId = latest.id;
-    _lastSeenNotificationCreatedAt = latest.createdAt.toUtc();
-    await UserSimplePreferences.setLastSeenNotification(
-      id: latest.id,
-      createdAt: latest.createdAt,
-    );
-    _recomputeBadgeState();
-    _bumpNotifier();
-  }
-
   /// Авторитетная сверка после сбоя действия: перечитывает страницу 1 и
   /// возвращает фактический статус оповещения (null — статус выяснить не
   /// удалось: сеть снова упала или запись ушла со страницы/удалена).
@@ -445,14 +474,6 @@ class NotificationController extends GetxController {
     });
   }
 
-  Future<void> _ensureLastSeenLoaded() async {
-    if (_lastSeenLoaded) return;
-    final marker = await UserSimplePreferences.getLastSeenNotification();
-    _lastSeenNotificationId = marker?.id;
-    _lastSeenNotificationCreatedAt = marker?.createdAt?.toUtc();
-    _lastSeenLoaded = true;
-  }
-
   void _recomputeBadgeState() {
     // Конвертерные уведомления (api_cloud_converter_search) скрыты из ленты как
     // внутренний инструмент идентификации (см. spark_joy_notifications_screen).
@@ -462,79 +483,15 @@ class NotificationController extends GetxController {
     unreadCount.value = visible
         .where((n) => n.status == NotificationStatus.pending)
         .length;
-    newSinceLastSeenCount.value = countNotificationsNewerThanSeen(
-      notifications: visible,
-      seenId: _lastSeenNotificationId,
-      seenCreatedAt: _lastSeenNotificationCreatedAt,
-    );
-    badgeCount.value = _notificationBadgeCount(
-      visible,
-      seenId: _lastSeenNotificationId,
-      seenCreatedAt: _lastSeenNotificationCreatedAt,
-    );
+    badgeCount.value = unreadCount.value;
   }
 
-  BackendNotification? _latestComparableNotification(
-    Iterable<BackendNotification> notifications,
-  ) {
-    for (final n in notifications) {
-      if (n.isLegalConverter) continue;
-      return n;
+  BackendNotification _applyLocalRead(BackendNotification notification) {
+    if (!_locallyReadIds.contains(notification.id) ||
+        notification.status != NotificationStatus.pending) {
+      return notification;
     }
-    return null;
-  }
-
-  int _notificationBadgeCount(
-    List<BackendNotification> notifications, {
-    required String? seenId,
-    required DateTime? seenCreatedAt,
-  }) {
-    final badgeIds = <String>{};
-    for (final n in notifications) {
-      if (n.status == NotificationStatus.pending) {
-        badgeIds.add(n.id);
-      }
-    }
-    if (seenId == null && seenCreatedAt == null) {
-      // A missing marker means the user has never opened the feed. Do not
-      // silently establish a background baseline: every loaded notification
-      // is unseen until the screen explicitly calls markLatestNotificationSeen.
-      badgeIds.addAll(notifications.map((n) => n.id));
-      return badgeIds.length;
-    }
-    final seenIndex = seenId == null
-        ? -1
-        : notifications.indexWhere((n) => n.id == seenId);
-    if (seenIndex >= 0) {
-      for (final n in notifications.take(seenIndex)) {
-        badgeIds.add(n.id);
-      }
-    } else if (seenCreatedAt != null) {
-      final seenUtc = seenCreatedAt.toUtc();
-      for (final n in notifications) {
-        if (n.createdAt.toUtc().isAfter(seenUtc)) {
-          badgeIds.add(n.id);
-        }
-      }
-    }
-    return badgeIds.length;
-  }
-
-  @visibleForTesting
-  static int countNotificationsNewerThanSeen({
-    required Iterable<BackendNotification> notifications,
-    required String? seenId,
-    required DateTime? seenCreatedAt,
-  }) {
-    final visible = notifications.where((n) => !n.isLegalConverter).toList();
-    if (seenId == null && seenCreatedAt == null) return visible.length;
-    final seenIndex = seenId == null
-        ? -1
-        : visible.indexWhere((n) => n.id == seenId);
-    if (seenIndex >= 0) return seenIndex;
-    if (seenCreatedAt == null) return 0;
-    final seenUtc = seenCreatedAt.toUtc();
-    return visible.where((n) => n.createdAt.toUtc().isAfter(seenUtc)).length;
+    return notification.copyWith(status: NotificationStatus.read);
   }
 
   void _bumpNotifier() {

@@ -21,8 +21,8 @@ class SparkJoyNotificationsStorage {
   static ValueListenable<int> get notifier => NotificationController.notifier;
 
   /// Returns the current nav-badge count from the live controller.
-  /// Includes pending notifications and backend items newer than the latest
-  /// notification the user has seen in the feed.
+  /// Matches the feed's blue unread cards: visible backend notifications whose
+  /// status is `pending`.
   /// Future-typed for source compatibility with the old async API.
   static Future<int> unreadCount() async {
     if (!Get.isRegistered<NotificationController>()) return 0;
