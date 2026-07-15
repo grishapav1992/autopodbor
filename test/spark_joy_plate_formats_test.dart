@@ -148,6 +148,63 @@ void main() {
       expect(identifiers.gosNumber, isEmpty);
       expect(identifiers.error, isNotNull);
     });
+
+    test('пропуск ФГИС в запуске не снимает пользовательскую галку', () {
+      final selected = <String>[
+        'api_cloud_gost_certificate',
+        'api_cloud_fgis_taxi_search',
+      ];
+
+      final run = prepareLegalReviewCheckRun(
+        selectedCheckTypes: selected,
+        gosNumber: '',
+      );
+
+      expect(run.checkTypes, ['api_cloud_gost_certificate']);
+      expect(run.skippedFgisReason, isNotNull);
+      expect(selected, contains('api_cloud_fgis_taxi_search'));
+    });
+
+    test('валидный номер оставляет ФГИС в запуске и нормализует его', () {
+      final run = prepareLegalReviewCheckRun(
+        selectedCheckTypes: const ['api_cloud_fgis_taxi_search'],
+        gosNumber: 'P 123 PC-77',
+      );
+
+      expect(run.checkTypes, ['api_cloud_fgis_taxi_search']);
+      expect(run.gosNumber, 'Р123РС77');
+      expect(run.skippedFgisReason, isNull);
+    });
+
+    test('один VIN запускает промежуточное определение госномера', () {
+      expect(
+        shouldResolveFgisPlateFromVin(
+          selectedCheckTypes: const ['api_cloud_fgis_taxi_search'],
+          vin: 'WVGZZZ5NZLW359215',
+          gosNumber: '',
+        ),
+        isTrue,
+      );
+      expect(
+        shouldResolveFgisPlateFromVin(
+          selectedCheckTypes: const ['api_cloud_fgis_taxi_search'],
+          vin: 'WVGZZZ5NZLW359215',
+          gosNumber: 'О016ХН193',
+        ),
+        isFalse,
+      );
+    });
+
+    test('обрезок VIN не запускает платный converter', () {
+      expect(
+        shouldResolveFgisPlateFromVin(
+          selectedCheckTypes: const ['api_cloud_fgis_taxi_search'],
+          vin: 'WVGZZZ5N',
+          gosNumber: '',
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('normalizePlateAutomatically', () {

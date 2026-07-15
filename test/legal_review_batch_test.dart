@@ -77,6 +77,17 @@ void main() {
         isFalse,
       );
     });
+
+    test('live pending shape: responseNormalized="null" string stays pending', () {
+      // GetBatchLegalReviewResults на проде отдаёт у неисполненных чеков
+      // literal-строку 'null' (LEG-A423525, 2026-07-15) — это НЕ ответ.
+      expect(
+        legalReviewBatchPending(const [
+          {'status': 'pending', 'responseNormalized': 'null'},
+        ]),
+        isTrue,
+      );
+    });
   });
 
   group('legalReviewBatchSettled (summary fallback)', () {
@@ -156,6 +167,15 @@ void main() {
 
   group('sparkJoyHumanizeLegalCheckMessage (raw provider text → русский)', () {
     test('живой кейс ApiCloud: forbidden symbols в госномере', () {
+      // Точная строка с прода (батч LEG-A152604, 2026-07-15): пробел внутри
+      // «p resent» — так отдаёт сам ApiCloud, матчим по 'forbidden symbols'.
+      expect(
+        sparkJoyHumanizeLegalCheckMessage(
+          'gosNumber: forbidden symbols p resent',
+        ),
+        'Сервис проверки не принял госномер — нужен российский номер '
+        'кириллицей и цифрами',
+      );
       expect(
         sparkJoyHumanizeLegalCheckMessage('gosNumber% forbidden symbols present'),
         'Сервис проверки не принял госномер — нужен российский номер '

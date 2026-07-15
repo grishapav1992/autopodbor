@@ -670,7 +670,8 @@ bool isValidFgisTaxiPlate(String input) {
 /// игнорируется. Прежняя логика «при полном VIN номер не шлём» оставляла
 /// запрос без идентификатора, и ApiCloud отвечал сырой ошибкой
 /// «gosNumber% forbidden symbols present». Поэтому валидный кириллический
-/// номер обязателен всегда; без него проверку запускать нельзя.
+/// номер обязателен для самого endpoint. Пользовательский сценарий с одним VIN
+/// поддерживается уровнем выше: converter сначала получает этот госномер.
 ({String gosNumber, String? error}) prepareFgisTaxiIdentifiers({
   required String gosNumber,
 }) {
@@ -684,6 +685,55 @@ bool isValidFgisTaxiPlate(String input) {
         'Для проверки «Разрешение такси (ФГИС)» нужен российский госномер '
         '(кириллица и цифры)',
   );
+}
+
+/// Готовит конкретный запуск материалов проверки, не меняя пользовательский
+/// набор галок. ФГИС без пригодного госномера пропускается только в этом
+/// запуске; после заполнения номера пользовательский выбор остаётся актуален.
+({List<String> checkTypes, String gosNumber, String? skippedFgisReason})
+prepareLegalReviewCheckRun({
+  required Iterable<String> selectedCheckTypes,
+  required String gosNumber,
+}) {
+  final checkTypes = selectedCheckTypes
+      .where((type) => type != 'api_cloud_converter_search')
+      .toList();
+  if (!checkTypes.contains('api_cloud_fgis_taxi_search')) {
+    return (
+      checkTypes: checkTypes,
+      gosNumber: gosNumber,
+      skippedFgisReason: null,
+    );
+  }
+
+  final identifiers = prepareFgisTaxiIdentifiers(gosNumber: gosNumber);
+  if (identifiers.error != null) {
+    checkTypes.remove('api_cloud_fgis_taxi_search');
+    return (
+      checkTypes: checkTypes,
+      gosNumber: gosNumber,
+      skippedFgisReason: identifiers.error,
+    );
+  }
+  return (
+    checkTypes: checkTypes,
+    gosNumber: identifiers.gosNumber,
+    skippedFgisReason: null,
+  );
+}
+
+/// Нужен ли промежуточный converter VIN → госномер для выбранного ФГИС.
+/// Требует ПОЛНЫЙ валидный VIN (17 символов, без I/O/Q): converter платный,
+/// а по обрезку VIN ApiCloud гарантированно ничего не найдёт.
+bool shouldResolveFgisPlateFromVin({
+  required Iterable<String> selectedCheckTypes,
+  required String vin,
+  required String gosNumber,
+}) {
+  final cleanVin = vin.trim().toUpperCase().replaceAll(RegExp(r'[\s\-]'), '');
+  return RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(cleanVin) &&
+      selectedCheckTypes.contains('api_cloud_fgis_taxi_search') &&
+      prepareFgisTaxiIdentifiers(gosNumber: gosNumber).error != null;
 }
 
 /// Прогоняет [input] через [kAutoDetectFormats] в порядке специфичности.

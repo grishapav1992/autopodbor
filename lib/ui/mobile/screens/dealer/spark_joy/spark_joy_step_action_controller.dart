@@ -14,6 +14,7 @@ class _SparkJoyStepActionState {
     required this.isTestDriveStep,
     required this.isSummaryStep,
     required this.hideProgressBar,
+    required this.vehicleMissingReasons,
     required this.canVehicleContinue,
     required this.missingMediaGroups,
     required this.canMediaContinue,
@@ -41,6 +42,7 @@ class _SparkJoyStepActionState {
   final bool isTestDriveStep;
   final bool isSummaryStep;
   final bool hideProgressBar;
+  final List<String> vehicleMissingReasons;
   final bool canVehicleContinue;
   final List<String> missingMediaGroups;
   final bool canMediaContinue;
@@ -74,7 +76,10 @@ class _SparkJoyStepActionController {
     final isTestDriveStep = step.id == _SparkJoyStepRegistry.idTestDrive;
     final isSummaryStep = _SparkJoyStepRegistry.isSummaryStepId(step.id);
     final hideProgressBar = _SparkJoyStepRegistry.hidesProgressBar(step.id);
-    final canVehicleContinue = s._isVehicleReadyForContinue();
+    final vehicleMissingReasons = isVehicleStep
+        ? s._vehicleMissingReasons()
+        : const <String>[];
+    final canVehicleContinue = vehicleMissingReasons.isEmpty;
     final missingMediaGroups = isMediaStep
         ? s._missingRequiredMediaGroups().map((e) => e.title).toList()
         : const <String>[];
@@ -100,7 +105,8 @@ class _SparkJoyStepActionController {
         ? !canSummaryFinish
         : !canContinueCurrentStep;
     final currentValue = s._overviewController.sectionValue(s, step.id).trim();
-    final isDone = currentValue.isNotEmpty;
+    final fillState = s._overviewController.sectionFillState(s, step.id);
+    final isDone = fillState == SparkJoySectionFillState.done;
     final statusText = isDone ? 'Заполнено' : 'В работе';
 
     return _SparkJoyStepActionState(
@@ -116,6 +122,7 @@ class _SparkJoyStepActionController {
       isTestDriveStep: isTestDriveStep,
       isSummaryStep: isSummaryStep,
       hideProgressBar: hideProgressBar,
+      vehicleMissingReasons: vehicleMissingReasons,
       canVehicleContinue: canVehicleContinue,
       missingMediaGroups: missingMediaGroups,
       canMediaContinue: canMediaContinue,

@@ -364,6 +364,15 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
       if (!actionState.inMediaGroupEditor)
         const SizedBox(height: SparkSpace.lg),
       _buildSparkJoyStepContent(s),
+      if (!s.widget.readOnly &&
+          !actionState.inMediaGroupEditor &&
+          actionState.isVehicleStep &&
+          !actionState.canVehicleContinue) ...[
+        const SizedBox(height: SparkSpace.md),
+        _buildSparkJoyValidationHint(
+          actionState.vehicleMissingReasons.join(' · '),
+        ),
+      ],
       if (!actionState.inMediaGroupEditor &&
           actionState.isDocsCheckStep &&
           !actionState.canDocsCheckContinue) ...[

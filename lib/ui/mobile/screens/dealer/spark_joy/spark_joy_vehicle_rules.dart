@@ -1,11 +1,26 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyVehicleRulesMethods on _SparkJoyCreateReportScreenState {
+  List<String> _vehicleMissingReasons() {
+    final reasons = <String>[];
+    if (_vinController.text.trim().isEmpty) {
+      reasons.add('Укажите VIN-номер');
+    }
+    if (_mileageController.text.trim().isEmpty) {
+      reasons.add('Укажите пробег');
+    }
+    if (_inspectionCityController.text.trim().isEmpty) {
+      reasons.add('Укажите город осмотра');
+    }
+    return reasons;
+  }
+
   bool _isVehicleReadyForContinue() {
     // VIN всегда обязателен (решение Григория 2026-07-10, вместе с удалением
     // галочки «Нечитабельный VIN»): госномер и legacy-флаг нечитаемости
-    // переход больше не разблокируют.
-    return _vinController.text.trim().isNotEmpty;
+    // переход больше не разблокируют. Пробег и город — такие же обязательные
+    // поля раздела и должны участвовать во всех индикаторах его готовности.
+    return _vehicleMissingReasons().isEmpty;
   }
 
   Future<Map<String, dynamic>?> _findDuplicateVinDraft() async {

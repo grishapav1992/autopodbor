@@ -66,10 +66,11 @@ extension _SparkJoyScreenHelpers on _SparkJoyCreateReportScreenState {
   }
 
   Future<void> _handleVehicleContinue() async {
-    if (!_isVehicleReadyForContinue()) {
+    final missingReasons = _vehicleMissingReasons();
+    if (missingReasons.isNotEmpty) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Укажите VIN-номер')));
+      ).showSnackBar(SnackBar(content: Text(missingReasons.join('\n'))));
       return;
     }
 

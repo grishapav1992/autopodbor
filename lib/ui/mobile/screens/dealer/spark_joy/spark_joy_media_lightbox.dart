@@ -39,8 +39,14 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     String? videoSourceUrl;
     var videoInitializing = false;
     String? videoErrorMessage;
+    // Поколение видеоконтекста. Инициализация сетевого ролика занимает
+    // секунды, и за это время пользователь успевает сменить страницу —
+    // без сверки поколения два prepareVideo доигрывали оба контроллера
+    // параллельно, а перезаписанный утекал играющим навсегда.
+    var videoEpoch = 0;
 
     Future<void> disposeVideoController() async {
+      videoEpoch++;
       final previous = videoController;
       videoController = null;
       videoSourceUrl = null;
@@ -72,6 +78,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
       }
       if (videoInitializing && videoSourceUrl == source) return;
 
+      final epoch = ++videoEpoch;
       videoInitializing = true;
       videoErrorMessage = null;
       videoSourceUrl = source;
@@ -84,6 +91,7 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
           await previous.pause();
         } catch (_) {}
         await previous.dispose();
+        if (epoch != videoEpoch) return;
       }
 
       try {
@@ -91,9 +99,16 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
           _mediaSourceUri(source),
         );
         await nextController.initialize();
+        if (!dialogActive || epoch != videoEpoch) {
+          await nextController.dispose();
+          return;
+        }
         await nextController.setLooping(true);
         await nextController.play();
-        if (!dialogActive) {
+        if (!dialogActive || epoch != videoEpoch) {
+          try {
+            await nextController.pause();
+          } catch (_) {}
           await nextController.dispose();
           return;
         }
@@ -101,6 +116,9 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
         videoInitializing = false;
         setLocalState(() {});
       } catch (_) {
+        // Флаги и текст ошибки принадлежат актуальному вызову — устаревший
+        // не должен перетирать состояние, выставленное преемником.
+        if (epoch != videoEpoch) return;
         videoInitializing = false;
         videoErrorMessage = 'Не удалось воспроизвести видео';
         if (!dialogActive) return;

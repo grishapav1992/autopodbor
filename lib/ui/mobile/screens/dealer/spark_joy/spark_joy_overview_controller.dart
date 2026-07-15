@@ -32,9 +32,7 @@ class _SparkJoyOverviewController {
             s._plateController.text.trim().isNotEmpty ||
             s._mileageController.text.trim().isNotEmpty ||
             s._inspectionCityController.text.trim().isNotEmpty;
-        final done =
-            s._isVehicleReadyForContinue() &&
-            s._mileageController.text.trim().isNotEmpty;
+        final done = s._isVehicleReadyForContinue();
         if (done) return SparkJoySectionFillState.done;
         if (hasAny) return SparkJoySectionFillState.partial;
         return SparkJoySectionFillState.empty;

@@ -569,12 +569,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
 
   Future<void> _startLegalLoading() async {
     if (_legalLoading) return;
-    // Конвертер не запускается в «Материалах проверки» (он только для
-    // идентификации в шаге «Автомобиль») — фильтруем на случай stale-драфта.
-    final checkTypes = _legalSelectedCheckTypes
-        .where((t) => t != 'api_cloud_converter_search')
+    final selectedCheckTypes = _legalSelectedCheckTypes
+        .where((type) => type != 'api_cloud_converter_search')
         .toList();
-    if (checkTypes.isEmpty) {
+    if (selectedCheckTypes.isEmpty) {
       if (mounted) {
         showSparkJoyErrorSnackBar(
           context,
@@ -584,42 +582,28 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       }
       return;
     }
+
     var vin = _sanitizeVin(_vinController.text);
     var plate = _sanitizePlate(_plateController.text.trim());
-    if (checkTypes.contains('api_cloud_fgis_taxi_search')) {
-      // ФГИС на бэке ищет ТОЛЬКО по госномеру (VIN игнорируется) — см.
-      // prepareFgisTaxiIdentifiers. Без пригодного номера платный запрос
-      // гарантированно вернёт сырую ошибку ApiCloud, поэтому проверку
-      // снимаем заранее и объясняем почему.
-      final identifiers = prepareFgisTaxiIdentifiers(gosNumber: plate);
-      final identifierError = identifiers.error;
-      if (identifierError != null) {
-        if (checkTypes.length == 1) {
-          if (mounted) {
-            showSparkJoyErrorSnackBar(
-              context,
-              Exception(identifierError),
-              fallback: identifierError,
-            );
-          }
-          return;
-        }
-        checkTypes.remove('api_cloud_fgis_taxi_search');
-        _setStateSafely(() {
-          _legalSelectedCheckTypes = checkTypes.toList();
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('$identifierError — проверка пропущена')),
-          );
-        }
-      } else if (identifiers.gosNumber != plate) {
-        // Латинские look-alike буквы приведены к кириллице — синхронизируем
-        // поле, чтобы пользователь видел, что реально ушло в проверку.
-        plate = identifiers.gosNumber;
-        _setStateSafely(() => _applyDetectedPlate(plate));
-        _markDraftDirty();
+    final initialRunPlan = prepareLegalReviewCheckRun(
+      selectedCheckTypes: selectedCheckTypes,
+      gosNumber: plate,
+    );
+    final canResolveFgisPlateFromVin = shouldResolveFgisPlateFromVin(
+      selectedCheckTypes: selectedCheckTypes,
+      vin: vin,
+      gosNumber: plate,
+    );
+    if (initialRunPlan.checkTypes.isEmpty && !canResolveFgisPlateFromVin) {
+      if (mounted) {
+        final message = initialRunPlan.skippedFgisReason;
+        showSparkJoyErrorSnackBar(
+          context,
+          Exception(message ?? 'Не удалось подготовить проверки'),
+          fallback: message ?? 'Не удалось подготовить проверки',
+        );
       }
+      return;
     }
     final token = _legalLoadToken + 1;
     _setStateSafely(() {
@@ -633,6 +617,65 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     _markDraftDirty();
 
     try {
+      var fgisConverterTimedOut = false;
+      if (canResolveFgisPlateFromVin) {
+        // Сам endpoint ФГИС принимает только gosNumber. Для пользовательского
+        // сценария «VIN ИЛИ госномер» прозрачно получаем номер через уже
+        // существующий дедуплицируемый converter (его кэш не даст заплатить
+        // повторно, если VIN уже определялся ранее).
+        final conv = await _runConverterDeduped(vin: vin);
+        if (!mounted || token != _legalLoadToken) return;
+        fgisConverterTimedOut = conv.timedOut;
+        if (conv.found && conv.gosNumber.trim().isNotEmpty) {
+          plate = _sanitizePlate(conv.gosNumber);
+          _setStateSafely(() => _applyDetectedPlate(plate));
+          _markDraftDirty();
+        }
+      }
+
+      final runPlan = prepareLegalReviewCheckRun(
+        selectedCheckTypes: selectedCheckTypes,
+        gosNumber: plate,
+      );
+      final checkTypes = runPlan.checkTypes;
+      final skippedFgisReason = runPlan.skippedFgisReason;
+      if (checkTypes.isEmpty) {
+        _setStateSafely(() {
+          _legalLoading = false;
+          _legalTimedOut = fgisConverterTimedOut;
+        });
+        _markDraftDirty();
+        if (mounted) {
+          final message = fgisConverterTimedOut
+              ? 'ApiCloud ещё определяет госномер по VIN. Попробуйте позже.'
+              : 'По VIN не удалось определить российский госномер для ФГИС';
+          showSparkJoyErrorSnackBar(
+            context,
+            Exception(message),
+            fallback: message,
+          );
+        }
+        return;
+      }
+      if (skippedFgisReason != null) {
+        // Это ограничение конкретного запуска, а не изменение пользовательского
+        // выбора: галку сохраняем, чтобы она сработала после заполнения номера.
+        if (mounted) {
+          final message = fgisConverterTimedOut
+              ? 'ApiCloud не успел определить госномер по VIN'
+              : skippedFgisReason;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$message — ФГИС временно пропущен')),
+          );
+        }
+      } else if (runPlan.gosNumber != plate) {
+        // Латинские look-alike буквы приведены к кириллице — синхронизируем
+        // поле, чтобы пользователь видел, что реально ушло в проверку.
+        plate = runPlan.gosNumber;
+        _setStateSafely(() => _applyDetectedPlate(plate));
+        _markDraftDirty();
+      }
+
       // Проверки ApiCloud ищут по VIN (подтверждено бэком). Если VIN ещё нет,
       // но есть госномер — сперва конвертируем госномер→VIN (флоу «2 запроса»),
       // иначе vin-проверки ничего не найдут.
