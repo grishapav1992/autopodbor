@@ -62,8 +62,10 @@ extension _SparkJoyOverviewRulesMethods on _SparkJoyCreateReportScreenState {
   Widget _sectionsOverview() {
     final overview = _overviewController.build(this);
     final total = _SparkJoyStepRegistry.steps.length;
+    // «Заполнено» = только done: начатый раздел (partial) в счётчик и
+    // прогресс-бар не попадает, иначе шкала врёт про готовность отчёта.
     final filled = overview.sectionFillStates.values.where((state) {
-      return state != SparkJoySectionFillState.empty;
+      return state == SparkJoySectionFillState.done;
     }).length;
     final progress = total == 0 ? 0.0 : (filled / total).clamp(0.0, 1.0);
 

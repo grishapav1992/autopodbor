@@ -2105,10 +2105,13 @@ class SparkStepHeroCard extends StatelessWidget {
 
 /// Строка раздела в группированной карточке обзора черновика.
 ///
-/// Статус читается по ведущему кругу: зелёная галочка — раздел заполнен,
-/// оранжевый «!» — обязательный и пока пустой, пунктирный контур —
-/// необязательный и пустой. Правый край дублирует статус словами
-/// («заполнить» / «не обяз.»), чтобы список читался без легенды.
+/// Статус читается по ведущему кругу: зелёная галочка — раздел заполнен
+/// полностью (все обязательные поля), многоточие — раздел начат, но не
+/// завершён (галочку тут показывать нельзя: она прятала пустые обязательные
+/// поля вроде пробега и города в «Автомобиле»), оранжевый «!» — обязательный
+/// и пока пустой, пунктирный контур — необязательный и пустой. Правый край
+/// дублирует статус словами («заполнить» / «продолжить» / «не обяз.»),
+/// чтобы список читался без легенды.
 class SparkSectionStatusRow extends StatelessWidget {
   const SparkSectionStatusRow({
     super.key,
@@ -2128,10 +2131,12 @@ class SparkSectionStatusRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isLoading = fillState == SparkJoySectionFillState.loading;
-    final isFilled = !isLoading && fillState != SparkJoySectionFillState.empty;
-    final needsAction = required && !isFilled && !isLoading;
-    final dashed = !required && !isFilled && !isLoading;
+    final isDone = fillState == SparkJoySectionFillState.done;
+    final isPartial = fillState == SparkJoySectionFillState.partial;
+    final needsAction = required && !isDone && !isPartial && !isLoading;
+    final dashed = !required && !isDone && !isPartial && !isLoading;
 
+    final Color partialColor = required ? kOrangeColor : kGreyColor;
     final Widget? badgeChild = isLoading
         ? const SizedBox(
             width: SparkSize.iconSm,
@@ -2141,11 +2146,17 @@ class SparkSectionStatusRow extends StatelessWidget {
               valueColor: AlwaysStoppedAnimation<Color>(kGreyColor),
             ),
           )
-        : isFilled
+        : isDone
         ? const Icon(
             Icons.check_rounded,
             size: SparkSize.iconSm,
             color: kGreenColor,
+          )
+        : isPartial
+        ? Icon(
+            Icons.more_horiz_rounded,
+            size: SparkSize.iconSm,
+            color: partialColor,
           )
         : needsAction
         ? const Icon(
@@ -2155,8 +2166,10 @@ class SparkSectionStatusRow extends StatelessWidget {
           )
         : null;
 
-    final Color? badgeBackground = isFilled
+    final Color? badgeBackground = isDone
         ? kGreenColor.withValues(alpha: 0.12)
+        : isPartial
+        ? partialColor.withValues(alpha: 0.12)
         : needsAction
         ? kOrangeColor.withValues(alpha: 0.12)
         : null;
@@ -2213,10 +2226,10 @@ class SparkSectionStatusRow extends StatelessWidget {
                 ],
               ),
             ),
-            if (needsAction) ...[
+            if (needsAction || (required && isPartial)) ...[
               const SizedBox(width: SparkSpace.md),
-              const MyText(
-                text: 'заполнить',
+              MyText(
+                text: needsAction ? 'заполнить' : 'продолжить',
                 size: SparkTextSize.body,
                 weight: FontWeight.w700,
                 color: kOrangeColor,
