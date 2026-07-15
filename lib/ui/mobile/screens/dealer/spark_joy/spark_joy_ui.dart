@@ -2172,7 +2172,7 @@ class SparkSectionStatusRow extends StatelessWidget {
     );
     if (dashed) {
       statusBadge = CustomPaint(
-        painter: _DashedCirclePainter(
+        painter: SparkDashedCirclePainter(
           color: kGreyColor.withValues(alpha: 0.5),
         ),
         child: statusBadge,
@@ -2263,8 +2263,11 @@ class SparkSectionRowDivider extends StatelessWidget {
 /// Пунктирная окружность пустого необязательного раздела — «слот, который
 /// можно и не занимать». Flutter не рисует пунктирный border из коробки,
 /// поэтому штрихуем дугами по метрике пути.
-class _DashedCirclePainter extends CustomPainter {
-  const _DashedCirclePainter({required this.color});
+/// Пунктирная окружность — «шаг ещё не начат». Живёт и в обзоре разделов
+/// (`SparkSectionStatusRow`), и в списке «Материалов проверки» (проверка в
+/// очереди), поэтому публичный.
+class SparkDashedCirclePainter extends CustomPainter {
+  const SparkDashedCirclePainter({required this.color});
 
   final Color color;
 
@@ -2291,7 +2294,7 @@ class _DashedCirclePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_DashedCirclePainter oldDelegate) =>
+  bool shouldRepaint(SparkDashedCirclePainter oldDelegate) =>
       oldDelegate.color != color;
 }
 

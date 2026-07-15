@@ -8,39 +8,12 @@ Widget _buildSparkJoyLegalFilesCard(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.attach_file_rounded,
-              size: SparkTextSize.title,
-              color: kGreyColor,
-            ),
-            const SizedBox(width: SparkSpace.sm),
-            MyText(
-              text: 'Файлы: ${s._legalFiles.length}',
-              size: SparkTextSize.caption,
-              color: kTertiaryColor,
-              weight: FontWeight.w600,
-            ),
-          ],
-        ),
-        const SizedBox(height: SparkSpace.sm),
-        OutlinedButton.icon(
-          onPressed: s._pickLegalFiles,
-          icon: const Icon(Icons.upload_file_rounded),
-          label: const Text('Добавить документ'),
-        ),
+        _LegalAddDocumentZone(onTap: s._pickLegalFiles),
         if (s._legalFiles.isNotEmpty) ...[
           const SizedBox(height: SparkSpace.md),
-          // Hint above the file list — files live locally in the draft
-          // until the report is submitted; they don't reach the server
-          // until then. Without this signal the user wonders whether
-          // the upload happened on pick.
-          const SparkHintCard(
-            text: 'Файлы будут загружены при сохранении отчёта.',
-            icon: Icons.cloud_upload_outlined,
-          ),
-          const SizedBox(height: SparkSpace.md),
+          // Счётчик «Файлы: N» и подсказка про отложенную загрузку убраны:
+          // список сам показывает количество, а зелёный чип «Готово к
+          // отправке» на каждой строке говорит то же, что говорила подсказка.
           ...List.generate(s._legalFiles.length, (index) {
             final file = s._legalFiles[index];
             final displayName = sparkJoyReadableStoredName(
@@ -229,38 +202,58 @@ Widget _buildSparkJoyLegalFilesCard(
   );
 }
 
-/// Рендер результатов batch-проверок (ApiCloud) — по одной записи на
-/// checkType: имя проверки, статус и нормализованный ответ (компактно).
-/// Форма `responseNormalized` зависит от типа проверки, поэтому показываем
-/// её обобщённо (строка как есть / JSON), а детальный рендер допилим после
-/// первого live-прогона.
-/// Человекочитаемый статус проверки ApiCloud.
-String _legalCheckStatusLabel(String status) {
-  switch (status.toLowerCase()) {
-    case 'completed':
-    case 'done':
-    case 'success':
-      return 'готово';
-    case 'found':
-      return 'найдено';
-    case 'not_found':
-      return 'не найдено';
-    case 'failed':
-    case 'error':
-      return 'ошибка';
-    case 'pending':
-    case 'processing':
-    case 'in_progress':
-    case 'running':
-      return 'в обработке';
-    default:
-      return status.isEmpty ? '—' : status;
+/// Пунктирная зона «Добавить документ» на всю ширину карточки — та же идиома,
+/// что и в медиа-редакторе: пунктир читается как «сюда можно положить».
+class _LegalAddDocumentZone extends StatelessWidget {
+  const _LegalAddDocumentZone({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+        child: DottedBorder(
+          borderType: BorderType.RRect,
+          radius: const Radius.circular(SparkRadius.md),
+          color: kSecondaryColor.withValues(alpha: 0.30),
+          strokeWidth: 1.5,
+          dashPattern: const [6, 4],
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: kSecondaryColor.withValues(alpha: 0.03),
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+            ),
+            child: SizedBox(
+              height: SparkSize.actionHeight,
+              width: double.infinity,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.upload_file_rounded,
+                    size: SparkTextSize.titleLg,
+                    color: kSecondaryColor,
+                  ),
+                  const SizedBox(width: SparkSpace.sm),
+                  const MyText(
+                    text: 'Добавить документ',
+                    size: SparkTextSize.body,
+                    color: kSecondaryColor,
+                    weight: FontWeight.w600,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
-
-// Человекочитаемое название типа ApiCloud-проверки вынесено в общий
-// `sparkJoyLegalCheckTypeLabel` (spark_joy_legal_labels.dart) — единый источник
-// для этого шага и ленты уведомлений (чтобы названия не расходились).
 
 /// `responseNormalized` приходит JSON-строкой (напр. `"{\"found\": false}"`),
 /// реже — уже объектом. Сводим к человекочитаемой строке: готовый русский
@@ -300,94 +293,85 @@ String _legalNormalizedToText(dynamic normalized) {
   final countRaw = decoded['count'] ?? decoded['properties_total'];
   final count = countRaw is int ? countRaw : int.tryParse('${countRaw ?? ''}');
   if (found == true) {
+    // Значок «⚠️» из текста убран: находку теперь видно по оранжевому бейджу,
+    // рамке строки и баннеру — эмодзи в подзаголовке был третьим криком.
     final base = message.isNotEmpty ? message : 'Обнаружено';
-    return (count != null && count > 0)
-        ? '⚠️ $base (записей: $count)'
-        : '⚠️ $base';
+    return (count != null && count > 0) ? '$base (записей: $count)' : base;
   }
   if (found == false) {
-    // Статус-строка уже сообщает «не найдено»; добавляем текст, только если
+    // Вердикт справа уже сообщает «чисто»; добавляем текст, только если
     // бэк прислал содержательный `message`.
     return message;
   }
   return message;
 }
 
-/// Подзаголовок статуса во время поллинга: живой прогресс (сколько проверок
-/// уже доехало из общего числа), чтобы спиннер не был «глухим». Пустой список
-/// ⇒ батч ещё регистрируется на бэке.
-String _legalLoadingSubtitle(List<Map<String, dynamic>> results) {
-  if (results.isEmpty) return 'Формируем материалы…';
-  bool isTerminal(Map<String, dynamic> c) {
-    final st = (c['status'] ?? '').toString().toLowerCase();
-    return st.isNotEmpty &&
-        st != 'pending' &&
-        st != 'processing' &&
-        st != 'in_progress' &&
-        st != 'running';
+/// Подзаголовок завершённой строки: что именно ответила проверка. Пустой ответ
+/// бэка не оставляем немым — подставляем фразу по тону.
+String _legalRowSubtitle(Map<String, dynamic> check) {
+  var text = _legalNormalizedToText(check['responseNormalized']);
+  if (text.isEmpty) {
+    // Упавший чек несёт текст только в errorMessage (responseNormalized бэк
+    // при ошибке не пишет) — без этого строка «ошибка» была бы немой.
+    text = sparkJoyHumanizeLegalCheckMessage(
+      (check['errorMessage'] ?? '').toString(),
+    );
   }
-
-  final total = results.length;
-  final done = results.where(isTerminal).length;
-  return 'Идёт проверка: готово $done из $total…';
+  if (text.isEmpty) {
+    text = switch (sparkJoyLegalRowTone(check)) {
+      SparkJoyLegalTone.clean => 'Записей не найдено',
+      SparkJoyLegalTone.found => 'Найдены записи',
+      SparkJoyLegalTone.data => 'Данные получены',
+      SparkJoyLegalTone.error => 'Проверка не выполнилась',
+    };
+  }
+  return text.length > 300 ? '${text.substring(0, 300)}…' : text;
 }
 
-List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
-  final results = s._legalCheckResults;
-  if (results.isEmpty) return const <Widget>[];
-  return <Widget>[
-    const SizedBox(height: SparkSpace.md),
-    s._sectionHeading('Результаты проверок', icon: Icons.fact_check_outlined),
-    const SizedBox(height: SparkSpace.sm),
-    ...results.map((c) {
-      final type = (c['checkType'] ?? '').toString();
-      final title = type.isEmpty
-          ? 'Проверка'
-          : sparkJoyLegalCheckTypeLabel(type);
-      final status = (c['status'] ?? '').toString();
-      var summary = _legalNormalizedToText(c['responseNormalized']);
-      if (summary.isEmpty) {
-        // Упавший чек несёт текст только в errorMessage (responseNormalized
-        // бэк при ошибке не пишет) — раньше карточка «ошибка» была немой.
-        summary = sparkJoyHumanizeLegalCheckMessage(
-          (c['errorMessage'] ?? '').toString(),
-        );
-      }
-      final cert = type == 'api_cloud_gost_certificate'
-          ? gostCertificateFields(c['responseNormalized'])
-          : null;
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: SparkSpace.sm),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            MyText(
-              text: title,
-              size: SparkTextSize.caption,
-              weight: FontWeight.w600,
-            ),
-            MyText(
-              text: 'Статус: ${_legalCheckStatusLabel(status)}',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-            ),
-            if (summary.isNotEmpty)
-              MyText(
-                text: summary.length > 300
-                    ? '${summary.substring(0, 300)}…'
-                    : summary,
-                size: SparkTextSize.caption,
-                color: kGreyColor,
-              ),
-            // ГОСТ-сертификат: официальные поля авто (бэк отдаёт certificate[]).
-            if (cert != null) ..._gostCertDetailRows(cert),
-            // Скелет залог/ФГИС: items[]/permit — дремлет, пока бэк не наполнит.
-            ..._legalDetailScaffoldRows(type, c['responseNormalized']),
-          ],
-        ),
-      );
-    }),
-  ];
+/// Чек доехал до терминального состояния. Единый источник истины с поллингом
+/// (`legalReviewBatchPending` умеет в несинхронный `status`: бэк успевает
+/// положить `responseNormalized`/`executedAt` раньше, чем сменит статус).
+bool _legalCheckSettled(Map<String, dynamic> check) =>
+    !storage_api.legalReviewBatchPending([check]);
+
+/// «готово N из M» — живой счётчик рядом со спиннером. Пустой список ⇒ батч
+/// ещё регистрируется на бэке, считать нечего.
+String _legalProgressLabel(List<Map<String, dynamic>> results) {
+  if (results.isEmpty) return '';
+  final done = results.where(_legalCheckSettled).length;
+  return 'готово $done из ${results.length}';
+}
+
+double _legalProgressValue(List<Map<String, dynamic>> results) {
+  if (results.isEmpty) return 0;
+  return results.where(_legalCheckSettled).length / results.length;
+}
+
+Color _legalToneColor(SparkJoyLegalTone tone) => switch (tone) {
+  SparkJoyLegalTone.clean => kGreenColor,
+  SparkJoyLegalTone.found => kOrangeColor,
+  SparkJoyLegalTone.data => kSecondaryColor,
+  SparkJoyLegalTone.error => kRedColor,
+};
+
+IconData _legalToneIcon(SparkJoyLegalTone tone) => switch (tone) {
+  SparkJoyLegalTone.clean => Icons.check_rounded,
+  SparkJoyLegalTone.found => Icons.priority_high_rounded,
+  SparkJoyLegalTone.data => Icons.description_outlined,
+  SparkJoyLegalTone.error => Icons.error_outline_rounded,
+};
+
+/// Детали под раскрытой строкой: официальные поля ГОСТ и скелет залог/ФГИС.
+List<Widget> _legalRowDetails(Map<String, dynamic> check) {
+  final type = (check['checkType'] ?? '').toString();
+  final normalized = check['responseNormalized'];
+  final rows = <Widget>[];
+  if (type == 'api_cloud_gost_certificate') {
+    final cert = gostCertificateFields(normalized);
+    if (cert != null) rows.addAll(_gostCertDetailRows(cert));
+  }
+  rows.addAll(_legalDetailScaffoldRows(type, normalized));
+  return rows;
 }
 
 // Одна строка «метка — значение» детали проверки.
@@ -495,6 +479,334 @@ List<Widget> _legalDetailScaffoldRows(String type, dynamic normalized) {
   return const [];
 }
 
+/// Состояние строки проверки в списке.
+enum _LegalRowState {
+  /// Проверка ещё не запускалась (или батч только регистрируется).
+  queued,
+
+  /// Батч идёт, конкретно эта проверка ещё не ответила.
+  running,
+
+  /// Ответ получен — есть вердикт.
+  settled,
+}
+
+/// Строка одной проверки: бейдж состояния, название, подзаголовок и вердикт.
+/// Раскрывается тапом, если у проверки есть детали.
+class _LegalCheckRow extends StatelessWidget {
+  const _LegalCheckRow({
+    required this.title,
+    required this.subtitle,
+    required this.state,
+    required this.tone,
+    required this.expanded,
+    required this.details,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final _LegalRowState state;
+
+  /// Осмысленен только при [state] == settled.
+  final SparkJoyLegalTone tone;
+  final bool expanded;
+  final List<Widget> details;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final settled = state == _LegalRowState.settled;
+    final isFound = settled && tone == SparkJoyLegalTone.found;
+    final toneColor = _legalToneColor(tone);
+    final expandable = settled && details.isNotEmpty;
+
+    return Container(
+      margin: const EdgeInsets.only(top: SparkSpace.sm),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: isFound ? kOrangeColor.withValues(alpha: 0.30) : kBorderColor,
+        ),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+        color: isFound ? kOrangeColor.withValues(alpha: 0.04) : kWhiteColor,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: expandable ? onTap : null,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: SparkSpace.lg,
+                vertical: SparkSpace.lg,
+              ),
+              child: Row(
+                children: [
+                  _badge(settled: settled, toneColor: toneColor),
+                  const SizedBox(width: SparkSpace.lg),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        MyText(
+                          text: title,
+                          size: SparkTextSize.body,
+                          weight: FontWeight.w600,
+                          color: state == _LegalRowState.queued
+                              ? kGreyColor
+                              : kTertiaryColor,
+                        ),
+                        if (subtitle.isNotEmpty)
+                          MyText(
+                            text: subtitle,
+                            size: SparkTextSize.caption,
+                            maxLines: 2,
+                            color: isFound ? kOrangeColor : kGreyColor,
+                            weight: isFound
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (settled) ...[
+                    const SizedBox(width: SparkSpace.sm),
+                    MyText(
+                      text: sparkJoyLegalVerdictLabel(tone),
+                      size: SparkTextSize.caption,
+                      weight: FontWeight.w700,
+                      color: toneColor,
+                    ),
+                  ],
+                  if (expandable)
+                    Icon(
+                      expanded
+                          ? Icons.expand_less_rounded
+                          : Icons.expand_more_rounded,
+                      size: SparkTextSize.modalTitle,
+                      color: kGreyColor,
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (expandable && expanded)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(
+                // Отступ слева ровняет детали по названию проверки, а не по
+                // бейджу: 36 бейдж + 10 зазор + 10 паддинг строки.
+                56,
+                SparkSpace.md,
+                SparkSpace.lg,
+                SparkSpace.lg,
+              ),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: kBorderColor)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: details,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _badge({required bool settled, required Color toneColor}) {
+    if (settled) {
+      return Container(
+        width: SparkSize.navStepBadge,
+        height: SparkSize.navStepBadge,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          // Информационный тон — тише: он не про риск, а про данные.
+          color: toneColor.withValues(
+            alpha: tone == SparkJoyLegalTone.data ? 0.08 : 0.12,
+          ),
+        ),
+        child: Icon(_legalToneIcon(tone), size: 16, color: toneColor),
+      );
+    }
+    if (state == _LegalRowState.running) {
+      return const SizedBox(
+        width: SparkSize.navStepBadge,
+        height: SparkSize.navStepBadge,
+        child: Center(
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: kSecondaryColor,
+            ),
+          ),
+        ),
+      );
+    }
+    return CustomPaint(
+      painter: SparkDashedCirclePainter(
+        color: kGreyColor.withValues(alpha: 0.5),
+      ),
+      child: const SizedBox(
+        width: SparkSize.navStepBadge,
+        height: SparkSize.navStepBadge,
+      ),
+    );
+  }
+}
+
+/// Баннер над списком: что нашли. Рисуется только при реальной находке.
+class _LegalFoundBanner extends StatelessWidget {
+  const _LegalFoundBanner({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: SparkSpace.lg),
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.lg,
+        vertical: SparkSpace.md,
+      ),
+      decoration: BoxDecoration(
+        color: kOrangeColor.withValues(alpha: 0.06),
+        border: Border.all(color: kOrangeColor.withValues(alpha: 0.30)),
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline_rounded,
+            size: SparkTextSize.titleLg,
+            color: kOrangeColor,
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Expanded(
+            child: MyText(
+              text: text,
+              size: SparkTextSize.caption,
+              weight: FontWeight.w700,
+              color: kOrangeColor,
+              lineHeight: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Главная кнопка шага. Градиент — единственный акцент такого веса на экране,
+/// поэтому живёт только пока материалы не сформированы.
+class _LegalRunButton extends StatelessWidget {
+  const _LegalRunButton({required this.onTap, required this.enabled});
+
+  final VoidCallback onTap;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Opacity(
+      opacity: enabled ? 1 : 0.5,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(SparkRadius.xl),
+          child: Container(
+            height: SparkSize.inputHeight,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [kSecondaryColor, kBlueColor],
+              ),
+              borderRadius: BorderRadius.circular(SparkRadius.xl),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.gavel_rounded,
+                  size: SparkTextSize.titleLg,
+                  color: kWhiteColor,
+                ),
+                SizedBox(width: SparkSpace.md),
+                MyText(
+                  text: 'Сформировать материалы',
+                  size: SparkTextSize.bodyLg,
+                  color: kWhiteColor,
+                  weight: FontWeight.w700,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Шапка карточки во время прогона: спиннер, счётчик и полоса.
+class _LegalRunningHeader extends StatelessWidget {
+  const _LegalRunningHeader({required this.progressLabel, required this.value});
+
+  final String progressLabel;
+  final double value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: kSecondaryColor,
+              ),
+            ),
+            const SizedBox(width: SparkSpace.md),
+            const Expanded(
+              child: MyText(
+                text: 'Проверяем автомобиль по базам…',
+                size: SparkTextSize.body,
+                weight: FontWeight.w700,
+                color: kSecondaryColor,
+              ),
+            ),
+            if (progressLabel.isNotEmpty)
+              MyText(
+                text: progressLabel,
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+              ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.md),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(SparkRadius.pill),
+          child: LinearProgressIndicator(
+            minHeight: SparkSize.progressThin,
+            // Пока батч регистрируется, доли ещё нет — крутим неопределённую
+            // полосу вместо честного нуля, который читается как «зависло».
+            value: value > 0 ? value : null,
+            backgroundColor: kLightGreyColor,
+            color: kSecondaryColor,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 Widget _buildSparkJoyStepLegal(
   _SparkJoyCreateReportScreenState s, {
   required void Function(VoidCallback fn) setStateFn,
@@ -503,15 +815,39 @@ Widget _buildSparkJoyStepLegal(
   // (guard внутри метода; setState только после await, не во время build).
   unawaited(s._ensureLegalReviewMeta());
 
-  final statusSubtitle = s._legalLoading
-      ? _legalLoadingSubtitle(s._legalCheckResults)
-      : (s._legalLoaded
-            ? 'Материалы сформированы'
-            : (s._legalTimedOut
-                  ? 'ApiCloud ещё обрабатывает запросы — результаты подтянутся при повторном открытии отчёта'
-                  : 'Материалы ещё не сформированы'));
+  final results = s._legalCheckResults;
+  final loading = s._legalLoading;
+  final loaded = s._legalLoaded;
+  final types = s._legalAvailableCheckTypes;
 
-  final selected = s._legalSelectedCheckTypes;
+  // Без VIN и госномера проверки уходят в ApiCloud без идентификатора и
+  // гарантированно возвращают ошибку — а вызов платный (BACKEND_REQUESTS.md,
+  // P1 баг 1). Единственный гейт после снятия галок выбора проверок.
+  final hasIdentifier =
+      s._sanitizeVin(s._vinController.text).isNotEmpty ||
+      s._sanitizePlate(s._plateController.text.trim()).isNotEmpty;
+
+  void runChecks() {
+    setStateFn(() {
+      // Выбор проверок пользователю больше не показываем — гоняем весь
+      // каталог. Поле остаётся: оно персистится в черновике и уезжает в
+      // payload отчёта.
+      s._legalSelectedCheckTypes = types
+          .map((t) => t.value)
+          .toList(growable: false);
+      // Раскрытие строк — от прошлого прогона; иначе свёрнутая тогда находка
+      // приедет свёрнутой и в новом результате.
+      s._legalExpandedOverride.clear();
+    });
+    unawaited(s._startLegalLoading());
+  }
+
+  final banner = loaded ? sparkJoyLegalFoundBanner(results) : null;
+  // Без каталога запускать нечего: `runChecks` отправил бы пустой список и
+  // упёрся в «Выберите хотя бы одну проверку» — сообщение-абсурд, ведь выбор
+  // из UI убран. Уже приехавшие результаты рендерятся выше независимо.
+  final catalogUnavailable = types.isEmpty;
+  final canRun = hasIdentifier && !catalogUnavailable;
 
   return Column(
     children: [
@@ -519,113 +855,170 @@ Widget _buildSparkJoyStepLegal(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            MyText(
-              text: statusSubtitle,
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-            ),
-            const SizedBox(height: SparkSpace.md),
-            if (!s._legalCanRunReview)
-              SparkHintCard(
+            if (loading)
+              _LegalRunningHeader(
+                progressLabel: _legalProgressLabel(results),
+                value: _legalProgressValue(results),
+              )
+            else if (loaded)
+              Row(
+                children: [
+                  Expanded(
+                    child: MyText(
+                      text: sparkJoyLegalCheckedSummary(results.length),
+                      size: SparkTextSize.caption,
+                      color: kGreyColor,
+                    ),
+                  ),
+                  // Тот же гейт, что у «Сформировать материалы»: без
+                  // идентификатора или без каталога повтор упрётся в тупик.
+                  if (s._legalCanRunReview)
+                    InkWell(
+                      onTap: canRun ? runChecks : null,
+                      borderRadius: BorderRadius.circular(SparkRadius.sm),
+                      child: Padding(
+                        padding: const EdgeInsets.all(SparkSpace.xs),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.refresh_rounded,
+                              size: SparkTextSize.sectionTitle,
+                              color: canRun ? kSecondaryColor : kGreyColor,
+                            ),
+                            const SizedBox(width: SparkSpace.xs),
+                            MyText(
+                              text: 'Обновить',
+                              size: SparkTextSize.caption,
+                              weight: FontWeight.w700,
+                              color: canRun ? kSecondaryColor : kGreyColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            else
+              MyText(
+                text: s._legalTimedOut
+                    ? 'ApiCloud ещё обрабатывает запросы — результаты '
+                          'подтянутся при повторном открытии отчёта'
+                    : 'Материалы ещё не сформированы',
+                size: SparkTextSize.caption,
+                color: kGreyColor,
+                lineHeight: 1.35,
+              ),
+
+            if (banner != null) _LegalFoundBanner(text: banner),
+
+            // Список проверок: пока результатов нет — превью по каталогу.
+            if (results.isNotEmpty)
+              ...results.map((check) {
+                final type = (check['checkType'] ?? '').toString();
+                final settled = _legalCheckSettled(check);
+                final tone = sparkJoyLegalRowTone(check);
+                final details = settled
+                    ? _legalRowDetails(check)
+                    : const <Widget>[];
+                // Находку раскрываем сразу — ради неё сюда и смотрят;
+                // остальное по тапу. Считаем один раз: рассинхрон между
+                // отрисовкой и обработчиком дал бы строку, не реагирующую
+                // на первый тап.
+                final expanded =
+                    s._legalExpandedOverride[type] ??
+                    (tone == SparkJoyLegalTone.found);
+                return _LegalCheckRow(
+                  title: type.isEmpty
+                      ? 'Проверка'
+                      : sparkJoyLegalCheckTypeLabel(type),
+                  subtitle: settled
+                      ? _legalRowSubtitle(check)
+                      : sparkJoyLegalCheckTypeHint(type),
+                  // Спиннер только пока батч реально идёт. После таймаута
+                  // поллинга неответивший чек не «выполняется» — крутящийся
+                  // кружок врал бы, что осталось подождать.
+                  state: settled
+                      ? _LegalRowState.settled
+                      : (loading
+                            ? _LegalRowState.running
+                            : _LegalRowState.queued),
+                  tone: tone,
+                  expanded: expanded,
+                  details: details,
+                  onTap: () => setStateFn(() {
+                    s._legalExpandedOverride[type] = !expanded;
+                  }),
+                );
+              })
+            else
+              ...types.map(
+                (t) => _LegalCheckRow(
+                  title: sparkJoyLegalCheckTypeLabel(t.value),
+                  subtitle: sparkJoyLegalCheckTypeHint(t.value),
+                  state: _LegalRowState.queued,
+                  tone: SparkJoyLegalTone.clean,
+                  expanded: false,
+                  details: const [],
+                  onTap: () {},
+                ),
+              ),
+
+            if (!s._legalCanRunReview) ...[
+              const SizedBox(height: SparkSpace.lg),
+              const SparkHintCard(
                 text:
                     'Недостаточно прав для запуска проверок. Обратитесь к '
                     'администратору компании (право run_legal_review).',
-              )
-            else ...[
-              if (s._legalAvailableCheckTypes.isEmpty)
-                // Пока запрос в полёте — спиннер-текст; если попытка провалилась
-                // (нет сети/холодный бэк/CORS на web) и повтор не идёт — даём
-                // явную кнопку «Повторить», чтобы не висеть вечно.
-                if (s._legalReviewMetaInFlight)
-                  const MyText(
-                    text: 'Загрузка списка проверок…',
-                    size: SparkTextSize.caption,
-                    color: kGreyColor,
-                  )
-                else
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: MyText(
-                          text:
-                              'Не удалось загрузить список проверок — '
-                              'проверьте соединение',
-                          size: SparkTextSize.caption,
-                          color: kGreyColor,
-                        ),
-                      ),
-                      const SizedBox(width: SparkSpace.sm),
-                      TextButton.icon(
-                        onPressed: () {
-                          // Сброс кулдауна → немедленный повтор.
-                          s._legalReviewMetaLastTry = null;
-                          unawaited(s._ensureLegalReviewMeta());
-                        },
-                        icon: const Icon(Icons.refresh_rounded, size: 18),
-                        label: const Text('Повторить'),
-                      ),
-                    ],
-                  )
+              ),
+            ] else if (catalogUnavailable) ...[
+              const SizedBox(height: SparkSpace.lg),
+              // Пока запрос в полёте — спиннер-текст; если попытка провалилась
+              // (нет сети/холодный бэк/CORS на web) и повтор не идёт — даём
+              // явную кнопку «Повторить», чтобы не висеть вечно.
+              if (s._legalReviewMetaInFlight)
+                const MyText(
+                  text: 'Загрузка списка проверок…',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                )
               else
-                ...s._legalAvailableCheckTypes.map(
-                  (t) => CheckboxListTile(
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    controlAffinity: ListTileControlAffinity.leading,
-                    value: selected.contains(t.value),
-                    title: MyText(
-                      text: sparkJoyLegalCheckTypeLabel(t.value),
-                      size: SparkTextSize.caption,
+                Row(
+                  children: [
+                    const Expanded(
+                      child: MyText(
+                        text:
+                            'Не удалось загрузить список проверок — '
+                            'проверьте соединение',
+                        size: SparkTextSize.caption,
+                        color: kGreyColor,
+                      ),
                     ),
-                    onChanged: s._legalLoading
-                        ? null
-                        : (checked) {
-                            setStateFn(() {
-                              final next = selected.toList();
-                              if (checked == true) {
-                                if (!next.contains(t.value)) next.add(t.value);
-                              } else {
-                                next.remove(t.value);
-                              }
-                              s._legalSelectedCheckTypes = next;
-                            });
-                          },
-                  ),
+                    const SizedBox(width: SparkSpace.sm),
+                    TextButton.icon(
+                      onPressed: () {
+                        // Сброс кулдауна → немедленный повтор.
+                        s._legalReviewMetaLastTry = null;
+                        unawaited(s._ensureLegalReviewMeta());
+                      },
+                      icon: const Icon(Icons.refresh_rounded, size: 18),
+                      label: const Text('Повторить'),
+                    ),
+                  ],
                 ),
-              if (s._legalLoading) ...[
-                const SizedBox(height: SparkSpace.sm),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(SparkRadius.pill),
-                  child: const LinearProgressIndicator(
-                    minHeight: SparkSize.progressThin,
-                  ),
+            ] else if (!loading && !loaded) ...[
+              const SizedBox(height: SparkSpace.lg),
+              _LegalRunButton(onTap: runChecks, enabled: canRun),
+              if (!hasIdentifier) ...[
+                const SizedBox(height: SparkSpace.md),
+                const MyText(
+                  text: 'Заполните VIN или госномер в шаге «Автомобиль»',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                  textAlign: TextAlign.center,
                 ),
               ],
-              const SizedBox(height: SparkSpace.md),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: (s._legalLoading || selected.isEmpty)
-                      ? null
-                      : s._startLegalLoading,
-                  icon: Icon(
-                    s._legalLoaded
-                        ? Icons.refresh_rounded
-                        : Icons.gavel_rounded,
-                    size: SparkSize.iconSm,
-                  ),
-                  label: Text(
-                    s._legalLoading
-                        ? 'Формирование…'
-                        : (s._legalLoaded ? 'Обновить' : 'Сформировать'),
-                  ),
-                ),
-              ),
             ],
-            // Результаты показываем ВНЕ permission-гейта: просмотр уже
-            // сохранённых материалов не требует права на запуск (гидратор
-            // подтянул их и для зрителя без run_legal_review).
-            ..._buildSparkJoyLegalResults(s),
           ],
         ),
       ),

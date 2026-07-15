@@ -215,4 +215,244 @@ void main() {
       expect(sparkJoyHumanizeLegalCheckMessage('   '), '');
     });
   });
+
+  group('sparkJoyLegalCheckTypeHint (подзаголовок «ещё не сформировано»)', () {
+    test('описание источника для каждого known-типа', () {
+      expect(
+        sparkJoyLegalCheckTypeHint('api_cloud_zalog_notary'),
+        'Реестр уведомлений о залоге ФНП',
+      );
+      expect(
+        sparkJoyLegalCheckTypeHint('api_cloud_zalog_fedresurs'),
+        'Реестр договоров лизинга',
+      );
+      expect(
+        sparkJoyLegalCheckTypeHint('api_cloud_gost_certificate'),
+        'Официальные данные автомобиля',
+      );
+      expect(
+        sparkJoyLegalCheckTypeHint('api_cloud_taxi_search'),
+        'Признаки эксплуатации в такси',
+      );
+      expect(
+        sparkJoyLegalCheckTypeHint('api_cloud_fgis_taxi_search'),
+        'Реестр разрешений на такси',
+      );
+    });
+
+    test('неизвестный тип — без подзаголовка, а не выдуманный текст', () {
+      expect(sparkJoyLegalCheckTypeHint('api_cloud_brand_new_check'), '');
+      expect(sparkJoyLegalCheckTypeHint(''), '');
+    });
+  });
+
+  group('sparkJoyLegalRowTone (тон строки проверки)', () {
+    test('found: true у рисковой проверки → тревожный тон', () {
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_zalog_notary',
+          'status': 'found',
+          'responseNormalized': '{"found": true, "count": 1}',
+        }),
+        SparkJoyLegalTone.found,
+      );
+    });
+
+    test('status found без responseNormalized → находка, а не «чисто»', () {
+      // Регресс: персистентность на бэке не атомарна — статус успевает
+      // смениться раньше, чем запишется ответ, и чек в этот момент уже
+      // считается терминальным (legalReviewBatchPending). Вью-модель, которая
+      // смотрит только в responseNormalized, покажет зелёное «чисто» на
+      // найденном залоге.
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_zalog_notary',
+          'status': 'found',
+        }),
+        SparkJoyLegalTone.found,
+      );
+      expect(
+        legalReviewBatchPending(const [
+          {'checkType': 'api_cloud_zalog_notary', 'status': 'found'},
+        ]),
+        isFalse,
+        reason: 'такой чек уже терминальный — вердикт с него будет показан',
+      );
+    });
+
+    test('status found + пустой responseNormalized → находка', () {
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_zalog_notary',
+          'status': 'found',
+          'responseNormalized': '{}',
+        }),
+        SparkJoyLegalTone.found,
+      );
+    });
+
+    test('ГОСТ со status found остаётся данными', () {
+      // Информационные типы отсекаются раньше ветки находки.
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_gost_certificate',
+          'status': 'found',
+        }),
+        SparkJoyLegalTone.data,
+      );
+    });
+
+    test('found: false → чисто', () {
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_zalog_notary',
+          'status': 'not_found',
+          'responseNormalized': '{"found": false}',
+        }),
+        SparkJoyLegalTone.clean,
+      );
+    });
+
+    test('ГОСТ с found: true — это данные, а не находка', () {
+      // Регресс: наивное ветвление по `found` красило успешный сертификат в
+      // оранжевый «найдено» и тащило его в баннер находок.
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_gost_certificate',
+          'status': 'completed',
+          'responseNormalized':
+              '{"found": true, "certificate": [{"product": "TOYOTA"}]}',
+        }),
+        SparkJoyLegalTone.data,
+      );
+    });
+
+    test('конвертер — тоже информационная проверка', () {
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_converter_search',
+          'status': 'completed',
+          'responseNormalized': '{"found": true, "vin": "XW7BF4FK00S123456"}',
+        }),
+        SparkJoyLegalTone.data,
+      );
+    });
+
+    test('status failed → ошибка', () {
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_taxi_search',
+          'status': 'failed',
+        }),
+        SparkJoyLegalTone.error,
+      );
+    });
+
+    test('not_found + errorMessage → ошибка, а не «чисто»', () {
+      // BACKEND_REQUESTS.md P1 баг 2: ApiCloud отвечает HTTP 200 на невалидный
+      // вход, бэк отдаёт not_found. Отрапортовать «чисто» = соврать в пользу
+      // автомобиля.
+      expect(
+        sparkJoyLegalRowTone(const {
+          'checkType': 'api_cloud_fgis_taxi_search',
+          'status': 'not_found',
+          'responseNormalized': '{"found": false, "permit": null}',
+          'errorMessage': 'gosNumber% forbidden symbols present',
+        }),
+        SparkJoyLegalTone.error,
+      );
+    });
+  });
+
+  group('sparkJoyLegalFoundBanner', () {
+    const cleanZalog = {
+      'checkType': 'api_cloud_zalog_notary',
+      'status': 'not_found',
+      'responseNormalized': '{"found": false}',
+    };
+    const foundZalog = {
+      'checkType': 'api_cloud_zalog_notary',
+      'status': 'found',
+      'responseNormalized': '{"found": true, "count": 1}',
+    };
+    const failedTaxi = {
+      'checkType': 'api_cloud_taxi_search',
+      'status': 'failed',
+      'errorMessage': 'timeout',
+    };
+
+    test('нет находок — баннера нет', () {
+      expect(sparkJoyLegalFoundBanner(const [cleanZalog]), isNull);
+      expect(sparkJoyLegalFoundBanner(const []), isNull);
+    });
+
+    test('одна находка среди чистых — с хвостом «остальные чистые»', () {
+      expect(
+        sparkJoyLegalFoundBanner(const [
+          foundZalog,
+          {
+            'checkType': 'api_cloud_zalog_fedresurs',
+            'status': 'not_found',
+            'responseNormalized': '{"found": false}',
+          },
+        ]),
+        'Найдено: Залог (реестр нотариусов) — остальные проверки чистые',
+      );
+    });
+
+    test('находка + упавшая проверка — без хвоста: остальные не проверены', () {
+      expect(
+        sparkJoyLegalFoundBanner(const [foundZalog, failedTaxi]),
+        'Найдено: Залог (реестр нотариусов)',
+      );
+    });
+
+    test('несколько находок перечисляются', () {
+      expect(
+        sparkJoyLegalFoundBanner(const [
+          foundZalog,
+          {
+            'checkType': 'api_cloud_zalog_fedresurs',
+            'status': 'found',
+            'responseNormalized': '{"found": true}',
+          },
+        ]),
+        'Найдено: Залог (реестр нотариусов), Лизинг (Федресурс)',
+      );
+    });
+
+    test('ГОСТ с данными не считается находкой', () {
+      expect(
+        sparkJoyLegalFoundBanner(const [
+          cleanZalog,
+          {
+            'checkType': 'api_cloud_gost_certificate',
+            'status': 'completed',
+            'responseNormalized':
+                '{"found": true, "certificate": [{"product": "TOYOTA"}]}',
+          },
+        ]),
+        isNull,
+      );
+    });
+  });
+
+  group('sparkJoyPluralBases / sparkJoyLegalCheckedSummary', () {
+    test('склонение по русским правилам', () {
+      expect(sparkJoyPluralBases(1), 'база');
+      expect(sparkJoyPluralBases(2), 'базы');
+      expect(sparkJoyPluralBases(4), 'базы');
+      expect(sparkJoyPluralBases(5), 'баз');
+      expect(sparkJoyPluralBases(11), 'баз');
+      expect(sparkJoyPluralBases(14), 'баз');
+      expect(sparkJoyPluralBases(21), 'база');
+      expect(sparkJoyPluralBases(22), 'базы');
+      expect(sparkJoyPluralBases(0), 'баз');
+    });
+
+    test('подпись завершённого прогона', () {
+      expect(sparkJoyLegalCheckedSummary(5), 'Проверено · 5 баз');
+      expect(sparkJoyLegalCheckedSummary(1), 'Проверено · 1 база');
+    });
+  });
 }

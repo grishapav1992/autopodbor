@@ -251,6 +251,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   bool _legalReviewMetaLoadStarted = false;
   bool _legalReviewMetaInFlight = false;
   DateTime? _legalReviewMetaLastTry;
+  // Ручное раскрытие строк проверок по checkType. Ключа нет ⇒ действует
+  // умолчание (находка раскрыта, остальное свёрнуто), тап его переопределяет.
+  // Эфемерное UI-состояние: в черновик не пишется.
+  final Map<String, bool> _legalExpandedOverride = <String, bool>{};
   // P2 — VIN↔госномер конвертер (api_cloud_converter_search) в шаге «Авто».
   bool _vinConverterBusy = false;
   // Дедуп/кэш конвертера (платный RunBatchLegalReview): один и тот же

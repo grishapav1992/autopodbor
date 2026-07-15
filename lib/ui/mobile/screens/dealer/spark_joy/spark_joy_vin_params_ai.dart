@@ -229,6 +229,16 @@ List<Map<String, dynamic>> gostListField(dynamic normalized, String key) {
       .toList();
 }
 
+/// Булево поле [key] из `responseNormalized` (проверки — `found`). Нет поля
+/// или оно не bool → `null` (отличаем «проверка не сказала» от «сказала нет»).
+/// Не бросает.
+bool? gostBoolField(dynamic normalized, String key) {
+  final m = _decodeNormalizedMap(normalized);
+  if (m == null) return null;
+  final v = m[key];
+  return v is bool ? v : null;
+}
+
 /// Map-поле [key] из `responseNormalized` (ФГИС — `permit`), если непустой Map;
 /// иначе `null`. Скелет для разрешения такси. Не бросает.
 Map<String, dynamic>? gostMapField(dynamic normalized, String key) {
