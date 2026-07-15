@@ -240,9 +240,10 @@ class NotificationController extends GetxController {
   ///
   /// The operation lives in the controller rather than `build()` so widget
   /// rebuilds cannot start duplicate network mutations. Requests remain
-  /// parallel (the backend has no bulk endpoint), then one authoritative
-  /// reload reconciles the page. Local read overrides protect against replica
-  /// lag in that final response.
+  /// parallel because the backend has no bulk endpoint. Successful IDs remain
+  /// as local read overrides, so later websocket/pull reloads cannot regress
+  /// them during replica lag. We intentionally do not reload here: doing so
+  /// after auto-reading page 2 would discard the already appended page.
   Future<({int marked, int failed})> markLoadedPassiveRead() async {
     final ids = items
         .where(
@@ -265,7 +266,6 @@ class NotificationController extends GetxController {
         }
       }),
     );
-    await reload();
     return (marked: ids.length - failed, failed: failed);
   }
 
