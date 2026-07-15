@@ -23,6 +23,7 @@ extension _SparkJoyInitDisposeHelpers on _SparkJoyCreateReportScreenState {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         _maybeResolveFromVin();
+        unawaited(_autofillGenerationFromKnownYear());
         unawaited(_resumeLegalBatchAfterDraftLoad());
       });
     }

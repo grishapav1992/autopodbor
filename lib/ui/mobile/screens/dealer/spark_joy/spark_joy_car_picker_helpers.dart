@@ -1,6 +1,47 @@
 part of 'spark_joy_create_report_screen.dart';
 
 extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
+  int? _knownVehicleYear() {
+    final match = RegExp(r'\b(19|20)\d{2}\b').firstMatch(_resolvedVinYear);
+    return match == null ? null : int.tryParse(match.group(0)!);
+  }
+
+  /// Заполняет поколение по году СТС/converter только при однозначном
+  /// совпадении с каталогом. Конкретный рестайлинг/frame не угадываем:
+  /// пользователь выберет его на последнем шаге уже предзаполненного пикера.
+  Future<void> _autofillGenerationFromKnownYear() async {
+    if (widget.readOnly || _generationController.text.trim().isNotEmpty) {
+      return;
+    }
+    final modelId = _selectedModelCarId;
+    final year = _knownVehicleYear();
+    if (modelId == null || modelId <= 0 || year == null) return;
+
+    List<storage_api.GenerationItem> generations;
+    try {
+      generations = await CarCatalogRepository.instance.getGenerations(modelId);
+    } catch (_) {
+      return; // best-effort: обычный пикер покажет retry/offline-состояние.
+    }
+    if (!mounted || _selectedModelCarId != modelId) return;
+    if (_generationController.text.trim().isNotEmpty) return;
+    final generation = storage_api.findUniqueGenerationForYear(
+      generations,
+      year,
+    );
+    if (generation == null) return;
+
+    _setStateSafely(() {
+      _generationController.text = generation.yearRangeOrNumber;
+      _selectedGenerationNumber = generation.generation;
+      _restylingLabel = '';
+      _carFrames = '';
+      _carPhotoUrl = '';
+      _modelGenerationRestylingFrameId = null;
+    });
+    _markDraftDirty();
+  }
+
   /// [startAt] — с какого шага открыть визард: тапы по полям «Марка» /
   /// «Модель» / «Поколение» шага «Автомобиль» ведут на соответствующий
   /// шаг; null — «умное» продолжение с места текущей привязки.
@@ -77,8 +118,6 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
     // Стабильный ключ пере-выбора: подпись поколения в поле — это диапазон
     // годов, который может «съехать» при обновлении каталога; номер же нет.
     final savedGenerationNumber = _selectedGenerationNumber;
-    final savedRestyling = _restylingLabel.trim();
-
     // Репозиторий мемоизирует и офлайн отдаёт персист — диалогу свой кэш
     // моделей не нужен.
     Future<List<storage_api.ModelItem>> loadModels(
@@ -247,7 +286,7 @@ extension _SparkJoyCarPickerHelpers on _SparkJoyCreateReportScreenState {
 
     if (selectedBrand != null) step = _CarPickerStep.model;
     if (selectedModel != null) step = _CarPickerStep.generation;
-    if (selectedGeneration != null && savedRestyling.isNotEmpty) {
+    if (selectedGeneration != null) {
       step = _CarPickerStep.restyling;
     }
 

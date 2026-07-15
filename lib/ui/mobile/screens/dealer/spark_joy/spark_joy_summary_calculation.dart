@@ -17,6 +17,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     const maxAttempts = 60;
     final stopwatch = Stopwatch()..start();
     var emptyStreak = 0;
+    var failureStreak = 0;
     for (
       var attempt = 0;
       attempt < maxAttempts && stopwatch.elapsed < maxWait;
@@ -29,9 +30,17 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         result = await storage_api.StorageApi.getBatchLegalReviewResults(
           batchNumber: batchNumber,
         );
-      } catch (_) {
-        continue; // transient — повторим на следующем тике
+      } catch (error) {
+        // Не скрываем систематический RPC-сбой за бесконечным спиннером.
+        // Три transient-попытки оставляют запас на короткий обрыв сети.
+        debugPrint(
+          '[LegalReview] poll failed batch=$batchNumber '
+          'attempt=${attempt + 1}: $error',
+        );
+        if (++failureStreak >= 3) break;
+        continue;
       }
+      failureStreak = 0;
       if (!mounted || token != _legalLoadToken) return;
       final rawChecks = result['checks'];
       final checks = rawChecks is List
@@ -40,15 +49,18 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
                 .map((e) => Map<String, dynamic>.from(e))
                 .toList()
           : <Map<String, dynamic>>[];
-      if (checks.isEmpty) {
+      final settled = storage_api.legalReviewBatchSettled(result, checks);
+      if (checks.isEmpty && !settled) {
         // Пустой ответ: бэкенд ещё не зарегистрировал проверки или batch пуст.
         // Несколько коротких попыток вместо траты всего окна поллинга.
         if (++emptyStreak >= 3) break;
         continue;
       }
       emptyStreak = 0;
-      _setStateSafely(() => _legalCheckResults = checks);
-      if (!storage_api.legalReviewBatchPending(checks)) {
+      if (checks.isNotEmpty) {
+        _setStateSafely(() => _legalCheckResults = checks);
+      }
+      if (settled) {
         _setStateSafely(() {
           _legalLoading = false;
           _legalLoaded = true;
@@ -343,6 +355,7 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       }
     });
     _markDraftDirty();
+    await _autofillGenerationFromKnownYear();
     if (!match.full && rawModel.trim().isNotEmpty && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -574,29 +587,36 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     var vin = _sanitizeVin(_vinController.text);
     var plate = _sanitizePlate(_plateController.text.trim());
     if (checkTypes.contains('api_cloud_fgis_taxi_search')) {
-      final identifiers = prepareFgisTaxiIdentifiers(
-        vin: vin,
-        gosNumber: plate,
-      );
+      // ФГИС на бэке ищет ТОЛЬКО по госномеру (VIN игнорируется) — см.
+      // prepareFgisTaxiIdentifiers. Без пригодного номера платный запрос
+      // гарантированно вернёт сырую ошибку ApiCloud, поэтому проверку
+      // снимаем заранее и объясняем почему.
+      final identifiers = prepareFgisTaxiIdentifiers(gosNumber: plate);
       final identifierError = identifiers.error;
       if (identifierError != null) {
+        if (checkTypes.length == 1) {
+          if (mounted) {
+            showSparkJoyErrorSnackBar(
+              context,
+              Exception(identifierError),
+              fallback: identifierError,
+            );
+          }
+          return;
+        }
+        checkTypes.remove('api_cloud_fgis_taxi_search');
+        _setStateSafely(() {
+          _legalSelectedCheckTypes = checkTypes.toList();
+        });
         if (mounted) {
-          showSparkJoyErrorSnackBar(
-            context,
-            Exception(identifierError),
-            fallback: identifierError,
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('$identifierError — проверка пропущена')),
           );
         }
-        return;
-      }
-      vin = identifiers.vin;
-      final fgisPlate = identifiers.gosNumber;
-      if (fgisPlate.isEmpty) {
-        // ФГИС принимает VIN ИЛИ госномер. При полном VIN второй идентификатор
-        // не отправляем: иначе ApiCloud может выбрать ошибочный латинский plate.
-        plate = '';
-      } else if (fgisPlate != plate) {
-        plate = fgisPlate;
+      } else if (identifiers.gosNumber != plate) {
+        // Латинские look-alike буквы приведены к кириллице — синхронизируем
+        // поле, чтобы пользователь видел, что реально ушло в проверку.
+        plate = identifiers.gosNumber;
         _setStateSafely(() => _applyDetectedPlate(plate));
         _markDraftDirty();
       }

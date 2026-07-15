@@ -442,6 +442,9 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         );
         return false;
       }
+      if (identityComplete) {
+        await _autofillGenerationFromKnownYear();
+      }
       // Записи .text= метят черновик dirty через autosave-listener.
       return true; // терминально (found / not_found) → params можно грунтовать
     } catch (e) {
@@ -548,7 +551,9 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
         values.forEach((key, value) {
           if (value.isEmpty) return;
           final controller = byKey[key]!;
-          if (controller.text.trim().isNotEmpty) return; // only-empty, не перетираем
+          if (controller.text.trim().isNotEmpty) {
+            return; // only-empty, не перетираем
+          }
           controller.text = value;
           _vinAutofilledValues[key] = value; // запоминаем запись ИИ (для #3)
           filledAny = true;
@@ -635,7 +640,9 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
     final lines = <String>[];
     for (final c in _legalCheckResults) {
       final type = (c['checkType'] ?? '').toString();
-      if (type == 'api_cloud_converter_search') continue; // не материал проверки
+      if (type == 'api_cloud_converter_search') {
+        continue; // не материал проверки
+      }
       final status = (c['status'] ?? '').toString().toLowerCase();
       if (status.isEmpty ||
           status == 'pending' ||
@@ -644,8 +651,9 @@ extension _SparkJoyDictationRulesMethods on _SparkJoyCreateReportScreenState {
           status == 'running') {
         continue; // ещё не доехало — не включаем
       }
-      final title =
-          type.isEmpty ? 'Проверка' : sparkJoyLegalCheckTypeLabel(type);
+      final title = type.isEmpty
+          ? 'Проверка'
+          : sparkJoyLegalCheckTypeLabel(type);
       // ГОСТ-сертификат: вместо «Обнаружено» — реальные факты сертификата
       // (марка/модель/год/двигатель/топливо/КПП/мощность/№). Бэк отдаёт их в
       // certificate[]; _legalNormalizedToText их теряет, поэтому достаём сами.

@@ -6,8 +6,8 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
     // Бэк принимает авто лишь каталожными ID (modelCarId / frameId) —
     // свободный текст всё равно ронял выгрузку в самом конце
     // (reportModelUnresolved), теперь несоответствие невозможно по
-    // построению. Единственная точка входа — кнопка ниже: она открывает
-    // каталог-визард с шага «Марка» (раньше это делали три поля-дублёра).
+    // построению. Единственная точка входа — кнопка ниже. Пикер продолжает с
+    // глубины текущей привязки: brand → model → generation → restyling.
     // Марка/модель/поколение показываются статичными блоками без фокуса и
     // анимации поля ввода. Конвертер VIN/госномера и
     // скан СТС пишут сюда уже привязанные к каталогу значения (см.
@@ -121,9 +121,7 @@ extension _SparkJoyCompanyCards on _SparkJoyCreateReportScreenState {
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => unawaited(
-                  _openCarPickerDialog(startAt: _CarPickerStep.brand),
-                ),
+                onPressed: () => unawaited(_openCarPickerDialog()),
                 icon: const Icon(Icons.directions_car_outlined),
                 label: MyText(
                   text: hasCar ? 'Изменить авто' : 'Выбрать авто из каталога',

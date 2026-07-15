@@ -254,6 +254,7 @@ extension _SparkJoyDraftInitHelpers on _SparkJoyCreateReportScreenState {
       }
     }
     _vinUnreadable = _readBool(draft, 'vinUnreadable');
+    _resolvedVinYear = _read(draft, 'resolvedVinYear');
 
     _docsOwnerMatch = _readTriState(draft['docsOwnerMatch']);
     _docsVinMatch = _readTriState(draft['docsVinMatch']);

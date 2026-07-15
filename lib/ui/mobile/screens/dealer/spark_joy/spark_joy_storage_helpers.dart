@@ -2783,6 +2783,8 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       if (_selectedGenerationNumber != null && _selectedGenerationNumber! > 0)
         'generationNumber': _selectedGenerationNumber,
       'vin': _vinController.text.trim(),
+      if (_resolvedVinYear.trim().isNotEmpty)
+        'resolvedVinYear': _resolvedVinYear.trim(),
       'vinUnreadable': _vinUnreadable,
       'plate': _sanitizePlate(_plateController.text.trim()),
       'gosNumberCountry': _plateCountry.name,

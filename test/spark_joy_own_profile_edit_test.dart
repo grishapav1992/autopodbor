@@ -21,6 +21,10 @@ const _tenServices = <String>[
   'Услуга 10',
 ];
 
+// Undo-окно отложенного удаления фото — держать в синхроне с
+// _avatarDeleteCommitDelay в spark_joy_specialist_profile_screen.dart.
+const _undoWindow = Duration(seconds: 5);
+
 Future<void> _pumpProfile(
   WidgetTester tester, {
   String? avatarBase64,
@@ -59,11 +63,14 @@ Future<void> _openProfileEditor(WidgetTester tester) async {
   expect(find.text('Редактировать профиль'), findsOneWidget);
 }
 
-Future<void> _requestPhotoDeletion(WidgetTester tester) async {
-  await _openProfileEditor(tester);
-  await tester.tap(find.text('Удалить фото'));
+Future<void> _closeEditorViaX(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('Закрыть'));
   await tester.pumpAndSettle();
-  expect(find.text('Удалить фото профиля?'), findsOneWidget);
+}
+
+String _fieldText(WidgetTester tester, String key) {
+  final field = tester.widget<TextField>(find.byKey(ValueKey(key)));
+  return field.controller!.text;
 }
 
 void main() {
@@ -80,74 +87,210 @@ void main() {
     expect(find.text('Изменить'), findsNothing);
   });
 
-  testWidgets('карандаш открывает редактор ФИО', (tester) async {
+  testWidgets('карандаш открывает редактор с предзаполненным ФИО', (
+    tester,
+  ) async {
     await _pumpProfile(tester);
     await _openProfileEditor(tester);
 
-    await tester.tap(find.text('Изменить ФИО'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('ФИО'), findsOneWidget);
+    expect(_fieldText(tester, 'editor-field-last'), 'Иванов');
+    expect(_fieldText(tester, 'editor-field-first'), 'Иван');
+    expect(_fieldText(tester, 'editor-field-middle'), '');
     expect(find.text('Фамилия'), findsOneWidget);
     expect(find.text('Имя'), findsOneWidget);
-    expect(find.text('Отчество'), findsOneWidget);
+    expect(find.text('Отчество · не обязательно'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-avatar')), findsOneWidget);
+    expect(find.text('Изменить фото'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-delete-photo')), findsOneWidget);
+    expect(find.text('Сохранить'), findsOneWidget);
   });
 
-  testWidgets('карандаш открывает выбор нового фото', (tester) async {
-    await _pumpProfile(tester);
-    await _openProfileEditor(tester);
-
-    await tester.tap(find.text('Изменить фото'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Сделать новое фото'), findsOneWidget);
-    expect(find.text('Выбрать из галереи'), findsOneWidget);
-  });
-
-  testWidgets('удаление фото требует подтверждения', (tester) async {
+  testWidgets('удаление фото мгновенное, «Отменить» откатывает без запроса', (
+    tester,
+  ) async {
     var deleteCalls = 0;
     await _pumpProfile(tester, deleteProfileAvatar: () async => deleteCalls++);
-    await _requestPhotoDeletion(tester);
+    await _openProfileEditor(tester);
 
-    await tester.tap(find.text('Отмена'));
+    await tester.tap(find.byKey(const ValueKey('editor-delete-photo')));
+    await tester.pumpAndSettle();
+
+    // Аватар скрыт локально, запрос ещё не ушёл, баннер предлагает undo.
+    expect(deleteCalls, 0);
+    expect(find.byKey(const ValueKey('editor-banner')), findsOneWidget);
+    expect(find.text('Фото удалено'), findsOneWidget);
+    expect(find.text('Добавить фото'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-delete-photo')), findsNothing);
+
+    await tester.tap(find.byKey(const ValueKey('editor-undo-delete')));
     await tester.pumpAndSettle();
 
     expect(deleteCalls, 0);
-    await _openProfileEditor(tester);
+    expect(find.byKey(const ValueKey('editor-banner')), findsNothing);
     expect(find.text('Изменить фото'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-delete-photo')), findsOneWidget);
   });
 
-  testWidgets('фото исчезает только после успешного удаления', (tester) async {
+  testWidgets('удаление коммитится ровно один раз после undo-окна', (
+    tester,
+  ) async {
     var deleteCalls = 0;
     await _pumpProfile(tester, deleteProfileAvatar: () async => deleteCalls++);
-    await _requestPhotoDeletion(tester);
+    await _openProfileEditor(tester);
 
-    await tester.tap(
-      find.byKey(const ValueKey('confirm-delete-profile-photo')),
-    );
+    await tester.tap(find.byKey(const ValueKey('editor-delete-photo')));
+    await tester.pumpAndSettle();
+    expect(deleteCalls, 0);
+
+    await tester.pump(_undoWindow);
     await tester.pumpAndSettle();
 
     expect(deleteCalls, 1);
-    await _openProfileEditor(tester);
+    expect(find.byKey(const ValueKey('editor-banner')), findsNothing);
     expect(find.text('Добавить фото'), findsOneWidget);
-    expect(find.text('Удалить фото'), findsNothing);
+
+    await _closeEditorViaX(tester);
+    expect(find.text('Редактировать профиль'), findsNothing);
+    expect(deleteCalls, 1);
   });
 
-  testWidgets('ошибка удаления не скрывает фото', (tester) async {
+  testWidgets('закрытие редактора в undo-окне коммитит удаление сразу', (
+    tester,
+  ) async {
+    var deleteCalls = 0;
+    await _pumpProfile(tester, deleteProfileAvatar: () async => deleteCalls++);
+    await _openProfileEditor(tester);
+
+    await tester.tap(find.byKey(const ValueKey('editor-delete-photo')));
+    await tester.pumpAndSettle();
+    expect(deleteCalls, 0);
+
+    // ФИО не менялось — guard не вмешивается, закрытие мгновенное.
+    await _closeEditorViaX(tester);
+
+    expect(find.text('Редактировать профиль'), findsNothing);
+    expect(deleteCalls, 1);
+    expect(find.text('Фото профиля удалено'), findsOneWidget);
+  });
+
+  testWidgets('ошибка удаления возвращает фото и показывает баннер', (
+    tester,
+  ) async {
     await _pumpProfile(
       tester,
       deleteProfileAvatar: () async => throw Exception('offline'),
     );
-    await _requestPhotoDeletion(tester);
+    await _openProfileEditor(tester);
 
-    await tester.tap(
-      find.byKey(const ValueKey('confirm-delete-profile-photo')),
-    );
+    await tester.tap(find.byKey(const ValueKey('editor-delete-photo')));
+    await tester.pumpAndSettle();
+    await tester.pump(_undoWindow);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('Не удалось удалить фото'), findsOneWidget);
-    await _openProfileEditor(tester);
+    // Аватар восстановлен, вместо undo-баннера — баннер ошибки.
+    expect(find.byKey(const ValueKey('editor-banner')), findsOneWidget);
+    expect(find.text('Фото удалено'), findsNothing);
     expect(find.text('Изменить фото'), findsOneWidget);
+    expect(find.byKey(const ValueKey('editor-delete-photo')), findsOneWidget);
+
+    await _closeEditorViaX(tester);
+    expect(find.text('Редактировать профиль'), findsNothing);
+  });
+
+  testWidgets('guard: изменённые поля требуют подтверждения закрытия', (
+    tester,
+  ) async {
+    await _pumpProfile(tester);
+    await _openProfileEditor(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('editor-field-first')),
+      'Пётр',
+    );
+    await tester.pump();
+
+    // Крестик при изменённых полях → диалог; «Продолжить» оставляет шит.
+    await tester.tap(find.byTooltip('Закрыть'));
+    await tester.pumpAndSettle();
+    expect(find.text('Не сохранять изменения?'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('editor-discard-stay')));
+    await tester.pumpAndSettle();
+    expect(find.text('Не сохранять изменения?'), findsNothing);
+    expect(find.text('Редактировать профиль'), findsOneWidget);
+
+    // Тап по затемнению над шитом → снова диалог; «Закрыть» отбрасывает
+    // правки без сохранения.
+    await tester.tapAt(const Offset(187, 10));
+    await tester.pumpAndSettle();
+    expect(find.text('Не сохранять изменения?'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('editor-discard-close')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Редактировать профиль'), findsNothing);
+    expect(find.text('Иван Иванов'), findsOneWidget);
+    expect(find.textContaining('Пётр'), findsNothing);
+  });
+
+  testWidgets('чистое закрытие не спрашивает подтверждения', (tester) async {
+    await _pumpProfile(tester);
+    await _openProfileEditor(tester);
+
+    await tester.tap(find.byKey(const ValueKey('editor-cancel')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Не сохранять изменения?'), findsNothing);
+    expect(find.text('Редактировать профиль'), findsNothing);
+  });
+
+  testWidgets('пустая фамилия не сохраняется, ошибка гаснет при вводе', (
+    tester,
+  ) async {
+    await _pumpProfile(tester);
+    await _openProfileEditor(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('editor-field-last')),
+      '',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('editor-save')));
+    await tester.pump();
+
+    expect(find.text('Введите фамилию'), findsOneWidget);
+    expect(find.text('Редактировать профиль'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('editor-field-last')),
+      'Иванов',
+    );
+    await tester.pump();
+    expect(find.text('Введите фамилию'), findsNothing);
+
+    await _closeEditorViaX(tester);
+    expect(find.text('Редактировать профиль'), findsNothing);
+  });
+
+  testWidgets('сохранение капитализирует ФИО и обновляет шапку', (
+    tester,
+  ) async {
+    await _pumpProfile(tester);
+    await _openProfileEditor(tester);
+
+    await tester.enterText(
+      find.byKey(const ValueKey('editor-field-last')),
+      'петров',
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey('editor-save')));
+    await tester.pumpAndSettle();
+
+    // Шит закрыт, шапка перерисована из контроллеров с заглавной буквы.
+    // Server-push в тестовом окружении падает и глотается внутри
+    // _pushProfileToServer — снекбар успеха не проверяем.
+    expect(find.text('Редактировать профиль'), findsNothing);
+    expect(find.text('Иван Петров'), findsOneWidget);
   });
 
   testWidgets('профиль раскрывает услуги после шестой', (tester) async {
@@ -198,6 +341,6 @@ void main() {
     expect(find.byType(InteractiveViewer), findsNothing);
     await _openProfileEditor(tester);
     expect(find.text('Добавить фото'), findsOneWidget);
-    expect(find.text('Удалить фото'), findsNothing);
+    expect(find.byKey(const ValueKey('editor-delete-photo')), findsNothing);
   });
 }

@@ -640,6 +640,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       _maybeResolveFromVin();
     }
     _markDraftDirty();
+    await _autofillGenerationFromKnownYear();
     if (mounted && showFeedback) {
       final parts = <String>[
         if (filled.isNotEmpty) 'Заполнено с документа: ${filled.join(', ')}',

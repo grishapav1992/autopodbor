@@ -160,6 +160,15 @@ class RestylingItem {
     return null;
   }
 
+  /// True when [year] belongs to this catalog period. A completely unknown
+  /// range is not a match; one-sided ranges remain usable.
+  bool containsYear(int year) {
+    if (yearStart == null && yearEnd == null) return false;
+    if (yearStart != null && year < yearStart!) return false;
+    if (yearEnd != null && year > yearEnd!) return false;
+    return true;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'restyling': restyling,
@@ -231,6 +240,8 @@ class GenerationItem {
   /// известен, иначе — номер поколения.
   String get yearRangeOrNumber => yearRange ?? '$generation';
 
+  bool containsYear(int year) => restylings.any((r) => r.containsYear(year));
+
   /// Диапазон годов, посчитанный напрямую из «сырого» списка рестайлингов
   /// (list of maps в контракте [RestylingItem.toJson]) — для экранов, где под
   /// рукой нет собранного [GenerationItem], а только сохранённый/пришедший с
@@ -292,6 +303,22 @@ class GenerationItem {
       ),
     );
   }
+}
+
+/// Returns a generation only when the catalog year match is unambiguous.
+/// Transition years can legally belong to two generations; in that case the
+/// user must choose and we deliberately return null instead of guessing.
+GenerationItem? findUniqueGenerationForYear(
+  Iterable<GenerationItem> generations,
+  int year,
+) {
+  GenerationItem? match;
+  for (final generation in generations) {
+    if (!generation.containsYear(year)) continue;
+    if (match != null) return null;
+    match = generation;
+  }
+  return match;
 }
 
 // ── Каталожная JSON-сериализация ────────────────────────────────────────

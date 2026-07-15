@@ -663,26 +663,26 @@ bool isValidFgisTaxiPlate(String input) {
   return value.isNotEmpty && RegExp(r'^[А-ЯЁ0-9]+$').hasMatch(value);
 }
 
-/// Готовит взаимоисключающие идентификаторы для запроса ФГИС Такси.
-/// Приоритет у полного VIN; госномер используется только когда валидного VIN
-/// нет. Так латинский/грязный номер не может испортить проверку по VIN.
-({String vin, String gosNumber, String? error}) prepareFgisTaxiIdentifiers({
-  required String vin,
+/// Готовит госномер для запроса ФГИС Такси.
+///
+/// Бэкенд-провайдер (`ApiCloudLegalReviewProvider::buildTypeSpecificQuery`,
+/// ветка ucs) отправляет в ApiCloud fgisTaxi **только** `gosNumber` — VIN
+/// игнорируется. Прежняя логика «при полном VIN номер не шлём» оставляла
+/// запрос без идентификатора, и ApiCloud отвечал сырой ошибкой
+/// «gosNumber% forbidden symbols present». Поэтому валидный кириллический
+/// номер обязателен всегда; без него проверку запускать нельзя.
+({String gosNumber, String? error}) prepareFgisTaxiIdentifiers({
   required String gosNumber,
 }) {
-  final cleanVin = vin.trim().toUpperCase().replaceAll(RegExp(r'[\s\-]'), '');
-  if (RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(cleanVin)) {
-    return (vin: cleanVin, gosNumber: '', error: null);
-  }
-
   final cleanPlate = canonicalizeFgisTaxiPlate(gosNumber);
   if (isValidFgisTaxiPlate(cleanPlate)) {
-    return (vin: '', gosNumber: cleanPlate, error: null);
+    return (gosNumber: cleanPlate, error: null);
   }
   return (
-    vin: '',
     gosNumber: '',
-    error: 'Для ФГИС укажите корректный VIN или госномер кириллицей и цифрами',
+    error:
+        'Для проверки «Разрешение такси (ФГИС)» нужен российский госномер '
+        '(кириллица и цифры)',
   );
 }
 

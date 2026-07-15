@@ -31,3 +31,43 @@ String sparkJoyLegalCheckTypeLabel(String value) {
       return cleaned[0].toUpperCase() + cleaned.substring(1);
   }
 }
+
+/// Переводит сырое сообщение провайдера проверки (ApiCloud → бэк пробрасывает
+/// его в `responseNormalized.message` / `errorMessage` как есть) в понятный
+/// русский текст. Живой пример: «gosNumber% forbidden symbols present» —
+/// ответ ApiCloud на пустой/невалидный госномер, в таком виде он доходил до
+/// пользователя (репорт 2026-07-15).
+///
+/// `errorMessage` бэк собирает как «ExceptionClass | текст | /path/file.php:123»
+/// (`ApiCloudLegalReviewProvider::formatErrorMessage`) — технические части
+/// отбрасываем, неизвестный текст возвращаем как есть.
+String sparkJoyHumanizeLegalCheckMessage(String raw) {
+  var message = raw.trim();
+  if (message.isEmpty) return '';
+  if (message.contains(' | ')) {
+    final human = message
+        .split(' | ')
+        .map((part) => part.trim())
+        .where(
+          (part) =>
+              part.isNotEmpty &&
+              // PHP-класс исключения: App\Workerman\…\ApiCloudException.
+              !RegExp(r'^[A-Za-z0-9_\\]+(Exception|Error)$').hasMatch(part) &&
+              // Файл и строка: /var/www/src/….php:123.
+              !RegExp(r'\.php:\d+$').hasMatch(part),
+        )
+        .toList();
+    if (human.isNotEmpty) message = human.join(' | ');
+  }
+  final lower = message.toLowerCase();
+  if (lower.contains('forbidden symbols')) {
+    return 'Сервис проверки не принял госномер — нужен российский номер '
+        'кириллицей и цифрами';
+  }
+  if (lower.contains('curl') ||
+      lower.contains('timeout') ||
+      lower.contains('timed out')) {
+    return 'Сервис проверки не ответил вовремя — попробуйте позже';
+  }
+  return message;
+}

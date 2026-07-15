@@ -124,37 +124,29 @@ void main() {
       expect(isValidFgisTaxiPlate(plate), isFalse);
     });
 
-    test('полный VIN имеет приоритет, госномер не отправляется', () {
-      final identifiers = prepareFgisTaxiIdentifiers(
-        vin: 'XW7BF4FK10S012345',
-        gosNumber: 'P123PC77',
-      );
+    // Бэкенд-провайдер fgisTaxi ищет ТОЛЬКО по gosNumber (VIN игнорируется):
+    // прежняя логика «полный VIN подавляет номер» отправляла запрос без
+    // идентификатора → сырая ошибка ApiCloud «gosNumber% forbidden symbols
+    // present» (репорт 2026-07-15).
+    test('валидный госномер отправляется нормализованным', () {
+      final identifiers = prepareFgisTaxiIdentifiers(gosNumber: 'P 123 PC-77');
 
-      expect(identifiers.vin, 'XW7BF4FK10S012345');
-      expect(identifiers.gosNumber, isEmpty);
-      expect(identifiers.error, isNull);
-    });
-
-    test('без VIN используется нормализованный госномер', () {
-      final identifiers = prepareFgisTaxiIdentifiers(
-        vin: '',
-        gosNumber: 'P 123 PC-77',
-      );
-
-      expect(identifiers.vin, isEmpty);
       expect(identifiers.gosNumber, 'Р123РС77');
       expect(identifiers.error, isNull);
     });
 
-    test('без корректного VIN и госномера возвращается понятная ошибка', () {
-      final identifiers = prepareFgisTaxiIdentifiers(
-        vin: 'INVALID',
-        gosNumber: 'D123FF77',
-      );
+    test('без пригодного госномера возвращается понятная ошибка', () {
+      final identifiers = prepareFgisTaxiIdentifiers(gosNumber: 'D123FF77');
 
-      expect(identifiers.vin, isEmpty);
       expect(identifiers.gosNumber, isEmpty);
-      expect(identifiers.error, contains('VIN или госномер'));
+      expect(identifiers.error, contains('российский госномер'));
+    });
+
+    test('пустой госномер — ошибка даже при наличии VIN у отчёта', () {
+      final identifiers = prepareFgisTaxiIdentifiers(gosNumber: '');
+
+      expect(identifiers.gosNumber, isEmpty);
+      expect(identifiers.error, isNotNull);
     });
   });
 

@@ -250,7 +250,33 @@ void main() {
 
     test('yearRangeOrNumber падает на номер поколения без годов', () {
       expect(gen(const [], number: 7).yearRangeOrNumber, '7');
-      expect(gen([rest(start: 2016, end: 2020)]).yearRangeOrNumber, '2016–2020');
+      expect(
+        gen([rest(start: 2016, end: 2020)]).yearRangeOrNumber,
+        '2016–2020',
+      );
+    });
+
+    test('containsYear учитывает закрытые и открытые диапазоны', () {
+      expect(gen([rest(start: 2016, end: 2020)]).containsYear(2020), isTrue);
+      expect(gen([rest(start: 2016, end: 2020)]).containsYear(2021), isFalse);
+      expect(gen([rest(start: 2021)]).containsYear(2026), isTrue);
+      expect(gen([rest(end: 2015)]).containsYear(2010), isTrue);
+      expect(gen([rest()]).containsYear(2020), isFalse);
+    });
+
+    test('findUniqueGenerationForYear не угадывает при пересечении', () {
+      final older = gen([rest(start: 2015, end: 2020)], number: 1);
+      final newer = GenerationItem(
+        id: 2,
+        modelCarId: 1,
+        generation: 2,
+        frames: const [],
+        restylings: [rest(start: 2020, end: 2025)],
+      );
+
+      expect(findUniqueGenerationForYear([older, newer], 2019), same(older));
+      expect(findUniqueGenerationForYear([older, newer], 2020), isNull);
+      expect(findUniqueGenerationForYear([older, newer], 2030), isNull);
     });
   });
 
@@ -328,11 +354,7 @@ void main() {
       final value = GenerationItem.displayValueFromRequestCarJson({
         'generation': 2,
         'restyling': [
-          {
-            'id': 10,
-            'yearStart': '2019-01-01',
-            'yearEnd': '2021-12-31',
-          },
+          {'id': 10, 'yearStart': '2019-01-01', 'yearEnd': '2021-12-31'},
         ],
       });
       expect(value, '2019–2021');

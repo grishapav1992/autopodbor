@@ -266,6 +266,9 @@ String _legalCheckStatusLabel(String status) {
 /// реже — уже объектом. Сводим к человекочитаемой строке: готовый русский
 /// `message` от бэка, иначе фраза по `found` (+кол-во записей при наличии).
 /// Сырой дамп ключей (count/items/...) пользователю не показываем.
+/// Провайдерские сообщения («В базе такси не найдено», сырые ошибки ApiCloud
+/// вида «gosNumber% forbidden symbols present») пропускаем через
+/// [sparkJoyHumanizeLegalCheckMessage].
 String _legalNormalizedToText(dynamic normalized) {
   if (normalized == null) return '';
   dynamic decoded = normalized;
@@ -275,7 +278,7 @@ String _legalNormalizedToText(dynamic normalized) {
     try {
       decoded = jsonDecode(s);
     } catch (_) {
-      return s;
+      return sparkJoyHumanizeLegalCheckMessage(s);
     }
   }
   if (decoded is! Map) {
@@ -284,7 +287,15 @@ String _legalNormalizedToText(dynamic normalized) {
     }
     return decoded.toString();
   }
-  final message = (decoded['message'] ?? '').toString().trim();
+  // Такси-проверка кладёт тексты в partner_message/local_message (message у
+  // неё отсутствует) — без них карточка «не найдено» оставалась немой.
+  final message = sparkJoyHumanizeLegalCheckMessage(
+    (decoded['message'] ??
+            decoded['partner_message'] ??
+            decoded['local_message'] ??
+            '')
+        .toString(),
+  );
   final found = decoded['found'];
   final countRaw = decoded['count'] ?? decoded['properties_total'];
   final count = countRaw is int ? countRaw : int.tryParse('${countRaw ?? ''}');
@@ -334,7 +345,14 @@ List<Widget> _buildSparkJoyLegalResults(_SparkJoyCreateReportScreenState s) {
           ? 'Проверка'
           : sparkJoyLegalCheckTypeLabel(type);
       final status = (c['status'] ?? '').toString();
-      final summary = _legalNormalizedToText(c['responseNormalized']);
+      var summary = _legalNormalizedToText(c['responseNormalized']);
+      if (summary.isEmpty) {
+        // Упавший чек несёт текст только в errorMessage (responseNormalized
+        // бэк при ошибке не пишет) — раньше карточка «ошибка» была немой.
+        summary = sparkJoyHumanizeLegalCheckMessage(
+          (c['errorMessage'] ?? '').toString(),
+        );
+      }
       final cert = type == 'api_cloud_gost_certificate'
           ? gostCertificateFields(c['responseNormalized'])
           : null;

@@ -73,7 +73,8 @@ class SparkJoySpecialistProfileScreen extends StatefulWidget {
 }
 
 class _SparkJoySpecialistProfileScreenState
-    extends State<SparkJoySpecialistProfileScreen> {
+    extends State<SparkJoySpecialistProfileScreen>
+    with WidgetsBindingObserver {
   static const List<String> _presetSpecializations = <String>[
     'Подбор под ключ',
     'Осмотр кузова',
@@ -164,6 +165,34 @@ class _SparkJoySpecialistProfileScreenState
   // авто-плитка из kSparkAvatarPresets). Mutual exclusive с base64.
   int? _avatarPresetIndex;
 
+  // ── Полноэкранный редактор профиля (макет 3a) ──
+  // Открыт ли шит-редактор. Пока он открыт, сообщения аватар-пайплайна
+  // идут во внутренний баннер шита (_editorBanner): ScaffoldMessenger
+  // рендерится ПОД модальным барьером и юзеру не виден.
+  bool _isProfileEditorOpen = false;
+  // Тик перерисовки открытого шита. Аватар-состоянием владеет экран
+  // (_urlAvatar/_avatarBase64/_isUploadingAvatar/pending-удаление), шит
+  // читает его геттерами и слушает этот notifier.
+  final ValueNotifier<int> _profileEditorTick = ValueNotifier<int>(0);
+  // Текст баннера ошибок внутри шита. null — баннер скрыт. Без auto-hide:
+  // заменяется следующим сообщением, гаснет при закрытии шита.
+  String? _editorBanner;
+  // Отложенное удаление фото (undo-окно): аватар скрывается сразу,
+  // DeleteProfileAvatar уходит по таймеру; «Отменить» в баннере шита
+  // восстанавливает сохранённую тройку. Состояние живёт на экране, не в
+  // шите: commit-таймер и flush при закрытии выполняются в скоупе экрана,
+  // а фоновый _fetchServerProfile обязан видеть pending (иначе воскресит
+  // аватар в undo-окне). Инвариант: тройка non-null ⇔ pending активен.
+  String? _pendingAvatarDeleteUrl;
+  String? _pendingAvatarDeleteBase64;
+  int? _pendingAvatarDeletePresetIndex;
+  Timer? _avatarDeleteCommitTimer;
+
+  bool get _hasPendingAvatarDelete =>
+      _pendingAvatarDeleteUrl != null ||
+      _pendingAvatarDeleteBase64 != null ||
+      _pendingAvatarDeletePresetIndex != null;
+
   String? _innError;
   String? _verifiedInn;
   String? _businessType;
@@ -192,6 +221,9 @@ class _SparkJoySpecialistProfileScreenState
   @override
   void initState() {
     super.initState();
+    // Lifecycle-хук: свёрнутое приложение может быть убито системой, и
+    // undo-окно удаления фото уже не вернуть — коммитим pending сразу.
+    WidgetsBinding.instance.addObserver(this);
     final initialProfile = widget.initialProfile;
     if (initialProfile == null) {
       _loadProfile();
@@ -226,7 +258,22 @@ class _SparkJoySpecialistProfileScreenState
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused && _hasPendingAvatarDelete) {
+      unawaited(_commitPendingAvatarDelete());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // Уход с экрана с незакоммиченным удалением фото — коммитим сразу,
+    // иначе запрос молча потеряется, а аватар воскреснет с сервера.
+    // commit guard'ит все UI-эффекты по mounted, поэтому безопасен после
+    // dispose; тик ниже уже не дёрнется (нотифаер disposed + mounted-guard).
+    if (_hasPendingAvatarDelete) unawaited(_commitPendingAvatarDelete());
+    _avatarDeleteCommitTimer?.cancel();
+    _profileEditorTick.dispose();
     SparkJoyProfileRefreshBus.notifier.removeListener(
       _onProfileRefreshRequested,
     );
@@ -539,7 +586,13 @@ class _SparkJoySpecialistProfileScreenState
       final serverUrlAvatar = result['urlAvatar']?.toString().trim() ?? '';
       setState(() {
         _specialistProfile = merged;
-        _urlAvatar = serverUrlAvatar.isNotEmpty ? serverUrlAvatar : null;
+        // Generation-bump в _beginDeferredAvatarDelete гасит только
+        // in-flight fetch'и; запрос, стартовавший уже В undo-окне (например
+        // от SparkJoyProfileRefreshBus), дошёл бы сюда и воскресил аватар —
+        // поэтому apply урла дополнительно закрыт pending-guard'ом.
+        if (!_hasPendingAvatarDelete) {
+          _urlAvatar = serverUrlAvatar.isNotEmpty ? serverUrlAvatar : null;
+        }
         _linkedCompanyId = linkedCompanyId;
         _linkedCompanyProfile = linkedCompanyProfile;
         _linkedCompanyError = linkedCompanyError;
@@ -585,7 +638,9 @@ class _SparkJoySpecialistProfileScreenState
           'companyName': result['companyName'].toString(),
         if (result['city'] != null) 'city': result['city'],
         if (result['role'] != null) 'role': result['role'],
-        'urlAvatar': result['urlAvatar'],
+        // В undo-окне удаления серверный urlAvatar в кэш не пишем: иначе
+        // после commit'а cold start поднимет из кэша уже удалённое фото.
+        if (!_hasPendingAvatarDelete) 'urlAvatar': result['urlAvatar'],
         if (isCompanyRole && serverInn != null)
           'companyInn': serverInn.toString(),
         if (isCompanyRole && result['isVerifyCompany'] != null)
@@ -2285,258 +2340,96 @@ class _SparkJoySpecialistProfileScreenState
   /// Единая точка редактирования identity-части профиля. Сам аватар
   /// больше не смешивает просмотр с редактированием: все изменения
   /// собраны за карандашом.
-  Future<void> _openProfileEditorSheet() async {
-    final hasAvatar = _hasProfilePhoto();
-    final action = await showAppAdaptiveBottomSheet<String>(
-      context: context,
-      extent: AppBottomSheetExtent.content,
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              SparkSpace.xl,
-              SparkSpace.xl,
-              SparkSpace.xl,
-              SparkSpace.lg,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AppBottomSheetHeader(
-                  title: 'Редактировать профиль',
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                  ),
-                  onClose: () => Navigator.of(ctx).pop(),
-                ),
-                const SizedBox(height: SparkSpace.md),
-                _SheetActionRow(
-                  icon: Icons.person_outline_rounded,
-                  label: 'Изменить ФИО',
-                  onTap: () => Navigator.of(ctx).pop('name'),
-                ),
-                _sheetRowDivider(),
-                _SheetActionRow(
-                  icon: Icons.photo_camera_outlined,
-                  label: hasAvatar ? 'Изменить фото' : 'Добавить фото',
-                  onTap: () => Navigator.of(ctx).pop('photo'),
-                ),
-                if (hasAvatar) ...[
-                  _sheetRowDivider(),
-                  _SheetActionRow(
-                    icon: Icons.delete_outline_rounded,
-                    label: 'Удалить фото',
-                    color: kRedColor,
-                    onTap: () => Navigator.of(ctx).pop('delete'),
-                  ),
-                ],
-                const SizedBox(height: SparkSpace.xxl),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: SparkSpace.md,
-                  ),
-                  child: SizedBox(
-                    height: SparkSize.actionHeight,
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      style: OutlinedButton.styleFrom(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(SparkRadius.lg),
-                        ),
-                      ),
-                      child: const Text('Отмена'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-    if (action == null || !mounted) return;
-    switch (action) {
-      case 'name':
-        await _editFullNameSheet();
-        return;
-      case 'photo':
-        await _openAvatarPickerSheet();
-        return;
-      case 'delete':
-        await _confirmDeleteAvatar();
-        return;
-    }
+  /// Перерисовать открытый шит-редактор (он слушает [_profileEditorTick]).
+  void _notifyProfileEditor() {
+    if (!mounted) return;
+    _profileEditorTick.value++;
   }
 
-  /// Action-sheet выбора аватара. Опции: Камера / Галерея / Удалить.
-  /// Picked-image → base64 → S3. Side-effects (snackbar / setState)
-  /// живут здесь, а sheet — чисто UI слой.
-  Future<void> _openAvatarPickerSheet() async {
-    final hasAvatar =
-        (_urlAvatar ?? '').isNotEmpty || (_avatarBase64 ?? '').isNotEmpty;
-    final action = await showAppAdaptiveBottomSheet<String>(
-      context: context,
-      extent: AppBottomSheetExtent.content,
-      builder: (ctx) {
-        return SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              SparkSpace.xl,
-              SparkSpace.xl,
-              SparkSpace.xl,
-              SparkSpace.lg,
-            ),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                minHeight: MediaQuery.sizeOf(ctx).height * 0.36,
-                maxHeight: MediaQuery.sizeOf(ctx).height * 0.72,
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  AppBottomSheetHeader(
-                    title: 'Фото профиля',
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: SparkSpace.md,
-                    ),
-                    onClose: () => Navigator.of(ctx).pop(),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      SparkSpace.md,
-                      SparkSpace.sm,
-                      SparkSpace.md,
-                      SparkSpace.lg,
-                    ),
-                    child: MyText(
-                      text: hasAvatar
-                          ? 'Посмотрите текущее фото или замените его.'
-                          : 'Добавьте фото с камеры или из галереи.',
-                      size: SparkTextSize.bodyLg,
-                      color: kGreyColor,
-                      lineHeight: 1.25,
-                    ),
-                  ),
-                  if (hasAvatar) ...[
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => Navigator.of(ctx).pop('preview'),
-                        borderRadius: BorderRadius.circular(SparkRadius.lg),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: SparkSpace.md,
-                            vertical: SparkSpace.sm,
-                          ),
-                          padding: const EdgeInsets.all(SparkSpace.md),
-                          decoration: BoxDecoration(
-                            color: kInputBgColor,
-                            borderRadius: BorderRadius.circular(SparkRadius.lg),
-                            border: Border.all(color: kBorderColor),
-                          ),
-                          child: Row(
-                            children: [
-                              SparkInitialsAvatar(
-                                name: _composeFullName().isEmpty
-                                    ? 'Специалист'
-                                    : _composeFullName(),
-                                size: 72,
-                                textSize: SparkTextSize.titleLg,
-                                imageUrl: _urlAvatar,
-                                imageBase64: _avatarBase64,
-                              ),
-                              const SizedBox(width: SparkSpace.lg),
-                              const Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    MyText(
-                                      text: 'Посмотреть фото',
-                                      size: SparkTextSize.bodyLg,
-                                      weight: FontWeight.w800,
-                                    ),
-                                    SizedBox(height: SparkSpace.xxxs),
-                                    MyText(
-                                      text: 'Открыть на весь экран',
-                                      size: SparkTextSize.caption,
-                                      color: kGreyColor,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const Icon(
-                                Icons.chevron_right_rounded,
-                                size: SparkSize.iconLg,
-                                color: kGreyColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: SparkSpace.sm),
-                  ],
-                  _SheetActionRow(
-                    icon: Icons.photo_camera_outlined,
-                    label: hasAvatar ? 'Сделать новое фото' : 'Сделать фото',
-                    onTap: () => Navigator.of(ctx).pop('camera'),
-                  ),
-                  _sheetRowDivider(),
-                  _SheetActionRow(
-                    icon: Icons.photo_library_outlined,
-                    label: 'Выбрать из галереи',
-                    onTap: () => Navigator.of(ctx).pop('gallery'),
-                  ),
-                  if (hasAvatar) ...[
-                    _sheetRowDivider(),
-                    _SheetActionRow(
-                      icon: Icons.delete_outline_rounded,
-                      label: 'Удалить фото',
-                      color: kRedColor,
-                      onTap: () => Navigator.of(ctx).pop('delete'),
-                    ),
-                  ],
-                  const SizedBox(height: SparkSpace.xxl),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: SparkSpace.md,
-                    ),
-                    child: SizedBox(
-                      height: SparkSize.actionHeight,
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx).pop(),
-                        style: OutlinedButton.styleFrom(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(SparkRadius.lg),
-                          ),
-                        ),
-                        child: const Text('Отмена'),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+  /// Сообщение аватар-пайплайна: при открытом редакторе — во внутренний
+  /// баннер шита (ScaffoldMessenger рендерится под модальным барьером и не
+  /// виден), иначе — обычный SnackBar как раньше.
+  void _notifyAvatarPipeline(String text, {bool isError = true}) {
+    if (!mounted) return;
+    if (_isProfileEditorOpen) {
+      _editorBanner = text;
+      _notifyProfileEditor();
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(text),
+        backgroundColor: isError ? kRedColor : null,
+      ),
     );
-    if (action == null || !mounted) return;
-    if (action == 'delete') {
-      await _confirmDeleteAvatar();
-      return;
-    }
-    if (action == 'preview') {
-      await _openAvatarPreview();
-      return;
-    }
-    final source = action == 'camera'
-        ? ImageSource.camera
-        : ImageSource.gallery;
+  }
+
+  /// Полноэкранный редактор профиля (макет 3a): аватар с бейджем камеры +
+  /// ФИО одной карточкой + guard несохранённых изменений. Заменяет прежнюю
+  /// цепочку «меню действий → шит ФИО / шит фото / confirm-диалог».
+  Future<void> _openProfileEditorSheet() async {
+    final fullName = _composeFullName();
+    _isProfileEditorOpen = true;
+    _editorBanner = null;
+    final saved = await showAppAdaptiveBottomSheet<Map<String, String>>(
+      context: context,
+      extent: AppBottomSheetExtent.expanded,
+      // Свайп-dismiss у modal bottom sheet закрывается raw pop'ом в обход
+      // PopScope — guard несохранённых изменений с ним недостижим. Ручка
+      // сверху остаётся чисто визуальной.
+      enableDrag: false,
+      builder: (ctx) => _ProfileEditorSheetBody(
+        initialLastName: _lastNameController.text.trim(),
+        initialFirstName: _firstNameController.text.trim(),
+        initialMiddleName: _middleNameController.text.trim(),
+        initialsName: fullName.isEmpty ? 'Специалист' : fullName,
+        tick: _profileEditorTick,
+        urlAvatar: () => _urlAvatar,
+        avatarBase64: () => _avatarBase64,
+        avatarPresetIndex: () => _avatarPresetIndex,
+        isUploading: () => _isUploadingAvatar,
+        hasPendingDelete: () => _hasPendingAvatarDelete,
+        banner: () => _editorBanner,
+        onTakePhoto: () => unawaited(_pickAndUploadAvatar(ImageSource.camera)),
+        onPickGallery: () =>
+            unawaited(_pickAndUploadAvatar(ImageSource.gallery)),
+        onDeletePhoto: _beginDeferredAvatarDelete,
+        onUndoDelete: _undoDeferredAvatarDelete,
+        onOpenPreview: () => unawaited(_openAvatarPreview()),
+      ),
+    );
+    _isProfileEditorOpen = false;
+    _editorBanner = null;
+    // Незакоммиченное удаление фото коммитим сразу: undo-окно живёт только
+    // пока виден баннер с «Отменить».
+    await _flushPendingAvatarDelete();
+    if (saved == null || !mounted) return;
+
+    final last = saved['last']!;
+    final first = saved['first']!;
+    final middle = saved['middle']!;
+    final unchanged =
+        last == _lastNameController.text.trim() &&
+        first == _firstNameController.text.trim() &&
+        middle == _middleNameController.text.trim();
+    if (unchanged) return;
+    _lastNameController.text = last;
+    _firstNameController.text = first;
+    _middleNameController.text = middle;
+    await _saveProfile();
+  }
+
+  /// Пайплайн замены фото: pick → crop → guard 25МБ → optimistic base64 →
+  /// S3. Вызывается из редактора (бейдж камеры = камера, «Изменить фото» =
+  /// галерея); шит остаётся открытым — прогресс виден через тик по
+  /// _isUploadingAvatar, сообщения уходят в баннер шита.
+  Future<void> _pickAndUploadAvatar(ImageSource source) async {
+    if (_isUploadingAvatar || _isDeletingAvatar) return;
+    // Выбор нового фото в undo-окне удаления = «передумал»: восстанавливаем
+    // старое до пикера (простой cancel таймера оставил бы аватар скрытым
+    // локально, но живым на сервере, если пикер отменят), дальше обычный
+    // пайплайн — новое фото просто перезапишет старое в S3.
+    _undoDeferredAvatarDelete();
     try {
       // Берём оригинал в высоком разрешении — кроп уменьшит до 800.
       final xfile = await ImagePicker().pickImage(
@@ -2562,13 +2455,7 @@ class _SparkJoySpecialistProfileScreenState
           : await _cropAvatarSquare(xfile.path);
       if (bytes == null || !mounted) return;
       if (bytes.length > 25 * 1024 * 1024) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Слишком большое фото (максимум 25 МБ).'),
-            backgroundColor: kRedColor,
-          ),
-        );
+        _notifyAvatarPipeline('Слишком большое фото (максимум 25 МБ).');
         return;
       }
       // Оптимистичный preview: показываем base64 пока идёт upload.
@@ -2580,6 +2467,7 @@ class _SparkJoySpecialistProfileScreenState
         _avatarPresetIndex = null;
         _isUploadingAvatar = true;
       });
+      _notifyProfileEditor();
       // Кроп всегда отдаёт JPEG — имя фиксируем под расширение.
       await _uploadAvatarToS3('avatar.jpg', bytes);
     } on PlatformException catch (e) {
@@ -2591,14 +2479,10 @@ class _SparkJoySpecialistProfileScreenState
       final reason = code.contains('denied') || code.contains('permission')
           ? 'Нет доступа. Разрешите в Настройках устройства.'
           : 'Не удалось загрузить фото: ${e.code}';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(reason)));
+      _notifyAvatarPipeline(reason, isError: false);
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Не удалось загрузить фото: $e')));
+      _notifyAvatarPipeline('Не удалось загрузить фото: $e', isError: false);
     }
   }
 
@@ -2739,20 +2623,15 @@ class _SparkJoySpecialistProfileScreenState
     } on storage_api.ProfileAvatarUploadException catch (e) {
       if (!mounted) return;
       setState(() => _isUploadingAvatar = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.message), backgroundColor: kRedColor),
-      );
+      _notifyProfileEditor();
+      _notifyAvatarPipeline(e.message);
       return;
     } catch (e) {
       if (kDebugMode) debugPrint('[avatar] S3 upload failed: $e');
       if (!mounted) return;
       setState(() => _isUploadingAvatar = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Не удалось загрузить фото. Попробуйте ещё раз.'),
-          backgroundColor: kRedColor,
-        ),
-      );
+      _notifyProfileEditor();
+      _notifyAvatarPipeline('Не удалось загрузить фото. Попробуйте ещё раз.');
       return;
     }
     // Cache-busting: ключ в S3 всегда `avatar.png`, поэтому publicUrl не
@@ -2778,6 +2657,7 @@ class _SparkJoySpecialistProfileScreenState
         _avatarBase64 = null;
         _isUploadingAvatar = false;
       });
+      _notifyProfileEditor();
     } catch (e) {
       if (kDebugMode) {
         debugPrint('[avatar] UpdateProfile(urlAvatar) failed: $e');
@@ -2785,47 +2665,73 @@ class _SparkJoySpecialistProfileScreenState
       if (!mounted) return;
       // Спиннер гасим, base64-превью оставляем как fallback.
       setState(() => _isUploadingAvatar = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Фото загружено, но не сохранилось в профиль.'),
-          backgroundColor: kRedColor,
-        ),
-      );
+      _notifyProfileEditor();
+      _notifyAvatarPipeline('Фото загружено, но не сохранилось в профиль.');
     }
   }
 
-  Future<void> _confirmDeleteAvatar() async {
-    if (_isDeletingAvatar || !_hasProfilePhoto()) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить фото профиля?'),
-        content: const Text(
-          'Фото исчезнет из вашего профиля. Это действие нельзя отменить.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            key: const ValueKey('confirm-delete-profile-photo'),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: kRedColor),
-            child: const Text('Удалить'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true && mounted) await _deleteAvatar();
-  }
+  /// Мгновенное удаление фото с undo-окном (макет 3a): аватар скрывается
+  /// сразу, DeleteProfileAvatar уходит по таймеру. «Отменить» в баннере
+  /// шита откатывает без запроса; закрытие шита / сворачивание приложения /
+  /// dispose экрана коммитят немедленно.
+  static const Duration _avatarDeleteCommitDelay = Duration(seconds: 5);
 
-  Future<void> _deleteAvatar() async {
+  void _beginDeferredAvatarDelete() {
     if (_isDeletingAvatar || _isUploadingAvatar || !_hasProfilePhoto()) return;
+    if (_hasPendingAvatarDelete) return;
     // Инвалидируем in-flight _fetchServerProfile — иначе запрос, улетевший
     // до удаления, вернёт старый urlAvatar и восстановит аватарку на экране.
     ++_fetchGeneration;
-    setState(() => _isDeletingAvatar = true);
+    _pendingAvatarDeleteUrl = _urlAvatar;
+    _pendingAvatarDeleteBase64 = _avatarBase64;
+    _pendingAvatarDeletePresetIndex = _avatarPresetIndex;
+    setState(() {
+      _urlAvatar = null;
+      _avatarBase64 = null;
+      _avatarPresetIndex = null;
+    });
+    _avatarDeleteCommitTimer = Timer(
+      _avatarDeleteCommitDelay,
+      () => unawaited(_commitPendingAvatarDelete()),
+    );
+    _notifyProfileEditor();
+  }
+
+  void _undoDeferredAvatarDelete() {
+    if (!_hasPendingAvatarDelete) return;
+    _avatarDeleteCommitTimer?.cancel();
+    _avatarDeleteCommitTimer = null;
+    _restoreAvatarLocally(
+      _pendingAvatarDeleteUrl,
+      _pendingAvatarDeleteBase64,
+      _pendingAvatarDeletePresetIndex,
+    );
+    _pendingAvatarDeleteUrl = null;
+    _pendingAvatarDeleteBase64 = null;
+    _pendingAvatarDeletePresetIndex = null;
+    _notifyProfileEditor();
+  }
+
+  Future<void> _flushPendingAvatarDelete() async {
+    if (!_hasPendingAvatarDelete) return;
+    await _commitPendingAvatarDelete();
+  }
+
+  Future<void> _commitPendingAvatarDelete() async {
+    if (!_hasPendingAvatarDelete || _isDeletingAvatar) return;
+    // Take-and-clear до первого await: на один pending могут навестись
+    // таймер, flush при закрытии шита и lifecycle-хук — забравший тройку
+    // выполняет запрос, остальные увидят пустой pending и выйдут.
+    _avatarDeleteCommitTimer?.cancel();
+    _avatarDeleteCommitTimer = null;
+    final savedUrl = _pendingAvatarDeleteUrl;
+    final savedBase64 = _pendingAvatarDeleteBase64;
+    final savedPreset = _pendingAvatarDeletePresetIndex;
+    _pendingAvatarDeleteUrl = null;
+    _pendingAvatarDeleteBase64 = null;
+    _pendingAvatarDeletePresetIndex = null;
+    _isDeletingAvatar = true;
+    if (mounted) setState(() {});
     try {
       final deleteOverride = widget.deleteProfileAvatar;
       if (deleteOverride != null) {
@@ -2840,118 +2746,52 @@ class _SparkJoySpecialistProfileScreenState
           debugPrint('[avatar] Failed to clear local avatar cache: $e');
         }
       }
-      if (!mounted) return;
-      setState(() {
-        _urlAvatar = null;
-        _avatarBase64 = null;
-        _avatarPresetIndex = null;
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Фото профиля удалено')));
+      // При открытом редакторе не дублируем: баннер «Фото удалено» уже
+      // отработал, а SnackBar под барьером всё равно не виден.
+      if (mounted && !_isProfileEditorOpen) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Фото профиля удалено')));
+      }
     } on storage_api.SessionExpiredException {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Сессия истекла — войдите заново')),
-      );
+      _restoreAvatarLocally(savedUrl, savedBase64, savedPreset);
+      if (mounted) {
+        _notifyAvatarPipeline(
+          'Сессия истекла — войдите заново',
+          isError: false,
+        );
+      }
     } catch (e) {
+      _restoreAvatarLocally(savedUrl, savedBase64, savedPreset);
       if (!mounted) return;
-      showSparkJoyErrorSnackBar(
-        context,
-        e,
-        fallback: 'Не удалось удалить фото. Попробуйте ещё раз.',
-      );
+      if (_isProfileEditorOpen) {
+        _notifyAvatarPipeline(
+          sparkJoyReadableErrorText(
+            e,
+            fallback: 'Не удалось удалить фото. Попробуйте ещё раз.',
+          ),
+        );
+      } else {
+        showSparkJoyErrorSnackBar(
+          context,
+          e,
+          fallback: 'Не удалось удалить фото. Попробуйте ещё раз.',
+        );
+      }
     } finally {
-      if (mounted) setState(() => _isDeletingAvatar = false);
+      _isDeletingAvatar = false;
+      if (mounted) setState(() {});
+      _notifyProfileEditor();
     }
   }
 
-  Future<void> _editFullNameSheet() async {
-    final lastCtrl = TextEditingController(text: _lastNameController.text);
-    final firstCtrl = TextEditingController(text: _firstNameController.text);
-    final middleCtrl = TextEditingController(text: _middleNameController.text);
-    Map<String, String>? lastErrors;
-
-    final saved = await showAppAdaptiveBottomSheet<Map<String, String>>(
-      context: context,
-      extent: AppBottomSheetExtent.content,
-      builder: (sheetCtx) {
-        return StatefulBuilder(
-          builder: (ctx, setLocal) {
-            void submit() {
-              final last = lastCtrl.text.trim();
-              final first = firstCtrl.text.trim();
-              final middle = middleCtrl.text.trim();
-              final errors = <String, String>{};
-              if (last.isEmpty) errors['last'] = 'Введите фамилию';
-              if (first.isEmpty) errors['first'] = 'Введите имя';
-              if (errors.isNotEmpty) {
-                setLocal(() => lastErrors = errors);
-                return;
-              }
-              Navigator.of(
-                sheetCtx,
-              ).pop({'last': last, 'first': first, 'middle': middle});
-            }
-
-            return _SheetScaffold(
-              title: 'ФИО',
-              onCancel: () => Navigator.of(sheetCtx).pop(),
-              onSubmit: submit,
-              children: [
-                _SheetTextField(
-                  controller: lastCtrl,
-                  label: 'Фамилия',
-                  hint: 'Иванов',
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.words,
-                  errorText: lastErrors?['last'],
-                  onChanged: (_) {
-                    if (lastErrors != null) {
-                      setLocal(() => lastErrors = null);
-                    }
-                  },
-                ),
-                _SheetTextField(
-                  controller: firstCtrl,
-                  label: 'Имя',
-                  hint: 'Иван',
-                  textCapitalization: TextCapitalization.words,
-                  errorText: lastErrors?['first'],
-                  onChanged: (_) {
-                    if (lastErrors != null) {
-                      setLocal(() => lastErrors = null);
-                    }
-                  },
-                ),
-                _SheetTextField(
-                  controller: middleCtrl,
-                  label: 'Отчество',
-                  hint: 'Иванович',
-                  textCapitalization: TextCapitalization.words,
-                  onSubmitted: (_) => submit(),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-    _disposeTextControllersAfterRouteClose(lastCtrl, firstCtrl, middleCtrl);
-    if (saved == null || !mounted) return;
-
-    final last = saved['last']!;
-    final first = saved['first']!;
-    final middle = saved['middle']!;
-    final unchanged =
-        last == _lastNameController.text.trim() &&
-        first == _firstNameController.text.trim() &&
-        middle == _middleNameController.text.trim();
-    if (unchanged) return;
-    _lastNameController.text = last;
-    _firstNameController.text = first;
-    _middleNameController.text = middle;
-    await _saveProfile();
+  /// Откат локального аватар-состояния (undo или неудавшийся commit).
+  /// Работает и после dispose экрана — тогда без setState.
+  void _restoreAvatarLocally(String? url, String? base64, int? preset) {
+    _urlAvatar = url;
+    _avatarBase64 = base64;
+    _avatarPresetIndex = preset;
+    if (mounted) setState(() {});
   }
 
   Future<void> _editCitySheet() async {
@@ -4234,22 +4074,6 @@ class _SheetTextField extends StatelessWidget {
   }
 }
 
-/// Тонкий разделитель между action-рядами bottom-sheet'ов (фото профиля,
-/// компания, согласие и условия). Отступ слева выравнивает линию под
-/// текст ряда `_SheetActionRow` (h-padding 8 + иконка 20 + gap 10).
-Widget _sheetRowDivider() {
-  return Padding(
-    padding: const EdgeInsets.only(
-      left: SparkSpace.md + SparkSize.iconLg + SparkSpace.lg,
-      right: SparkSpace.md,
-    ),
-    child: Container(
-      height: SparkSpace.hairline,
-      color: kBorderColor.withValues(alpha: 0.7),
-    ),
-  );
-}
-
 /// Row-кнопка в bottom-sheet'ах профиля. Иконка + лейбл, цвет
 /// переключается на `kRedColor` для destructive-действий.
 class _SheetActionRow extends StatelessWidget {
@@ -4294,6 +4118,647 @@ class _SheetActionRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Полноэкранный редактор профиля (макет 3a): аватар по центру с бейджем
+/// камеры, действия «Изменить фото / Удалить», ФИО одной карточкой с
+/// плавающими лейблами. Аватар-состоянием владеет экран — виджет читает
+/// его геттерами и перерисовывается по [tick]; draft ФИО локальный.
+/// Возвращает через pop `{'last','first','middle'}` (уже с заглавной
+/// буквы) или null при отмене.
+class _ProfileEditorSheetBody extends StatefulWidget {
+  const _ProfileEditorSheetBody({
+    required this.initialLastName,
+    required this.initialFirstName,
+    required this.initialMiddleName,
+    required this.initialsName,
+    required this.tick,
+    required this.urlAvatar,
+    required this.avatarBase64,
+    required this.avatarPresetIndex,
+    required this.isUploading,
+    required this.hasPendingDelete,
+    required this.banner,
+    required this.onTakePhoto,
+    required this.onPickGallery,
+    required this.onDeletePhoto,
+    required this.onUndoDelete,
+    required this.onOpenPreview,
+  });
+
+  final String initialLastName;
+  final String initialFirstName;
+  final String initialMiddleName;
+
+  /// Имя для инициалов-заглушки (фиксируется на момент открытия).
+  final String initialsName;
+
+  /// Сигнал перерисовки от экрана: upload-прогресс, undo-окно, баннер.
+  final Listenable tick;
+  final String? Function() urlAvatar;
+  final String? Function() avatarBase64;
+  final int? Function() avatarPresetIndex;
+  final bool Function() isUploading;
+  final bool Function() hasPendingDelete;
+  final String? Function() banner;
+  final VoidCallback onTakePhoto;
+  final VoidCallback onPickGallery;
+  final VoidCallback onDeletePhoto;
+  final VoidCallback onUndoDelete;
+  final VoidCallback onOpenPreview;
+
+  @override
+  State<_ProfileEditorSheetBody> createState() =>
+      _ProfileEditorSheetBodyState();
+}
+
+class _ProfileEditorSheetBodyState extends State<_ProfileEditorSheetBody> {
+  late final TextEditingController _lastCtrl = TextEditingController(
+    text: widget.initialLastName,
+  );
+  late final TextEditingController _firstCtrl = TextEditingController(
+    text: widget.initialFirstName,
+  );
+  late final TextEditingController _middleCtrl = TextEditingController(
+    text: widget.initialMiddleName,
+  );
+  bool _lastError = false;
+  bool _firstError = false;
+  // Диалог «Не сохранять изменения?» уже открыт — повторный back или
+  // тап по затемнению не должен наслаивать второй.
+  bool _confirmingDiscard = false;
+
+  @override
+  void dispose() {
+    _lastCtrl.dispose();
+    _firstCtrl.dispose();
+    _middleCtrl.dispose();
+    super.dispose();
+  }
+
+  bool get _dirty =>
+      _lastCtrl.text.trim() != widget.initialLastName ||
+      _firstCtrl.text.trim() != widget.initialFirstName ||
+      _middleCtrl.text.trim() != widget.initialMiddleName;
+
+  bool get _saveEnabled =>
+      _lastCtrl.text.trim().isNotEmpty && _firstCtrl.text.trim().isNotEmpty;
+
+  static String _capitalizeFirst(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+
+  void _submit() {
+    final last = _lastCtrl.text.trim();
+    final first = _firstCtrl.text.trim();
+    final middle = _middleCtrl.text.trim();
+    if (last.isEmpty || first.isEmpty) {
+      // «Сохранить» гаснет, но остаётся тапабельной: тап при пустых полях
+      // подсвечивает, что именно не заполнено, вместо молчаливого игнора.
+      setState(() {
+        _lastError = last.isEmpty;
+        _firstError = first.isEmpty;
+      });
+      return;
+    }
+    Navigator.of(context).pop(<String, String>{
+      'last': _capitalizeFirst(last),
+      'first': _capitalizeFirst(first),
+      'middle': _capitalizeFirst(middle),
+    });
+  }
+
+  Future<void> _handlePopAttempt() async {
+    if (_confirmingDiscard) return;
+    if (!_dirty) {
+      Navigator.of(context).pop();
+      return;
+    }
+    _confirmingDiscard = true;
+    try {
+      final discard = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Не сохранять изменения?'),
+          content: const Text(
+            'Вы изменили данные профиля. Если закрыть, изменения пропадут.',
+          ),
+          actions: [
+            TextButton(
+              key: const ValueKey('editor-discard-stay'),
+              onPressed: () => Navigator.of(ctx).pop(false),
+              style: TextButton.styleFrom(foregroundColor: kSecondaryColor),
+              child: const Text('Продолжить редактирование'),
+            ),
+            TextButton(
+              key: const ValueKey('editor-discard-close'),
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: TextButton.styleFrom(foregroundColor: kRedColor),
+              child: const Text('Закрыть'),
+            ),
+          ],
+        ),
+      );
+      if (discard == true && mounted) Navigator.of(context).pop();
+    } finally {
+      _confirmingDiscard = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      // Guard несохранённых изменений: X, «Отмена», тап по затемнению и
+      // системный back приходят сюда через maybePop; чистый выход и
+      // «Сохранить» уходят императивным pop (PopScope его не перехватывает).
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        unawaited(_handlePopAttempt());
+      },
+      child: Column(
+        key: const ValueKey('profile-editor-sheet'),
+        children: [
+          AppBottomSheetHeader(
+            title: 'Редактировать профиль',
+            padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xxxl),
+            onClose: () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: Stack(
+              children: [
+                SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(
+                    SparkSpace.xxxl,
+                    SparkSpace.md,
+                    SparkSpace.xxxl,
+                    SparkSpace.section,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      ListenableBuilder(
+                        listenable: widget.tick,
+                        builder: (context, _) => _buildAvatarSection(),
+                      ),
+                      // Отступ карточки полей от блока аватара — по мокапу.
+                      const SizedBox(height: 22),
+                      _buildFieldsCard(),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  left: SparkSpace.xxxl,
+                  right: SparkSpace.xxxl,
+                  bottom: SparkSpace.md,
+                  child: ListenableBuilder(
+                    listenable: widget.tick,
+                    builder: (context, _) => _buildBanner(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildFooter(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvatarSection() {
+    final url = widget.urlAvatar();
+    final base64 = widget.avatarBase64();
+    final hasPhoto = (url ?? '').isNotEmpty || (base64 ?? '').isNotEmpty;
+    final uploading = widget.isUploading();
+    return Column(
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            GestureDetector(
+              key: const ValueKey('editor-avatar'),
+              behavior: HitTestBehavior.opaque,
+              onTap: hasPhoto && !uploading ? widget.onOpenPreview : null,
+              child: Container(
+                padding: const EdgeInsets.all(SparkSpace.xxxs),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: kBorderColor, width: 2),
+                ),
+                child: SparkInitialsAvatar(
+                  name: widget.initialsName,
+                  size: 104,
+                  textSize: 26,
+                  backgroundColor: kSecondaryColor.withValues(alpha: 0.10),
+                  textColor: kSecondaryColor,
+                  imageUrl: url,
+                  imageBase64: base64,
+                  presetIndex: widget.avatarPresetIndex(),
+                ),
+              ),
+            ),
+            if (uploading)
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.all(SparkSpace.xxxs),
+                  child: ClipOval(
+                    child: ColoredBox(
+                      color: Colors.black45,
+                      child: const Center(
+                        child: SizedBox(
+                          width: SparkSize.spinnerLg,
+                          height: SparkSize.spinnerLg,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: kWhiteColor,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: GestureDetector(
+                key: const ValueKey('editor-camera-badge'),
+                onTap: uploading ? null : widget.onTakePhoto,
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: uploading
+                        ? kSecondaryColor.withValues(alpha: 0.45)
+                        : kSecondaryColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kPrimaryColor, width: 3),
+                  ),
+                  child: const Icon(
+                    Icons.photo_camera_rounded,
+                    size: 17,
+                    color: kWhiteColor,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.xxl),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _PhotoTextAction(
+              tapKey: const ValueKey('editor-change-photo'),
+              label: hasPhoto ? 'Изменить фото' : 'Добавить фото',
+              color: kSecondaryColor,
+              enabled: !uploading,
+              onTap: widget.onPickGallery,
+            ),
+            if (hasPhoto) ...[
+              const SizedBox(width: SparkSpace.chipX),
+              _PhotoTextAction(
+                tapKey: const ValueKey('editor-delete-photo'),
+                label: 'Удалить',
+                color: kRedColor,
+                enabled: !uploading,
+                onTap: widget.onDeletePhoto,
+              ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFieldsCard() {
+    return Container(
+      padding: const EdgeInsets.all(SparkSpace.xxl),
+      decoration: BoxDecoration(
+        color: kWhiteColor,
+        borderRadius: BorderRadius.circular(SparkRadius.lg),
+        border: Border.all(color: kBorderColor.withValues(alpha: 0.7)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _FloatingLabelField(
+            fieldKey: const ValueKey('editor-field-last'),
+            controller: _lastCtrl,
+            label: 'Фамилия',
+            hint: 'Иванов',
+            errorText: _lastError ? 'Введите фамилию' : null,
+            onChanged: (_) => setState(() => _lastError = false),
+          ),
+          const SizedBox(height: SparkSpace.lg),
+          _FloatingLabelField(
+            fieldKey: const ValueKey('editor-field-first'),
+            controller: _firstCtrl,
+            label: 'Имя',
+            hint: 'Иван',
+            errorText: _firstError ? 'Введите имя' : null,
+            onChanged: (_) => setState(() => _firstError = false),
+          ),
+          const SizedBox(height: SparkSpace.lg),
+          _FloatingLabelField(
+            fieldKey: const ValueKey('editor-field-middle'),
+            controller: _middleCtrl,
+            label: 'Отчество · не обязательно',
+            hint: 'Иванович',
+            // Перерисовка не нужна, но кнопке «Сохранить» всё равно: она
+            // зависит только от фамилии и имени.
+            onSubmitted: (_) => _submit(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBanner() {
+    final pending = widget.hasPendingDelete();
+    final text = pending ? 'Фото удалено' : widget.banner();
+    if (text == null) return const SizedBox.shrink();
+    return Container(
+      key: const ValueKey('editor-banner'),
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xxxl,
+        vertical: SparkSpace.xl,
+      ),
+      decoration: BoxDecoration(
+        color: kTertiaryColor,
+        borderRadius: BorderRadius.circular(SparkRadius.md),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: MyText(
+              text: text,
+              size: SparkTextSize.body,
+              color: kWhiteColor,
+              lineHeight: 1.3,
+            ),
+          ),
+          if (pending)
+            GestureDetector(
+              key: const ValueKey('editor-undo-delete'),
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onUndoDelete,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.sm,
+                  vertical: SparkSpace.xs,
+                ),
+                child: MyText(
+                  text: 'Отменить',
+                  size: SparkTextSize.body,
+                  weight: FontWeight.w800,
+                  color: kAccentGlow,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFooter() {
+    final buttonShape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(SparkRadius.lg),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        SparkSpace.xxxl,
+        SparkSpace.xl,
+        SparkSpace.xxxl,
+        SparkSpace.xxxl,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: SizedBox(
+              height: SparkSize.inputHeight,
+              child: FilledButton(
+                key: const ValueKey('editor-cancel'),
+                onPressed: () => Navigator.of(context).maybePop(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: kGreyColor2,
+                  foregroundColor: kTertiaryColor,
+                  textStyle: const TextStyle(
+                    fontSize: SparkTextSize.label,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  shape: buttonShape,
+                ),
+                child: const Text('Отмена'),
+              ),
+            ),
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Expanded(
+            flex: 3,
+            child: SizedBox(
+              height: SparkSize.inputHeight,
+              child: FilledButton(
+                key: const ValueKey('editor-save'),
+                onPressed: _submit,
+                style: FilledButton.styleFrom(
+                  backgroundColor: _saveEnabled
+                      ? kSecondaryColor
+                      : kSecondaryColor.withValues(alpha: 0.4),
+                  foregroundColor: kWhiteColor,
+                  textStyle: const TextStyle(
+                    fontSize: SparkTextSize.label,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  shape: buttonShape,
+                ),
+                child: const Text('Сохранить'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Текстовое действие под аватаром редактора («Изменить фото» / «Удалить»).
+class _PhotoTextAction extends StatelessWidget {
+  const _PhotoTextAction({
+    required this.tapKey,
+    required this.label,
+    required this.color,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final Key tapKey;
+  final String label;
+  final Color color;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: tapKey,
+        onTap: enabled ? onTap : null,
+        borderRadius: BorderRadius.circular(SparkRadius.sm),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: SparkSpace.sm,
+            vertical: SparkSpace.xs,
+          ),
+          child: MyText(
+            text: label,
+            size: SparkTextSize.label,
+            weight: FontWeight.w700,
+            color: enabled ? color : color.withValues(alpha: 0.45),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Поле с «плавающим» лейблом (макет 3a): рамка-контейнер, лейбл 11px над
+/// безрамочным инпутом. Цвета default / фокус / ошибка: серый / navy /
+/// красный; свой FocusNode, чтобы рамка реагировала на фокус.
+class _FloatingLabelField extends StatefulWidget {
+  const _FloatingLabelField({
+    required this.fieldKey,
+    required this.controller,
+    required this.label,
+    required this.hint,
+    this.errorText,
+    this.onChanged,
+    this.onSubmitted,
+  });
+
+  final Key fieldKey;
+  final TextEditingController controller;
+  final String label;
+  final String hint;
+  final String? errorText;
+  final ValueChanged<String>? onChanged;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  State<_FloatingLabelField> createState() => _FloatingLabelFieldState();
+}
+
+class _FloatingLabelFieldState extends State<_FloatingLabelField> {
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChanged);
+  }
+
+  void _onFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasError = widget.errorText != null;
+    final focused = _focusNode.hasFocus;
+    final accent = hasError
+        ? kRedColor
+        : focused
+        ? kSecondaryColor
+        : null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          // Тап по всей рамке (включая лейбл) фокусирует инпут.
+          behavior: HitTestBehavior.opaque,
+          onTap: () => _focusNode.requestFocus(),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(
+              SparkSpace.xl,
+              SparkSpace.md,
+              SparkSpace.xl,
+              SparkSpace.sm,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(SparkRadius.lg),
+              border: Border.all(color: accent ?? kBorderColor),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MyText(
+                  text: widget.label,
+                  size: SparkTextSize.chip,
+                  weight: FontWeight.w600,
+                  color: accent ?? kGreyColor,
+                ),
+                TextField(
+                  key: widget.fieldKey,
+                  controller: widget.controller,
+                  focusNode: _focusNode,
+                  onChanged: widget.onChanged,
+                  onSubmitted: widget.onSubmitted,
+                  textCapitalization: TextCapitalization.words,
+                  // Без maxLength: счётчик под безрамочным полем ломает
+                  // компактную вёрстку, лимит держит formatter.
+                  inputFormatters: [LengthLimitingTextInputFormatter(40)],
+                  textInputAction: widget.onSubmitted != null
+                      ? TextInputAction.done
+                      : TextInputAction.next,
+                  style: const TextStyle(
+                    fontSize: SparkTextSize.sectionTitle,
+                    color: kTertiaryColor,
+                  ),
+                  decoration: InputDecoration(
+                    isCollapsed: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.only(
+                      top: SparkSpace.xxs,
+                      bottom: SparkSpace.sm,
+                    ),
+                    hintText: widget.hint,
+                    hintStyle: TextStyle(
+                      fontSize: SparkTextSize.sectionTitle,
+                      color: kGreyColor.withValues(alpha: 0.55),
+                    ),
+                  ),
+                  onTapOutside: (_) => _focusNode.unfocus(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (hasError)
+          MyText(
+            text: widget.errorText!,
+            size: SparkTextSize.caption,
+            color: kRedColor,
+            paddingTop: SparkSpace.xs,
+            paddingLeft: SparkSpace.xs,
+          ),
+      ],
     );
   }
 }

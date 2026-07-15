@@ -204,6 +204,24 @@ class CreateRequestPossiblyCommittedException implements Exception {
 bool legalReviewBatchPending(List<Map<String, dynamic>> checks) {
   if (checks.isEmpty) return true;
   return checks.any((c) {
+    // Backend/provider persistence is not atomic: responseNormalized or
+    // executedAt can appear one read before status leaves `pending`. Once a
+    // real response exists, keeping the UI spinner alive on the stale status
+    // is incorrect.
+    final normalized = c['responseNormalized'];
+    final hasNormalizedResponse = switch (normalized) {
+      null => false,
+      String value =>
+        value.trim().isNotEmpty &&
+            value.trim().toLowerCase() != 'null' &&
+            value.trim() != '{}',
+      Map value => value.isNotEmpty,
+      List _ => true, // [] is a valid terminal «nothing found» response.
+      _ => true,
+    };
+    final executedAt = (c['executedAt'] ?? '').toString().trim();
+    if (hasNormalizedResponse || executedAt.isNotEmpty) return false;
+
     final s = (c['status'] ?? '').toString().toLowerCase();
     return s.isEmpty ||
         s == 'pending' ||
@@ -211,6 +229,36 @@ bool legalReviewBatchPending(List<Map<String, dynamic>> checks) {
         s == 'in_progress' ||
         s == 'running';
   });
+}
+
+int? _legalReviewSummaryInt(dynamic value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse('${value ?? ''}');
+}
+
+/// Authoritative stop condition for a full GetBatchLegalReviewResults result.
+/// The backend exposes aggregate counters specifically for progress tracking;
+/// use them as a fallback when an individual check status is stale.
+bool legalReviewBatchSettled(
+  Map<String, dynamic> result,
+  List<Map<String, dynamic>> checks,
+) {
+  final rawSummary = result['summary'];
+  if (rawSummary is Map) {
+    final summary = Map<String, dynamic>.from(rawSummary);
+    final total = _legalReviewSummaryInt(summary['total']);
+    final pending = _legalReviewSummaryInt(summary['pending']);
+    final completed = _legalReviewSummaryInt(summary['completed']) ?? 0;
+    final failed = _legalReviewSummaryInt(summary['failed']) ?? 0;
+    if (total != null &&
+        total > 0 &&
+        pending == 0 &&
+        completed + failed >= total) {
+      return true;
+    }
+  }
+  return !legalReviewBatchPending(checks);
 }
 
 /// Extracts ApiCloud batch numbers from a report's `legalReviewStep` as
@@ -3070,7 +3118,23 @@ class StorageApi {
       params: <String, dynamic>{'batchNumber': batchNumber},
       timeout: timeout,
     );
-    return _asMap(data['result']);
+    final result = _asMap(data['result']);
+    final checks = result['checks'];
+    final statuses = checks is List
+        ? checks
+              .whereType<Map>()
+              .map(
+                (check) =>
+                    '${check['checkType'] ?? '?'}:${check['status'] ?? '?'}',
+              )
+              .join(',')
+        : '';
+    developer.log(
+      'batch="$batchNumber" summary=${result['summary']} '
+      'checks=[$statuses]',
+      name: 'StorageApi.legalReview',
+    );
+    return result;
   }
 
   /// Paginated list of LegalReviewCheck records, filterable (e.g. by
@@ -3225,7 +3289,7 @@ class StorageApi {
       final statusSet = checks
           .map((c) => '${c['checkType']}:${c['status']}')
           .join(',');
-      final pending = legalReviewBatchPending(checks);
+      final pending = !legalReviewBatchSettled(res, checks);
       developer.log(
         'poll #$poll after ${elapsed.inSeconds}s: pending=$pending '
         'statuses=[$statusSet]',
