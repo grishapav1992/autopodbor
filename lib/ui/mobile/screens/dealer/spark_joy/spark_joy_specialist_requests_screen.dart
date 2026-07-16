@@ -91,19 +91,15 @@ class _SparkJoySpecialistRequestsScreenState
   Future<List<Map<String, dynamic>>> _getRequestsForFilter(
     RequestStatusFilter filter,
   ) async {
-    if (filter == RequestStatusFilter.all) {
-      return storage_api.StorageApi.getAllRequests();
-    }
-    final requestsById = <String, Map<String, dynamic>>{};
-    for (final status in filter.statuses) {
-      final page = await storage_api.StorageApi.getAllRequests(status: status);
-      for (final request in page) {
-        final id = (request['id'] ?? request['requestNumber'] ?? '').toString();
-        requestsById[id.isEmpty ? requestsById.length.toString() : id] =
-            request;
-      }
-    }
-    return requestsById.values.toList(growable: false);
+    final requests = await storage_api.StorageApi.getAllRequests();
+    if (filter == RequestStatusFilter.all) return requests;
+    return requests
+        .where(
+          (request) => filter.statuses.contains(
+            normalizeRequestStatus((request['status'] ?? '').toString()),
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _load() async {

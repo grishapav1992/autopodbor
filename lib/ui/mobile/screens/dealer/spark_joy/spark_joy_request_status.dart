@@ -17,22 +17,19 @@ typedef RequestHistoryReason = ({String label, String? comment});
 
 enum RequestStatusFilter {
   all('Все', <String>{}),
-  draft('Черновики', <String>{}, localOnly: true),
-  newRequests('Новые', <String>{'created', 'await_payment'}),
-  inProgress('В работе', <String>{'paid_escrow', 'in_work'}),
+  active('Активные', <String>{
+    'created',
+    'await_payment',
+    'paid_escrow',
+    'in_work',
+  }),
   done('Завершены', <String>{'done'}),
-  canceled('Отменены', <String>{'canceled', 'refund'}),
-  failed('Не выполнены', <String>{'failed'});
+  canceled('Отменены', <String>{'canceled', 'refund', 'failed'});
 
-  const RequestStatusFilter(
-    this.label,
-    this.statuses, {
-    this.localOnly = false,
-  });
+  const RequestStatusFilter(this.label, this.statuses);
 
   final String label;
   final Set<String> statuses;
-  final bool localOnly;
 }
 
 String normalizeRequestStatus(String status) {

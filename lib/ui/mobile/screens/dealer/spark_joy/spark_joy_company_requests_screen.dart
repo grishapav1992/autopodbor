@@ -138,20 +138,15 @@ class _SparkJoyCompanyRequestsScreenState
   Future<List<Map<String, dynamic>>> _getRequestsForFilter(
     RequestStatusFilter filter,
   ) async {
-    if (filter.localOnly) return const <Map<String, dynamic>>[];
-    if (filter == RequestStatusFilter.all) {
-      return storage_api.StorageApi.getAllRequests();
-    }
-    final requestsById = <String, Map<String, dynamic>>{};
-    for (final status in filter.statuses) {
-      final page = await storage_api.StorageApi.getAllRequests(status: status);
-      for (final request in page) {
-        final id = (request['id'] ?? request['requestNumber'] ?? '').toString();
-        requestsById[id.isEmpty ? requestsById.length.toString() : id] =
-            request;
-      }
-    }
-    return requestsById.values.toList(growable: false);
+    final requests = await storage_api.StorageApi.getAllRequests();
+    if (filter == RequestStatusFilter.all) return requests;
+    return requests
+        .where(
+          (request) => filter.statuses.contains(
+            normalizeRequestStatus((request['status'] ?? '').toString()),
+          ),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _load() async {
@@ -189,15 +184,6 @@ class _SparkJoyCompanyRequestsScreenState
     });
     try {
       final draft = await _loadVisibleDraft();
-      if (_statusFilter.localOnly) {
-        if (!mounted) return;
-        setState(() {
-          _requestDraft = draft;
-          _requests ??= const <Map<String, dynamic>>[];
-          _loading = false;
-        });
-        return;
-      }
       final result = await _getRequestsWithRetry();
       if (!mounted) return;
       setState(() {
@@ -295,17 +281,14 @@ class _SparkJoyCompanyRequestsScreenState
     final canShowDraft =
         draftCard != null &&
         (_statusFilter == RequestStatusFilter.all ||
-            _statusFilter == RequestStatusFilter.draft);
-    final rawVisibleRequests = _statusFilter == RequestStatusFilter.draft
-        ? const <Map<String, dynamic>>[]
-        : requests;
+            _statusFilter == RequestStatusFilter.active);
     final showDraft =
         canShowDraft && _matchesRequestQuery(draftCard, _query);
-    final visibleRequests = rawVisibleRequests
+    final visibleRequests = requests
         .where((request) => _matchesRequestQuery(request, _query))
         .toList(growable: false);
     final hasVisibleItems = showDraft || visibleRequests.isNotEmpty;
-    final hasAnyItems = canShowDraft || rawVisibleRequests.isNotEmpty;
+    final hasAnyItems = canShowDraft || requests.isNotEmpty;
     if (!hasAnyItems && _statusFilter == RequestStatusFilter.all) {
       return SparkScreenList(
         bottomInset: 24,
@@ -368,7 +351,6 @@ class _SparkJoyCompanyRequestsScreenState
         const SizedBox(height: SparkSpace.lg),
         SparkJoyRequestFilterBar(
           value: _statusFilter,
-          filters: RequestStatusFilter.values,
           onQueryChanged: (query) => setState(() => _query = query.trim()),
           onChanged: (filter) {
             if (filter == _statusFilter) return;

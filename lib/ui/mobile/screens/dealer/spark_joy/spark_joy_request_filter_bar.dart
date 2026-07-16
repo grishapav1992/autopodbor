@@ -9,14 +9,12 @@ class SparkJoyRequestFilterBar extends StatefulWidget {
     super.key,
     required this.value,
     required this.onChanged,
-    this.filters,
     this.onQueryChanged,
     this.searchHint = 'Номер, авто или специалист',
   });
 
   final RequestStatusFilter value;
   final ValueChanged<RequestStatusFilter> onChanged;
-  final List<RequestStatusFilter>? filters;
   final ValueChanged<String>? onQueryChanged;
   final String searchHint;
 
@@ -27,6 +25,7 @@ class SparkJoyRequestFilterBar extends StatefulWidget {
 
 class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
   final _searchController = TextEditingController();
+  final _pillKey = GlobalKey();
 
   @override
   void dispose() {
@@ -34,132 +33,168 @@ class _SparkJoyRequestFilterBarState extends State<SparkJoyRequestFilterBar> {
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final available =
-        widget.filters ??
-        RequestStatusFilter.values
-            .where((filter) => filter != RequestStatusFilter.draft)
-            .toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          height: SparkSize.inputHeight,
-          child: TextField(
-            controller: _searchController,
-            onChanged: (query) {
-              widget.onQueryChanged?.call(query);
-              setState(() {});
-            },
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: widget.searchHint,
-              isDense: true,
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: _searchController.text.isEmpty
-                  ? null
-                  : IconButton(
-                      tooltip: 'Очистить поиск',
-                      onPressed: () {
-                        _searchController.clear();
-                        widget.onQueryChanged?.call('');
-                        setState(() {});
-                      },
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-              filled: true,
-              fillColor: kWhiteColor,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: SparkSpace.lg,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(SparkRadius.lg),
-                borderSide: const BorderSide(color: kBorderColor),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(SparkRadius.lg),
-                borderSide: const BorderSide(color: kBorderColor),
-              ),
-            ),
-          ),
+  Future<void> _openStatusMenu() async {
+    // Меню поверх открытой клавиатуры прыгает по layout'у — прячем её заранее.
+    FocusManager.instance.primaryFocus?.unfocus();
+    final pillContext = _pillKey.currentContext;
+    if (pillContext == null) return;
+    final pillBox = pillContext.findRenderObject()! as RenderBox;
+    final overlayBox =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final origin = pillBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+    final selected = await showMenu<RequestStatusFilter>(
+      context: context,
+      position: RelativeRect.fromRect(
+        Rect.fromLTWH(
+          origin.dx,
+          origin.dy + pillBox.size.height + SparkSpace.xs,
+          pillBox.size.width,
+          pillBox.size.height,
         ),
-        const SizedBox(height: SparkSpace.lg),
-        SizedBox(
-          height: SparkSize.actionHeightMd,
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        Offset.zero & overlayBox.size,
+      ),
+      color: kWhiteColor,
+      elevation: 6,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SparkRadius.lg),
+        side: const BorderSide(color: kBorderColor),
+      ),
+      constraints: const BoxConstraints(minWidth: 200),
+      items: [
+        for (final filter in RequestStatusFilter.values)
+          PopupMenuItem<RequestStatusFilter>(
+            key: ValueKey('request-filter-${filter.name}'),
+            value: filter,
+            height: SparkSize.actionHeight,
             child: Row(
               children: [
-                for (var index = 0; index < available.length; index++) ...[
-                  _RequestStatusFilterChip(
-                    key: ValueKey('request-filter-${available[index].name}'),
-                    label: available[index].label,
-                    selected: widget.value == available[index],
-                    onTap: () {
-                      if (available[index] != widget.value) {
-                        widget.onChanged(available[index]);
-                      }
-                    },
+                Expanded(
+                  child: Text(
+                    filter.label,
+                    style: TextStyle(
+                      color: filter == widget.value
+                          ? kSecondaryColor
+                          : kTertiaryColor,
+                      fontSize: SparkTextSize.bodyLg,
+                      fontWeight: filter == widget.value
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                    ),
                   ),
-                  if (index < available.length - 1)
-                    const SizedBox(width: SparkSpace.md),
-                ],
+                ),
+                if (filter == widget.value)
+                  const Icon(
+                    Icons.check_rounded,
+                    size: SparkSize.iconMd,
+                    color: kSecondaryColor,
+                  ),
               ],
             ),
           ),
-        ),
       ],
     );
+    if (selected != null && selected != widget.value) {
+      widget.onChanged(selected);
+    }
   }
-}
-
-class _RequestStatusFilterChip extends StatelessWidget {
-  const _RequestStatusFilterChip({
-    super.key,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      child: Material(
-        color: selected ? kSecondaryColor : kWhiteColor,
-        shape: StadiumBorder(
-          side: BorderSide(color: selected ? kSecondaryColor : kBorderColor),
-        ),
-        animationDuration: SparkMotion.fast,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const StadiumBorder(),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: SparkSize.actionHeightMd,
+    final isFiltered = widget.value != RequestStatusFilter.all;
+    return SizedBox(
+      height: SparkSize.inputHeight,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (query) {
+                widget.onQueryChanged?.call(query);
+                setState(() {});
+              },
+              textInputAction: TextInputAction.search,
+              decoration: InputDecoration(
+                hintText: widget.searchHint,
+                isDense: true,
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: _searchController.text.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Очистить поиск',
+                        onPressed: () {
+                          _searchController.clear();
+                          widget.onQueryChanged?.call('');
+                          setState(() {});
+                        },
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                filled: true,
+                fillColor: kWhiteColor,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.lg,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                  borderSide: const BorderSide(color: kBorderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                  borderSide: const BorderSide(color: kBorderColor),
+                ),
+              ),
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: SparkSpace.xxl),
-              child: Center(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: selected ? kWhiteColor : kTertiaryColor,
-                    fontSize: SparkTextSize.body,
-                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Semantics(
+            button: true,
+            label: 'Фильтр по статусу: ${widget.value.label}',
+            child: Material(
+              key: _pillKey,
+              color: isFiltered ? kSecondaryColor : kWhiteColor,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(SparkRadius.lg),
+                side: BorderSide(
+                  color: isFiltered ? kSecondaryColor : kBorderColor,
+                ),
+              ),
+              animationDuration: SparkMotion.fast,
+              child: InkWell(
+                key: const ValueKey('request-filter-pill'),
+                onTap: _openStatusMenu,
+                customBorder: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SparkRadius.lg),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: SparkSpace.xl,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.value.label,
+                        style: TextStyle(
+                          color: isFiltered ? kWhiteColor : kTertiaryColor,
+                          fontSize: SparkTextSize.body,
+                          fontWeight: isFiltered
+                              ? FontWeight.w700
+                              : FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: SparkSpace.xs),
+                      Icon(
+                        Icons.expand_more_rounded,
+                        size: SparkSize.iconMd,
+                        color: isFiltered ? kWhiteColor : kGreyColor,
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
