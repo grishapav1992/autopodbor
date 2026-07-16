@@ -31,7 +31,10 @@ Uint8List _sparkPrepareDocScanPhoto(Uint8List bytes) {
 
 /// Скан СТС/ПТС: фото документа → S3 `temp/` (lifecycle-правило бакета удаляет
 /// через 1 день) → AiQueue vision (`fileUrls`) → строгий JSON → превью →
-/// only-empty автозаполнение «Автомобиля» и «Параметров».
+/// автозаполнение «Автомобиля» и «Параметров». Распознанный документ
+/// (СТС/ПТС/ЭПТС) авторитетен и ПЕРЕЗАПИСЫВАЕТ поля (решение Григория
+/// 2026-07-16: конвертер по госномеру может подтянуть чужое авто — документ
+/// обязан это исправить); OCR-only результат без документа — only-empty.
 ///
 /// Экономика ApiCloud и взаимодействие с VIN-конвейером:
 ///   • когда скан привязал марку И модель к каталогу, дедуп-флаг
@@ -368,16 +371,20 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
   }
 
   /// Превью распознанного перед применением: юзер видит, что именно легло бы
-  /// в отчёт, и решает. Заполняются ТОЛЬКО пустые поля (ручной ввод
-  /// неприкосновенен). Чекбокс «сразу запустить проверки» показывается,
+  /// в отчёт, и решает. СТС/ПТС/ЭПТС перезаписывают текущие значения
+  /// (документ авторитетен, см. [_applyDocScanResult]); нераспознанный
+  /// документ — only-empty. Чекбокс «сразу запустить проверки» показывается,
   /// когда проверки ещё не запускались и право есть.
   Future<void> _showDocScanPreviewDialog(
     DocScanAiResult r, {
     bool ocrOnly = false,
   }) async {
     final currentVin = _sanitizeVin(_vinController.text);
+    final authoritative = _docScanResultIsAuthoritative(r);
     final vinConflict =
-        currentVin.length == 17 && r.vin.isNotEmpty && r.vin != currentVin;
+        currentVin.length == 17 &&
+        r.vin.isNotEmpty &&
+        _sanitizeVin(r.vin) != currentVin;
     final canOfferChecks =
         _legalCanRunReview &&
         !_legalPurchased &&
@@ -457,10 +464,12 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
                       ),
                     ),
                   const SizedBox(height: SparkSpace.sm),
-                  const MyText(
-                    text:
-                        'Заполняются только пустые поля — введённое вручную '
-                        'не перезаписывается.',
+                  MyText(
+                    text: authoritative
+                        ? 'Данные документа заменят текущие значения полей — '
+                              'в документе точная информация.'
+                        : 'Заполняются только пустые поля — введённое вручную '
+                              'не перезаписывается.',
                     size: SparkTextSize.caption,
                     color: kGreyColor,
                   ),
@@ -484,10 +493,12 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
                   ],
                   if (vinConflict) ...[
                     const SizedBox(height: SparkSpace.xs),
-                    const MyText(
-                      text:
-                          'В отчёте уже указан другой VIN — он останется '
-                          'без изменений.',
+                    MyText(
+                      text: authoritative
+                          ? 'В отчёте указан другой VIN — он будет заменён '
+                                'распознанным с документа.'
+                          : 'В отчёте уже указан другой VIN — он останется '
+                                'без изменений.',
                       size: SparkTextSize.caption,
                       color: kRedColor,
                     ),
@@ -539,7 +550,19 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
-  Future<void> _applyDocScanResult(
+  /// Регистрационный документ (СТС/ПТС/ЭПТС) — авторитетный источник данных
+  /// авто: его поля перезаписывают текущие значения. `unknown` (OCR-only,
+  /// VIN с любого фото) документом не является — для него only-empty.
+  bool _docScanResultIsAuthoritative(DocScanAiResult r) =>
+      const {'sts', 'pts', 'epts'}.contains(r.docType);
+
+  /// Применяет распознанный документ к полям «Автомобиля». Для СТС/ПТС/ЭПТС
+  /// распознанное ПЕРЕЗАПИСЫВАЕТ заполненные поля (в документе точная
+  /// информация; прецедент 2026-07-16: конвертер по госномеру подтянул чужое
+  /// авто, а СТС не мог его исправить); остальное — only-empty. Возвращает,
+  /// что реально изменилось: `filled` — было пусто, `replaced` — заменено
+  /// (интейк показывает это в своём снекбаре).
+  Future<({List<String> filled, List<String> replaced})> _applyDocScanResult(
     DocScanAiResult r, {
     required bool runChecks,
     bool showFeedback = true,
@@ -555,38 +578,77 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         r.model,
       );
     }
-    if (!mounted) return;
     final filled = <String>[];
+    final replaced = <String>[];
+    if (!mounted) return (filled: filled, replaced: replaced);
     final unmatched = <String>[];
+    final authoritative = _docScanResultIsAuthoritative(r);
     var identityWritten = false;
     _setStateSafely(() {
-      final brandWasEmpty = _brandController.text.trim().isEmpty;
-      final modelWasEmpty = _modelController.text.trim().isEmpty;
-      if (carMatch != null) {
-        if (brandWasEmpty) {
+      final vinBefore = _sanitizeVin(_vinController.text);
+      final brandBefore = _brandController.text.trim();
+      final modelBefore = _modelController.text.trim();
+      final plateBefore = _plateController.text.trim();
+      final colorBefore = _colorController.text.trim();
+
+      final newVin = _sanitizeVin(r.vin);
+      if (newVin.isNotEmpty &&
+          newVin != vinBefore &&
+          (vinBefore.isEmpty || authoritative)) {
+        _vinUnreadable = false;
+        _vinController.text = r.vin;
+        if (vinBefore.isNotEmpty) {
+          // Документ сменил идентичность авто: прежние марка/модель/поколение
+          // и каталожная мета относятся к другой машине (например, к чужому
+          // авто от конвертера). Новые значения проставит carMatch ниже либо
+          // VIN-конвейер (_maybeResolveFromVin).
+          _brandController.clear();
+          _modelController.clear();
+          _generationController.clear();
+          _selectedBrandId = null;
+          _selectedModelCarId = null;
+          _clearCatalogCarMeta();
+          _resolvedVinYear = '';
+        }
+      }
+
+      if (carMatch != null &&
+          (_brandController.text.trim().isEmpty || authoritative)) {
+        final brandChanged =
+            _selectedBrandId != carMatch.brand.id ||
+            _brandController.text.trim() != carMatch.brand.name;
+        if (brandChanged) {
+          if (_selectedBrandId != carMatch.brand.id) {
+            // Марка сменилась → модель и поколение прежней марки
+            // недействительны.
+            _modelController.clear();
+            _generationController.clear();
+          }
           _brandController.text = carMatch.brand.name;
           _selectedBrandId = carMatch.brand.id;
           _selectedModelCarId = null;
           identityWritten = true;
-          filled.add('марка');
         }
         final model = carMatch.model;
         // Модель пишем только когда марка в поле — та же, что в матче
         // (иначе получили бы модель чужой марки).
         if (model != null &&
-            modelWasEmpty &&
-            _selectedBrandId == carMatch.brand.id) {
+            _selectedBrandId == carMatch.brand.id &&
+            (_modelController.text.trim().isEmpty || authoritative) &&
+            (_selectedModelCarId != model.id ||
+                _modelController.text.trim() != model.model)) {
           _modelController.text = model.model;
           _selectedModelCarId = model.id;
           identityWritten = true;
-          filled.add('модель');
         }
       }
-      if (r.brand.isNotEmpty && carMatch == null && brandWasEmpty) {
+      if (r.brand.isNotEmpty &&
+          carMatch == null &&
+          _brandController.text.trim().isEmpty) {
         unmatched.add('марка «${r.brand}»');
       }
       if (r.model.isNotEmpty &&
-          modelWasEmpty &&
+          _modelController.text.trim().isEmpty &&
           (carMatch == null || carMatch.model == null)) {
         unmatched.add('модель «${r.model}»');
       }
@@ -595,27 +657,43 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
         // идентичности не относится; сами ID мы только что проставили.
         _clearCatalogCarMeta();
       }
-      if (r.year.isNotEmpty && _resolvedVinYear.isEmpty) {
+      if (r.year.isNotEmpty && (authoritative || _resolvedVinYear.isEmpty)) {
         // UI-поля года нет — год работает грунтовкой ИИ-параметров.
         _resolvedVinYear = r.year;
       }
-      if (r.vin.isNotEmpty && _sanitizeVin(_vinController.text).isEmpty) {
-        _vinUnreadable = false;
-        _vinController.text = r.vin;
-        filled.add('VIN');
+      if (r.gosNumber.isNotEmpty &&
+          (plateBefore.isEmpty || authoritative)) {
+        final normalizedPlate = normalizePlateAutomatically(r.gosNumber).text;
+        if (normalizedPlate != _plateController.text) {
+          _applyDetectedPlate(r.gosNumber);
+        }
       }
-      if (r.gosNumber.isNotEmpty && _plateController.text.trim().isEmpty) {
-        _applyDetectedPlate(r.gosNumber);
-        filled.add('госномер');
-      }
-      // Цвет пишем как РУЧНОЙ ввод (документ авторитетен; при смене VIN не
-      // чистится автоматически — как любой ручной ввод). Движковые параметры
-      // (объём/тип/КПП/привод) из СТС НЕ берём — их дозаполнит VIN-шаг
-      // _autofillParamsFromVinWithAi после установки VIN выше.
-      if (r.color.isNotEmpty && _colorController.text.trim().isEmpty) {
+      // Цвет пишем как РУЧНОЙ ввод (при смене VIN не чистится автоматически —
+      // как любой ручной ввод). Движковые параметры (объём/тип/КПП/привод)
+      // из СТС НЕ берём — их дозаполнит VIN-шаг _autofillParamsFromVinWithAi
+      // после установки VIN выше.
+      if (r.color.isNotEmpty &&
+          (colorBefore.isEmpty || authoritative) &&
+          _colorController.text.trim() != r.color) {
         _colorController.text = r.color;
-        filled.add('цвет');
       }
+
+      // «Заполнено/обновлено» — по фактической разнице до/после, а не по
+      // ветке кода: перезапись тем же значением не считается изменением.
+      void classify(String label, String before, String after) {
+        if (before == after) return;
+        (before.isEmpty ? filled : replaced).add(label);
+      }
+
+      classify('VIN', vinBefore, _sanitizeVin(_vinController.text));
+      classify('марка', brandBefore, _brandController.text.trim());
+      classify('модель', modelBefore, _modelController.text.trim());
+      classify(
+        'госномер',
+        sanitizePlatePermissive(plateBefore),
+        sanitizePlatePermissive(_plateController.text.trim()),
+      );
+      classify('цвет', colorBefore, _colorController.text.trim());
     });
     final vinNow = _sanitizeVin(_vinController.text);
     final hasCompleteCatalogIdentity =
@@ -644,8 +722,10 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
     if (mounted && showFeedback) {
       final parts = <String>[
         if (filled.isNotEmpty) 'Заполнено с документа: ${filled.join(', ')}',
-        if (filled.isEmpty && unmatched.isEmpty)
-          'Все распознанные поля уже заполнены — ничего не изменено',
+        if (replaced.isNotEmpty)
+          'Обновлено по документу: ${replaced.join(', ')}',
+        if (filled.isEmpty && replaced.isEmpty && unmatched.isEmpty)
+          'Данные с документа совпадают с заполненными — изменений нет',
         // Строгий режим: несовпавшее с каталогом в поля не пишется.
         if (unmatched.isNotEmpty)
           'Не найдено в каталоге: ${unmatched.join(', ')} — выберите вручную',
@@ -655,6 +735,7 @@ extension _SparkJoyDocScanHelpers on _SparkJoyCreateReportScreenState {
       ).showSnackBar(SnackBar(content: Text(parts.join('. '))));
     }
     if (runChecks) _autoStartLegalChecksAfterDocScan();
+    return (filled: filled, replaced: replaced);
   }
 
   /// Автозапуск платных проверок после скана (юзер согласился чекбоксом).

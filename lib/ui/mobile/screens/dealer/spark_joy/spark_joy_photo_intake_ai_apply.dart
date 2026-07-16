@@ -166,20 +166,27 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
         }
       });
 
+      final docReplaced = <String>{};
       for (final result in docResults) {
         if (!mounted) return;
-        await _applyDocScanResult(
+        final applied = await _applyDocScanResult(
           result,
           runChecks: false,
           showFeedback: false,
         );
+        docReplaced.addAll(applied.replaced);
       }
-      // VIN из СТС/ПТС — целевой источник. Если он только что заполнил
-      // пустое поле, «владение» переходит интейку (нужно автопроверкам в
-      // повторных проходах). Кандидат локального OCR — второй приоритет:
-      // применится, только если поле всё ещё пусто.
+      // VIN из СТС/ПТС — целевой источник. Он заполняет пустое поле И
+      // заменяет прежнее значение (например, чужое авто, подтянутое
+      // конвертером по госномеру) — в обоих случаях «владение» переходит
+      // интейку (нужно автопроверкам в повторных проходах). Кандидат
+      // локального OCR — второй приоритет: применится, только если поле всё
+      // ещё пусто.
       final vinAfterDocs = _sanitizeVin(_vinController.text);
-      if (vinBeforeApply.isEmpty && vinAfterDocs.isNotEmpty) {
+      final docsChangedVin =
+          vinAfterDocs.isNotEmpty &&
+          (vinBeforeApply.isEmpty || docReplaced.contains('VIN'));
+      if (docsChangedVin) {
         _intakeVinAutoFilled = vinAfterDocs;
       }
       await _maybeApplyIntakeOcrVin(allowChecks: false);
@@ -192,19 +199,31 @@ extension _SparkJoyPhotoIntakeAiApply on _SparkJoyCreateReportScreenState {
         appliedIds,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'ИИ распределил ${sparkIntakeFilesCountLabel(appliedIds.length)}',
-            ),
-          ),
+        final message = StringBuffer(
+          'ИИ распределил ${sparkIntakeFilesCountLabel(appliedIds.length)}',
         );
+        if (docReplaced.isNotEmpty) {
+          // Документ перезаписал уже заполненные поля — молчать нельзя:
+          // пользователь должен видеть, что идентичность авто изменилась.
+          message.write('. Обновлено по документу: ${docReplaced.join(', ')}');
+          if (docReplaced.contains('VIN') && _intakeChecksAlreadyStarted) {
+            message.write(
+              '. Материалы проверки относятся к прежнему VIN — '
+              'обновите их в шаге «Материалы проверки»',
+            );
+          }
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message.toString())));
       }
-      // Автопроверки: только когда VIN принадлежит интейку — заполнен им в
-      // этом проходе (СТС/кандидат) или раньше (офлайн-заполнение кандидатом,
-      // после которого вернулась сеть). Ручной VIN автозапуск не трогает.
+      // Автопроверки: только когда VIN принадлежит интейку — заполнен или
+      // заменён им в этом проходе (СТС/кандидат) или раньше (офлайн-заполнение
+      // кандидатом, после которого вернулась сеть). Ручной VIN автозапуск
+      // не трогает.
       final vinIntakeOwned =
           vinBeforeApply.isEmpty ||
+          docsChangedVin ||
           (_intakeVinAutoFilled.isNotEmpty &&
               vinBeforeApply == _intakeVinAutoFilled);
       if (mounted &&
