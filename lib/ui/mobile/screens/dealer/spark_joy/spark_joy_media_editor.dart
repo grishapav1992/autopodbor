@@ -360,43 +360,6 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     );
   }
 
-  bool _runGroupFullyMarked(MediaGroupState state) {
-    if (state.files.isEmpty) return false;
-    // У «Кузов»/«Силовые» ЛКП снимается не пер-фото, а одним групповым
-    // диапазоном (ползунок «ЛКП — кузов/силовые»). Если инспектор его задал
-    // (диапазон ≠ дефолтных 80–200), считаем «толщина ЛКП по разделу снята»
-    // для всех фото раздела — иначе секция с реальным замером ЛКП, но без
-    // пер-фото разметки, читалась как незаполненная (белая карточка),
-    // хотя по сути заполнена.
-    final groupPaintMarked = _mediaGroupPaintMarked(state.config.key);
-    // `audioRecordings` исключены — см. `_mediaInspectionHasData`.
-    return state.files.every((file) {
-      final inspection = file.inspection;
-      return groupPaintMarked ||
-          inspection.noDamage ||
-          inspection.tags.isNotEmpty ||
-          (inspection.elementType ?? '').trim().isNotEmpty ||
-          inspection.note.trim().isNotEmpty ||
-          (inspection.paintFrom != null && inspection.paintTo != null);
-    });
-  }
-
-  /// «Групповой ЛКП раздела задан инспектором» — только для body/structural,
-  /// где есть групповой ползунок ЛКП. Дефолт 80–200 совпадает с инициализацией
-  /// RxDouble в [SparkJoyReportController] и fallback'ом восстановления
-  /// черновика, поэтому ровно дефолтный диапазон трактуем как «не трогали».
-  /// Сравниваем по round() — значения приходят из roundToDouble()/ручного
-  /// ввода, дробного дрейфа быть не должно, но так надёжнее.
-  bool _mediaGroupPaintMarked(String groupKey) {
-    if (groupKey == 'body') {
-      return _bodyPaintFrom.round() != 80 || _bodyPaintTo.round() != 200;
-    }
-    if (groupKey == 'structural') {
-      return _structPaintFrom.round() != 80 || _structPaintTo.round() != 200;
-    }
-    return false;
-  }
-
   Widget _runMediaPaintSummaryBlock({
     required String title,
     required double from,
@@ -510,7 +473,6 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     final fileCount = state.files.length;
     final hasFiles = fileCount > 0;
     final hasIssue = _groupHasIssue(state);
-    final fullyMarked = _runGroupFullyMarked(state);
     final issueCount = state.files.where(_mediaItemHasIssue).length;
     // «С заметкой» считаем строго по наличию текстового комментария.
     // Раньше использовался _mediaInspectionHasData, который true и для
@@ -573,19 +535,22 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
     // Визуальная дифференциация секций осмотра:
     // 1) Синий tint фона + рамка → «есть замечания, инспектор
     //    зафиксировал»; нейтральный info-сигнал, не warning.
-    // 2) Светло-зелёный tint + плотная зелёная рамка → fullyMarked
-    //    без замечаний. Секция взгляду читается как «✓ done».
-    // 3) Trailing chevron заменяется на ✓ когда секция fullyMarked.
+    // 2) Светло-зелёный tint + плотная зелёная рамка → файлы загружены,
+    //    замечаний нет. Критерий сознательно тот же, что у чипа «Готово»:
+    //    прежний строгий «каждое фото размечено» (тег/элемент/заметка/ЛКП)
+    //    расходился с чипом и читался как баг — распределение фото по
+    //    элементам шаг необязательный (фидбек 2026-07-16).
+    // 3) Trailing chevron заменяется на ✓ по тому же критерию.
     final cardBackground = isPressed
         ? kSecondaryColor.withValues(alpha: 0.02)
         : (hasIssue
               ? kSecondaryColor.withValues(alpha: 0.05)
-              : (fullyMarked
+              : (hasFiles
                     ? kGreenColor.withValues(alpha: 0.04)
                     : kWhiteColor));
     final cardBorder = hasIssue
         ? kSecondaryColor.withValues(alpha: 0.35)
-        : (fullyMarked
+        : (hasFiles
               ? kGreenColor.withValues(alpha: 0.55)
               : (isPressed
                     ? kSecondaryColor.withValues(alpha: 0.28)
@@ -716,10 +681,10 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
                       Column(
                         children: [
                           Icon(
-                            (fullyMarked && !hasIssue)
+                            (hasFiles && !hasIssue)
                                 ? Icons.check_circle_rounded
                                 : Icons.chevron_right_rounded,
-                            color: (fullyMarked && !hasIssue)
+                            color: (hasFiles && !hasIssue)
                                 ? kGreenColor
                                 : kGreyColor,
                           ),
