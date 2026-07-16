@@ -1,17 +1,14 @@
-## Git: сначала ветка, потом работа
+# Правила для ИИ-агентов (Codex, Claude, любые другие)
 
-Правило для ЛЮБОЙ ИИ-сессии (Claude, Codex, прочие агенты) — оно же в AGENTS.md:
+## Git: сначала ветка, потом работа
 
 - **Не работай в `main` напрямую.** Первым действием сессии, до любых правок файлов, создай рабочую ветку от свежего `main` (`git switch -c feature/<тема>-<ММДД>`) или продолжи существующую ветку этой задачи.
 - Все коммиты — в рабочую ветку. Мерж/пуш в `main` — только по явной просьбе пользователя в текущем ходе («залей в main»), а не как стандартное завершение задачи.
 - Перед выводами о состоянии кода запускай `git status` и `git log --oneline -5`: параллельно работают несколько ИИ-сессий и сам пользователь, tip и дерево меняются между ходами.
 - **Не коммить молча чужие незакоммиченные правки.** Если в дереве есть изменения, которых ты в этой сессии не делал, — покажи их пользователю и спроси, включать ли. (Прецедент 2026-07-15: коммит `dcd941c` молча увёз замену фильтра заявок из параллельной сессии — пользователь потом искал «пропавшую» функцию.)
 
-## graphify
+## Проверки перед сдачей работы
 
-This project has a graphify knowledge graph at graphify-out/.
-
-Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+- `flutter analyze` — чисто.
+- `flutter test` — весь прогон зелёный.
+- Не запускай `flutter run` / сборки на устройство или в браузер без явной просьбы пользователя.
