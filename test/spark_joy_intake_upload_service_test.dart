@@ -902,4 +902,67 @@ void main() {
       SparkIntakeFileStatus.uploaded,
     );
   });
+
+  test(
+    'офлайн-старт → блокировка → сеть вернулась: resume дозаливает без '
+    'ручного повтора',
+    () async {
+      // Нет сети в момент «Распределить»: presigned-RPC падает
+      // SocketException — файл вообще не доходит до фонового загрузчика.
+      SparkJoyIntakeUploadService.presignOverride = (filename) async {
+        throw const SocketException('Network is unreachable');
+      };
+
+      await service.stageFiles(draftId, [await makeImageRecord('a')]);
+      await service.startUpload(draftId);
+
+      // Фаза «ждём сеть», в транспорт ничего не ушло, ручной повтор не нужен.
+      await _waitFor(
+        () => service.snapshotOf(draftId).phase == SparkIntakePhase.failed,
+      );
+      final failed = service.snapshotOf(draftId);
+      expect(failed.waitingForNetwork, isTrue);
+      expect(failed.files.single.networkFail, isTrue);
+      expect(transfer.enqueued, isEmpty);
+
+      // networkFail персистится → «ждём сеть» честно и после убийства процесса.
+      Map<String, dynamic>? persistedWhileOffline;
+      for (var i = 0; i < 300; i++) {
+        final p = await persistedIntake();
+        final files = p?['files'] as List?;
+        if (files != null &&
+            files.length == 1 &&
+            (files.single as Map)['networkFail'] == true) {
+          persistedWhileOffline = p;
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(
+        persistedWhileOffline,
+        isNotNull,
+        reason: 'networkFail должен персиститься для восстановления после kill',
+      );
+      expect(
+        (persistedWhileOffline!['files'] as List).single,
+        containsPair('status', SparkIntakeFileStatus.failed),
+      );
+
+      // Пришли домой — сеть появилась.
+      SparkJoyIntakeUploadService.presignOverride = (filename) async =>
+          (url: 'https://s3.example/put/$filename', key: 'temp/$filename');
+
+      // Вернулись в приложение (resume) — БЕЗ повторного «Распределить»:
+      // транзиентная ошибка должна сама уйти в очередь, не дожидаясь
+      // 60-секундного тика (который в фоне замерзает).
+      service.didChangeAppLifecycleState(AppLifecycleState.resumed);
+
+      await _waitFor(() => transfer.enqueued.length == 1);
+      expect(transfer.enqueued.single.recordId, 'a');
+
+      transfer.emitComplete(draftId, 'a');
+      await _waitFor(() => service.snapshotOf(draftId).files.single.isUploaded);
+      expect(service.snapshotOf(draftId).files.single.networkFail, isFalse);
+    },
+  );
 }

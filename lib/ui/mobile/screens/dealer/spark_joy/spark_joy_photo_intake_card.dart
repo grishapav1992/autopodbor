@@ -143,10 +143,19 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
           ? 'Все оригиналы распределены по отчёту'
           : 'Неуверенно распознанные файлы остались здесь';
     } else if (snapshot.phase == SparkIntakePhase.failed) {
-      subtitle =
-          'Загружено ${snapshot.uploadedCount} из ${snapshot.total} · '
-          '$failed с ошибкой';
-      hint = 'Продолжим автоматически, когда появится сеть';
+      if (snapshot.waitingForNetwork) {
+        subtitle =
+            'Загружено ${snapshot.uploadedCount} из ${snapshot.total} · '
+            'ждём сеть';
+        hint =
+            'Нет подключения. Загрузка и распределение продолжатся '
+            'автоматически, как только появится интернет';
+      } else {
+        subtitle =
+            'Загружено ${snapshot.uploadedCount} из ${snapshot.total} · '
+            '$failed с ошибкой';
+        hint = 'Часть файлов не удалось загрузить — откройте, чтобы повторить';
+      }
     } else {
       // staged: файлы добавлены, «Распределить файлы» ещё не нажимали.
       subtitle = 'Файлы добавлены · ${snapshot.total}';
@@ -158,9 +167,11 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
         _photoIntakeCardHeader(
           subtitle: subtitle,
           trailing: snapshot.phase == SparkIntakePhase.failed
-              ? const Icon(
-                  Icons.error_outline_rounded,
-                  color: kRedColor,
+              ? Icon(
+                  snapshot.waitingForNetwork
+                      ? Icons.cloud_off_rounded
+                      : Icons.error_outline_rounded,
+                  color: snapshot.waitingForNetwork ? kGreyColor : kRedColor,
                   size: SparkSize.iconLg,
                 )
               : const Icon(

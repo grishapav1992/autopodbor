@@ -79,6 +79,12 @@ class SparkIntakeFileRecord {
   String? videoThumbPath;
   String? error;
 
+  /// Последняя ошибка — сетевая (нет связи/таймаут): файл ждёт сеть и
+  /// дозаливается сам (мгновенно при возврате в приложение + 60-секундный
+  /// ретрай), в отличие от перманентных ошибок. Персистится, чтобы честно
+  /// показывать «ждём сеть» и после перезапуска процесса.
+  bool networkFail;
+
   /// Internal JPEG child produced from a video. Child records participate in
   /// the normal S3 transfer but are hidden from UI and never enter the report.
   String sourceVideoId;
@@ -121,6 +127,7 @@ class SparkIntakeFileRecord {
     this.compressedPath,
     this.videoThumbPath,
     this.error,
+    this.networkFail = false,
     this.sourceVideoId = '',
     this.videoFrameIndex = -1,
     this.videoFrameTimeMs = 0,
@@ -172,6 +179,8 @@ class SparkIntakeFileRecord {
       if (compressedPath != null) 'compressedPath': compressedPath,
       if (videoThumbPath != null) 'videoThumbPath': videoThumbPath,
       if (error != null) 'error': error,
+      if (networkFail && persistedStatus == SparkIntakeFileStatus.failed)
+        'networkFail': true,
       if (sourceVideoId.isNotEmpty) 'sourceVideoId': sourceVideoId,
       if (videoFrameIndex >= 0) 'videoFrameIndex': videoFrameIndex,
       if (videoFrameTimeMs > 0) 'videoFrameTimeMs': videoFrameTimeMs,
@@ -217,6 +226,7 @@ class SparkIntakeFileRecord {
       compressedPath: m['compressedPath']?.toString(),
       videoThumbPath: m['videoThumbPath']?.toString(),
       error: m['error']?.toString(),
+      networkFail: m['networkFail'] == true,
       sourceVideoId: m['sourceVideoId']?.toString() ?? '',
       videoFrameIndex:
           int.tryParse(m['videoFrameIndex']?.toString() ?? '') ?? -1,
@@ -311,6 +321,11 @@ class SparkIntakeSnapshot {
   final double progress;
   final SparkIntakePhase phase;
 
+  /// В фазе failed все упавшие файлы — транзиентные сетевые (не перманентные):
+  /// честно обещаем авто-продолжение вместо «ошибки». Читается картой/тайлами
+  /// только когда phase == failed.
+  final bool waitingForNetwork;
+
   /// Прогресс ИИ-классификации: изображений всего к раскладке / уже с
   /// вердиктом (для карточки «ИИ раскладывает · N из M»).
   final int aiTotal;
@@ -324,6 +339,7 @@ class SparkIntakeSnapshot {
     required this.failedCount,
     required this.progress,
     required this.phase,
+    this.waitingForNetwork = false,
     this.aiTotal = 0,
     this.aiClassified = 0,
   });
@@ -489,6 +505,22 @@ class _IntakeDraftState {
     } else {
       phase = SparkIntakePhase.done;
     }
+    // «Ждём сеть» = в фазе failed ВСЕ упавшие файлы транзиентно-сетевые (не
+    // перманентные noAutoRetry). Тогда обещание авто-продолжения честно:
+    // мгновенно при возврате в приложение + 60-секундный ретрай.
+    var hasFailedRecord = false;
+    var allFailedAreNetwork = true;
+    for (final r in files) {
+      if (r.status != SparkIntakeFileStatus.failed) continue;
+      hasFailedRecord = true;
+      if (!r.networkFail || noAutoRetry.contains(r.id)) {
+        allFailedAreNetwork = false;
+      }
+    }
+    final waitingForNetwork =
+        phase == SparkIntakePhase.failed &&
+        hasFailedRecord &&
+        allFailedAreNetwork;
     return SparkIntakeSnapshot(
       draftId: draftId,
       files: List<SparkIntakeFileRecord>.unmodifiable(visibleFiles),
@@ -499,6 +531,7 @@ class _IntakeDraftState {
           ? 0
           : (weightDone / weightTotal).clamp(0.0, 1.0),
       phase: phase,
+      waitingForNetwork: waitingForNetwork,
       aiTotal: aiTotal,
       aiClassified: aiClassified,
     );
@@ -1036,6 +1069,7 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
       // Транзиент (обычно сеть на шаге presigned URL): failed + retry-цикл.
       record.status = SparkIntakeFileStatus.failed;
       record.error = e.toString();
+      record.networkFail = _isRetryableNetworkError(e);
       state.emit();
       await _persist(state);
       _log(
@@ -1736,6 +1770,9 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
         }
         record.status = SparkIntakeFileStatus.failed;
         record.error = update.error ?? 'Загрузка не удалась';
+        // Нет HTTP-кода = обрыв соединения (сеть), а не ответ сервера —
+        // такой файл честно «ждёт сеть» и дозальётся сам.
+        record.networkFail = update.httpStatusCode == null;
         state.emit();
         unawaited(_persist(state));
         _scheduleRetryTimerIfNeeded();
@@ -1792,6 +1829,21 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
             unawaited(_transfer.cancel(taskId));
             record.taskId = null;
             record.status = SparkIntakeFileStatus.staged;
+        }
+      }
+      // Возврат в приложение (resume) или открытие черновика после старта:
+      // мгновенно лечим транзиентные (сетевые) ошибки прошлого офлайна, не
+      // дожидаясь 60-секундного ретрай-тика — именно он замерзает, пока
+      // телефон заблокирован/приложение в фоне. Перманентные ошибки
+      // (noAutoRetry: пропавший файл, битый формат) не трогаем.
+      if (state.uploadRequested) {
+        for (final record in state.files) {
+          if (record.isFailed && !state.noAutoRetry.contains(record.id)) {
+            record.status = SparkIntakeFileStatus.staged;
+            record.error = null;
+            record.networkFail = false;
+            record.taskId = null;
+          }
         }
       }
       state.emit();
@@ -2051,6 +2103,40 @@ class SparkJoyIntakeUploadService with WidgetsBindingObserver {
         draft['photoIntake'] = state.toJson();
       },
     );
+  }
+
+  /// Классификация ошибки заливки: сетевая/транзиентная (ждём сеть,
+  /// дозальётся сам) vs прочая (сервер ответил ошибкой, битые данные и т.п.).
+  /// StorageApi пробрасывает SocketException/HandshakeException/ClientException
+  /// как есть, а таймаут — обёрнутым Exception('Timeout on …'), поэтому
+  /// проверяем и тип, и сигнатуру строки.
+  static bool _isRetryableNetworkError(Object error) {
+    if (error is SocketException ||
+        error is TimeoutException ||
+        error is HttpException) {
+      return true;
+    }
+    final text = error.toString().toLowerCase();
+    const signatures = <String>[
+      'socketexception',
+      'clientexception',
+      'httpexception',
+      'handshakeexception',
+      'timeout',
+      'failed host lookup',
+      'network is unreachable',
+      'connection refused',
+      'connection reset',
+      'connection closed',
+      'connection timed out',
+      'connection attempt failed',
+      'software caused connection abort',
+      'no address associated',
+    ];
+    for (final signature in signatures) {
+      if (text.contains(signature)) return true;
+    }
+    return false;
   }
 
   static void _log(String stage, {required String draftId, String extra = ''}) {

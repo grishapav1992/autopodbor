@@ -516,12 +516,14 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                   ),
                 )
               else if (record.isFailed)
-                const Positioned(
+                Positioned(
                   left: SparkSpace.xs,
                   bottom: SparkSpace.xs,
                   child: _SparkIntakeStatusDot(
-                    icon: Icons.error_outline_rounded,
-                    color: kRedColor,
+                    icon: record.networkFail
+                        ? Icons.cloud_off_rounded
+                        : Icons.error_outline_rounded,
+                    color: record.networkFail ? kGreyColor : kRedColor,
                   ),
                 ),
             ],
@@ -591,12 +593,14 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                       ),
                     )
                   else if (record.isFailed)
-                    const Positioned(
+                    Positioned(
                       left: SparkSpace.xs,
                       bottom: SparkSpace.xs,
                       child: _SparkIntakeStatusDot(
-                        icon: Icons.error_outline_rounded,
-                        color: kRedColor,
+                        icon: record.networkFail
+                            ? Icons.cloud_off_rounded
+                            : Icons.error_outline_rounded,
+                        color: record.networkFail ? kGreyColor : kRedColor,
                       ),
                     ),
                 ],
