@@ -113,15 +113,30 @@ SparkJoyLegalTone sparkJoyLegalRowTone(Map<String, dynamic> check) {
   return SparkJoyLegalTone.clean;
 }
 
-/// Короткий вердикт справа в строке проверки.
-String sparkJoyLegalVerdictLabel(SparkJoyLegalTone tone) {
+/// Информационная проверка, у которой провайдер явно ответил «не найдено»
+/// (`found: false`): данных нет. Живой кейс — ГОСТ по VIN с опечаткой OCR
+/// (`…NZ1W…` вместо `…NZLW…`) вернул `{"found": false, "certificate": []}`,
+/// а строка показывала вердикт «данные» с подписью «Данные получены» — пустота
+/// маскировалась под «данные есть, но не открываются».
+bool sparkJoyLegalDataEmpty(Map<String, dynamic> check) {
+  final type = (check['checkType'] ?? '').toString();
+  if (!_sparkJoyInformationalChecks.contains(type)) return false;
+  return gostBoolField(check['responseNormalized'], 'found') == false;
+}
+
+/// Короткий вердикт справа в строке проверки. [dataEmpty] — информационная
+/// проверка без результата (см. [sparkJoyLegalDataEmpty]).
+String sparkJoyLegalVerdictLabel(
+  SparkJoyLegalTone tone, {
+  bool dataEmpty = false,
+}) {
   switch (tone) {
     case SparkJoyLegalTone.clean:
       return 'чисто';
     case SparkJoyLegalTone.found:
       return 'найдено';
     case SparkJoyLegalTone.data:
-      return 'данные';
+      return dataEmpty ? 'нет данных' : 'данные';
     case SparkJoyLegalTone.error:
       return 'ошибка';
   }

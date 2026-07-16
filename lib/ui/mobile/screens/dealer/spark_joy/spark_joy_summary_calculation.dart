@@ -103,7 +103,18 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
   /// экраном — UI оставался со спиннером навсегда, хотя ответы были готовы.
   Future<void> _resumeLegalBatchAfterDraftLoad() async {
     if (widget.readOnly) return;
-    final batchNumber = (_legalBatchNumber ?? '').trim();
+    var batchNumber = (_legalBatchNumber ?? '').trim();
+    if (batchNumber.isEmpty && _legalCheckResults.isNotEmpty) {
+      // Чеки батча сами несут batchNumber (live-подтверждено) — черновик,
+      // сохранённый до появления legalBatchNumber, всё ещё можно дочитать.
+      batchNumber = _legalCheckResults
+          .map((c) => (c['batchNumber'] ?? '').toString().trim())
+          .firstWhere((s) => s.isNotEmpty, orElse: () => '');
+      if (batchNumber.isNotEmpty) {
+        _legalBatchNumber = batchNumber;
+        _markDraftDirty();
+      }
+    }
 
     if (batchNumber.isEmpty) {
       // Legacy/повреждённый draft не может продолжить запрос без batch id.
@@ -169,6 +180,9 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
     try {
       final result = await storage_api.StorageApi.getBatchLegalReviewResults(
         batchNumber: batchNumber,
+        // Холодный первый хит бэка после простоя — 7–47с (замерено); дефолтных
+        // 15с не хватает, и лечение молча умирало на первом открытии.
+        timeout: const Duration(seconds: 45),
       );
       if (!mounted) return;
       final rawChecks = result['checks'];

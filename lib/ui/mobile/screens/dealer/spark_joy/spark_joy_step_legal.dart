@@ -318,6 +318,12 @@ String _legalRowSubtitle(Map<String, dynamic> check) {
       final summary = sparkJoyGostCertSummary(cert);
       if (summary.isNotEmpty) return summary;
     }
+    if (sparkJoyLegalDataEmpty(check)) {
+      // Пустой ГОСТ чаще всего = кривой идентификатор: OCR путает похожие
+      // символы VIN (живой кейс — «1» вместо «L»), и проверка ищет
+      // несуществующую машину. Подсказываем, куда смотреть.
+      return 'Сертификат в реестре не найден — проверьте VIN';
+    }
   }
   var text = _legalNormalizedToText(check['responseNormalized']);
   if (text.isEmpty) {
@@ -331,7 +337,8 @@ String _legalRowSubtitle(Map<String, dynamic> check) {
     text = switch (sparkJoyLegalRowTone(check)) {
       SparkJoyLegalTone.clean => 'Записей не найдено',
       SparkJoyLegalTone.found => 'Найдены записи',
-      SparkJoyLegalTone.data => 'Данные получены',
+      SparkJoyLegalTone.data =>
+        sparkJoyLegalDataEmpty(check) ? 'Записей не найдено' : 'Данные получены',
       SparkJoyLegalTone.error => 'Проверка не выполнилась',
     };
   }
@@ -512,6 +519,7 @@ class _LegalCheckRow extends StatelessWidget {
     required this.expanded,
     required this.details,
     required this.onTap,
+    this.dataEmpty = false,
   });
 
   final String title;
@@ -520,6 +528,10 @@ class _LegalCheckRow extends StatelessWidget {
 
   /// Осмысленен только при [state] == settled.
   final SparkJoyLegalTone tone;
+
+  /// Информационная проверка без результата: серый нейтральный вид вместо
+  /// синего «данные», чтобы пустота не выглядела как непрочитанные данные.
+  final bool dataEmpty;
   final bool expanded;
   final List<Widget> details;
   final VoidCallback onTap;
@@ -528,7 +540,7 @@ class _LegalCheckRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final settled = state == _LegalRowState.settled;
     final isFound = settled && tone == SparkJoyLegalTone.found;
-    final toneColor = _legalToneColor(tone);
+    final toneColor = dataEmpty ? kGreyColor : _legalToneColor(tone);
     final expandable = settled && details.isNotEmpty;
 
     return Container(
@@ -582,7 +594,7 @@ class _LegalCheckRow extends StatelessWidget {
                   if (settled) ...[
                     const SizedBox(width: SparkSpace.sm),
                     MyText(
-                      text: sparkJoyLegalVerdictLabel(tone),
+                      text: sparkJoyLegalVerdictLabel(tone, dataEmpty: dataEmpty),
                       size: SparkTextSize.caption,
                       weight: FontWeight.w700,
                       color: toneColor,
@@ -636,7 +648,11 @@ class _LegalCheckRow extends StatelessWidget {
             alpha: tone == SparkJoyLegalTone.data ? 0.08 : 0.12,
           ),
         ),
-        child: Icon(_legalToneIcon(tone), size: 16, color: toneColor),
+        child: Icon(
+          dataEmpty ? Icons.search_off_rounded : _legalToneIcon(tone),
+          size: 16,
+          color: toneColor,
+        ),
       );
     }
     if (state == _LegalRowState.running) {
@@ -954,6 +970,7 @@ Widget _buildSparkJoyStepLegal(
                             ? _LegalRowState.running
                             : _LegalRowState.queued),
                   tone: tone,
+                  dataEmpty: settled && sparkJoyLegalDataEmpty(check),
                   expanded: expanded,
                   details: details,
                   onTap: () => setStateFn(() {

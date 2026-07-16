@@ -437,6 +437,56 @@ void main() {
     });
   });
 
+  group('sparkJoyLegalDataEmpty (пустой ответ информационной проверки)', () {
+    test('ГОСТ found:false — данных нет, вердикт «нет данных»', () {
+      // Живой кейс: OCR распознал VIN с «1» вместо «L» → ГОСТ вернул
+      // {"found": false, "certificate": []}, а строка показывала «данные».
+      const check = {
+        'checkType': 'api_cloud_gost_certificate',
+        'status': 'not_found',
+        'responseNormalized': '{"found": false, "certificate": []}',
+      };
+      expect(sparkJoyLegalDataEmpty(check), isTrue);
+      expect(
+        sparkJoyLegalVerdictLabel(
+          sparkJoyLegalRowTone(check),
+          dataEmpty: true,
+        ),
+        'нет данных',
+      );
+    });
+
+    test('ГОСТ found:true — данные есть', () {
+      expect(
+        sparkJoyLegalDataEmpty(const {
+          'checkType': 'api_cloud_gost_certificate',
+          'responseNormalized': '{"found": true, "certificate": [{}]}',
+        }),
+        isFalse,
+      );
+    });
+
+    test('рисковая проверка found:false — не dataEmpty (это «чисто»)', () {
+      expect(
+        sparkJoyLegalDataEmpty(const {
+          'checkType': 'api_cloud_zalog_notary',
+          'responseNormalized': '{"found": false}',
+        }),
+        isFalse,
+      );
+    });
+
+    test('без тела — не dataEmpty (лечится дочиткой, а не вердиктом)', () {
+      expect(
+        sparkJoyLegalDataEmpty(const {
+          'checkType': 'api_cloud_gost_certificate',
+          'status': 'success',
+        }),
+        isFalse,
+      );
+    });
+  });
+
   group('legalReviewCheckHasBody (снимок гонки персиста)', () {
     test('терминальный статус без тела — нет body', () {
       // Живой кейс: поллинг застал status=success до записи responseNormalized;

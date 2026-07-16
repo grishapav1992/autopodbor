@@ -154,6 +154,35 @@ void main() {
     expect(find.textContaining('Год выпуска:'), findsOneWidget);
   });
 
+  testWidgets('ГОСТ без результата: «нет данных» и подсказка про VIN', (
+    tester,
+  ) async {
+    // Живой кейс: VIN с опечаткой OCR → ГОСТ вернул found:false. Раньше строка
+    // показывала «данные» + «Данные получены» — пустота маскировалась под
+    // непрочитанные данные.
+    await _openLegalSection(
+      tester,
+      _draftWithChecks(
+        loaded: true,
+        checks: const [
+          {
+            'checkType': 'api_cloud_gost_certificate',
+            'status': 'not_found',
+            'responseNormalized': '{"found": false, "certificate": []}',
+          },
+        ],
+      ),
+    );
+
+    expect(find.text('нет данных'), findsOneWidget);
+    expect(find.text('данные'), findsNothing);
+    expect(find.text('Данные получены'), findsNothing);
+    expect(
+      find.text('Сертификат в реестре не найден — проверьте VIN'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('готово: детали сворачиваются тапом по строке', (tester) async {
     await _openLegalSection(
       tester,
