@@ -71,6 +71,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
         // (объём/тип двигателя/КПП) официальными данными серта, приоритетнее
         // ИИ. Идемпотентно (см. _autofillParamsFromGostCert в dictation_rules).
         _autofillParamsFromGostCert();
+        // Собрать PDF-выжимку результатов и положить её в материалы проверки
+        // (уедет в отчёт наравне с файлами специалиста). Перегенерируем: свежий
+        // прогон мог изменить вердикты.
+        unawaited(_ensureLegalReviewPdf(regenerate: true));
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Материалы проверки готовы')),
@@ -149,6 +153,10 @@ extension _SparkJoySummaryCalculation on _SparkJoyCreateReportScreenState {
       // и черновик навсегда показывал бы пустые «Данные получены» без деталей,
       // хотя ответ на сервере есть. Дочитываем батч один раз (бесплатно).
       await _rehydrateLegalBodiesFromBatch(batchNumber);
+      // Черновик, сохранённый до появления фичи PDF (или закрытый раньше, чем
+      // файл успел записаться), — дособираем PDF, если его ещё нет. Свежий он
+      // уже персистится в legalFiles, так что regenerate:false не плодит копий.
+      unawaited(_ensureLegalReviewPdf(regenerate: false));
       return;
     }
 
