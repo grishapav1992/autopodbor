@@ -70,129 +70,23 @@ Widget _buildSparkJoyValidationHint(String text) {
   );
 }
 
-Color _sparkJoyUploadStatusColor(BackendUploadFileStatus status) {
-  switch (status) {
-    case BackendUploadFileStatus.uploaded:
-      return kGreenColor;
-    case BackendUploadFileStatus.failed:
-      return kRedColor;
-    case BackendUploadFileStatus.uploading:
-      return kSecondaryColor;
-    case BackendUploadFileStatus.pending:
-      return kGreyColor;
-  }
-}
-
-IconData _sparkJoyUploadStatusIcon(BackendUploadFileStatus status) {
-  switch (status) {
-    case BackendUploadFileStatus.uploaded:
-      return Icons.check_circle_rounded;
-    case BackendUploadFileStatus.failed:
-      return Icons.error_rounded;
-    case BackendUploadFileStatus.uploading:
-      return Icons.cloud_upload_rounded;
-    case BackendUploadFileStatus.pending:
-      return Icons.schedule_rounded;
-  }
-}
-
-String _sparkJoyUploadStatusText(BackendUploadFileProgress file) {
-  switch (file.status) {
-    case BackendUploadFileStatus.uploaded:
-      return 'Загружен';
-    case BackendUploadFileStatus.failed:
-      return 'Ошибка';
-    case BackendUploadFileStatus.uploading:
-      final percent = (file.progress * 100).round().clamp(0, 100);
-      return '$percent%';
-    case BackendUploadFileStatus.pending:
-      return 'Ожидание';
-  }
-}
-
-Widget _buildSparkJoyUploadFileRow(BackendUploadFileProgress file) {
-  final statusColor = _sparkJoyUploadStatusColor(file.status);
-  final statusText = _sparkJoyUploadStatusText(file);
-  final showProgress =
-      file.status == BackendUploadFileStatus.uploading ||
-      (file.status == BackendUploadFileStatus.failed && file.progress > 0);
-  return Container(
-    padding: const EdgeInsets.symmetric(
-      horizontal: SparkSpace.md,
-      vertical: SparkSpace.sm,
-    ),
-    decoration: BoxDecoration(
-      color: kWhiteColor.withValues(alpha: 0.66),
-      borderRadius: BorderRadius.circular(SparkRadius.sm),
-      border: Border.all(color: statusColor.withValues(alpha: 0.2)),
-    ),
-    child: Column(
-      children: [
-        Row(
-          children: [
-            Icon(
-              _sparkJoyUploadStatusIcon(file.status),
-              size: SparkSize.iconSm,
-              color: statusColor,
-            ),
-            const SizedBox(width: SparkSpace.sm),
-            Expanded(
-              child: MyText(
-                text: '${file.index}. ${file.fileName}',
-                size: SparkTextSize.body,
-                color: kPrimaryColor,
-                weight: FontWeight.w600,
-                maxLines: 1,
-                textOverflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: SparkSpace.sm),
-            MyText(
-              text: statusText,
-              size: SparkTextSize.caption,
-              color: statusColor,
-              weight: FontWeight.w700,
-            ),
-          ],
-        ),
-        if (showProgress) ...[
-          const SizedBox(height: SparkSpace.xs),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(SparkRadius.pill),
-            child: LinearProgressIndicator(
-              value: file.progress.clamp(0.0, 1.0),
-              minHeight: SparkSpace.xs,
-              backgroundColor: statusColor.withValues(alpha: 0.14),
-              valueColor: AlwaysStoppedAnimation<Color>(statusColor),
-            ),
-          ),
-        ],
-        if (file.totalParts > 0) ...[
-          const SizedBox(height: SparkSpace.xs),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: MyText(
-              text:
-                  'часть ${file.uploadedParts.clamp(0, file.totalParts)}/${file.totalParts}',
-              size: SparkTextSize.caption,
-              color: kGreyColor,
-              weight: FontWeight.w500,
-            ),
-          ),
-        ],
-      ],
-    ),
-  );
-}
-
+// Выгрузка подаётся как ОДИН процесс: статус + крупный процент + общий
+// бар (взвешенный по байтам) + счётчик готовых файлов. Пофайловый список
+// карточек убран сознательно: одновременно грузятся максимум
+// _kFileConcurrency файлов, и стена из десятков строк с техническими
+// S3-именами хоронила единственно важное — общий ход выгрузки.
 Widget _buildSparkJoyUploadHint(
   String text, {
   // null → индетерминированный (анимированный) бар: используется на фазах без
   // пофайлового процента (флаш AI, серверная подготовка, превью, финализация),
   // чтобы бар не «застывал» на 0% и не выглядел как зависание.
   required double? progress,
-  required List<BackendUploadFileProgress> files,
+  int completedFiles = 0,
+  int totalFiles = 0,
 }) {
+  final percent = progress == null
+      ? null
+      : (progress.clamp(0.0, 1.0) * 100).round();
   return SparkCard(
     padding: const EdgeInsets.symmetric(
       horizontal: SparkSpace.xl,
@@ -205,7 +99,6 @@ Widget _buildSparkJoyUploadHint(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(
               width: SparkSize.iconSm,
@@ -224,6 +117,15 @@ Widget _buildSparkJoyUploadHint(
                 weight: FontWeight.w700,
               ),
             ),
+            if (percent != null) ...[
+              const SizedBox(width: SparkSpace.sm),
+              MyText(
+                text: '$percent%',
+                size: SparkTextSize.title,
+                color: kSecondaryColor,
+                weight: FontWeight.w700,
+              ),
+            ],
           ],
         ),
         const SizedBox(height: SparkSpace.sm),
@@ -236,13 +138,14 @@ Widget _buildSparkJoyUploadHint(
             valueColor: const AlwaysStoppedAnimation<Color>(kSecondaryColor),
           ),
         ),
-        if (files.isNotEmpty) ...[
-          const SizedBox(height: SparkSpace.md),
-          ...files.map(
-            (file) => Padding(
-              padding: const EdgeInsets.only(bottom: SparkSpace.xs),
-              child: _buildSparkJoyUploadFileRow(file),
-            ),
+        if (totalFiles > 0) ...[
+          const SizedBox(height: SparkSpace.xs),
+          MyText(
+            text:
+                'Готово ${completedFiles.clamp(0, totalFiles)} из $totalFiles файлов',
+            size: SparkTextSize.caption,
+            color: kGreyColor,
+            weight: FontWeight.w500,
           ),
         ],
       ],
@@ -422,7 +325,8 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
             progress: s._backendUploadTotalFiles > 0
                 ? s._backendUploadProgressValue()
                 : null,
-            files: s._backendUploadFilesProgress,
+            completedFiles: s._backendUploadCurrentFile,
+            totalFiles: s._backendUploadTotalFiles,
           ),
           const SizedBox(height: SparkSpace.sm),
           Align(

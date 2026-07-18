@@ -1196,12 +1196,19 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     }
   }
 
-  void _initializeBackendUploadFilesProgress({
+  Future<void> _initializeBackendUploadFilesProgress({
     required List<_SparkJoyUploadQueueItem> items,
-  }) {
+  }) async {
     final next = <BackendUploadFileProgress>[];
     for (var i = 0; i < items.length; i++) {
       final entry = items[i];
+      // Размер источника нужен для взвешенного по байтам общего прогресса.
+      // stat()/декод data URL дешевле любого сетевого вызова; при сбое файл
+      // остаётся с 0 и получает средний вес в _backendUploadProgressValue.
+      var totalBytes = 0;
+      try {
+        totalBytes = (await _openUploadSource(entry.item))?.length ?? 0;
+      } catch (_) {}
       next.add(
         BackendUploadFileProgress(
           sourceKey: entry.stateKey,
@@ -1210,6 +1217,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
               : entry.filename,
           index: i + 1,
           total: items.length,
+          totalBytes: totalBytes,
         ),
       );
     }
@@ -1483,18 +1491,36 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
   double _backendUploadProgressValue() {
     final totalFiles = _backendUploadTotalFiles;
     if (totalFiles <= 0) return 0;
-    // Файлы грузятся параллельно, поэтому общий процент = СРЕДНЕЕ по
-    // побайтному прогрессу каждого файла (per-file progress байт-точный —
-    // emitFileProgress ~10fps). Экранные currentPart/totalParts в параллельном
+    // Файлы грузятся параллельно, поэтому общий процент = средневзвешенное
+    // ПО БАЙТАМ по прогрессу каждого файла (per-file progress байт-точный —
+    // emitFileProgress ~10fps). Равные веса завышали вклад мелких фото: бар
+    // прыгал вперёд и надолго замирал на большом видео. Файл с неизвестным
+    // размером (totalBytes == 0) получает средний вес известных, чтобы его
+    // вклад не пропадал. Экранные currentPart/totalParts в параллельном
     // цикле не выставляются, поэтому считаем по строкам
     // _backendUploadFilesProgress — это и есть настоящая картина.
     final files = _backendUploadFilesProgress;
     if (files.isNotEmpty) {
-      var sum = 0.0;
+      var knownBytes = 0;
+      var knownCount = 0;
       for (final f in files) {
-        sum += f.progress.clamp(0.0, 1.0);
+        if (f.totalBytes > 0) {
+          knownBytes += f.totalBytes;
+          knownCount += 1;
+        }
       }
-      return (sum / files.length).clamp(0.0, 1.0);
+      final fallbackWeight = knownCount > 0 ? knownBytes / knownCount : 1.0;
+      var weightedSum = 0.0;
+      var totalWeight = 0.0;
+      for (final f in files) {
+        final weight = f.totalBytes > 0
+            ? f.totalBytes.toDouble()
+            : fallbackWeight;
+        weightedSum += f.progress.clamp(0.0, 1.0) * weight;
+        totalWeight += weight;
+      }
+      if (totalWeight <= 0) return 0;
+      return (weightedSum / totalWeight).clamp(0.0, 1.0);
     }
     // Фолбэк до инициализации строк: целыми файлами.
     final fileIndex = (_backendUploadCurrentFile - 1).clamp(0, totalFiles);
@@ -3460,7 +3486,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       await _cleanupStaleMultipartUploads(reportNumber: reportNumber);
 
       final items = _collectUniqueUploadItems();
-      _initializeBackendUploadFilesProgress(items: items);
+      await _initializeBackendUploadFilesProgress(items: items);
       _setBackendUploadProgress(
         inProgress: true,
         statusText: items.isEmpty ? 'Файлов для загрузки нет' : null,
@@ -3484,11 +3510,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       Object? firstFailure;
       void bumpStatus() {
         if (!mounted) return;
+        // Счётчик готовых файлов карточка выгрузки рисует отдельной подписью
+        // из currentFile/totalFiles — в заголовке выгрузка подаётся как один
+        // процесс, без пофайловой арифметики.
         _setBackendUploadProgress(
           inProgress: true,
           statusText: items.isEmpty
               ? 'Файлов для загрузки нет'
-              : 'Загрузка медиа: $completedFiles/${items.length}',
+              : 'Выгружаем медиа…',
           currentFile: completedFiles,
           totalFiles: items.length,
         );

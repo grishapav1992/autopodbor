@@ -694,6 +694,7 @@ class BackendUploadFileProgress {
     this.status = BackendUploadFileStatus.pending,
     this.uploadedParts = 0,
     this.totalParts = 0,
+    this.totalBytes = 0,
     this.errorText = '',
   });
 
@@ -705,6 +706,11 @@ class BackendUploadFileProgress {
   final BackendUploadFileStatus status;
   final int uploadedParts;
   final int totalParts;
+
+  /// Source size resolved when the upload queue is built; 0 when unknown.
+  /// Feeds the byte-weighted aggregate progress — files with unknown size
+  /// get the average weight of the known ones there.
+  final int totalBytes;
   final String errorText;
 
   BackendUploadFileProgress copyWith({
@@ -716,6 +722,7 @@ class BackendUploadFileProgress {
     BackendUploadFileStatus? status,
     int? uploadedParts,
     int? totalParts,
+    int? totalBytes,
     String? errorText,
   }) {
     return BackendUploadFileProgress(
@@ -727,6 +734,7 @@ class BackendUploadFileProgress {
       status: status ?? this.status,
       uploadedParts: uploadedParts ?? this.uploadedParts,
       totalParts: totalParts ?? this.totalParts,
+      totalBytes: totalBytes ?? this.totalBytes,
       errorText: errorText ?? this.errorText,
     );
   }
