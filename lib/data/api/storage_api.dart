@@ -1064,10 +1064,20 @@ class StorageApi {
           Exception('RefreshToken returned ok without tokens'),
         );
       }
-      await UserSimplePreferences.setAuthTokens(
+      final persisted = await UserSimplePreferences.setAuthTokens(
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
       );
+      if (!persisted) {
+        // Сервер пару выдал, но хранилище её не приняло: success тут был
+        // бы ложью — следующий RPC прочитал бы с диска СТАРЫЙ access (и,
+        // при ротации на бэке, остался бы со старым refresh навсегда).
+        // Transient: refresh-токен на сервере жив, следующий вызов
+        // повторит попытку записи.
+        return TokenRefreshResult.transient(
+          Exception('RefreshToken ok but token persist failed'),
+        );
+      }
       // Replace the notification token too when the refresh returns one —
       // otherwise the realtime WS keeps using the stale (expired) token and
       // never recovers after the 72h TTL (B18).

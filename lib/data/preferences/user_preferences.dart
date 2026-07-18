@@ -367,23 +367,46 @@ class UserSimplePreferences {
   /// relies on SubtleCrypto and can throw on write — that must NOT break login
   /// (the backend Auth already succeeded). [_readTokenWithMigration] reads the
   /// plain copy back. A successful secure write erases any plain copy.
-  static Future<void> _writeToken(String key, String value) async {
+  ///
+  /// Returns false when NEITHER store accepted the value: caller'ы, для
+  /// которых важна долговечность (token refresh), не должны рапортовать
+  /// success по факту вызова — только по подтверждённой записи.
+  static Future<bool> _writeToken(String key, String value) async {
     try {
       await _secure.write(key: key, value: value);
+    } catch (_) {
+      try {
+        return await (await _prefs()).setString(key, value);
+      } catch (_) {
+        return false;
+      }
+    }
+    try {
       await (await _prefs()).remove(key);
     } catch (_) {
+      // Легаси-копию стереть не удалось — перезапишем её свежим значением,
+      // чтобы [_readTokenWithMigration] при сбое secure-ЧТЕНИЯ не воскресил
+      // устаревший токен. Сам secure-write уже успешен — вердикт true.
       try {
         await (await _prefs()).setString(key, value);
       } catch (_) {}
     }
+    return true;
   }
 
-  static Future<void> setAuthTokens({
+  /// Persists the auth token pair — refresh-токен ПЕРВЫМ. Если процесс
+  /// умрёт между двумя записями, на диске останется «новый refresh +
+  /// старый access» — безопасная комбинация (протухший access чинится
+  /// очередным RefreshToken). Обратный порядок при ротации refresh на
+  /// бэке оставил бы «новый access + мёртвый refresh» → разлогин, когда
+  /// access истечёт. Returns true только когда записаны ОБА токена.
+  static Future<bool> setAuthTokens({
     required String accessToken,
     required String refreshToken,
   }) async {
-    await _writeToken(_accessTokenKey, accessToken);
-    await _writeToken(_refreshTokenKey, refreshToken);
+    final refreshOk = await _writeToken(_refreshTokenKey, refreshToken);
+    final accessOk = await _writeToken(_accessTokenKey, accessToken);
+    return refreshOk && accessOk;
   }
 
   static Future<String?> getAccessToken() =>
