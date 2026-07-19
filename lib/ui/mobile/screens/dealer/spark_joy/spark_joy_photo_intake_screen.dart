@@ -37,38 +37,15 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
         icon: const Icon(Icons.arrow_back_rounded),
         onPressed: _intakeImportInProgress ? null : _closePhotoIntake,
       ),
-      actions: [
-        TextButton(
-          onPressed: _intakeImportInProgress
-              ? null
-              : () => unawaited(_onIntakeCancelPressed()),
-          child: const MyText(
-            text: 'Отмена',
-            size: SparkTextSize.label,
-            weight: FontWeight.w700,
-            color: kSecondaryColor,
-          ),
-        ),
-        const SizedBox(width: SparkSpace.md),
-      ],
     );
   }
 
-  /// «Отмена» в шапке интейка. Пока идёт работа (заливка, ИИ-раскладка или
-  /// авторетраи после ошибок) — прерывает её после подтверждения; иначе
-  /// просто закрывает экран, как раньше.
-  Future<void> _onIntakeCancelPressed() async {
+  /// Общий сценарий «Прервать загрузку»: подтверждение → cancelUpload →
+  /// черновик dirty → снекбар. Зовётся с нижней панели интейка и с крестика
+  /// на карточке обзора — обе кнопки видны только пока заливка/ИИ-раскладка/
+  /// авторетраи запрошены, поэтому экран здесь не закрывается.
+  Future<void> _confirmAndCancelIntake() async {
     if (_intakeImportInProgress) return;
-    final snapshot = SparkJoyIntakeUploadService.instance.snapshotOf(_draftId);
-    final busy =
-        snapshot.uploadRequested &&
-        (snapshot.phase == SparkIntakePhase.uploading ||
-            snapshot.phase == SparkIntakePhase.classifying ||
-            snapshot.phase == SparkIntakePhase.failed);
-    if (!busy) {
-      _closePhotoIntake();
-      return;
-    }
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -105,6 +82,13 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
       ),
     );
     if (confirmed != true || !mounted) return;
+    // Пока диалог был открыт, загрузку могли отменить с другой поверхности
+    // или она успела завершиться — не рапортуем ложное «остановлена».
+    if (!SparkJoyIntakeUploadService.instance
+        .snapshotOf(_draftId)
+        .uploadRequested) {
+      return;
+    }
     await SparkJoyIntakeUploadService.instance.cancelUpload(_draftId);
     if (!mounted) return;
     _markDraftDirty();
@@ -763,6 +747,10 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
         // После ошибок кнопка честно называется повтором — заливка уже была
         // запрошена, и нажатие лишь возвращает failed-файлы в очередь.
         final retryMode = snapshot.uploadRequested && snapshot.failedCount > 0;
+        final busy =
+            snapshot.uploadRequested &&
+            (snapshot.phase == SparkIntakePhase.uploading ||
+                snapshot.phase == SparkIntakePhase.classifying);
         return Container(
           decoration: const BoxDecoration(
             color: kPrimaryColor,
@@ -839,42 +827,125 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
                 ),
                 const SizedBox(height: SparkSpace.lg),
               ],
-              SizedBox(
-                height: 50,
-                child: FilledButton.icon(
-                  onPressed:
-                      _intakeImportInProgress ||
-                          !sparkIntakeCanRequestUpload(snapshot)
-                      ? null
-                      : () => unawaited(_runStartIntakeUpload()),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: kSecondaryColor,
-                    disabledBackgroundColor: kSecondaryColor.withValues(
-                      alpha: 0.35,
+              if (busy)
+                _intakeBottomBusyBlock(snapshot)
+              else ...[
+                SizedBox(
+                  height: 50,
+                  child: FilledButton.icon(
+                    onPressed:
+                        _intakeImportInProgress ||
+                            !sparkIntakeCanRequestUpload(snapshot)
+                        ? null
+                        : () => unawaited(_runStartIntakeUpload()),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: kSecondaryColor,
+                      disabledBackgroundColor: kSecondaryColor.withValues(
+                        alpha: 0.35,
+                      ),
+                      foregroundColor: kWhiteColor,
+                      disabledForegroundColor: kWhiteColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(SparkRadius.md),
+                      ),
+                      textStyle: const TextStyle(
+                        fontSize: SparkTextSize.sectionTitle,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    foregroundColor: kWhiteColor,
-                    disabledForegroundColor: kWhiteColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(SparkRadius.md),
+                    icon: Icon(
+                      retryMode ? Icons.refresh_rounded : Icons.auto_awesome,
+                      size: SparkSize.iconLg,
                     ),
-                    textStyle: const TextStyle(
-                      fontSize: SparkTextSize.sectionTitle,
-                      fontWeight: FontWeight.w700,
+                    label: Text(
+                      retryMode ? 'Повторить загрузку' : 'Распределить файлы',
                     ),
-                  ),
-                  icon: Icon(
-                    retryMode ? Icons.refresh_rounded : Icons.auto_awesome,
-                    size: SparkSize.iconLg,
-                  ),
-                  label: Text(
-                    retryMode ? 'Повторить загрузку' : 'Распределить файлы',
                   ),
                 ),
-              ),
+                // В failed авторетраи продолжают крутиться в фоне — рядом с
+                // повтором нужна и возможность их погасить.
+                if (snapshot.phase == SparkIntakePhase.failed) ...[
+                  const SizedBox(height: SparkSpace.xs),
+                  _intakeCancelTextButton(),
+                ],
+              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  /// Busy-состояние нижней панели (идёт заливка или ИИ-раскладка): статус и
+  /// прогресс — те же, что на карточке обзора, снизу красная «Отменить».
+  Widget _intakeBottomBusyBlock(SparkIntakeSnapshot snapshot) {
+    final classifying = snapshot.phase == SparkIntakePhase.classifying;
+    final statusText = classifying
+        ? 'ИИ распределяет · ${snapshot.aiClassified} из ${snapshot.aiTotal}'
+        : 'Загрузка файлов · ${snapshot.uploadedCount} из ${snapshot.total}';
+    final progress = classifying
+        ? (snapshot.aiTotal == 0
+              ? null
+              : snapshot.aiClassified / snapshot.aiTotal)
+        : snapshot.progress;
+    final percent = (snapshot.progress * 100).round();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: MyText(
+                text: statusText,
+                size: SparkTextSize.label,
+                weight: FontWeight.w600,
+                color: kTertiaryColor,
+              ),
+            ),
+            if (classifying)
+              const SizedBox(
+                width: SparkSize.iconLg,
+                height: SparkSize.iconLg,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              )
+            else
+              MyText(
+                text: '$percent%',
+                size: SparkTextSize.bodyLg,
+                weight: FontWeight.w700,
+                color: kSecondaryColor,
+              ),
+          ],
+        ),
+        const SizedBox(height: SparkSpace.md),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(SparkRadius.pill),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 6,
+            backgroundColor: kLightGreyColor,
+            valueColor: const AlwaysStoppedAnimation<Color>(kSecondaryColor),
+          ),
+        ),
+        const SizedBox(height: SparkSpace.xs),
+        _intakeCancelTextButton(),
+      ],
+    );
+  }
+
+  /// Красная «Отменить» по паттерну «Отменить выгрузку» редактора секции.
+  Widget _intakeCancelTextButton() {
+    return Align(
+      alignment: Alignment.center,
+      child: TextButton.icon(
+        onPressed: _intakeImportInProgress
+            ? null
+            : () => unawaited(_confirmAndCancelIntake()),
+        icon: const Icon(Icons.close_rounded, size: 18),
+        label: const Text('Отменить'),
+        style: TextButton.styleFrom(foregroundColor: kRedColor),
+      ),
     );
   }
 }

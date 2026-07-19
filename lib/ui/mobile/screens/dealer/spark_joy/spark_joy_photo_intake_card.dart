@@ -103,11 +103,18 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
         _photoIntakeCardHeader(
           subtitle:
               'Загрузка файлов · ${snapshot.uploadedCount} из ${snapshot.total}',
-          trailing: MyText(
-            text: '$percent%',
-            size: SparkTextSize.bodyLg,
-            weight: FontWeight.w700,
-            color: kSecondaryColor,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MyText(
+                text: '$percent%',
+                size: SparkTextSize.bodyLg,
+                weight: FontWeight.w700,
+                color: kSecondaryColor,
+              ),
+              const SizedBox(width: SparkSpace.md),
+              _photoIntakeCardCancelIcon(),
+            ],
           ),
         ),
         const SizedBox(height: SparkSpace.md),
@@ -189,10 +196,17 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
       children: [
         _photoIntakeCardHeader(
           subtitle: 'ИИ распределяет · $completed из $total',
-          trailing: const SizedBox(
-            width: SparkSize.iconLg,
-            height: SparkSize.iconLg,
-            child: CircularProgressIndicator(strokeWidth: 2.5),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(
+                width: SparkSize.iconLg,
+                height: SparkSize.iconLg,
+                child: CircularProgressIndicator(strokeWidth: 2.5),
+              ),
+              const SizedBox(width: SparkSpace.md),
+              _photoIntakeCardCancelIcon(),
+            ],
           ),
         ),
         const SizedBox(height: SparkSpace.md),
@@ -215,6 +229,24 @@ extension _SparkJoyPhotoIntakeCard on _SparkJoyCreateReportScreenState {
           lineHeight: 1.4,
         ),
       ],
+    );
+  }
+
+  /// Компактный крестик «прервать» в шапке прогресс-состояний карточки.
+  /// Вложенный IconButton выигрывает жест у InkWell карточки, так что тап
+  /// по крестику не открывает интейк.
+  Widget _photoIntakeCardCancelIcon() {
+    return IconButton(
+      onPressed: () => unawaited(_confirmAndCancelIntake()),
+      icon: const Icon(
+        Icons.close_rounded,
+        color: kRedColor,
+        size: SparkSize.iconLg,
+      ),
+      tooltip: 'Прервать загрузку',
+      padding: EdgeInsets.zero,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 32),
     );
   }
 }
