@@ -130,6 +130,10 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
     try {
       editIndex = await showDialog<int>(
         context: context,
+        // Иначе fullscreen-диалог вписывается в safe area: чёрный фон не
+        // доходит до краёв экрана, снизу в зазоре home-indicator
+        // просвечивает нижележащий экран, а кнопка выхода прижата к вырезу.
+        useSafeArea: false,
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (context, setLocalState) {
@@ -494,143 +498,148 @@ extension _SparkJoyMediaLightboxMethods on _SparkJoyCreateReportScreenState {
                         ),
                       ),
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (item.isVideo &&
-                            videoController != null &&
-                            videoController!.value.isInitialized &&
-                            videoSourceUrl == item.dataUrl) ...[
-                          Row(
-                            children: [
-                              Expanded(
-                                child: _SparkJoyLightboxVideoScrubber(
-                                  controller: videoController!,
+                    // top:false — фон панели тянется до нижней кромки
+                    // экрана, а контент не заезжает под полоску Home.
+                    child: SafeArea(
+                      top: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (item.isVideo &&
+                              videoController != null &&
+                              videoController!.value.isInitialized &&
+                              videoSourceUrl == item.dataUrl) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: _SparkJoyLightboxVideoScrubber(
+                                    controller: videoController!,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(width: SparkSpace.sm),
-                              IconButton(
-                                onPressed: () =>
-                                    _openFullscreenVideo(videoController!),
-                                tooltip: 'На весь экран',
-                                icon: const Icon(
-                                  Icons.fullscreen_rounded,
-                                  color: kWhiteColor,
-                                  size: SparkTextSize.titleLg,
+                                const SizedBox(width: SparkSpace.sm),
+                                IconButton(
+                                  onPressed: () =>
+                                      _openFullscreenVideo(videoController!),
+                                  tooltip: 'На весь экран',
+                                  icon: const Icon(
+                                    Icons.fullscreen_rounded,
+                                    color: kWhiteColor,
+                                    size: SparkTextSize.titleLg,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: SparkSpace.md),
-                        ],
-                        if (elementLabel.isNotEmpty)
-                          Text(
-                            elementLabel,
-                            style: const TextStyle(
-                              color: kWhiteColor,
-                              fontSize: SparkTextSize.body,
-                              fontWeight: FontWeight.w700,
+                              ],
                             ),
-                          ),
-                        if (elementLabel.isNotEmpty)
-                          const SizedBox(height: SparkSpace.xs),
-                        if (hasNoDamage)
-                          Container(
-                            margin: const EdgeInsets.only(
-                              bottom: SparkSpace.sm,
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: SparkSpace.lg,
-                              vertical: SparkSpace.sm,
-                            ),
-                            decoration: BoxDecoration(
-                              color: kGreenColor.withValues(alpha: 0.22),
-                              borderRadius: BorderRadius.circular(
-                                SparkRadius.pill,
-                              ),
-                            ),
-                            child: Text(
-                              _mediaNoDamageLabel(itemGroupKey),
+                            const SizedBox(height: SparkSpace.md),
+                          ],
+                          if (elementLabel.isNotEmpty)
+                            Text(
+                              elementLabel,
                               style: const TextStyle(
                                 color: kWhiteColor,
-                                fontSize: SparkTextSize.caption,
+                                fontSize: SparkTextSize.body,
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                          ),
-                        if (tags.isNotEmpty) ...[
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: tags.map((tag) {
-                              final color = _mediaTagColor(
-                                _mediaTagSeverity(
-                                  itemGroupKey,
-                                  tag,
-                                  elementType: item.inspection.elementType,
-                                ),
-                              );
-                              return Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: color.withValues(alpha: 0.24),
-                                  borderRadius: BorderRadius.circular(
-                                    SparkRadius.pill,
-                                  ),
-                                ),
-                                child: Text(
-                                  tag,
-                                  style: const TextStyle(
-                                    color: kWhiteColor,
-                                    fontSize: SparkTextSize.caption,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: SparkSpace.sm),
-                        ],
-                        if (!hasNoDamage &&
-                            paintFrom != null &&
-                            paintTo != null) ...[
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.brush_outlined,
-                                size: SparkTextSize.label,
-                                color: kWhiteColor.withValues(alpha: 0.8),
+                          if (elementLabel.isNotEmpty)
+                            const SizedBox(height: SparkSpace.xs),
+                          if (hasNoDamage)
+                            Container(
+                              margin: const EdgeInsets.only(
+                                bottom: SparkSpace.sm,
                               ),
-                              const SizedBox(width: SparkSpace.sm),
-                              Text(
-                                '${paintFrom.round()}–${paintTo.round()} мкм',
-                                style: TextStyle(
-                                  color: kWhiteColor.withValues(alpha: 0.8),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: SparkSpace.lg,
+                                vertical: SparkSpace.sm,
+                              ),
+                              decoration: BoxDecoration(
+                                color: kGreenColor.withValues(alpha: 0.22),
+                                borderRadius: BorderRadius.circular(
+                                  SparkRadius.pill,
+                                ),
+                              ),
+                              child: Text(
+                                _mediaNoDamageLabel(itemGroupKey),
+                                style: const TextStyle(
+                                  color: kWhiteColor,
                                   fontSize: SparkTextSize.caption,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                            ],
+                            ),
+                          if (tags.isNotEmpty) ...[
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: tags.map((tag) {
+                                final color = _mediaTagColor(
+                                  _mediaTagSeverity(
+                                    itemGroupKey,
+                                    tag,
+                                    elementType: item.inspection.elementType,
+                                  ),
+                                );
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.24),
+                                    borderRadius: BorderRadius.circular(
+                                      SparkRadius.pill,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    tag,
+                                    style: const TextStyle(
+                                      color: kWhiteColor,
+                                      fontSize: SparkTextSize.caption,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: SparkSpace.sm),
+                          ],
+                          if (!hasNoDamage &&
+                              paintFrom != null &&
+                              paintTo != null) ...[
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.brush_outlined,
+                                  size: SparkTextSize.label,
+                                  color: kWhiteColor.withValues(alpha: 0.8),
+                                ),
+                                const SizedBox(width: SparkSpace.sm),
+                                Text(
+                                  '${paintFrom.round()}–${paintTo.round()} мкм',
+                                  style: TextStyle(
+                                    color: kWhiteColor.withValues(alpha: 0.8),
+                                    fontSize: SparkTextSize.caption,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: SparkSpace.sm),
+                          ],
+                          Text(
+                            noteDisplay,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: note.isEmpty
+                                  ? kWhiteColor.withValues(alpha: 0.68)
+                                  : kWhiteColor,
+                              fontSize: SparkTextSize.caption,
+                              height: 1.3,
+                            ),
                           ),
-                          const SizedBox(height: SparkSpace.sm),
+                          // Audio playback removed: dictation-only flow.
                         ],
-                        Text(
-                          noteDisplay,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: note.isEmpty
-                                ? kWhiteColor.withValues(alpha: 0.68)
-                                : kWhiteColor,
-                            fontSize: SparkTextSize.caption,
-                            height: 1.3,
-                          ),
-                        ),
-                        // Audio playback removed: dictation-only flow.
-                      ],
+                      ),
                     ),
                   ),
                 ),
