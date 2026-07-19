@@ -917,70 +917,11 @@ extension _SparkJoyMediaEditorMethods on _SparkJoyCreateReportScreenState {
 
     return Column(
       children: [
-        SparkCard(
-          radius: SparkRadius.xxl,
-          padding: const EdgeInsets.symmetric(
-            horizontal: SparkSpace.xxl,
-            vertical: SparkSpace.xl,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    MyText(
-                      text: state.config.title,
-                      size: SparkTextSize.title,
-                      weight: FontWeight.w700,
-                      maxLines: 2,
-                      textOverflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: SparkSpace.sm),
-                    Wrap(
-                      spacing: SparkSpace.sm,
-                      runSpacing: SparkSpace.sm,
-                      children: [
-                        SparkChip(
-                          text: 'Файлы: ${files.length}',
-                          background: kSecondaryColor.withValues(alpha: 0.1),
-                          color: kSecondaryColor,
-                          textSize: SparkTextSize.caption,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: SparkSpace.md,
-                            vertical: SparkSpace.xxxs,
-                          ),
-                        ),
-                        if (notedFiles > 0)
-                          SparkChip(
-                            text: 'С заметкой: $notedFiles',
-                            background: kGreenColor.withValues(alpha: 0.12),
-                            color: kGreenColor,
-                            textSize: SparkTextSize.caption,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: SparkSpace.md,
-                              vertical: SparkSpace.xxxs,
-                            ),
-                          ),
-                        if (issueFiles > 0)
-                          SparkChip(
-                            text: 'Замечания: $issueFiles',
-                            background: kSecondaryColor.withValues(alpha: 0.12),
-                            color: kSecondaryColor,
-                            textSize: SparkTextSize.caption,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: SparkSpace.md,
-                              vertical: SparkSpace.xxxs,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+        SparkMediaGroupHeaderCard(
+          title: state.config.title,
+          filesCount: files.length,
+          notedCount: notedFiles,
+          issuesCount: issueFiles,
         ),
         const SizedBox(height: SparkSpace.md),
         // Stepper-индикатор прогресса осмотра по 8 группам.
