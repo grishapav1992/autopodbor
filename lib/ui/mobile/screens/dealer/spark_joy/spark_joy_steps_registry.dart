@@ -59,15 +59,6 @@ class _SparkJoyStepRegistry {
     idSummary: Icons.task_alt_rounded,
   };
 
-  static const Set<String> _hiddenProgressStepIds = {
-    idVehicle,
-    idParams,
-    idDocsCheck,
-    idLegal,
-    idMedia,
-    idTestDrive,
-  };
-
   /// Шаги, содержащие обязательные поля (источник — `_summaryMissingReasons`).
   /// Используется для статического маркера «*» на карточках шагов в обзоре.
   /// «Параметры» и «Материалы проверки» полностью необязательны → не входят.
@@ -85,10 +76,6 @@ class _SparkJoyStepRegistry {
 
   static IconData iconFor(String? stepId) {
     return _stepIcons[stepId] ?? Icons.description_outlined;
-  }
-
-  static bool hidesProgressBar(String stepId) {
-    return _hiddenProgressStepIds.contains(stepId);
   }
 
   static int indexById(String stepId) {

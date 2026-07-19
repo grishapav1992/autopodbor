@@ -33,6 +33,9 @@ extension _SparkJoyPhotoIntakeScreen on _SparkJoyCreateReportScreenState {
           ? 'ИИ распределит файлы по разделам отчёта'
           : '${sparkIntakeFilesCountLabel(snapshot.total)} · '
                 'ИИ распределит по разделам отчёта',
+      // Та же высота, что у SparkReportEditorAppBar: без неё AppBar падал на
+      // дефолтные ~56px, и шапка прыгала при входе/выходе из интейка.
+      toolbarHeight: SparkReportEditorAppBar.toolbarHeight,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_rounded),
         onPressed: _intakeImportInProgress ? null : _closePhotoIntake,

@@ -5,7 +5,6 @@ class _SparkJoyStepActionState {
     required this.step,
     required this.totalSteps,
     required this.currentStep,
-    required this.stepProgress,
     required this.isLast,
     required this.isVehicleStep,
     required this.isDocsCheckStep,
@@ -13,7 +12,6 @@ class _SparkJoyStepActionState {
     required this.inMediaGroupEditor,
     required this.isTestDriveStep,
     required this.isSummaryStep,
-    required this.hideProgressBar,
     required this.vehicleMissingReasons,
     required this.canVehicleContinue,
     required this.missingMediaGroups,
@@ -25,7 +23,6 @@ class _SparkJoyStepActionState {
     required this.summaryReasons,
     required this.canSummaryFinish,
     required this.continueButtonDisabled,
-    required this.currentValue,
     required this.isDone,
     required this.statusText,
   });
@@ -33,7 +30,6 @@ class _SparkJoyStepActionState {
   final _StepConfig step;
   final int totalSteps;
   final int currentStep;
-  final double stepProgress;
   final bool isLast;
   final bool isVehicleStep;
   final bool isDocsCheckStep;
@@ -41,7 +37,6 @@ class _SparkJoyStepActionState {
   final bool inMediaGroupEditor;
   final bool isTestDriveStep;
   final bool isSummaryStep;
-  final bool hideProgressBar;
   final List<String> vehicleMissingReasons;
   final bool canVehicleContinue;
   final List<String> missingMediaGroups;
@@ -53,7 +48,6 @@ class _SparkJoyStepActionState {
   final List<String> summaryReasons;
   final bool canSummaryFinish;
   final bool continueButtonDisabled;
-  final String currentValue;
   final bool isDone;
   final String statusText;
 }
@@ -65,9 +59,6 @@ class _SparkJoyStepActionController {
     final step = _SparkJoyStepRegistry.steps[s._stepIndex];
     final totalSteps = _SparkJoyStepRegistry.steps.length;
     final currentStep = s._stepIndex + 1;
-    final stepProgress = totalSteps == 0
-        ? 0.0
-        : (currentStep / totalSteps).clamp(0.0, 1.0);
     final isLast = _SparkJoyStepRegistry.isSummaryStepId(step.id);
     final isVehicleStep = step.id == _SparkJoyStepRegistry.idVehicle;
     final isDocsCheckStep = step.id == _SparkJoyStepRegistry.idDocsCheck;
@@ -75,7 +66,6 @@ class _SparkJoyStepActionController {
     final inMediaGroupEditor = isMediaStep && s._activeMediaGroupKey != null;
     final isTestDriveStep = step.id == _SparkJoyStepRegistry.idTestDrive;
     final isSummaryStep = _SparkJoyStepRegistry.isSummaryStepId(step.id);
-    final hideProgressBar = _SparkJoyStepRegistry.hidesProgressBar(step.id);
     final vehicleMissingReasons = isVehicleStep
         ? s._vehicleMissingReasons()
         : const <String>[];
@@ -104,7 +94,6 @@ class _SparkJoyStepActionController {
     final continueButtonDisabled = isLast
         ? !canSummaryFinish
         : !canContinueCurrentStep;
-    final currentValue = s._overviewController.sectionValue(s, step.id).trim();
     final fillState = s._overviewController.sectionFillState(s, step.id);
     final isDone = fillState == SparkJoySectionFillState.done;
     final statusText = isDone ? 'Заполнено' : 'В работе';
@@ -113,7 +102,6 @@ class _SparkJoyStepActionController {
       step: step,
       totalSteps: totalSteps,
       currentStep: currentStep,
-      stepProgress: stepProgress,
       isLast: isLast,
       isVehicleStep: isVehicleStep,
       isDocsCheckStep: isDocsCheckStep,
@@ -121,7 +109,6 @@ class _SparkJoyStepActionController {
       inMediaGroupEditor: inMediaGroupEditor,
       isTestDriveStep: isTestDriveStep,
       isSummaryStep: isSummaryStep,
-      hideProgressBar: hideProgressBar,
       vehicleMissingReasons: vehicleMissingReasons,
       canVehicleContinue: canVehicleContinue,
       missingMediaGroups: missingMediaGroups,
@@ -133,7 +120,6 @@ class _SparkJoyStepActionController {
       summaryReasons: summaryReasons,
       canSummaryFinish: canSummaryFinish,
       continueButtonDisabled: continueButtonDisabled,
-      currentValue: currentValue,
       isDone: isDone,
       statusText: statusText,
     );

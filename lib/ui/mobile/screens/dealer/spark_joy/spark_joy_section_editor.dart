@@ -30,12 +30,8 @@ Widget _buildSparkJoyStepHero(
     currentStep: actionState.currentStep,
     totalSteps: actionState.totalSteps,
     title: actionState.step.title,
-    description: '',
     statusText: actionState.statusText,
     statusColor: statusColor,
-    stepProgress: actionState.stepProgress,
-    currentValue: '',
-    hideProgressBar: actionState.hideProgressBar,
   );
 }
 

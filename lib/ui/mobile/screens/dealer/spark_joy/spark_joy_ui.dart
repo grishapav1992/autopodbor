@@ -1176,7 +1176,9 @@ class SparkReportEditorAppBar extends StatelessWidget
   // Одна строка заголовка (+ мета + пилюля автосейва) укладывается в ~60px;
   // 78 даёт компактный бар без вертикальной пустоты, которую давал прежний
   // фикс 96 под 2-строчный заголовок (короткое имя висело в центре бара).
-  static const double _toolbarHeight = 78;
+  // Публичная: шапка интейка выравнивается на эту же высоту, чтобы AppBar
+  // не прыгал при входе в «Фото автомобиля».
+  static const double toolbarHeight = 78;
 
   const SparkReportEditorAppBar({
     super.key,
@@ -1213,13 +1215,13 @@ class SparkReportEditorAppBar extends StatelessWidget
   final bool sharing;
 
   @override
-  Size get preferredSize => const Size.fromHeight(_toolbarHeight);
+  Size get preferredSize => const Size.fromHeight(toolbarHeight);
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
       centerTitle: false,
-      toolbarHeight: _toolbarHeight,
+      toolbarHeight: toolbarHeight,
       backgroundColor: kPrimaryColor,
       foregroundColor: kSecondaryColor,
       elevation: 0,
@@ -2005,22 +2007,14 @@ class SparkStepHeroCard extends StatelessWidget {
     required this.title,
     required this.statusText,
     required this.statusColor,
-    required this.stepProgress,
-    this.description = '',
-    this.currentValue = '',
-    this.hideProgressBar = false,
   });
 
   final IconData icon;
   final int currentStep;
   final int totalSteps;
   final String title;
-  final String description;
   final String statusText;
   final Color statusColor;
-  final String currentValue;
-  final bool hideProgressBar;
-  final double stepProgress;
 
   @override
   Widget build(BuildContext context) {
@@ -2030,73 +2024,152 @@ class SparkStepHeroCard extends StatelessWidget {
         vertical: SparkSpace.lg,
       ),
       radius: SparkRadius.md,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: SparkSize.icon4xl,
-                height: SparkSize.icon4xl,
-                decoration: BoxDecoration(
-                  color: kSecondaryColor.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(SparkRadius.sm),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  icon,
-                  size: SparkSize.iconMd,
-                  color: kSecondaryColor,
-                ),
-              ),
-              const SizedBox(width: SparkSpace.md),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    MyText(
-                      text: 'Шаг $currentStep/$totalSteps',
-                      size: SparkTextSize.caption,
-                      color: kGreyColor,
-                      weight: FontWeight.w700,
-                    ),
-                    const SizedBox(height: SparkSpace.xxs),
-                    MyText(
-                      text: title,
-                      size: SparkTextSize.title,
-                      weight: FontWeight.w700,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: SparkSpace.sm),
-              SparkChip(
-                text: statusText,
-                background: statusColor.withValues(alpha: 0.12),
-                color: statusColor,
-                textSize: SparkTextSize.caption,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: SparkSpace.sm,
-                  vertical: SparkSpace.xxxs,
-                ),
-              ),
-            ],
-          ),
-          if (!hideProgressBar) ...[
-            const SizedBox(height: SparkSpace.sm),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(SparkRadius.pill),
-              child: LinearProgressIndicator(
-                value: stepProgress.clamp(0.0, 1.0),
-                minHeight: SparkSpace.sm,
-                backgroundColor: kLightGreyColor,
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  kSecondaryColor,
-                ),
-              ),
+          Container(
+            width: SparkSize.icon4xl,
+            height: SparkSize.icon4xl,
+            decoration: BoxDecoration(
+              color: kSecondaryColor.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(SparkRadius.sm),
             ),
-          ],
+            alignment: Alignment.center,
+            child: Icon(
+              icon,
+              size: SparkSize.iconMd,
+              color: kSecondaryColor,
+            ),
+          ),
+          const SizedBox(width: SparkSpace.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MyText(
+                  text: 'Шаг $currentStep/$totalSteps',
+                  size: SparkTextSize.caption,
+                  color: kGreyColor,
+                  weight: FontWeight.w700,
+                ),
+                const SizedBox(height: SparkSpace.xxs),
+                // Одна строка с ellipsis: перенос длинных названий
+                // («Сверка документов») раздувал шапку на узких экранах,
+                // и хэдер прыгал по высоте между разделами.
+                MyText(
+                  text: title,
+                  size: SparkTextSize.title,
+                  weight: FontWeight.w700,
+                  maxLines: 1,
+                  textOverflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: SparkSpace.sm),
+          SparkChip(
+            text: statusText,
+            background: statusColor.withValues(alpha: 0.12),
+            color: statusColor,
+            textSize: SparkTextSize.caption,
+            padding: const EdgeInsets.symmetric(
+              horizontal: SparkSpace.sm,
+              vertical: SparkSpace.xxxs,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Шапка-карточка группы осмотра (Кузов, Салон…) в редакторе группы.
+///
+/// Высота не зависит от контента: заголовок в одну строку, чипы счётчиков —
+/// одной горизонтальной лентой со скроллом (Wrap переносил их на второй ряд,
+/// и хэдер прыгал по высоте при переключении групп степпером).
+class SparkMediaGroupHeaderCard extends StatelessWidget {
+  const SparkMediaGroupHeaderCard({
+    super.key,
+    required this.title,
+    required this.filesCount,
+    required this.notedCount,
+    required this.issuesCount,
+  });
+
+  final String title;
+  final int filesCount;
+  final int notedCount;
+  final int issuesCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return SparkCard(
+      radius: SparkRadius.xxl,
+      padding: const EdgeInsets.symmetric(
+        horizontal: SparkSpace.xxl,
+        vertical: SparkSpace.xl,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MyText(
+                  text: title,
+                  size: SparkTextSize.title,
+                  weight: FontWeight.w700,
+                  maxLines: 1,
+                  textOverflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: SparkSpace.sm),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      SparkChip(
+                        text: 'Файлы: $filesCount',
+                        background: kSecondaryColor.withValues(alpha: 0.1),
+                        color: kSecondaryColor,
+                        textSize: SparkTextSize.caption,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: SparkSpace.md,
+                          vertical: SparkSpace.xxxs,
+                        ),
+                      ),
+                      if (notedCount > 0) ...[
+                        const SizedBox(width: SparkSpace.sm),
+                        SparkChip(
+                          text: 'С заметкой: $notedCount',
+                          background: kGreenColor.withValues(alpha: 0.12),
+                          color: kGreenColor,
+                          textSize: SparkTextSize.caption,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: SparkSpace.md,
+                            vertical: SparkSpace.xxxs,
+                          ),
+                        ),
+                      ],
+                      if (issuesCount > 0) ...[
+                        const SizedBox(width: SparkSpace.sm),
+                        SparkChip(
+                          text: 'Замечания: $issuesCount',
+                          background: kSecondaryColor.withValues(alpha: 0.12),
+                          color: kSecondaryColor,
+                          textSize: SparkTextSize.caption,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: SparkSpace.md,
+                            vertical: SparkSpace.xxxs,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
