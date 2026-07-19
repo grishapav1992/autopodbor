@@ -5,8 +5,9 @@ part of 'spark_joy_create_report_screen.dart';
 /// и чтобы восстановленный из черновика PDF узнавался как «уже есть».
 const String _kLegalReviewPdfItemId = 'spark-legal-review-pdf';
 
-/// Отображаемое имя PDF в списке материалов (оно же уезжает в S3-манифест).
-const String _kLegalReviewPdfName = 'Отчёт о проверке ApiCloud.pdf';
+/// Базовое имя PDF в списке материалов (без названия интеграции — документ
+/// клиентский). К нему добавляется дата выгрузки, см. [_legalReviewPdfFileName].
+const String _kLegalReviewPdfBaseName = 'Отчёт о проверке';
 
 /// Ленивая (одноразовая) загрузка забандленного Roboto для PDF: без встроенного
 /// шрифта dart_pdf берёт Helvetica и кириллица превращается в пустые квадраты.
@@ -57,6 +58,7 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
     }
     if (bytes.isEmpty || !mounted) return;
 
+    final fileName = _legalReviewPdfFileName;
     String? source;
     if (kIsWeb) {
       source = 'data:application/pdf;base64,${base64Encode(bytes)}';
@@ -65,7 +67,7 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
         bytes: bytes,
         mimeType: 'application/pdf',
         prefix: 'legalpdf',
-        originalFileName: _kLegalReviewPdfName,
+        originalFileName: fileName,
       );
     }
     if (source == null || source.trim().isEmpty || !mounted) return;
@@ -78,9 +80,9 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
 
     final item = UploadedItem(
       id: _kLegalReviewPdfItemId,
-      name: _kLegalReviewPdfName,
-      originalName: _kLegalReviewPdfName,
-      displayName: _kLegalReviewPdfName,
+      name: fileName,
+      originalName: fileName,
+      displayName: fileName,
       mimeType: 'application/pdf',
       dataUrl: source,
     );
@@ -217,7 +219,7 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
                   borderRadius: pw.BorderRadius.circular(4),
                 ),
                 child: pw.Text(
-                  'ApiCloud',
+                  'AutoBase',
                   style: pw.TextStyle(
                     font: _legalPdfFontMedium,
                     fontSize: 8.5,
@@ -239,7 +241,7 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
           ],
           pw.SizedBox(height: 2),
           pw.Text(
-            'Дата формирования: $_legalPdfTimestamp',
+            'Сформировано: $_legalPdfTimestamp',
             style: pw.TextStyle(
               fontSize: 9,
               color: pdf.PdfColors.blueGrey200,
@@ -502,9 +504,9 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
         border: pw.Border(top: pw.BorderSide(color: _pdfBorder)),
       ),
       child: pw.Text(
-        'Документ сформирован автоматически на основании данных сервиса '
-        'ApiCloud на дату проверки и носит информационный характер. '
-        'Актуальность сведений в официальных реестрах может измениться.',
+        'Документ сформирован автоматически на основании данных официальных '
+        'реестров и сервисов проверки на дату выгрузки и носит информационный '
+        'характер. Актуальность сведений в реестрах может измениться.',
         style: pw.TextStyle(fontSize: 7.5, color: _pdfGrey, lineSpacing: 1.5),
       ),
     );
@@ -517,7 +519,7 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(
-            'Отчёт о проверке ApiCloud',
+            'AutoBase · Отчёт о проверке',
             style: pw.TextStyle(fontSize: 8, color: _pdfGrey),
           ),
           pw.Text(
@@ -671,4 +673,16 @@ extension _SparkJoyLegalPdf on _SparkJoyCreateReportScreenState {
     String two(int v) => v.toString().padLeft(2, '0');
     return '${two(n.day)}.${two(n.month)}.${n.year} ${two(n.hour)}:${two(n.minute)}';
   }
+
+  /// Только дата (дд.ММ.гггг) — для имени файла.
+  String get _legalPdfDateOnly {
+    final n = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${two(n.day)}.${two(n.month)}.${n.year}';
+  }
+
+  /// Имя PDF в списке материалов: нейтральное + дата выгрузки, без названия
+  /// интеграции (документ клиентский).
+  String get _legalReviewPdfFileName =>
+      '$_kLegalReviewPdfBaseName $_legalPdfDateOnly.pdf';
 }

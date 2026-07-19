@@ -356,6 +356,13 @@ Widget _buildSparkSummarySectionMediaPreview(
   _SparkJoyCreateReportScreenState s,
   String title,
 ) {
+  // «Материалы проверки» — не медиа-группа, но её файлы (PDF-отчёт проверки,
+  // приложенные документы/фото) тоже надо давать открыть в завершённом отчёте,
+  // иначе секция превращается в немой счётчик «N файл(ов)».
+  if (title == _SparkJoySummaryTextsRegistry.sectionLegal) {
+    return _buildSparkSummaryLegalFilesPreview(s);
+  }
+
   final groupKey = _SparkJoySummaryRegistry.titleToGroupKey[title];
   if (groupKey == null) return const SizedBox.shrink();
 
@@ -392,6 +399,149 @@ Widget _buildSparkSummarySectionMediaPreview(
           ),
         );
       }).toList(),
+    ),
+  );
+}
+
+/// Файлы раздела «Материалы проверки» в завершённом отчёте: тапабельный список
+/// строк (миниатюра/иконка + имя + «Нажмите, чтобы открыть»). Логика открытия —
+/// та же, что в редакторе ([_buildSparkJoyLegalFilesCard]): PDF → встроенный
+/// вьюер, фото/видео → плоский лайтбокс по медиа-подмножеству, прочее → внешнее
+/// приложение. Read-only: без кнопки удаления и без чипа очереди загрузки.
+Widget _buildSparkSummaryLegalFilesPreview(_SparkJoyCreateReportScreenState s) {
+  final files = s._legalFiles;
+  if (files.isEmpty) return const SizedBox.shrink();
+
+  return Padding(
+    padding: const EdgeInsets.only(top: SparkSpace.md),
+    child: Column(
+      children: List.generate(files.length, (index) {
+        final file = files[index];
+        final displayName = sparkJoyReadableStoredName(
+          rawName: file.displayName,
+          mimeType: file.mimeType,
+          ordinal: index,
+        );
+        final openMode = sparkJoyAttachmentOpenMode(
+          mimeType: file.mimeType,
+          displayName: displayName,
+        );
+        final canPreview = openMode == SparkJoyAttachmentOpenMode.media;
+        final isPdf = openMode == SparkJoyAttachmentOpenMode.pdf;
+
+        void open() {
+          if (isPdf) {
+            unawaited(
+              Navigator.of(s.context).push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => SparkJoyPdfViewerScreen(
+                    source: file.dataUrl,
+                    title: displayName,
+                  ),
+                ),
+              ),
+            );
+            return;
+          }
+          if (!canPreview) {
+            unawaited(
+              openSparkJoyExternalDocument(
+                s.context,
+                source: file.dataUrl,
+                mimeType: file.mimeType,
+              ),
+            );
+            return;
+          }
+          final mediaFiles = files
+              .where((item) => item.isImage || item.isVideo)
+              .toList(growable: false);
+          final initialIndex = mediaFiles.indexWhere(
+            (item) => item.id == file.id,
+          );
+          if (initialIndex < 0) return;
+          unawaited(
+            s._openFlatMediaLightbox(
+              files: mediaFiles,
+              groupKeyPerFile: List<String>.filled(mediaFiles.length, 'legal'),
+              initialIndex: initialIndex,
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: SparkSpace.sm),
+          child: Material(
+            color: kInputBgColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(SparkRadius.md),
+              side: const BorderSide(color: kBorderColor),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: open,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: SparkSpace.lg,
+                  vertical: SparkSpace.md,
+                ),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: SparkSize.icon4xl,
+                      height: SparkSize.icon4xl,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(SparkRadius.sm),
+                        child: ColoredBox(
+                          color: kWhiteColor,
+                          child: canPreview
+                              ? s._uploadedMediaThumbWidget(
+                                  file,
+                                  cacheWidth: 160,
+                                  cacheHeight: 160,
+                                )
+                              : Icon(
+                                  isPdf
+                                      ? Icons.picture_as_pdf_outlined
+                                      : Icons.insert_drive_file_outlined,
+                                  size: SparkTextSize.title,
+                                  color: kSecondaryColor,
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: SparkSpace.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MyText(
+                            text: displayName,
+                            size: SparkTextSize.caption,
+                            maxLines: 1,
+                            color: kTertiaryColor,
+                          ),
+                          const SizedBox(height: SparkSpace.xxs),
+                          const MyText(
+                            text: 'Нажмите, чтобы открыть',
+                            size: SparkTextSize.chip,
+                            color: kGreyColor,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: SparkSize.iconLg,
+                      color: kGreyColor,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
     ),
   );
 }
