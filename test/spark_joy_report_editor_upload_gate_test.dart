@@ -112,6 +112,17 @@ void main() {
     expect(_finishButton(tester).onPressed, isNull);
   });
 
+  testWidgets('уже выгруженный черновик: предупреждающий хинт, '
+      'кнопка остаётся активной', (tester) async {
+    SparkJoyReportUploadGate.instance.markCompleted(_ownDraftId);
+    await _openSummaryStep(tester, draftId: _ownDraftId);
+
+    expect(find.textContaining('Этот отчёт уже выгружен'), findsOneWidget);
+    // Повторная выгрузка легальна (после правок) — гасить кнопку нельзя,
+    // защита от случайного дубликата — confirm внутри _finishReport.
+    expect(_finishButton(tester).onPressed, isNotNull);
+  });
+
   testWidgets('release гейта оживляет кнопку на живом экране', (tester) async {
     SparkJoyReportUploadGate.instance.tryAcquire(
       draftId: _foreignDraftId,

@@ -300,6 +300,16 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
       // выгрузки — иначе он противоречит задизейбленной primary-кнопке.
       !blockedByOtherUpload &&
       s._backendUploadFailed;
+  // Отчёт этого черновика уже успешно выгружен в этом процессе (экран
+  // пережил purge или черновик воскрешён автосейвом): кнопку не гасим —
+  // повторная выгрузка легальна после правок, — но предупреждаем, что она
+  // создаст новый отчёт; сам _finishReport дополнительно спросит confirm.
+  final alreadyUploadedInSummary =
+      actionState.isSummaryStep &&
+      !s._backendUploadInProgress &&
+      !blockedByOtherUpload &&
+      !uploadErrorInSummary &&
+      SparkJoyReportUploadGate.instance.wasCompleted(s._draftId);
 
   return Column(
     children: [
@@ -417,6 +427,14 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
               ),
             ),
           ],
+          const SizedBox(height: SparkSpace.md),
+        ] else if (alreadyUploadedInSummary) ...[
+          const SparkHintCard(
+            icon: Icons.task_alt_rounded,
+            text:
+                'Этот отчёт уже выгружен. Повторное «Завершить» создаст '
+                'новый отчёт на сервере.',
+          ),
           const SizedBox(height: SparkSpace.md),
         ],
         SparkStepActionBar(

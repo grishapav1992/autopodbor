@@ -104,9 +104,24 @@ class SparkJoyReportUploadGate {
         current.cancelRequested;
   }
 
+  /// Черновики, чья выгрузка в этом процессе завершилась успехом (отчёт на
+  /// сервере, черновик purge-нут). Экран умершего черновика может пережить
+  /// purge (или воскресить черновик автосейвом) — его повторное «Завершить»
+  /// молча создало бы дубликат отчёта; по этому набору редактор
+  /// предупреждает и просит подтверждение.
+  final Set<String> _completedDraftIds = <String>{};
+
+  void markCompleted(String draftId) {
+    if (draftId.trim().isEmpty) return;
+    _completedDraftIds.add(draftId);
+  }
+
+  bool wasCompleted(String draftId) => _completedDraftIds.contains(draftId);
+
   /// Разлогин: гасим бейджи/дизейблы для нового сеанса. Живой Future старой
   /// выгрузки позже вызовет release() — станет no-op по owner-check.
   void resetAll() {
     _active.value = null;
+    _completedDraftIds.clear();
   }
 }

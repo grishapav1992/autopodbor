@@ -3275,6 +3275,34 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       return;
     }
 
+    // Отчёт этого черновика уже успешно выгружен в этом процессе: черновик
+    // purge-нут, но экран мог пережить purge (или воскресить черновик
+    // автосейвом) — молчаливое повторное «Завершить» создало бы на сервере
+    // дубликат с новым номером. Дальше только через осознанный confirm.
+    if (SparkJoyReportUploadGate.instance.wasCompleted(_draftId)) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Отчёт уже выгружен'),
+          content: const Text(
+            'Этот отчёт уже был выгружен. Повторная выгрузка создаст на '
+            'сервере второй отчёт с новым номером. Продолжить?',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Отмена'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Выгрузить ещё раз'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true || !mounted) return;
+    }
+
     // Глобальный single-flight: одна выгрузка отчёта на всё приложение.
     // Пер-экранный гард выше не видит выгрузку, доживающую в фоне после
     // ухода с другого (или повторно открытого этого же) редактора; без
@@ -3363,6 +3391,9 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         );
         return;
       }
+      // Отчёт уже на сервере — помечаем до purge, чтобы даже упавший purge
+      // не оставил черновик «повторно выгружаемым» без предупреждения.
+      gate.markCompleted(_draftId);
       await SparkJoyStorage.purgeDraftAfterUpload(_draftId);
       await AiQueueOfflineRunner.instance.dropDraft(_draftId);
       if (!mounted) return;

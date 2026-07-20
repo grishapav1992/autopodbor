@@ -120,6 +120,25 @@ void main() {
     expect(notifications, 0);
   });
 
+  test('markCompleted/wasCompleted: помнит успех, переживает release, '
+      'чистится resetAll', () {
+    expect(get().wasCompleted('draft_a'), isFalse);
+
+    expect(get().tryAcquire(draftId: 'draft_a', reportName: 'A'), isTrue);
+    get().markCompleted('draft_a');
+    get().release('draft_a');
+    expect(get().wasCompleted('draft_a'), isTrue);
+    expect(get().wasCompleted('draft_b'), isFalse);
+
+    // Пустой id не запоминается.
+    get().markCompleted('   ');
+    expect(get().wasCompleted('   '), isFalse);
+
+    // Разлогин чистит память об успехах прошлого сеанса.
+    get().resetAll();
+    expect(get().wasCompleted('draft_a'), isFalse);
+  });
+
   test('cancelRequested не переживает release и новый tryAcquire', () {
     expect(get().tryAcquire(draftId: 'draft_a', reportName: 'A'), isTrue);
     get().requestCancel();
