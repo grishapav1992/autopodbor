@@ -9,6 +9,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/common/widgets/app_adaptive_bottom_sheet.dart';
 
 import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
+import 'package:flutter_application_1/data/services/spark_joy_report_upload_gate.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 
 import 'spark_joy_completed_report_hydrator.dart';
@@ -64,6 +65,12 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
   // completed card is temporarily disabled.
   String? _openingReportKey;
 
+  /// Глобальный гейт «одна выгрузка отчёта на всё приложение»: бейдж
+  /// «Выгружается…» на карточке активного черновика + блокировка его
+  /// свайп-удаления. Ссылку держим в поле, чтобы removeListener снял
+  /// подписку с того же notifier-а даже после подмены синглтона в тестах.
+  late final ValueListenable<SparkJoyActiveReportUpload?> _uploadGateActive;
+
   @override
   void initState() {
     super.initState();
@@ -72,6 +79,8 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     );
     _controller.load();
     widget.tabRequest?.addListener(_handleExternalTabRequest);
+    _uploadGateActive = SparkJoyReportUploadGate.instance.active;
+    _uploadGateActive.addListener(_handleUploadGateChanged);
     if (widget.active) _showReportsOnboarding();
   }
 
@@ -92,8 +101,19 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
       unawaited(_commitDraftDeletion(id));
     }
     widget.tabRequest?.removeListener(_handleExternalTabRequest);
+    _uploadGateActive.removeListener(_handleUploadGateChanged);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleUploadGateChanged() {
+    if (!mounted) return;
+    // Бейдж «Выгружается…» и направление свайпа на карточках черновиков.
+    setState(() {});
+    // Гейт освободился: успех → черновик уже purge-нут, ошибка/отмена →
+    // выгрузки больше нет. Перечитываем список, чтобы карточка исчезла
+    // сама и «Завершённые» подтянули свежий отчёт.
+    if (_uploadGateActive.value == null) unawaited(_load());
   }
 
   void _showReportsOnboarding() {
@@ -857,6 +877,7 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     final filled = sections.where((s) => s.filled).length;
     final total = sections.length;
     final id = sjRead(draft, 'id');
+    final uploadingNow = SparkJoyReportUploadGate.instance.isUploading(id);
 
     // Each draft card carries a shadow + a rounded clip (Stage 2 A+ token
     // bump), both of which otherwise force the whole list layer to repaint
@@ -869,7 +890,13 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
     // страховка от промаха живёт в undo-снекбаре (_onDraftSwiped).
     return Dismissible(
       key: ValueKey('draft-$id'),
-      direction: DismissDirection.endToStart,
+      // Удаление черновика под живой выгрузкой — гонка: выгрузка читает
+      // медиа с диска и пишет backendUploadState через upsertDraft, а
+      // удаление стирает и файлы, и черновик. Пока идёт выгрузка — свайп
+      // выключен целиком.
+      direction: uploadingNow
+          ? DismissDirection.none
+          : DismissDirection.endToStart,
       dismissThresholds: const {DismissDirection.endToStart: 0.7},
       background: Padding(
         // Повторяет нижний зазор SparkListCard, чтобы красная подложка не
@@ -931,6 +958,16 @@ class _SparkJoyReportsListScreenState extends State<SparkJoyReportsListScreen> {
                 ],
               ),
               const SizedBox(height: SparkSpace.xxl),
+              if (uploadingNow) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _statusPill(
+                    label: 'Выгружается…',
+                    icon: Icons.cloud_upload_outlined,
+                  ),
+                ),
+                const SizedBox(height: SparkSpace.md),
+              ],
               // Сегментированный прогресс — filled / total секций.
               //
               // Обёрнут в Semantics, чтобы VoiceOver / TalkBack озвучивали

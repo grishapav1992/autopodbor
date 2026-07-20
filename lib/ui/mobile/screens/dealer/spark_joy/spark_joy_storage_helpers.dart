@@ -3260,43 +3260,38 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       return;
     }
 
-    _ensureSummaryAutofill();
-    // Показываем индикатор сразу по тапу: флаш AI-описаний блокирующий (до 30с),
-    // и без этого кнопка ещё «Завершить и выгрузить», на экране ничего не
-    // меняется — кажется, что тап не сработал.
-    _setBackendUploadProgress(
-      inProgress: true,
-      statusText: 'Завершаем AI-описания…',
-      currentFile: 0,
-      totalFiles: 0,
-      currentPart: 0,
-      totalParts: 0,
-    );
-    final canProceed = await _flushAiQueueBeforeSubmit();
-    if (!canProceed) {
-      // Снимаем индикатор на раннем выходе, иначе кнопка залипнет в «Выгрузка...».
+    // Глобальный single-flight: одна выгрузка отчёта на всё приложение.
+    // Пер-экранный гард выше не видит выгрузку, доживающую в фоне после
+    // ухода с другого (или повторно открытого этого же) редактора; без
+    // гейта это давало параллельные выгрузки и дубликат отчёта на сервере.
+    // Страховка на случай тапа до перестройки задизейбленной кнопки.
+    final gate = SparkJoyReportUploadGate.instance;
+    if (!gate.tryAcquire(draftId: _draftId, reportName: _reportTitle())) {
+      final activeUpload = gate.active.value;
+      final message = activeUpload == null || activeUpload.draftId == _draftId
+          ? 'Этот отчёт уже выгружается — дождитесь завершения'
+          : 'Дождитесь завершения выгрузки отчёта «${activeUpload.reportName}»';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+      return;
+    }
+    try {
+      _ensureSummaryAutofill();
+      // Показываем индикатор сразу по тапу: флаш AI-описаний блокирующий (до 30с),
+      // и без этого кнопка ещё «Завершить и выгрузить», на экране ничего не
+      // меняется — кажется, что тап не сработал.
       _setBackendUploadProgress(
-        inProgress: false,
-        statusText: '',
+        inProgress: true,
+        statusText: 'Завершаем AI-описания…',
         currentFile: 0,
         totalFiles: 0,
         currentPart: 0,
         totalParts: 0,
       );
-      return;
-    }
-    // Online-only: after finalizing on the server we don't persist a
-    // local copy — the list reloads via Storage.GetSpecialistReport and
-    // a tap opens via Storage.ViewSpecialistReport + ObjectStorage.
-    // GetTemporaryViewUrl. The payload still carries everything needed
-    // to build the PrepareSpecialistReport request.
-    final completed = _buildCompletedReport();
-    final uploaded = await _uploadReportToBackend(completed);
-    if (!uploaded) {
-      // На ЛЮБОМ неуспехе снимаем индикатор, если он ещё горит: ранние
-      // return false в _uploadReportToBackend (профанити / пустой reportNumber)
-      // идут мимо catch и иначе оставили бы кнопку в «Выгрузка...».
-      if (_backendUploadInProgress) {
+      final canProceed = await _flushAiQueueBeforeSubmit();
+      if (!canProceed) {
+        // Снимаем индикатор на раннем выходе, иначе кнопка залипнет в «Выгрузка...».
         _setBackendUploadProgress(
           inProgress: false,
           statusText: '',
@@ -3305,34 +3300,61 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
           currentPart: 0,
           totalParts: 0,
         );
-      }
-      if (!mounted) return;
-      if (_uploadCancelled) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Выгрузка отменена')));
         return;
       }
-      final errorText = _backendUploadErrorText
-          .replaceFirst(RegExp(r'^Exception:\s*'), '')
-          .trim();
-      showSparkJoySupportErrorSnackBar(
+      // Online-only: after finalizing on the server we don't persist a
+      // local copy — the list reloads via Storage.GetSpecialistReport and
+      // a tap opens via Storage.ViewSpecialistReport + ObjectStorage.
+      // GetTemporaryViewUrl. The payload still carries everything needed
+      // to build the PrepareSpecialistReport request.
+      final completed = _buildCompletedReport();
+      final uploaded = await _uploadReportToBackend(completed);
+      if (!uploaded) {
+        // На ЛЮБОМ неуспехе снимаем индикатор, если он ещё горит: ранние
+        // return false в _uploadReportToBackend (профанити / пустой reportNumber)
+        // идут мимо catch и иначе оставили бы кнопку в «Выгрузка...».
+        if (_backendUploadInProgress) {
+          _setBackendUploadProgress(
+            inProgress: false,
+            statusText: '',
+            currentFile: 0,
+            totalFiles: 0,
+            currentPart: 0,
+            totalParts: 0,
+          );
+        }
+        if (!mounted) return;
+        if (_uploadCancelled) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Выгрузка отменена')));
+          return;
+        }
+        final errorText = _backendUploadErrorText
+            .replaceFirst(RegExp(r'^Exception:\s*'), '')
+            .trim();
+        showSparkJoySupportErrorSnackBar(
+          context,
+          message: errorText.isEmpty
+              ? 'Не удалось выгрузить отчёт'
+              : 'Не удалось выгрузить отчёт: $errorText',
+          supportText: _backendUploadErrorSupportText,
+          code: _backendUploadErrorCode,
+        );
+        return;
+      }
+      await SparkJoyStorage.purgeDraftAfterUpload(_draftId);
+      await AiQueueOfflineRunner.instance.dropDraft(_draftId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
         context,
-        message: errorText.isEmpty
-            ? 'Не удалось выгрузить отчёт'
-            : 'Не удалось выгрузить отчёт: $errorText',
-        supportText: _backendUploadErrorSupportText,
-        code: _backendUploadErrorCode,
-      );
-      return;
+      ).showSnackBar(const SnackBar(content: Text('Отчёт выгружен')));
+      Navigator.of(context).pop(true);
+    } finally {
+      // Гейт держится всю дорогу — включая AI-флаш и purge — и отпускается
+      // на любом пути выхода: ранний return, отмена, ошибка, !mounted, throw.
+      gate.release(_draftId);
     }
-    await SparkJoyStorage.purgeDraftAfterUpload(_draftId);
-    await AiQueueOfflineRunner.instance.dropDraft(_draftId);
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Отчёт выгружен')));
-    Navigator.of(context).pop(true);
   }
 
   /// Ensures the report carries a catalog `modelCarId` (or a frameId) before

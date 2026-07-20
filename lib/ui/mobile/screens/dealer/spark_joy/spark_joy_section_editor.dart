@@ -251,9 +251,22 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
   final actionState = s._stepActionController.build(s);
   final uploadInSummary =
       actionState.isSummaryStep && s._backendUploadInProgress;
+  // Глобальный гейт занят, а своя выгрузка не идёт — значит, выгружается
+  // другой черновик (или этот же из другого, уже закрытого инстанса
+  // редактора): «Завершить и выгрузить» дизейблим, причину показываем хинтом.
+  final activeUpload = SparkJoyReportUploadGate.instance.active.value;
+  final blockedByOtherUpload =
+      actionState.isSummaryStep &&
+      !s._backendUploadInProgress &&
+      activeUpload != null;
+  final blockedBySameDraft =
+      blockedByOtherUpload && activeUpload.draftId == s._draftId;
   final uploadErrorInSummary =
       actionState.isSummaryStep &&
       !s._backendUploadInProgress &&
+      // Retry-хинт с активной «Повторить выгрузку» прячем на время чужой
+      // выгрузки — иначе он противоречит задизейбленной primary-кнопке.
+      !blockedByOtherUpload &&
       s._backendUploadFailed;
 
   return Column(
@@ -343,6 +356,14 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
                 : s._backendUploadStatusLabel(),
           ),
           const SizedBox(height: SparkSpace.md),
+        ] else if (blockedByOtherUpload) ...[
+          SparkHintCard(
+            icon: Icons.cloud_upload_outlined,
+            text: blockedBySameDraft
+                ? 'Этот отчёт уже выгружается — дождитесь завершения'
+                : 'Идёт выгрузка другого отчёта — дождитесь завершения',
+          ),
+          const SizedBox(height: SparkSpace.md),
         ],
         SparkStepActionBar(
           secondaryLabel: 'К разделам',
@@ -355,6 +376,7 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
               : 'Продолжить',
           primaryDisabled:
               uploadInSummary ||
+              blockedByOtherUpload ||
               (!actionState.isSummaryStep &&
                   actionState.continueButtonDisabled),
           primaryBusy: uploadInSummary,

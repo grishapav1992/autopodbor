@@ -27,6 +27,7 @@ import 'package:flutter_application_1/data/services/car_catalog_repository.dart'
 import 'package:flutter_application_1/data/services/car_catalog_sync_service.dart';
 import 'package:flutter_application_1/data/services/city_repository.dart';
 import 'package:flutter_application_1/data/services/spark_joy_intake_upload_service.dart';
+import 'package:flutter_application_1/data/services/spark_joy_report_upload_gate.dart';
 import 'package:flutter_application_1/data/services/spark_joy_tag_service.dart';
 import 'package:flutter_application_1/state/spark_joy_report_controller.dart';
 import 'package:flutter_application_1/ui/common/widgets/city_picker_bottom_sheet.dart';
@@ -781,6 +782,11 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   /// migrate additional fields incrementally.
   final SparkJoyReportController _reportController = SparkJoyReportController();
 
+  /// Глобальный гейт «одна выгрузка отчёта на всё приложение». Ссылку
+  /// держим в поле, чтобы removeListener в dispose снял подписку с того же
+  /// notifier-а даже после подмены синглтона (resetSingletonForTest).
+  late final ValueListenable<SparkJoyActiveReportUpload?> _uploadGateActive;
+
   String _nextUploadedItemId({String prefix = 'upload'}) {
     _uploadedItemIdCounter += 1;
     return '${prefix}_${DateTime.now().microsecondsSinceEpoch}_$_uploadedItemIdCounter';
@@ -793,6 +799,8 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     _stepActionController = const _SparkJoyStepActionController();
     _overviewController = const _SparkJoyOverviewController();
     WidgetsBinding.instance.addObserver(this);
+    _uploadGateActive = SparkJoyReportUploadGate.instance.active;
+    _uploadGateActive.addListener(_handleUploadGateChanged);
     unawaited(_prepareStoragePaths());
     final draft = widget.draft ?? <String, dynamic>{};
     final assignment = widget.assignment ?? <String, dynamic>{};
@@ -876,6 +884,7 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _uploadGateActive.removeListener(_handleUploadGateChanged);
     unawaited(_tdSpeechToText.stop());
     _draftAutosaveDebounce?.cancel();
     _vinParamsAutofillDebounce?.cancel();
@@ -900,6 +909,10 @@ class _SparkJoyCreateReportScreenState extends State<SparkJoyCreateReportScreen>
     if (!mounted) return;
     setState(fn);
   }
+
+  /// Чужая выгрузка началась/закончилась — перестраиваем дизейбл/хинт
+  /// кнопки «Завершить и выгрузить» на шаге «Итог».
+  void _handleUploadGateChanged() => _setStateSafely(() {});
 
   @override
   Widget build(BuildContext context) {
