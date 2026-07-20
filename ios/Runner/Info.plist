@@ -35,8 +35,6 @@
 	<string>Камера нужна для сканирования VIN и фото осмотра автомобиля.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Микрофон нужен для записи голосовых заметок по элементам осмотра.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Геолокация нужна, чтобы определить город и место осмотра автомобиля, если вы разрешите доступ.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Доступ к галерее нужен для выбора фото VIN и фото осмотра.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

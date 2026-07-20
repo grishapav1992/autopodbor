@@ -14,6 +14,7 @@ import 'package:flutter_application_1/ui/common/widgets/my_text_widget.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_storage.dart';
 import 'package:flutter_application_1/ui/mobile/screens/nav_bar/dealer_nav_bar.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/personal_data_consent.dart';
+import 'package:flutter_application_1/ui/mobile/screens/profile_screens/privacy_policy.dart';
 import 'package:flutter_application_1/ui/mobile/screens/profile_screens/terms.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,7 +34,11 @@ class _LoginState extends State<Login> {
   String _statusText = '';
   bool _isAuthLoading = false;
   bool _isVerifyLoading = false;
+  // 152-ФЗ (ред. 233-ФЗ, с 01.09.2025): согласие на обработку ПДн должно
+  // подтверждаться отдельным действием, не совмещённым с принятием иных
+  // документов — поэтому два независимых чекбокса.
   bool _pdnConsentAccepted = false;
+  bool _termsAccepted = false;
   int _opId = 0;
 
   @override
@@ -75,12 +80,23 @@ class _LoginState extends State<Login> {
     );
   }
 
+  /// Оба подтверждения обязательны, но ошибки раздельные — согласие на ПДн
+  /// и принятие условий юридически разные действия.
+  bool _ensureLegalConfirmed() {
+    if (!_pdnConsentAccepted) {
+      _showError('Подтвердите согласие на обработку персональных данных.');
+      return false;
+    }
+    if (!_termsAccepted) {
+      _showError('Примите условия использования сервиса.');
+      return false;
+    }
+    return true;
+  }
+
   Future<void> _startAuth() async {
     if (_isAuthLoading || _isVerifyLoading) return;
-    if (!_pdnConsentAccepted) {
-      _showError('Подтвердите согласие на ПДн и условия сервиса.');
-      return;
-    }
+    if (!_ensureLegalConfirmed()) return;
     final phone = _normalizePhone(_phoneController.text.trim());
     final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
     if (digitsLen < 11) {
@@ -193,10 +209,7 @@ class _LoginState extends State<Login> {
 
   Future<void> _verifyOnceManually() async {
     if (_isAuthLoading || _isVerifyLoading) return;
-    if (!_pdnConsentAccepted) {
-      _showError('Подтвердите согласие на ПДн и условия сервиса.');
-      return;
-    }
+    if (!_ensureLegalConfirmed()) return;
     final phone = _normalizePhone(_phoneController.text.trim());
     final digitsLen = phone.replaceAll(RegExp(r'[^0-9]'), '').length;
     if (digitsLen < 11) {
@@ -266,6 +279,15 @@ class _LoginState extends State<Login> {
     ).push(MaterialPageRoute(builder: (_) => const Terms()));
   }
 
+  /// Политика должна быть доступна ДО начала обработки ПДн (ст. 18.1
+  /// 152-ФЗ) — то есть прямо с экрана авторизации, а не только из меню
+  /// после входа.
+  void _openPrivacyPolicy() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute(builder: (_) => const PrivacyPolicy()));
+  }
+
   Future<void> _proceedAfterCheck() async {
     // Server — source of truth для role. GetProfile внутри
     // syncRoleFromServer ловит offline и фолбэк-ит на локальный кэш,
@@ -315,13 +337,18 @@ class _LoginState extends State<Login> {
                 'Введите номер телефона. Затем позвоните на выданный номер для автоматической проверки.',
           ),
           PhoneField(controller: _phoneController),
-          _PersonalDataConsentCheckbox(
-            value: _pdnConsentAccepted,
-            onChanged: (value) {
+          _LegalConsentBlock(
+            pdnValue: _pdnConsentAccepted,
+            termsValue: _termsAccepted,
+            onPdnChanged: (value) {
               setState(() => _pdnConsentAccepted = value ?? false);
+            },
+            onTermsChanged: (value) {
+              setState(() => _termsAccepted = value ?? false);
             },
             onOpenConsent: _openPersonalDataConsent,
             onOpenTerms: _openTerms,
+            onOpenPolicy: _openPrivacyPolicy,
           ),
           if (_callPhone.isNotEmpty)
             Padding(
@@ -412,7 +439,7 @@ class _LoginState extends State<Login> {
             MyButton(
               onTap: _startAuth,
               buttonText: _isAuthLoading ? 'Загрузка...' : 'Далее',
-              bgColor: _isAuthLoading || !_pdnConsentAccepted
+              bgColor: _isAuthLoading || !_pdnConsentAccepted || !_termsAccepted
                   ? kGreyColor
                   : kSecondaryColor,
             )
@@ -446,104 +473,149 @@ class _LoginState extends State<Login> {
   }
 }
 
-class _PersonalDataConsentCheckbox extends StatelessWidget {
-  const _PersonalDataConsentCheckbox({
-    required this.value,
-    required this.onChanged,
+class _LegalConsentBlock extends StatelessWidget {
+  const _LegalConsentBlock({
+    required this.pdnValue,
+    required this.termsValue,
+    required this.onPdnChanged,
+    required this.onTermsChanged,
     required this.onOpenConsent,
     required this.onOpenTerms,
+    required this.onOpenPolicy,
   });
 
-  final bool value;
-  final ValueChanged<bool?> onChanged;
+  final bool pdnValue;
+  final bool termsValue;
+  final ValueChanged<bool?> onPdnChanged;
+  final ValueChanged<bool?> onTermsChanged;
   final VoidCallback onOpenConsent;
   final VoidCallback onOpenTerms;
+  final VoidCallback onOpenPolicy;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: InkWell(
-        onTap: () => onChanged(!value),
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: kWhiteColor,
-            border: Border.all(color: kBorderColor),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 36,
-                height: 36,
-                child: Checkbox(
-                  value: value,
-                  onChanged: onChanged,
-                  activeColor: kSecondaryColor,
-                  side: const BorderSide(color: kBorderColor),
-                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 2),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        color: kGreyColor,
-                        fontSize: 14,
-                        height: 1.35,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      children: [
-                        const TextSpan(text: 'Даю согласие на обработку '),
-                        WidgetSpan(
-                          alignment: PlaceholderAlignment.baseline,
-                          baseline: TextBaseline.alphabetic,
-                          child: GestureDetector(
-                            onTap: onOpenConsent,
-                            child: const Text(
-                              'персональных данных',
-                              style: TextStyle(
-                                color: kSecondaryColor,
-                                fontSize: 14,
-                                height: 1.35,
-                                fontWeight: FontWeight.w700,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const TextSpan(text: ' и принимаю '),
-                        WidgetSpan(
-                          alignment: PlaceholderAlignment.baseline,
-                          baseline: TextBaseline.alphabetic,
-                          child: GestureDetector(
-                            onTap: onOpenTerms,
-                            child: const Text(
-                              'условия использования',
-                              style: TextStyle(
-                                color: kSecondaryColor,
-                                fontSize: 14,
-                                height: 1.35,
-                                fontWeight: FontWeight.w700,
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(8, 10, 12, 10),
+        decoration: BoxDecoration(
+          color: kWhiteColor,
+          border: Border.all(color: kBorderColor),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _ConsentRow(
+              value: pdnValue,
+              onChanged: onPdnChanged,
+              leadText: 'Даю согласие на обработку ',
+              linkText: 'персональных данных',
+              onOpenLink: onOpenConsent,
+            ),
+            const SizedBox(height: 6),
+            _ConsentRow(
+              value: termsValue,
+              onChanged: onTermsChanged,
+              leadText: 'Принимаю ',
+              linkText: 'условия использования',
+              onOpenLink: onOpenTerms,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(left: 44, top: 8),
+              child: GestureDetector(
+                onTap: onOpenPolicy,
+                child: const Text(
+                  'Политика обработки персональных данных',
+                  style: TextStyle(
+                    color: kGreyColor,
+                    fontSize: 12,
+                    height: 1.35,
+                    fontWeight: FontWeight.w600,
+                    decoration: TextDecoration.underline,
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// Одна строка «чекбокс + текст со ссылкой на документ».
+class _ConsentRow extends StatelessWidget {
+  const _ConsentRow({
+    required this.value,
+    required this.onChanged,
+    required this.leadText,
+    required this.linkText,
+    required this.onOpenLink,
+  });
+
+  final bool value;
+  final ValueChanged<bool?> onChanged;
+  final String leadText;
+  final String linkText;
+  final VoidCallback onOpenLink;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: Checkbox(
+              value: value,
+              onChanged: onChanged,
+              activeColor: kSecondaryColor,
+              side: const BorderSide(color: kBorderColor),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: RichText(
+                text: TextSpan(
+                  style: const TextStyle(
+                    color: kGreyColor,
+                    fontSize: 14,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  children: [
+                    TextSpan(text: leadText),
+                    WidgetSpan(
+                      alignment: PlaceholderAlignment.baseline,
+                      baseline: TextBaseline.alphabetic,
+                      child: GestureDetector(
+                        onTap: onOpenLink,
+                        child: Text(
+                          linkText,
+                          style: const TextStyle(
+                            color: kSecondaryColor,
+                            fontSize: 14,
+                            height: 1.35,
+                            fontWeight: FontWeight.w700,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
