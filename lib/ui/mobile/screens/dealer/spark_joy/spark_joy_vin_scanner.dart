@@ -381,6 +381,9 @@ extension _SparkJoyVinScannerMethods on _SparkJoyCreateReportScreenState {
         processing = false;
         error = finalError;
         if (_isStrictVin(finalVin)) {
+          // Сервис мог вернуть error (его строгое извлечение промолчало), а
+          // мягкое переизвлечение из rawText VIN нашло — ошибка неактуальна.
+          error = null;
           controller.text = finalVin;
           currentVin = finalVin;
         } else if (error == null || error!.trim().isEmpty) {

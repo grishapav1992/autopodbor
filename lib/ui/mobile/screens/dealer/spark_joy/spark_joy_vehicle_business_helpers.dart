@@ -1,61 +1,5 @@
 part of 'spark_joy_create_report_screen.dart';
 
-const List<int> _vinWeights = [
-  8,
-  7,
-  6,
-  5,
-  4,
-  3,
-  2,
-  10,
-  0,
-  9,
-  8,
-  7,
-  6,
-  5,
-  4,
-  3,
-  2,
-];
-
-const Map<String, int> _vinTransliteration = {
-  'A': 1,
-  'B': 2,
-  'C': 3,
-  'D': 4,
-  'E': 5,
-  'F': 6,
-  'G': 7,
-  'H': 8,
-  'J': 1,
-  'K': 2,
-  'L': 3,
-  'M': 4,
-  'N': 5,
-  'P': 7,
-  'R': 9,
-  'S': 2,
-  'T': 3,
-  'U': 4,
-  'V': 5,
-  'W': 6,
-  'X': 7,
-  'Y': 8,
-  'Z': 9,
-  '0': 0,
-  '1': 1,
-  '2': 2,
-  '3': 3,
-  '4': 4,
-  '5': 5,
-  '6': 6,
-  '7': 7,
-  '8': 8,
-  '9': 9,
-};
-
 extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
   String _dateLabel(DateTime value) {
     final d = value.day.toString().padLeft(2, '0');
@@ -205,124 +149,26 @@ extension _SparkJoyVehicleBusinessHelpers on _SparkJoyCreateReportScreenState {
     _markDraftDirty();
   }
 
-  String _normalizeVinOcrText(String value) {
-    return value
-        .toUpperCase()
-        .replaceAll('А', 'A')
-        .replaceAll('В', 'B')
-        .replaceAll('С', 'C')
-        .replaceAll('Е', 'E')
-        .replaceAll('Н', 'H')
-        .replaceAll('К', 'K')
-        .replaceAll('М', 'M')
-        .replaceAll('Р', 'P')
-        .replaceAll('Т', 'T')
-        .replaceAll('У', 'Y')
-        .replaceAll('Х', 'X')
-        .replaceAll('З', '3')
-        .replaceAll('Б', '6')
-        .replaceAll('І', '1')
-        .replaceAll('|', '1')
-        .replaceAll('I', '1')
-        .replaceAll('O', '0')
-        .replaceAll('Q', '0');
+  /// Единый VIN из результата OCR: `rawText` разбирается построчно (см.
+  /// [extractVinCandidatesFromOcrText]), а платформенный `result.vin`
+  /// участвует как ещё одна отдельная строка-кандидат, НЕ как доверенное
+  /// значение. ВНИМАНИЕ (web): web/vin_ocr.js до сих пор извлекает свой
+  /// `vin` «супом» по всему тексту — сейчас это безопасно только потому, что
+  /// строгий потребитель (OCR-свип интейка) на web мёртв (dart:io File);
+  /// при оживлении web-свипа JS-извлечение нужно переводить на построчное.
+  String _extractVinFromOcrResult(
+    VinOcrResult result, {
+    VinExtractionMode mode = VinExtractionMode.lenient,
+  }) {
+    final combined = result.vin.trim().isEmpty
+        ? result.rawText
+        : '${result.rawText}\n${result.vin}';
+    return extractVinFromOcrText(combined, mode: mode);
   }
 
-  String _extractStrictVinFromText(String text) {
-    final cleaned = _normalizeVinOcrText(
-      text,
-    ).replaceAll(RegExp(r'[^A-Z0-9]'), '');
-    if (cleaned.length < 17) return '';
-    for (var i = 0; i <= cleaned.length - 17; i++) {
-      final candidate = cleaned.substring(i, i + 17);
-      if (_isStrictVin(candidate)) {
-        return _maybeFixVinOcrAmbiguity(candidate);
-      }
-    }
-    return '';
-  }
+  bool _isStrictVin(String value) => isStrictVin(value);
 
-  String _extractVinFromOcrResult(VinOcrResult result) {
-    final direct = _extractStrictVinFromText(result.vin);
-    if (direct.isNotEmpty) return direct;
-    return _extractStrictVinFromText(result.rawText);
-  }
-
-  bool _isStrictVin(String value) {
-    final vin = value.trim().toUpperCase();
-    if (vin.length != 17) return false;
-    if (RegExp(r'[IOQ]').hasMatch(vin)) return false;
-    if (!RegExp(r'^[A-HJ-NPR-Z0-9]{17}$').hasMatch(vin)) return false;
-    if (!RegExp(r'[A-Z]').hasMatch(vin) || !RegExp(r'\d').hasMatch(vin)) {
-      return false;
-    }
-    return true;
-  }
-
-  bool _isValidVinChecksum(String vin) {
-    if (!_isStrictVin(vin)) return false;
-    var sum = 0;
-    for (var i = 0; i < vin.length; i++) {
-      final value = _vinTransliteration[vin[i]];
-      if (value == null) return false;
-      sum += value * _vinWeights[i];
-    }
-    final remainder = sum % 11;
-    final expected = remainder == 10 ? 'X' : remainder.toString();
-    return vin[8] == expected;
-  }
-
-  String _toggleVinAmbiguousChar(String vin, int index) {
-    if (index < 0 || index >= vin.length) return vin;
-    final ch = vin[index];
-    if (ch != '1' && ch != 'L') return vin;
-    final replacement = ch == '1' ? 'L' : '1';
-    return vin.substring(0, index) + replacement + vin.substring(index + 1);
-  }
-
-  String _maybeFixVinOcrAmbiguity(String value) {
-    final vin = value.trim().toUpperCase();
-    if (!_isStrictVin(vin)) return vin;
-    if (_isValidVinChecksum(vin)) return vin;
-
-    final ambiguousIndexes = <int>[];
-    for (var i = 0; i < vin.length; i++) {
-      if (i == 8) continue;
-      if (vin[i] == '1' || vin[i] == 'L') {
-        ambiguousIndexes.add(i);
-      }
-    }
-    if (ambiguousIndexes.isEmpty) return vin;
-
-    final validCandidates = <String>{};
-
-    for (final index in ambiguousIndexes) {
-      final candidate = _toggleVinAmbiguousChar(vin, index);
-      if (_isStrictVin(candidate) && _isValidVinChecksum(candidate)) {
-        validCandidates.add(candidate);
-      }
-    }
-
-    const maxPairChecks = 28;
-    var pairChecks = 0;
-    for (var i = 0; i < ambiguousIndexes.length; i++) {
-      for (var j = i + 1; j < ambiguousIndexes.length; j++) {
-        if (pairChecks >= maxPairChecks) break;
-        pairChecks += 1;
-        final first = _toggleVinAmbiguousChar(vin, ambiguousIndexes[i]);
-        final candidate = _toggleVinAmbiguousChar(first, ambiguousIndexes[j]);
-        if (_isStrictVin(candidate) && _isValidVinChecksum(candidate)) {
-          validCandidates.add(candidate);
-        }
-      }
-      if (pairChecks >= maxPairChecks) break;
-    }
-
-    if (validCandidates.length == 1) {
-      return validCandidates.first;
-    }
-    return vin;
-  }
+  bool _isValidVinChecksum(String vin) => isValidVinChecksum(vin);
 
   String _sanitizePlate(String value) {
     // Country-aware sanitization. The active [_plateCountry] decides

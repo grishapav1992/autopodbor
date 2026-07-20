@@ -59,6 +59,7 @@ import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_j
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/spark_joy_intake_ai.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_service.dart';
 import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_ocr_types.dart';
+import 'package:flutter_application_1/ui/mobile/screens/dealer/spark_joy/vin_text_extraction.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_cropper/image_cropper.dart';
 import 'package:image_picker/image_picker.dart';
