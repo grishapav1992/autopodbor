@@ -95,4 +95,40 @@ void main() {
     expect(get().isUploading(''), isFalse);
     expect(get().isUploading('   '), isFalse);
   });
+
+  test('requestCancel помечает активную выгрузку и будит подписчиков', () {
+    expect(get().tryAcquire(draftId: 'draft_a', reportName: 'A'), isTrue);
+    var notifications = 0;
+    get().active.addListener(() => notifications++);
+
+    get().requestCancel();
+    expect(get().active.value?.cancelRequested, isTrue);
+    expect(get().isCancelRequested('draft_a'), isTrue);
+    expect(get().isCancelRequested('draft_b'), isFalse);
+    expect(notifications, 1);
+
+    // Повторный запрос идемпотентен и не будит подписчиков.
+    get().requestCancel();
+    expect(notifications, 1);
+  });
+
+  test('requestCancel на свободном гейте — no-op', () {
+    var notifications = 0;
+    get().active.addListener(() => notifications++);
+    get().requestCancel();
+    expect(get().active.value, isNull);
+    expect(notifications, 0);
+  });
+
+  test('cancelRequested не переживает release и новый tryAcquire', () {
+    expect(get().tryAcquire(draftId: 'draft_a', reportName: 'A'), isTrue);
+    get().requestCancel();
+    get().release('draft_a');
+    expect(get().isCancelRequested('draft_a'), isFalse);
+
+    // Ретрай той же выгрузки стартует с чистым флагом отмены.
+    expect(get().tryAcquire(draftId: 'draft_a', reportName: 'A'), isTrue);
+    expect(get().active.value?.cancelRequested, isFalse);
+    expect(get().isCancelRequested('draft_a'), isFalse);
+  });
 }

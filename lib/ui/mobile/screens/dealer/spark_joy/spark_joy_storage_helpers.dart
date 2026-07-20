@@ -815,7 +815,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     await Future.wait(
       items.map((queueItem) {
         return gate.withSlot<void>(() async {
-          if (_uploadCancelled) return;
+          if (_isUploadCancelRequested()) return;
           final item = queueItem.item;
           if (!item.isVideo) return;
           var thumbPath = item.videoThumbPath?.trim();
@@ -2296,6 +2296,21 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     );
   }
 
+  /// Единая точка опроса отмены выгрузки: своя (`_requestUploadCancel` с
+  /// экрана-владельца) ИЛИ внешняя через глобальный гейт (кнопка «Отменить
+  /// выгрузку» из редактора другого черновика, когда этот State уже
+  /// диспоузнут и его крестик недоступен). Внешний сигнал абсорбируется в
+  /// `_uploadCancelled`, чтобы дальнейший дренаж / abort multipart /
+  /// снекбар «Выгрузка отменена» шли обычным путём своей отмены.
+  bool _isUploadCancelRequested() {
+    if (_uploadCancelled) return true;
+    if (SparkJoyReportUploadGate.instance.isCancelRequested(_draftId)) {
+      _uploadCancelled = true;
+      return true;
+    }
+    return false;
+  }
+
   /// Aborts every open (non-completed) multipart session for [reportNumber]
   /// and clears the upload state so a later retry starts clean. Same call
   /// as the stale-cleanup path, minus the TTL gate.
@@ -2334,7 +2349,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     Future<bool> runUpload() async {
       // Bail before doing any work if the user cancelled while this file was
       // queued for a concurrency slot (B17).
-      if (_uploadCancelled) return false;
+      if (_isUploadCancelRequested()) return false;
       final item = queueItem.item;
       final sourceKey = queueItem.stateKey;
       final source = await _openUploadSource(item);
@@ -2573,7 +2588,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
                 // Stop picking up new parts the moment the user cancels — the
                 // PUT(s) already in flight finish (one part each), but we don't
                 // keep uploading the rest of a large file (B17).
-                if (_uploadCancelled) return;
+                if (_isUploadCancelRequested()) return;
                 final metaIndex = urlsResult.urls.indexWhere(
                   (part) => part.partNumber == partNumber,
                 );
@@ -2620,7 +2635,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         // open (not completed) lets _abortAllOpenMultipartUploads abort the
         // session cleanly — finalizing would create a completed S3 object the
         // cancel path would then orphan (B17).
-        if (_uploadCancelled) return false;
+        if (_isUploadCancelRequested()) return false;
 
         if (etagsByPart.length < partCount) {
           final listed = await storage_api.StorageApi.listMultipartParts(
@@ -3267,9 +3282,14 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
     // Страховка на случай тапа до перестройки задизейбленной кнопки.
     final gate = SparkJoyReportUploadGate.instance;
     if (!gate.tryAcquire(draftId: _draftId, reportName: _reportTitle())) {
+      // null сразу после неуспешного tryAcquire невозможен (между ними нет
+      // await), но тип nullable — гипотетическому null не приписываем
+      // ложную конкретику про «этот» или «другой» отчёт.
       final activeUpload = gate.active.value;
-      final message = activeUpload == null || activeUpload.draftId == _draftId
-          ? 'Этот отчёт уже выгружается — дождитесь завершения'
+      final message = activeUpload == null
+          ? 'Дождитесь завершения текущей выгрузки'
+          : activeUpload.draftId == _draftId
+          ? kSparkReportUploadSameDraftBusyText
           : 'Дождитесь завершения выгрузки отчёта «${activeUpload.reportName}»';
       ScaffoldMessenger.of(
         context,
@@ -3549,7 +3569,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
       await Future.wait(
         List.generate(items.length, (i) {
           return fileGate.withSlot(() async {
-            if (firstFailure != null || _uploadCancelled) return;
+            if (firstFailure != null || _isUploadCancelRequested()) return;
             try {
               final uploaded = await _uploadItemWithMultipart(
                 reportNumber: reportNumber,
@@ -3575,7 +3595,7 @@ extension _SparkJoyStorageHelpers on _SparkJoyCreateReportScreenState {
         }),
       );
 
-      if (_uploadCancelled) {
+      if (_isUploadCancelRequested()) {
         // User cancelled: abort open multipart sessions, drop upload state
         // so a retry starts fresh, and do NOT finalize the report (B17).
         await _abortAllOpenMultipartUploads(reportNumber: reportNumber);

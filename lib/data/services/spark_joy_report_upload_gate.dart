@@ -1,5 +1,10 @@
 import 'package:flutter/foundation.dart';
 
+/// Единый текст «этот черновик уже выгружается»: хинт на шаге «Итог» и
+/// страховочный снекбар отказа в `_finishReport` обязаны совпадать.
+const String kSparkReportUploadSameDraftBusyText =
+    'Этот отчёт уже выгружается — дождитесь завершения';
+
 /// Снапшот активной выгрузки отчёта — для текстов UI (хинт в редакторе,
 /// бейдж на карточке черновика).
 @immutable
@@ -7,10 +12,23 @@ class SparkJoyActiveReportUpload {
   const SparkJoyActiveReportUpload({
     required this.draftId,
     required this.reportName,
+    this.cancelRequested = false,
   });
 
   final String draftId;
   final String reportName;
+
+  /// Отмена запрошена извне через [SparkJoyReportUploadGate.requestCancel]
+  /// (не с экрана-владельца). Выгрузка опрашивает флаг кооперативно в тех же
+  /// точках, что и свою отмену.
+  final bool cancelRequested;
+
+  SparkJoyActiveReportUpload _withCancelRequested() =>
+      SparkJoyActiveReportUpload(
+        draftId: draftId,
+        reportName: reportName,
+        cancelRequested: true,
+      );
 }
 
 /// Глобальный single-flight гейт выгрузки отчётов: на всё приложение — не
@@ -65,6 +83,25 @@ class SparkJoyReportUploadGate {
   void release(String draftId) {
     if (_active.value?.draftId != draftId) return;
     _active.value = null;
+  }
+
+  /// Кооперативная отмена активной выгрузки «снаружи»: экран-владелец после
+  /// ухода с него мёртв, его крестик отмены недоступен, а `_uploadCancelled`
+  /// досягаем только из замыкания выгрузки. Флаг попадает в снапшот
+  /// (нотификация UI: кнопка → «Отменяем выгрузку…»), выгрузка-владелец
+  /// абсорбирует его в свою обычную цепочку отмены при следующем опросе.
+  void requestCancel() {
+    final current = _active.value;
+    if (current == null || current.cancelRequested) return;
+    _active.value = current._withCancelRequested();
+  }
+
+  /// true — владельцу [draftId] запрошена отмена извне.
+  bool isCancelRequested(String draftId) {
+    final current = _active.value;
+    return current != null &&
+        current.draftId == draftId &&
+        current.cancelRequested;
   }
 
   /// Разлогин: гасим бейджи/дизейблы для нового сеанса. Живой Future старой

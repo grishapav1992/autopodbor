@@ -247,6 +247,38 @@ Widget _buildSparkJoyUploadErrorHint(
   );
 }
 
+/// Confirm + запрос кооперативной отмены чужой выгрузки через глобальный
+/// гейт. Owner-check гейта делает запрос безопасным к гонке «выгрузка
+/// успела завершиться, пока висел диалог» — requestCancel станет no-op.
+Future<void> _confirmCancelForeignReportUpload(
+  _SparkJoyCreateReportScreenState s,
+  SparkJoyActiveReportUpload activeUpload,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: s.context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Отменить выгрузку?'),
+      content: Text(
+        'Выгрузка отчёта «${activeUpload.reportName}» будет остановлена, '
+        'её можно будет запустить заново из черновика.',
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(false),
+          child: const Text('Продолжить выгрузку'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(true),
+          style: TextButton.styleFrom(foregroundColor: kRedColor),
+          child: const Text('Да, отменить'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed != true) return;
+  SparkJoyReportUploadGate.instance.requestCancel();
+}
+
 Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
   final actionState = s._stepActionController.build(s);
   final uploadInSummary =
@@ -359,10 +391,32 @@ Widget _buildSparkJoySectionEditor(_SparkJoyCreateReportScreenState s) {
         ] else if (blockedByOtherUpload) ...[
           SparkHintCard(
             icon: Icons.cloud_upload_outlined,
-            text: blockedBySameDraft
-                ? 'Этот отчёт уже выгружается — дождитесь завершения'
-                : 'Идёт выгрузка другого отчёта — дождитесь завершения',
+            text: activeUpload.cancelRequested
+                ? 'Отменяем выгрузку…'
+                : blockedBySameDraft
+                ? kSparkReportUploadSameDraftBusyText
+                : 'Идёт выгрузка отчёта «${activeUpload.reportName}» — '
+                      'дождитесь завершения',
           ),
+          // Отмена ЧУЖОЙ выгрузки: её экран-владелец мёртв вместе со своим
+          // крестиком отмены, и без этой кнопки долгая выгрузка на плохой
+          // сети блокировала бы все черновики без какого-либо выхода,
+          // кроме убийства приложения. Через confirm — в отличие от
+          // владельца, здесь пользователь не видит прогресс и не должен
+          // сбрасывать почти долитый отчёт случайным тапом.
+          if (!activeUpload.cancelRequested) ...[
+            const SizedBox(height: SparkSpace.sm),
+            Align(
+              alignment: Alignment.center,
+              child: TextButton.icon(
+                onPressed: () =>
+                    _confirmCancelForeignReportUpload(s, activeUpload),
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Отменить выгрузку'),
+                style: TextButton.styleFrom(foregroundColor: kRedColor),
+              ),
+            ),
+          ],
           const SizedBox(height: SparkSpace.md),
         ],
         SparkStepActionBar(
