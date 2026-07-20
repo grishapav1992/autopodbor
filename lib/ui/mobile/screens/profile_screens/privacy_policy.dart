@@ -19,7 +19,11 @@ class PrivacyPolicy extends StatelessWidget {
       '353217, Россия, Краснодарский край, Динской р-н, п Южный, '
       'ул Новая, д 2/2, кв 12';
   static const _privacyEmail = 'support@carreports.ru';
-  static const _policyUrl = 'https://carreports.ru/privacy';
+  // Официальный публичный адрес политики — GitHub Pages (решение Григория
+  // 2026-07-20): carreports.ru/privacy не развёрнут, а этот URL живой и
+  // уже прошёл модерацию Apple.
+  static const _policyUrl =
+      'https://grishapav1992.github.io/autopodbor/privacy.html';
   static const _publicShareUrl = 'https://carreports.ru';
   static const _appRpcUrl = 'https://app.carreports.ru';
   static const _aiRpcUrl = 'https://ai.carreports.ru';

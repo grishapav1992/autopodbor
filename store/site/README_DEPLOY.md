@@ -1,16 +1,22 @@
-# Статика carreports.ru для сторов (privacy + support)
+# Статика для сторов (privacy + support)
+
+> **Актуальное состояние (2026-07-20, решение Григория).** Страницы
+> РАЗВЁРНУТЫ через GitHub Pages из ветки `gh-pages` этого репозитория:
+> `https://grishapav1992.github.io/autopodbor/privacy.html` и
+> `.../support.html`. Модерация Apple с этими URL пройдена. Тот же адрес
+> указан внутри приложения (`_policyUrl` в privacy_policy.dart /
+> personal_data_consent.dart). При правке `store/site/*.html` не забыть
+> перезалить ветку `gh-pages` (пуш — HTTPS через VPN-прокси, SSH к GitHub
+> оборван оператором). Nginx-вариант ниже — опционально, если захочется
+> красивый домен `carreports.ru/privacy`; тогда вернуть `_policyUrl`.
 
 Две самодостаточные HTML-страницы без зависимостей — обязательные URL для
 App Store Connect (и пригодятся RuStore):
 
-| Файл | Должен открываться по адресу | Куда вписывается |
+| Файл | Открывается по адресу | Куда вписывается |
 |---|---|---|
-| `privacy.html` | `https://carreports.ru/privacy` | ASC → App Information → Privacy Policy URL |
-| `support.html` | `https://carreports.ru/support` | ASC → страница версии → URL-адрес службы поддержки |
-
-Адрес `https://carreports.ru/privacy` уже указан ВНУТРИ приложения как
-официальный адрес политики (lib/ui/mobile/screens/profile_screens/privacy_policy.dart,
-`_policyUrl`) — то есть домен и путь менять нельзя, нужно просто поднять.
+| `privacy.html` | `https://grishapav1992.github.io/autopodbor/privacy.html` | ASC → App Information → Privacy Policy URL |
+| `support.html` | `https://grishapav1992.github.io/autopodbor/support.html` | ASC → страница версии → URL-адрес службы поддержки |
 
 ## Задача для дева (5 минут)
 

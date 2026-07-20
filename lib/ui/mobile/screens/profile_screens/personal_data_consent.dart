@@ -19,7 +19,9 @@ class PersonalDataConsent extends StatelessWidget {
       '353217, Россия, Краснодарский край, Динской р-н, п Южный, '
       'ул Новая, д 2/2, кв 12';
   static const _privacyEmail = 'support@carreports.ru';
-  static const _policyUrl = 'https://carreports.ru/privacy';
+  // Единый с PrivacyPolicy._policyUrl рабочий адрес политики (GitHub Pages).
+  static const _policyUrl =
+      'https://grishapav1992.github.io/autopodbor/privacy.html';
 
   @override
   Widget build(BuildContext context) {
